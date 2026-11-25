@@ -20,10 +20,11 @@ A path is REFUSED, with the reason printed, when any of these holds for it or it
               .safetensors .bin .npy .jsonl .tar) under R.  Pin files are SAFE_RM_PINS globs (default ~/shengji-archive/*/
               {commands.json,slots*.json,source-pins.json,SHA256SUMS,stage_*.sh,launch.py,*.sh} and the same names under
               ~/fleet/*/), skipping pin files inside R itself.  INC-23: ~/mrt-b0 held FT1 best.pt, pinned by G5 and X2.
-              A sha256 match is exempt (printed as EXEMPT) when git can restore the file after R is gone: it is
-              tracked at its worktree's HEAD, byte-identical to HEAD's blob, and that blob is at the same path on a
-              remote-tracking main/HEAD ref (or local main, unless the repository's object store is under R), or
-              HEAD itself is on a remote-tracking ref.  Untracked, ignored and modified files stay pinned.
+              A sha256 match is exempt (printed as EXEMPT) only in a linked worktree whose common dir and object
+              stores (alternates included) lie outside R, when the file is tracked at HEAD, byte-identical to HEAD's
+              blob, that blob is readable in the common dir, and a remote-tracking main/HEAD ref or local main holds
+              it (same path, or the ref contains HEAD).  Standalone clones, untracked, ignored and modified files
+              stay pinned.
 Checks run per path immediately before its delete, so a queued list is re-validated at delete time.
 Every decision is appended to ~/.safe_rm.log.
 """
@@ -267,32 +268,67 @@ def pinned(r, typed):
     return hits, exempt
 
 
-def git(top, *args):
+def git(top, *args, git_dir=None):
+    # inherited GIT_DIR / GIT_OBJECT_DIRECTORY / GIT_ALTERNATE_OBJECT_DIRECTORIES would point git at another store
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    loc = ["--git-dir", git_dir] if git_dir else ["-C", top]
     try:
-        p = subprocess.run(["git", "--literal-pathspecs", "-C", top, *args], capture_output=True, timeout=120)
+        p = subprocess.run(["git", "--literal-pathspecs", *loc, *args], capture_output=True, timeout=120, env=env)
     except (OSError, subprocess.TimeoutExpired):
         return None
     return p.stdout if p.returncode == 0 else None
 
 
+def object_stores(objects):
+    """objects plus every alternate it names, transitively; None when an alternates file cannot be read."""
+    seen, todo = [], [objects]
+    while todo:
+        o = os.path.realpath(todo.pop())
+        if o in seen:
+            continue
+        seen.append(o)
+        alt = os.path.join(o, "info", "alternates")
+        if not os.path.lexists(alt):
+            continue
+        try:
+            lines = open(alt, errors="surrogateescape").read().splitlines()
+        except OSError:
+            return None
+        for line in lines:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                if line.startswith('"'):
+                    return None
+                todo.append(os.path.join(o, line))
+    return seen
+
+
 def git_recoverable(r, matched):
-    """{path: reason} for hash-pinned files that git can restore after R is gone: tracked at their worktree's
-    HEAD, byte-identical to HEAD's blob, and that blob is on a remote-tracking ref (or local main while the
-    repository's own object store lies outside R).  Untracked, ignored or modified files never qualify, and any
-    git failure leaves the pin in force.  Git calls are batched per worktree."""
+    """{path: reason} for hash-pinned files that git can restore after R is gone.  Only a linked worktree
+    qualifies (its .git is a file naming a common dir); the common dir and every object store it reads, alternates
+    included, lie outside R; the file is tracked at HEAD and byte-identical to HEAD's blob; that blob is readable
+    there (cat-file -e); and a retained ref in the common dir (remote-tracking main/HEAD or local main at the same
+    path, or a remote-tracking ref or local main containing HEAD) holds it.  A standalone clone keeps its pins: its
+    remote may be inside R or no longer hold the commit.  Any git failure leaves the pin in force."""
     tops = {}
     for fp, _, blob_ids in matched:
-        out = git(os.path.dirname(fp), "rev-parse", "--show-toplevel", "--git-common-dir")
+        out = git(os.path.dirname(fp), "rev-parse", "--show-toplevel", "--absolute-git-dir", "--git-common-dir",
+                  "--git-path", "objects")
         if out is None:
             continue
-        lines = out.decode(errors="replace").splitlines()
-        if len(lines) != 2:
+        lines = out.decode(errors="surrogateescape").splitlines()
+        if len(lines) != 4:
             continue
-        top = os.path.realpath(lines[0])
-        common = os.path.realpath(os.path.join(os.path.dirname(fp), lines[1]))
-        tops.setdefault((top, common), []).append((fp, blob_ids))
+        d = os.path.dirname(fp)
+        top, gdir, common, objects = (os.path.realpath(os.path.join(d, x)) for x in lines)
+        tops.setdefault((top, gdir, common, objects), []).append((fp, blob_ids))
     found = {}
-    for (top, common), files in tops.items():
+    for (top, gdir, common, objects), files in tops.items():
+        if not os.path.isfile(os.path.join(top, ".git")) or gdir == common:
+            continue
+        stores = object_stores(objects)
+        if not stores or under(common, r) or under(gdir, r) or any(under(o, r) for o in stores):
+            continue
         rel = {os.path.relpath(fp, top): (fp, ids) for fp, ids in files}
 
         def tree(ref):
@@ -307,25 +343,25 @@ def git_recoverable(r, matched):
 
         head = tree("HEAD")
         clean = {p: head[p] for p, (_, ids) in rel.items() if head.get(p) in ids}
+        clean = {p: b for p, b in clean.items() if git(top, "cat-file", "-e", b, git_dir=common) is not None}
         if not clean:
             continue
-        refs = (git(top, "for-each-ref", "--format=%(refname)", "refs/remotes/") or b"").decode().split()
-        mains = [x for x in refs if x.rsplit("/", 1)[-1] in ("main", "HEAD")]
-        if not under(common, r):
-            mains.append("refs/heads/main")
+        refs = (git(top, "for-each-ref", "--format=%(refname)", "refs/remotes/", "refs/heads/main") or b"").decode().split()
+        mains = [x for x in refs if x == "refs/heads/main" or x.rsplit("/", 1)[-1] in ("main", "HEAD")]
         where = {}
         for ref in mains:
             for p, blob in tree(ref).items():
                 if clean.get(p) == blob:
                     where.setdefault(p, ref)
         if len(where) < len(clean):
-            on = git(top, "for-each-ref", "--count=1", "--contains", "HEAD", "--format=%(refname)", "refs/remotes/")
+            on = git(top, "for-each-ref", "--count=1", "--contains", "HEAD", "--format=%(refname)",
+                     "refs/remotes/", "refs/heads/main")
             on = (on or b"").decode().strip()
             if on:
                 for p in clean:
                     where.setdefault(p, f"{on} (contains HEAD)")
         for p, ref in where.items():
-            found[rel[p][0]] = f"tracked at HEAD, unmodified, blob {clean[p][:12]} on {ref}"
+            found[rel[p][0]] = f"linked worktree, tracked at HEAD, unmodified, blob {clean[p][:12]} readable in {common} on {ref}"
     return found
 
 

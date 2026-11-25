@@ -357,62 +357,116 @@ def _git(cwd, *args):
                     "-c", "commit.gpgsign=false", *args], cwd=cwd, check=True, capture_output=True)
 
 
-def _pinned_checkout(world, push=True):
-    """A clone under root/ whose tracked models/m.npz is pinned by sha256 in an archived packet."""
-    _git(world, "init", "-q", "--bare", "origin.git")
-    co = world / "root/co"
-    _git(world, "clone", "-q", str(world / "origin.git"), str(co))
-    h = big_file(co / "models/m.npz")
-    (co / ".gitignore").write_text("payload/\n")
-    _git(co, "add", "models/m.npz", ".gitignore")
-    _git(co, "commit", "-q", "-m", "m")
-    if push:
-        _git(co, "push", "-q", "origin", "HEAD:main")
-        _git(co, "fetch", "-q", "origin")
+def _pin(world, h):
     (world / "archive/pk/commands.json").write_text(f'{{"init_sha256": "{h}"}}\n')
-    return co, h
 
 
-def test_tracked_unmodified_pushed_pin_is_exempt(world):
-    co, _ = _pinned_checkout(world)
-    rc, out = run(world, "--dry-run", co)
+def _clone(world, at, push=True):
+    """A clone at `at` (with its bare origin beside it) tracking models/m.npz; returns (clone, sha256)."""
+    origin = at.parent / (at.name + "-origin.git")
+    _git(at.parent, "init", "-q", "--bare", str(origin))
+    _git(at.parent, "clone", "-q", str(origin), str(at))
+    h = big_file(at / "models/m.npz")
+    (at / ".gitignore").write_text("payload/\n")
+    _git(at, "add", "models/m.npz", ".gitignore")
+    _git(at, "commit", "-q", "-m", "m")
+    if push:
+        _git(at, "push", "-q", "origin", "HEAD:main")
+        _git(at, "fetch", "-q", "origin")
+    return at, h
+
+
+def _linked_worktree(world, push=True):
+    """A linked worktree under root/ whose common dir (the clone at world/main) is outside the target."""
+    co, h = _clone(world, world / "main", push=push)
+    wt = world / "root/wt"
+    _git(co, "worktree", "add", "-q", "--detach", str(wt), "main")
+    _pin(world, h)
+    return co, wt, h
+
+
+def test_healthy_linked_worktree_pin_is_exempt(world):
+    _, wt, _ = _linked_worktree(world)
+    rc, out = run(world, "--dry-run", wt)
     assert rc == 0 and "WOULD DELETE" in out
-    assert "EXEMPT pin" in out and "models/m.npz" in out and " on refs/remotes/origin/" in out
+    assert "EXEMPT pin" in out and "models/m.npz" in out and "linked worktree" in out
+
+
+def test_linked_worktree_on_an_unpushed_local_main_is_exempt(world):
+    _, wt, _ = _linked_worktree(world, push=False)
+    rc, out = run(world, "--dry-run", wt)
+    assert rc == 0 and "EXEMPT pin" in out and "refs/heads/main" in out
+
+
+def test_standalone_clone_with_its_only_origin_inside_the_target_refuses(world):
+    box = world / "root/box"
+    box.mkdir()
+    co, h = _clone(world, box / "co")
+    _pin(world, h)
+    rc, out = run(world, "--dry-run", box)
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_standalone_clone_whose_origin_dropped_its_refs_refuses(world):
+    co, h = _clone(world, world / "root/co")
+    _git(world / "root/co-origin.git", "update-ref", "-d", "refs/heads/main")
+    _pin(world, h)
+    rc, out = run(world, "--dry-run", co)
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_linked_worktree_with_the_blob_missing_from_the_store_refuses(world):
+    co, wt, _ = _linked_worktree(world)
+    blob = subprocess.run(["git", "rev-parse", "HEAD:models/m.npz"], cwd=co, capture_output=True,
+                          text=True, check=True).stdout.strip()
+    (co / ".git/objects" / blob[:2] / blob[2:]).unlink()
+    assert subprocess.run(["git", "cat-file", "-e", blob], cwd=co).returncode != 0
+    rc, out = run(world, "--dry-run", wt)
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_linked_worktree_with_an_alternate_inside_the_target_refuses(world):
+    co, wt, _ = _linked_worktree(world)
+    (wt / "store").mkdir()
+    (co / ".git/objects/info/alternates").write_text(f"{wt / 'store'}\n")
+    rc, out = run(world, "--dry-run", wt)
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
 
 
 def test_modified_tracked_pin_refuses(world):
-    co, h = _pinned_checkout(world)
-    (world / "archive/pk/commands.json").write_text(f'{{"init_sha256": "{big_file(co / "models/m.npz")}"}}\n')
-    rc, out = run(world, "--dry-run", co)
+    _, wt, _ = _linked_worktree(world)
+    _pin(world, big_file(wt / "models/m.npz"))
+    rc, out = run(world, "--dry-run", wt)
     assert rc == 1 and "pinned" in out and "EXEMPT" not in out
 
 
-def test_untracked_pin_in_a_checkout_refuses(world):
-    co, _ = _pinned_checkout(world)
-    h = big_file(co / "models/new.npz")
-    (world / "archive/pk/commands.json").write_text(f'{{"init_sha256": "{h}"}}\n')
-    rc, out = run(world, "--dry-run", co)
+def test_untracked_pin_in_a_worktree_refuses(world):
+    _, wt, _ = _linked_worktree(world)
+    _pin(world, big_file(wt / "models/new.npz"))
+    rc, out = run(world, "--dry-run", wt)
     assert rc == 1 and "models/new.npz" in out and "EXEMPT" not in out
 
 
-def test_ignored_pin_in_a_checkout_refuses(world):
-    co, _ = _pinned_checkout(world)
-    h = big_file(co / "payload/models/p.npz")
-    (world / "archive/pk/commands.json").write_text(f'{{"init_sha256": "{h}"}}\n')
-    rc, out = run(world, "--dry-run", co)
+def test_ignored_pin_in_a_worktree_refuses(world):
+    _, wt, _ = _linked_worktree(world)
+    _pin(world, big_file(wt / "payload/models/p.npz"))
+    rc, out = run(world, "--dry-run", wt)
     assert rc == 1 and "payload/models/p.npz" in out and "EXEMPT" not in out
 
 
-def test_tracked_pin_on_no_remote_ref_refuses(world):
-    # the clone's own .git, and so its local main, goes with the target: only a remote ref could restore the blob
-    co, _ = _pinned_checkout(world, push=False)
-    rc, out = run(world, "--dry-run", co)
+def test_tracked_pin_whose_commit_is_on_no_retained_ref_refuses(world):
+    _, wt, _ = _linked_worktree(world)
+    _git(wt, "switch", "-q", "-c", "topic")
+    _pin(world, big_file(wt / "models/m.npz"))
+    _git(wt, "commit", "-q", "-am", "local only")
+    rc, out = run(world, "--dry-run", wt)
     assert rc == 1 and "pinned" in out and "EXEMPT" not in out
 
 
-def test_tracked_pin_reached_by_a_shared_local_main_is_exempt(world):
-    co, _ = _pinned_checkout(world, push=False)
-    wt = world / "root/wt"
-    _git(co, "worktree", "add", "-q", "--detach", str(wt), "main")
-    rc, out = run(world, "--dry-run", wt)
-    assert rc == 0 and "EXEMPT pin" in out and "refs/heads/main" in out
+def test_standalone_clone_subdirectory_keeps_its_pin(world):
+    # the clone's .git survives this target, but its remote-tracking refs outlive the origin's own refs
+    co, h = _clone(world, world / "root/co")
+    _git(world / "root/co-origin.git", "update-ref", "-d", "refs/heads/main")
+    _pin(world, h)
+    rc, out = run(world, "--dry-run", co / "models")
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out

@@ -517,3 +517,49 @@ def test_warm_depth_growth_preserves_all_logits_and_trains_new_blocks(world, tmp
         enc = trained.trunk.encoder.layers[i]
         for projection in (enc.self_attn.out_proj, enc.linear2, trained.trunk.xattn[i].o, trained.trunk.ff[i][-1]):
             assert torch.count_nonzero(projection.weight) > 0
+
+
+def _history_width_errors(original, batch):
+    from scripts.rt4m_history_width import widen_history
+
+    medium = ur.build(dict(original.config["trunk"], d=288, heads=6, enc_layers=6, xattn_layers=6)).eval()
+    widen_history(original.trunk, medium.trunk)
+
+    def history_inputs(model):
+        kv = []
+        hooks = [layer.register_forward_hook(lambda module, args, out: kv.append(out))
+                 for layer in model.trunk.kv]
+        try:
+            _, enc, _, _ = ur.us.trunk_forward(model.trunk, batch)
+            return enc, kv
+        finally:
+            for hook in hooks:
+                hook.remove()
+
+    with torch.no_grad():
+        enc, kv = history_inputs(original)
+        wide_enc, wide_kv = history_inputs(medium)
+    errors = [(wide_enc[..., :192] - enc).abs().max().item()]
+    assert len(kv) == 4 and len(wide_kv) == 6
+    for old, new in zip(kv, wide_kv):
+        for ref, actual in zip(old.chunk(2, dim=-1), new.chunk(2, dim=-1)):
+            errors.append((actual[..., :192] - ref).abs().max().item())
+    return errors
+
+
+def test_medium_history_preserves_normalized_tokens_and_attention_keys_values(world):
+    from tests.test_unified_seq import _loaded
+
+    torch.manual_seed(43)
+    model = ur.build(dict(ARCH, d=192, heads=4, enc_layers=4, xattn_layers=4, x_hidden=256)).eval()
+    with torch.no_grad():
+        for layer in model.trunk.modules():
+            if isinstance(layer, torch.nn.LayerNorm):
+                layer.weight.uniform_(0.6, 1.4)
+                layer.bias.normal_(std=0.3)
+        model.trunk.null_kv.normal_()
+    part, _ = _loaded(world)
+    rounds = np.unique(part["row_round"])[:2]
+    rows = np.concatenate([np.flatnonzero(part["row_round"] == r)[::13] for r in rounds])
+    batch = ur.us.to_device(ur.make_batch(part, rounds, rows), "cpu")
+    assert max(_history_width_errors(model, batch)) < 1e-5

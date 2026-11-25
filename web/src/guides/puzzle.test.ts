@@ -28,6 +28,15 @@ const PUZZLES = ["tough-bury-short-suits", "tough-feed-partners-throw", "tough-d
   "tough-keep-the-big-jokers", "tough-last-trick-throw"];
 const page = (lang: "en" | "zh", slug: string) => built.get(`${lang === "en" ? "guides" : "zh/guides"}/${slug}/index.html`)!;
 
+/** A built page in its own document (another tab sharing this window's storage), its script run against it. */
+function openIn(doc: Document, html: string): Document {
+  doc.title = /<title>([^<]*)<\/title>/.exec(html)![1];
+  doc.body.innerHTML = /<main>[\s\S]*<\/main>/.exec(html)![0];
+  const [, script] = /<script>([\s\S]*?)<\/script>/.exec(html)!;
+  new Function("document", script)(doc);
+  return doc;
+}
+
 /** Loads a built page's <main> into the document and runs its inline script, as a browser would. */
 function open(html: string): void {
   document.title = /<title>([^<]*)<\/title>/.exec(html)![1];
@@ -81,6 +90,32 @@ describe("a puzzle page with its script", () => {
     expect($("[data-pz-reveal]").hidden).toBe(false);
     expect(option("B").getAttribute("aria-pressed")).toBe("true");
     expect($("[data-pz-verdict]").textContent).toBe("You picked B. The play-outs favour A.");
+  });
+
+  it("scores the pick another tab saved first, when both opened before either pick", () => {
+    const cases = [
+      ["en", "You picked B. The play-outs favour A.", "0 of 5 solved"],
+      ["zh", "你选了 B。模拟结果支持 A。", "已答对 0 / 5 题"],
+    ] as const;
+    for (const [lang, verdict, score] of cases) {
+      window.localStorage.clear();
+      const html = page(lang, "tough-dont-feed-the-trick");
+      const first = openIn(document.implementation.createHTMLDocument(""), html);
+      const second = openIn(document.implementation.createHTMLDocument(""), html);
+      const pick = (doc: Document, l: string) => (doc.querySelector(`button[data-opt="${l}"]`) as HTMLButtonElement).click();
+      const said = (doc: Document) => doc.querySelector("[data-pz-verdict]")!.textContent;
+      pick(first, "B");
+      pick(second, "A");
+      expect(said(first), lang).toBe(verdict);
+      expect(said(second), lang).toBe(verdict);
+      expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!), lang).toEqual({ "tough-dont-feed-the-trick": "B" });
+      pick(second, "C");
+      expect(said(second), lang).toBe(verdict);
+      open(html);
+      expect($("[data-pz-verdict]").textContent, lang).toBe(verdict);
+      open(page(lang, "toughest-decisions"));
+      expect($("[data-pz-progress]").textContent, lang).toBe(score);
+    }
   });
 
   it("keeps the first pick for the visit when storage throws", () => {

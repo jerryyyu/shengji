@@ -287,9 +287,11 @@ const SCRIPT = `
       li.appendChild(b);
       b.addEventListener("click", function () {
         if (!scored) {
-          scored = letter;
+          // another tab may have scored this puzzle since the page loaded
           var now = load();
-          if (!now[slug]) { now[slug] = letter; save(now); }
+          var stored = typeof now[slug] === "string" && /^[A-D]$/.test(now[slug]) ? now[slug] : null;
+          if (stored) scored = stored;
+          else { scored = letter; now[slug] = letter; save(now); }
         }
         show(letter);
       });

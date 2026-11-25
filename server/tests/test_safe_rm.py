@@ -470,3 +470,48 @@ def test_standalone_clone_subdirectory_keeps_its_pin(world):
     _pin(world, h)
     rc, out = run(world, "--dry-run", co / "models")
     assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def _loose_blob(co):
+    blob = subprocess.run(["git", "rev-parse", "HEAD:models/m.npz"], cwd=co, capture_output=True,
+                          text=True, check=True).stdout.strip()
+    path = co / ".git/objects" / blob[:2] / blob[2:]
+    path.chmod(0o644)
+    return blob, path
+
+
+def _exists(co, blob):
+    return subprocess.run(["git", "cat-file", "-e", blob], cwd=co).returncode == 0
+
+
+def test_linked_worktree_with_a_corrupt_compressed_blob_refuses(world):
+    co, wt, _ = _linked_worktree(world)
+    blob, path = _loose_blob(co)
+    raw = path.read_bytes()
+    path.write_bytes(raw[: len(raw) // 2])
+    assert _exists(co, blob)
+    rc, out = run(world, "--dry-run", wt)
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_linked_worktree_with_substituted_blob_bytes_refuses(world):
+    import zlib
+    co, wt, _ = _linked_worktree(world)
+    blob, path = _loose_blob(co)
+    size = (wt / "models/m.npz").stat().st_size
+    path.write_bytes(zlib.compress(b"blob %d\0" % size + os.urandom(size)))
+    assert _exists(co, blob)
+    rc, out = run(world, "--dry-run", wt)
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_linked_worktree_with_a_loose_object_linked_into_the_target_refuses(world):
+    co, wt, _ = _linked_worktree(world)
+    blob, path = _loose_blob(co)
+    moved = wt / "stash/obj"
+    moved.parent.mkdir()
+    path.rename(moved)
+    path.symlink_to(moved)
+    assert _exists(co, blob)
+    rc, out = run(world, "--dry-run", wt)
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out

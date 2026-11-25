@@ -21,10 +21,10 @@ A path is REFUSED, with the reason printed, when any of these holds for it or it
               {commands.json,slots*.json,source-pins.json,SHA256SUMS,stage_*.sh,launch.py,*.sh} and the same names under
               ~/fleet/*/), skipping pin files inside R itself.  INC-23: ~/mrt-b0 held FT1 best.pt, pinned by G5 and X2.
               A sha256 match is exempt (printed as EXEMPT) only in a linked worktree whose common dir and object
-              stores (alternates included) lie outside R, when the file is tracked at HEAD, byte-identical to HEAD's
-              blob, that blob is readable in the common dir, and a remote-tracking main/HEAD ref or local main holds
-              it (same path, or the ref contains HEAD).  Standalone clones, untracked, ignored and modified files
-              stay pinned.
+              stores (alternates included, no symlink anywhere in them) lie outside R, when the file is tracked at
+              HEAD, byte-identical to HEAD's blob, `cat-file blob` in the common dir streams bytes with the pinned
+              sha256, and a remote-tracking main/HEAD ref or local main holds it (same path, or the ref contains
+              HEAD).  Standalone clones, untracked, ignored and modified files stay pinned.
 Checks run per path immediately before its delete, so a queued list is re-validated at delete time.
 Every decision is appended to ~/.safe_rm.log.
 """
@@ -280,13 +280,21 @@ def git(top, *args, git_dir=None):
 
 
 def object_stores(objects):
-    """objects plus every alternate it names, transitively; None when an alternates file cannot be read."""
+    """objects plus every alternate it names, transitively, as realpaths.  None (the pin stays) when an alternates
+    file cannot be read, or any store, fanout dir, loose object, pack file or alternates file is a symlink: git
+    would read through it, so the bytes may live in the target after all."""
     seen, todo = [], [objects]
     while todo:
-        o = os.path.realpath(todo.pop())
+        raw = os.path.abspath(todo.pop())
+        if os.path.islink(raw):
+            return None
+        o = os.path.realpath(raw)
         if o in seen:
             continue
         seen.append(o)
+        for d, dirs, files in os.walk(o, followlinks=False):
+            if any(os.path.islink(os.path.join(d, n)) for n in dirs + files):
+                return None
         alt = os.path.join(o, "info", "alternates")
         if not os.path.lexists(alt):
             continue
@@ -303,15 +311,31 @@ def object_stores(objects):
     return seen
 
 
+def blob_sha256(common, blob):
+    """sha256 of the blob as git streams it from the common dir, or None when git cannot read it in full."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    h = hashlib.sha256()
+    try:
+        with subprocess.Popen(["git", "--git-dir", common, "cat-file", "blob", blob], stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, env=env) as p:
+            for b in iter(lambda: p.stdout.read(1 << 22), b""):
+                h.update(b)
+            rc = p.wait(timeout=300)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return h.hexdigest() if rc == 0 else None
+
+
 def git_recoverable(r, matched):
     """{path: reason} for hash-pinned files that git can restore after R is gone.  Only a linked worktree
     qualifies (its .git is a file naming a common dir); the common dir and every object store it reads, alternates
     included, lie outside R; the file is tracked at HEAD and byte-identical to HEAD's blob; that blob is readable
-    there (cat-file -e); and a retained ref in the common dir (remote-tracking main/HEAD or local main at the same
-    path, or a remote-tracking ref or local main containing HEAD) holds it.  A standalone clone keeps its pins: its
+    there in full with the pinned sha256, no store path being a symlink; and a retained ref in the common dir
+    (remote-tracking main/HEAD or local main at the same path, or a remote-tracking ref or local main containing
+    HEAD) holds it.  A standalone clone keeps its pins: its
     remote may be inside R or no longer hold the commit.  Any git failure leaves the pin in force."""
     tops = {}
-    for fp, _, blob_ids in matched:
+    for fp, digest, blob_ids in matched:
         out = git(os.path.dirname(fp), "rev-parse", "--show-toplevel", "--absolute-git-dir", "--git-common-dir",
                   "--git-path", "objects")
         if out is None:
@@ -320,8 +344,9 @@ def git_recoverable(r, matched):
         if len(lines) != 4:
             continue
         d = os.path.dirname(fp)
-        top, gdir, common, objects = (os.path.realpath(os.path.join(d, x)) for x in lines)
-        tops.setdefault((top, gdir, common, objects), []).append((fp, blob_ids))
+        top, gdir, common = (os.path.realpath(os.path.join(d, x)) for x in lines[:3])
+        objects = os.path.abspath(os.path.join(d, lines[3]))
+        tops.setdefault((top, gdir, common, objects), []).append((fp, digest, blob_ids))
     found = {}
     for (top, gdir, common, objects), files in tops.items():
         if not os.path.isfile(os.path.join(top, ".git")) or gdir == common:
@@ -329,7 +354,7 @@ def git_recoverable(r, matched):
         stores = object_stores(objects)
         if not stores or under(common, r) or under(gdir, r) or any(under(o, r) for o in stores):
             continue
-        rel = {os.path.relpath(fp, top): (fp, ids) for fp, ids in files}
+        rel = {os.path.relpath(fp, top): (fp, digest, ids) for fp, digest, ids in files}
 
         def tree(ref):
             out = git(top, "ls-tree", "-z", ref, "--", *rel)
@@ -342,8 +367,9 @@ def git_recoverable(r, matched):
             return blobs
 
         head = tree("HEAD")
-        clean = {p: head[p] for p, (_, ids) in rel.items() if head.get(p) in ids}
-        clean = {p: b for p, b in clean.items() if git(top, "cat-file", "-e", b, git_dir=common) is not None}
+        clean = {p: head[p] for p, (_, _, ids) in rel.items() if head.get(p) in ids}
+        # a store that only answers cat-file -e may still hold a corrupt or substituted object
+        clean = {p: b for p, b in clean.items() if blob_sha256(common, b) == rel[p][1]}
         if not clean:
             continue
         refs = (git(top, "for-each-ref", "--format=%(refname)", "refs/remotes/", "refs/heads/main") or b"").decode().split()

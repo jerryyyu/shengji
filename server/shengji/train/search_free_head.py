@@ -148,10 +148,23 @@ def fit_shard(model, head, optimizer, entry, directory, verified, *, rounds_per_
     return decisions
 
 
-def export(path, model, head, metadata):
+def export(path, model, head, metadata, *, shared_unified=None):
+    """Export a standalone scorer or a head bound to the matching loaded serving package."""
     def arrays(module):
         return {k: v.detach().cpu().float().numpy() for k, v in module.state_dict().items()}
 
     weights = {f"{name}.{k}": v for name in ("q_head", "p_head")
                for k, v in arrays(getattr(model, name)).items()}
-    return sf.save_package(path, model.config, arrays(model.trunk), weights, arrays(head), metadata)
+    trunk = arrays(model.trunk)
+    cand = arrays(head)
+    if shared_unified is None:
+        return sf.save_package(path, model.config, trunk, weights, cand, metadata)
+
+    digest = shared_unified.package_sha256
+    if (not digest or len(digest) != 64 or shared_unified.dtype != np.float32
+            or any(shared_unified.config[k] != model.config[k] for k in ("trunk", "heads"))):
+        raise ValueError("expected a matching, hashed float32 unified serving package")
+    for fitted, served in ((trunk, shared_unified.trunk.w), (weights, shared_unified.h)):
+        if fitted.keys() != served.keys() or any(not np.array_equal(v, served[k]) for k, v in fitted.items()):
+            raise ValueError("candidate training and serving weights differ")
+    return sf.save_shared_head(path, shared_unified, cand, metadata)

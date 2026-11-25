@@ -571,7 +571,7 @@ def test_check_init_belief_ll_rules():
             us.check_init_belief_ll(bad, 0.98782)
 
 
-def test_fixed_trunk_candidate_update_exports_served_scores(world, tmp_path):
+def test_fixed_trunk_candidate_update_exports_served_scores(world, tmp_path, monkeypatch):
     from shengji.harvest.legal import enumerate_legal
     from shengji.harvest.rebuild import state_for_record
     from shengji.train import search_free_head as trainer
@@ -625,7 +625,8 @@ def test_fixed_trunk_candidate_update_exports_served_scores(world, tmp_path):
     for i in range(len(b["X"])):
         inp = un.batch_inputs(b, i, with_play=False)
         keep = c["row"] == i
-        live = runtime.score(inp, runtime.trunk_states(inp), [tokens[k] for k in np.flatnonzero(keep)])
+        ballot = [tokens[k] for k in np.flatnonzero(keep)]
+        live = runtime.score(inp, runtime.trunk_states(inp), ballot)
         np.testing.assert_allclose(live, after[:, keep], atol=1e-4, rtol=1e-4)
 
     from shengji.harvest.legal import is_legal
@@ -634,6 +635,44 @@ def test_fixed_trunk_candidate_update_exports_served_scores(world, tmp_path):
         bot = builder(tbl.HeuristicBot(), path, seed=17, sha256=sha)
         assert is_legal(rnd, seat, bot.decide_play(rnd, seat))
         assert bot.last_decision_record["schema"] == rp.RECORD_SCHEMA
+
+    from shengji.ai import unified_readout_numpy as rn
+    from shengji.api import server
+    from shengji.train import unified_serving
+
+    trunk_path = tmp_path / "advanced.npz"
+    readout = {k: v.detach().numpy() for k, v in m.readout.state_dict().items()}
+    pin = rn.save_package(trunk_path, m.config, runtime.unified.trunk.w, runtime.unified.h, readout, {})
+    shared = unified_serving.load_unified(str(trunk_path), pin)
+    head_path = tmp_path / "head.npz"
+    head_sha = trainer.export(head_path, m, head, {}, shared_unified=shared)
+    with np.load(head_path) as z:
+        assert str(z["unified_sha256"]) == pin
+        assert not any(k.startswith(("w:", "h:", "r:")) for k in z.files)
+    assert head_path.stat().st_size < path.stat().st_size
+    monkeypatch.setattr(server, "RELAXED_SF_PACKAGE", str(head_path))
+    monkeypatch.setattr(server, "RELAXED_SF_SHA256", head_sha)
+    served = tbl.HeuristicBot()
+    served.unified_prior_model = shared
+    for builder in (server.make_relaxed_bot, server.make_beginner_bot):
+        bot = builder(served, seed=17)
+        attached = bot.player.model
+        assert attached.unified is shared
+        np.testing.assert_array_equal(attached.score(inp, attached.trunk_states(inp), ballot), live)
+        assert is_legal(rnd, seat, bot.decide_play(rnd, seat))
+        assert bot.last_decision_record["schema"] == rp.RECORD_SCHEMA
+
+    # A different loaded package with identical weights is still a different runtime pin.
+    other_path = tmp_path / "other.npz"
+    other_pin = rn.save_package(other_path, m.config, runtime.unified.trunk.w, runtime.unified.h, readout, {"other": True})
+    served.unified_prior_model = unified_serving.load_unified(str(other_path), other_pin)
+    assert server.make_relaxed_bot(served, seed=17) is served
+    del served.unified_prior_model
+    assert server.make_beginner_bot(served, seed=17) is served
+    with torch.no_grad():
+        next(m.p_head.parameters()).add_(0.01)
+    with pytest.raises(ValueError, match="training and serving weights differ"):
+        trainer.export(tmp_path / "wrong.npz", m, head, {}, shared_unified=shared)
 
     np.savez(tmp_path / (key + ".npz"), n_rows=len(part["X"]), row=row, slot=slot,
              mean=mean, played=np.logical_not(played), **arrays)

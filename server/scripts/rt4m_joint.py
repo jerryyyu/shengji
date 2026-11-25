@@ -7,7 +7,7 @@ import re
 import sys
 
 from sz2_joint_segment import joint_args
-from sz3_joint_recipe import ARCHITECTURE
+from sz3_joint_recipe import ARCHITECTURE, SCRATCH_RATES
 
 RECIPE = Path.home() / "fleet/claude-ut-retrain4/cand/train/run.json"
 RECIPE_SHA256 = "d7778348cce3aead7f991c1683577af3f9760bab795ef4d548b721ea8bfacb48"
@@ -28,8 +28,9 @@ def recipe_inputs(root, recipe_path, *, phase="RT4-M-A"):
 
     recipe = json.loads(raw)
     directory = root / (phase if smoke else "A") / "train"
-    args = joint_args(recipe, ["--scratch-arch", ARCHITECTURE[6]], directory, "mps", None, False)
-    expected = dict(recipe, init_readout_ckpt=None, scratch_arch=ARCHITECTURE[6], device="mps")
+    scratch_recipe = dict(recipe, **SCRATCH_RATES)
+    args = joint_args(scratch_recipe, ["--scratch-arch", ARCHITECTURE[6]], directory, "mps", None, False)
+    expected = dict(scratch_recipe, init_readout_ckpt=None, scratch_arch=ARCHITECTURE[6], device="mps")
     if smoke:
         args.extend(["--max-train-rows", "120000", "--report-buffer", "1", "--capacity-stats"])
         expected.update(max_train_rows=120000, report_buffer=1)
@@ -37,7 +38,7 @@ def recipe_inputs(root, recipe_path, *, phase="RT4-M-A"):
         args.extend(["--microbatch-rounds", "4"])
         expected["microbatch_rounds"] = 4
     if _run_identity(build_parser().parse_args(args)) != expected:
-        raise ValueError("the trainer settings differ from RT4 beyond initialization and device")
+        raise ValueError("the trainer settings differ from the expected RT4-M scratch recipe")
     return recipe, args, expected
 
 
@@ -64,8 +65,6 @@ def command(root, recipe_path, *, phase="RT4-M-A", recover_checkpoint_sha256=Non
         if recover_checkpoint_sha256 is not None:
             if not re.fullmatch(r"\S+ UTR ABORT \w+: .*", terminal) or any(" UTR DONE " in line for line in status):
                 raise ValueError("checkpoint recovery requires a terminal trainer ABORT")
-            if json.loads((directory / "run.json").read_bytes()) != expected:
-                raise ValueError("aborted run settings differ from RT4-M-A")
             with checkpoint.open("rb") as stream:
                 if hashlib.file_digest(stream, "sha256").hexdigest() != recover_checkpoint_sha256:
                     raise ValueError("aborted checkpoint SHA256 mismatch")
@@ -78,6 +77,8 @@ def command(root, recipe_path, *, phase="RT4-M-A", recover_checkpoint_sha256=Non
             if not stopped or int(stopped[1]) >= int(stopped[2]):
                 raise ValueError("RT4-M-A requires a fresh output or a clean checkpointed stop")
             args.extend(["--expect-resume-buffer", stopped[1]])
+        if json.loads((directory / "run.json").read_bytes()) != expected:
+            raise ValueError("checkpointed run settings differ from RT4-M-A")
     return [sys.executable, "-B", "-m", "shengji.train.unified_readout", *args]
 
 

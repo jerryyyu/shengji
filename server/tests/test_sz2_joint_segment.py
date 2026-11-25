@@ -508,7 +508,8 @@ def test_full_mix_scratch_command_preserves_the_weighted_trainer_identity(segmen
 
     recipe = json.loads((cpu_root[0] / "train/run.json").read_bytes())
     recipe.update(scratch_arch=None, init_readout_ckpt="warm-source.pt", max_train_rows=None,
-                  calib_data=recipe["data"], corpus_weight=["utg-=policy:2,reply:2", "pvs-=q:0.5,policy:0.5"])
+                  calib_data=recipe["data"], corpus_weight=["utg-=policy:2,reply:2", "pvs-=q:0.5,policy:0.5"],
+                  lr=3e-5, head_lr=9e-5, readout_lr=1.5e-4)
     source = tmp_path / "run.json"
     source.write_text(json.dumps(recipe))
     with pytest.raises(ValueError, match="SHA mismatch"):
@@ -516,8 +517,11 @@ def test_full_mix_scratch_command_preserves_the_weighted_trainer_identity(segmen
     monkeypatch.setattr(arm, "RECIPE_SHA256", hashlib.sha256(source.read_bytes()).hexdigest())
     parsed = ur.build_parser().parse_args(arm.command(tmp_path, source)[4:])
     assert parsed.init_readout_ckpt is None and parsed.scratch_arch == arm.ARCHITECTURE[6]
-    assert ur._run_identity(parsed) == dict(recipe, scratch_arch=arm.ARCHITECTURE[6], init_readout_ckpt=None,
-                                            device="mps")
+    source_recipe, _, expected = arm.recipe_inputs(tmp_path, source)
+    assert source_recipe == recipe
+    assert ur._run_identity(parsed) == expected == dict(
+        recipe, scratch_arch=arm.ARCHITECTURE[6], init_readout_ckpt=None, device="mps",
+        lr=3e-4, head_lr=1e-3, readout_lr=1e-3)
     directory = tmp_path / "A/train"
     directory.mkdir(parents=True)
     (directory / "status.log").write_text("t STOPPED at epoch 1 buffer 1/2 (STOP file or --max-seconds); checkpoint saved\n")
@@ -525,3 +529,7 @@ def test_full_mix_scratch_command_preserves_the_weighted_trainer_identity(segmen
         arm.command(tmp_path, source)
     with pytest.raises(ValueError, match="successful trainer terminal"):
         arm.verify_completion(tmp_path)
+    (directory / "checkpoint.pt").touch()
+    (directory / "run.json").write_text(json.dumps(dict(expected, lr=recipe["lr"])))
+    with pytest.raises(ValueError, match="checkpointed run settings"):
+        arm.command(tmp_path, source)

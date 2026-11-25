@@ -539,6 +539,8 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
     assert first.returncode == 3, (first.stdout, first.stderr)
     out = directory / "reserved/A/train"
     assert "STOPPED at epoch 1 buffer 1/" in (out / "status.log").read_text()
+    actual = json.loads((out / "run.json").read_bytes())
+    assert (actual["lr"], actual["head_lr"], actual["readout_lr"]) == (3e-4, 1e-3, 1e-3)
     recovery = []
     if interrupt:
         root = directory / "reserved"
@@ -668,6 +670,7 @@ def test_split_smoke_resumes_the_real_trainer_and_consumes_its_capacity(
     training = directory / "reserved" / phase / "train"
     if module == "rt4m_joint":
         actual = json.loads((training / "run.json").read_bytes())
+        assert (actual["lr"], actual["head_lr"], actual["readout_lr"]) == (3e-4, 1e-3, 1e-3)
         assert actual.get("microbatch_rounds") == (4 if phase == "RT4-M-A-micro4-smoke" else None)
     status = (training / "status.log").read_text()
     assert " UTR PAUSED at epoch 1 buffer 1/" in status

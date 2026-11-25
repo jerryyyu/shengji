@@ -592,7 +592,39 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
     sample = json.loads((cache / "DONE.0").read_text())["sample"]
     assert sample["rows"] == 344 and sample["chunks"] == 2
     monkeypatch.setattr(rt4m_cache, "RT4_SAMPLE", sample)
-    assert rt4m_cache.polish(directory / "reserved", cache_root, recipe, **cache_options) == 0
+    if interrupt:
+        import sz2_polish_arm
+        original_link = sz2_polish_arm.os.link
+
+        def interrupt_selection(source, target):
+            if Path(target).name == "selected.pt":
+                raise InterruptedError("interrupted winner publication")
+            return original_link(source, target)
+
+        with monkeypatch.context() as fault:
+            fault.setattr(sz2_polish_arm.os, "link", interrupt_selection)
+            with pytest.raises(InterruptedError, match="winner publication"):
+                rt4m_cache.polish(directory / "reserved", cache_root, recipe, **cache_options)
+        out_dir = directory / "reserved/A/polish"
+        log_path = out_dir / "status.log"
+        saved_log = log_path.read_bytes()
+        assert b" POLISH DONE " in saved_log and not (out_dir / "selected.pt").exists()
+        log_path.write_bytes(saved_log + b"stopped\n")
+        with pytest.raises(ValueError, match="completed polish"):
+            rt4m_cache.polish(directory / "reserved", cache_root, recipe, finish_selection=True, **cache_options)
+        log_path.write_bytes(saved_log[:saved_log.rfind(b"sha256=")] + b"sha256=" + b"0" * 64 + b"\n")
+        with pytest.raises(ValueError, match="differs from the polish terminal"):
+            rt4m_cache.polish(directory / "reserved", cache_root, recipe, finish_selection=True, **cache_options)
+        assert not (out_dir / "selected.pt").exists()
+        log_path.write_bytes(saved_log)
+        monkeypatch.setattr(rt4m_joint, "RECIPE", recipe)
+        monkeypatch.setattr(sys, "argv", ["rt4m_cache.py", "--root", str(directory / "reserved"),
+                                          "--cache-root", str(cache_root), "--encode-rounds-per-batch", "4",
+                                          "--finish-selection"])
+        assert rt4m_cache.main() == 0
+        assert log_path.read_bytes() == saved_log
+    else:
+        assert rt4m_cache.polish(directory / "reserved", cache_root, recipe, **cache_options) == 0
     assert (directory / "reserved/A/polish/selected.pt").is_file()
     import rt4m_export
 

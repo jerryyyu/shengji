@@ -1530,18 +1530,21 @@ def _log_room_closed(room: Room, reason: str) -> None:
     a room closed after its humans went reads as closed, not as a stall."""
     if room.game is None:
         return
-    rnd = room.round
-    room.log_event("room_closed", reason=reason if reason in CLOSE_REASONS else "other",
-                   phase=_close_phase(room),
-                   tricks_played=min(25, len(rnd.history)) if rnd is not None else 0)
+    try:
+        rnd = room.round
+        room.log_event("room_closed", reason=reason if reason in CLOSE_REASONS else "other",
+                       phase=_close_phase(room),
+                       tricks_played=min(25, len(rnd.history)) if rnd is not None else 0)
+    except Exception:          # noqa: BLE001 - the record never stops a close
+        pass
 
 
 def _close_room(room: Room, reason: str = "other") -> None:
     """Unregister the room and cancel its tasks (caller holds the lock).
     The task running this call is left to return on its own."""
-    if rooms.get(room.code) is room:
+    closing_now = rooms.get(room.code) is room
+    if closing_now:
         del rooms[room.code]
-        _log_room_closed(room, reason)
     room.closing = False
     for seat in sorted(room.pending_joins):
         if seat in room.pending_joins:
@@ -1551,6 +1554,10 @@ def _close_room(room: Room, reason: str = "other") -> None:
     for task in (room.bot_task, room.deal_task, room.watchdog_task, room.cleanup_task):
         if task is not None and task is not current:
             task.cancel()
+    # recorded after the close is done, so the record can neither delay nor
+    # stop it; only the call that unregistered the room writes it
+    if closing_now:
+        _log_room_closed(room, reason)
 
 
 def _close_when_empty(room: Room, reason: str = "other") -> None:

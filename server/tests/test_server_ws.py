@@ -2958,6 +2958,23 @@ def test_the_last_human_leaving_logs_the_close_once(client):
     assert 0 <= closed[0]["tricks_played"] <= 25
 
 
+def test_a_failing_close_record_never_stops_the_close(client, monkeypatch):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a, to_play=True)
+
+        def broken(kind, **data):
+            if kind == "room_closed":
+                raise RuntimeError("disk gone")
+            return None
+        monkeypatch.setattr(room, "log_event", broken)
+        a.send_json({"type": "table_leave"})
+        _drain(a, "left")
+    _wait_for(lambda: code not in srv.rooms)
+    _wait_for(lambda: _room_tasks_done(room))
+
+
 def test_close_phase_words():
     from types import SimpleNamespace
 

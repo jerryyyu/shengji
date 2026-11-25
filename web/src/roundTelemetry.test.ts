@@ -47,7 +47,7 @@ let mode: { offline: boolean; nearby: boolean };
 function tracker(session = tab): RoundTracker {
   const deps: RoundDeps = { online: () => !mode.offline && !mode.nearby, offline: () => mode.offline,
                             nearby: () => mode.nearby, store: () => store, session: () => session,
-                            digest: new OfflineDigest(() => kv) };
+                            digest: new OfflineDigest({ kv: () => kv, locks: () => null, onePage: () => true }) };
   return new RoundTracker(deps);
 }
 const events = () => telemetry.pending().filter((e) => e.e === "round_start" || e.e === "round_finish");

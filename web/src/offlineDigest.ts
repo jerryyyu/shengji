@@ -3,8 +3,11 @@
 // sent once as an `offline_digest` on the next online socket, then zeroed.
 // In the app they live in its native store (UserDefaults), which the
 // bundled offline page and the live site share; elsewhere in this origin's
-// storage. Nothing else about an offline round is kept or sent.
+// storage. Every read-change-write takes the origin's Web Lock, so two tabs
+// that come online together send the counts once. Nothing else about an
+// offline round is kept or sent.
 import { nativeStore } from "./i18n/locale";
+import { isNative } from "./native";
 import type { OfflineCounts } from "./telemetry";
 
 export const DIGEST_KEY = "shengji.telemetry.offline";
@@ -53,23 +56,60 @@ export function deviceKv(): Kv | null {
   }
 }
 
+/** The one lock every page of this origin takes around the digest's
+ *  read-change-write, so two tabs never send the same counts. */
+export const DIGEST_LOCK = "shengji.telemetry.offline";
+
+/** The part of the Web Locks API the digest uses. */
+export interface Locks {
+  request(name: string, callback: () => Promise<void>): Promise<void>;
+}
+
+/** The browser's Web Locks, exclusive and shared by every page of the origin;
+ *  null where the API is missing. */
+export function webLocks(): Locks | null {
+  try {
+    const locks = (globalThis.navigator as Navigator | undefined)?.locks;
+    if (!locks || typeof locks.request !== "function") return null;
+    return { request: (name, callback) => locks.request(name, { mode: "exclusive" }, callback) as Promise<void> };
+  } catch {
+    return null;
+  }
+}
+
+export interface DigestDeps {
+  kv: () => Kv | null;
+  locks: () => Locks | null;
+  /** No other page can share the store now: the iOS app runs one page. */
+  onePage: () => boolean;
+}
+
 export class OfflineDigest {
   private chain: Promise<void> = Promise.resolve();
-  private readonly kv: () => Kv | null;
+  private readonly deps: DigestDeps;
 
-  constructor(kv: () => Kv | null = deviceKv) {
-    this.kv = kv;
+  constructor(deps: Partial<DigestDeps> & { kv?: () => Kv | null } = {}) {
+    this.deps = { kv: deps.kv ?? deviceKv, locks: deps.locks ?? webLocks, onePage: deps.onePage ?? isNative };
   }
 
-  /** One read-change-write at a time, in call order; a failure changes
-   *  nothing. `change` runs after the read and returns null to write nothing. */
-  private run(change: (c: OfflineCounts) => OfflineCounts | null): Promise<void> {
-    this.chain = this.chain.then(async () => {
-      const kv = this.kv();
+  /** One read-change-write at a time: in call order on this page, and under
+   *  the origin's lock across pages. A failure changes nothing. `change`
+   *  runs after the read and returns null to write nothing. With no lock
+   *  where another page could share the store, `exclusive` work (a send)
+   *  is not done, and the counts wait for a page that can. */
+  private run(change: (c: OfflineCounts) => OfflineCounts | null, exclusive: boolean): Promise<void> {
+    const task = async () => {
+      const kv = this.deps.kv();
       if (!kv) return;
       const next = change(parseCounts(await kv.get(DIGEST_KEY)));
       if (next === null) return;
       await kv.set(DIGEST_KEY, formatCounts(next));
+    };
+    this.chain = this.chain.then(() => {
+      const locks = this.deps.locks();
+      if (locks) return locks.request(DIGEST_LOCK, task);
+      if (exclusive && !this.deps.onePage()) return undefined;
+      return task();
     }).catch(() => undefined);
     return this.chain;
   }
@@ -78,18 +118,21 @@ export class OfflineDigest {
   count(what: "started" | "finished", nearby: boolean): Promise<void> {
     return this.run((c) => what === "started"
       ? { ...c, rounds_started: c.rounds_started + 1, nearby_rounds: c.nearby_rounds + (nearby ? 1 : 0) }
-      : { ...c, rounds_finished: c.rounds_finished + 1 });
+      : { ...c, rounds_finished: c.rounds_finished + 1 }, false);
   }
 
   /** Offers any counts to `send`, after the stored ones are read, and takes
    *  them off only when `send` says its transport accepted them; a refusal
    *  (no socket, the page gone offline meanwhile) keeps them for the next
-   *  online socket. Nothing is offered when all are zero. */
+   *  online socket. Nothing is offered when all are zero. The read, the
+   *  send and the zeroing are one unit under the lock: another page's drain
+   *  or count waits for it, so it neither sends the same counts nor has a
+   *  count wiped. */
   drain(send: (c: OfflineCounts) => boolean): Promise<void> {
     return this.run((c) => {
       if (!(c.rounds_started || c.rounds_finished || c.nearby_rounds)) return null;
       return send(c) ? { ...ZERO } : null;
-    });
+    }, true);
   }
 }
 

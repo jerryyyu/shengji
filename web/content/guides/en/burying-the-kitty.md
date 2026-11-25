@@ -3,8 +3,8 @@ title: Burying the kitty in Sheng Ji: what to put down and why
 description: How the banker should choose the 8 cards to bury, with a real 33-card hand, the point risk of the last trick, and the choices that make a void.
 slug: burying-the-kitty
 order: 4
-related: [scoring-and-levels, declaring-trump, how-to-play, sheng-ji-by-the-numbers]
-updated: 2026-11-23
+related: [scoring-and-levels, declaring-trump, how-to-play, sheng-ji-by-the-numbers, tough-bury-short-suits]
+updated: 2026-11-25
 lang: en
 schema: HowTo
 ---
@@ -94,3 +94,5 @@ The site's rule-based bot works close to this list. It keeps trumps, aces and pa
 ## What the attackers can do about it
 
 The attackers don't see the bury, but they know it matters. If the kitty may hold points, keeping a trump pair for the end gives them a chance at the ×4. A banker who leads out every high trump early, as North did, can be left with nothing to stop it.
+
+For a bury tested both ways, 20 points to empty two short suits against a pointless kitty, see [toughest decisions 1](/guides/tough-bury-short-suits).

@@ -1,0 +1,72 @@
+---
+title: Toughest decisions 2: partner's throw stands, so pile your points on it
+description: Your partner threw five clubs and you have none. Put 45 points on the trick, or five blanks? Tested on 256 simulated deals, your side won the trick every time and feeding was worth over a level and a half.
+slug: tough-feed-partners-throw
+order: 12
+related: [toughest-decisions, pairs-tractors-throws, counting-cards, scoring-and-levels]
+updated: 2026-11-25
+lang: en
+---
+
+## The situation
+
+- **Trump:** ♠ spades, level 8. The 8s are trumps; the 2s are ordinary cards.
+- **You:** an attacker. Trick 5, and your side has 25 points.
+- **The trick so far:** your partner led a throw, ♣3♣3 ♣J♣J ♣A. The banker's partner followed with ♣5 ♣A and, out of clubs, ♥3 ♥4 ♥J. You play third and the banker plays last.
+- **Your hand:** 17 cards, no clubs.
+
+```cards
+cards: SA SJ S9 S7 S5 S4 | HA HK H10 H10 H9 H6 H2 | DQ DJ D10 D9
+labels: Trumps (6) | Hearts (7) | Diamonds (4)
+lift: 4 | 1 2 3 | 2
+caption: Your hand. The raised cards are our bot's play: 45 points.
+```
+
+## What would you play?
+
+You're out of clubs, so any five cards will do.
+
+- **A.** ♦10 ♥10 ♥10 ♥K ♠5: 45 points.
+- **B.** ♦9 ♦J ♦Q ♥2 ♥6: no points. This is the rule-based bot's play.
+- **C.** ♦10 ♦Q ♥10 ♥6 ♥K: 30 points.
+- **D.** ♦10 ♦J ♥10 ♥2 ♥K: 30 points.
+
+## The answer: A, all 45 points
+
+| Play | Score, 256 deals | Points in the trick, average | Your side reaches 80 |
+| --- | --- | --- | --- |
+| A: 45 points | +0.13 ± 0.05 | 56.4 | 81% |
+| C: 30 points | −0.88 ± 0.06 | 41.4 | 31% |
+| D: 30 points | −0.87 ± 0.06 | 41.4 | 31% |
+| B: no points | −1.52 ± 0.04 | 11.4 | 7% |
+
+Your side won this trick in all 256 deals, whatever you played, and in all 24 deals of the run with our main bot. A beat B by 1.65 ± 0.05. With our main bot playing out the hand, A scored −0.17 and B −1.71.
+
+Why the trick is safe: a throw is checked when it's led, and it stands only if nobody can beat any part of it in clubs. This one stood, so the banker has no club play that beats it. The banker can take it only by being out of clubs and trumping with the same shape: two trump pairs and a trump. That last step is the rule, not something the test counted deal by deal. What the test did count is the result: no deal in 280 saw the trick taken from your side.
+
+A trick your side is sure to win is where your points belong. Points kept in your hand still have to be won on a later trick.
+
+```cards
+kind: trick
+names: Partner | Banker's partner | You
+plays: C3 C3 CJ CJ CA | C5 CA H3 H4 HJ | D10 H10 H10 HK S5
+trump: S
+rank: 8
+winner: 1
+notes: two pairs + a single | | 45 points
+caption: The banker plays last. To take this trick the banker needs to be out of clubs with two trump pairs and a trump.
+```
+
+## What happened
+
+In the game our bot played A. Your side still finished with 75 points, five short of 80, and the banker's side went up a level. With five blanks instead, your side reached 80 in only 7% of the deals.
+
+```cards
+kind: levels
+from: 8
+to: 9
+team: Banker's side
+caption: 75 points is under 80: the banker's side goes up one level, from 8 to 9.
+```
+
+For how throws work, see [pairs, tractors and throws](/guides/pairs-tractors-throws). To practise reading the table, [play a hand](/) against the bots.

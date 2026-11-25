@@ -3,8 +3,8 @@ title: Pairs, tractors and throws in Sheng Ji
 description: What counts as a pair, a tractor or a throw, how you must follow each one, and what happens when a throw fails.
 slug: pairs-tractors-throws
 order: 5
-related: [how-to-play, declaring-trump, scoring-and-levels, sheng-ji-by-the-numbers]
-updated: 2026-11-23
+related: [how-to-play, declaring-trump, scoring-and-levels, sheng-ji-by-the-numbers, tough-last-trick-throw]
+updated: 2026-11-25
 lang: en
 ---
 
@@ -77,6 +77,8 @@ A throw is a lead of one suit that combines separate units: two or more singles,
 That one always stands. Only an ace beats ♠K, and you hold both aces.
 
 Here's one from a real hand, with hearts trump. The banker led ♦J♦J♦A. The ♦A could only be tied, never beaten. The pair needed ♦Q♦Q, ♦K♦K or ♦A♦A somewhere else to fail, and nobody had one. The throw stood and took 20 points.
+
+A throw on the last trick also multiplies the kitty by twice the cards led. [Toughest decisions 5](/guides/tough-last-trick-throw) is a six-card throw that made 5 buried points worth 60.
 
 ## When a throw fails
 

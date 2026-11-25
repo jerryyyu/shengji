@@ -3,8 +3,8 @@ title: Scoring in Sheng Ji: points, the kitty multiplier and levelling up
 description: How card points are counted, how the kitty is multiplied on the last trick, and exactly how many levels each score is worth, with worked numbers.
 slug: scoring-and-levels
 order: 6
-related: [score-calculator, burying-the-kitty, how-to-play, names-and-variants]
-updated: 2026-11-23
+related: [score-calculator, burying-the-kitty, how-to-play, names-and-variants, toughest-decisions]
+updated: 2026-11-25
 lang: en
 ---
 

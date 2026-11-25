@@ -27,6 +27,24 @@ def _copy_residual_projection(source, target):
     target.bias.copy_(_lift(source.bias, target.out_features))
 
 
+def _copy_attention(a, b):
+    d, width = a.embed_dim, b.embed_dim
+    for i in range(3):
+        old_rows = slice(i * d, (i + 1) * d)
+        new_rows = slice(i * width, i * width + d)
+        b.in_proj_weight[new_rows].zero_()
+        b.in_proj_weight[new_rows, :d].copy_(a.in_proj_weight[old_rows])
+        b.in_proj_bias[new_rows].copy_(a.in_proj_bias[old_rows])
+    _copy_residual_projection(a.out_proj, b.out_proj)
+
+
+def _copy_leading_linear(source, target):
+    rows, columns = source.weight.shape
+    target.weight[:rows].zero_()
+    target.weight[:rows, :columns].copy_(source.weight)
+    target.bias[:rows].copy_(source.bias)
+
+
 @torch.no_grad()
 def widen_history(source, target):
     """Populate the history encoder and the original heads of each KV consumer in-place.
@@ -57,13 +75,7 @@ def widen_history(source, target):
     for a, b in zip(source.encoder.layers, target.encoder.layers):
         _copy_norm(a.norm1, b.norm1)
         _copy_norm(a.norm2, b.norm2)
-        for i in range(3):
-            old_rows = slice(i * d, (i + 1) * d)
-            new_rows = slice(i * width, i * width + d)
-            b.self_attn.in_proj_weight[new_rows].zero_()
-            b.self_attn.in_proj_weight[new_rows, :d].copy_(a.self_attn.in_proj_weight[old_rows])
-            b.self_attn.in_proj_bias[new_rows].copy_(a.self_attn.in_proj_bias[old_rows])
-        _copy_residual_projection(a.self_attn.out_proj, b.self_attn.out_proj)
+        _copy_attention(a.self_attn, b.self_attn)
         hidden = a.linear1.out_features
         b.linear1.weight[:hidden].zero_()
         b.linear1.weight[:hidden, :d].copy_(a.linear1.weight)
@@ -83,3 +95,46 @@ def widen_history(source, target):
             b.weight[new_rows].zero_()
             b.weight[new_rows, :d].copy_(a.weight[old_rows])
             b.bias[new_rows].copy_(a.bias[old_rows])
+
+
+@torch.no_grad()
+def widen_card_outputs(original, medium):
+    """Transfer the history, card trunk, belief, policy and both leaf outputs."""
+    a, b = original.trunk, medium.trunk
+    if (original.config["readout"] != medium.config["readout"]
+            or a.config["x_hidden"] != b.config["x_hidden"]
+            or not (a.config["card_self_attn"] and b.config["card_self_attn"])):
+        raise ValueError("expected matching readout, context and card self-attention")
+    widen_history(a, b)
+    b.x_mlp.load_state_dict(a.x_mlp.state_dict())
+    b.x_logits.load_state_dict(a.x_logits.state_dict())
+    for name in ("x_to_q", "row_card"):
+        _copy_residual_projection(getattr(a, name), getattr(b, name))
+
+    for i, src in enumerate(a.xattn):
+        dst = b.xattn[i]
+        _copy_norm(a.ln_q[i], b.ln_q[i])
+        _copy_leading_linear(src.q, dst.q)
+        _copy_residual_projection(src.o, dst.o)
+    for i in range(len(a.xattn), len(b.xattn)):
+        for projection in (b.xattn[i].o, b.ff[i][-1]):
+            projection.weight.zero_()
+            projection.bias.zero_()
+    for src, dst in [*zip(a.ff, b.ff), (a.self_ff, b.self_ff)]:
+        _copy_norm(src[0], dst[0])
+        _copy_leading_linear(src[1], dst[1])
+        _copy_residual_projection(src[-1], dst[-1])
+    _copy_norm(a.self_ln, b.self_ln)
+    _copy_attention(a.self_attn, b.self_attn)
+    for src, dst in ((a.out, b.out), (original.p_head, medium.p_head)):
+        _copy_norm(src[0], dst[0])
+        _copy_leading_linear(src[1], dst[1])
+        dst[2:].load_state_dict(src[2:].state_dict())
+
+    src, dst = original.readout, medium.readout
+    _copy_norm(src.card_ln, dst.card_ln)
+    _copy_leading_linear(src.card_proj, dst.card_proj)
+    # The unchanged context precedes the original normalized card coordinates.
+    _copy_leading_linear(src.ctx, dst.ctx)
+    for name in ("stem", "ln", "up", "down", "out_ln", "value", "reply"):
+        getattr(dst, name).load_state_dict(getattr(src, name).state_dict())

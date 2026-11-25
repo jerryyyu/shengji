@@ -563,3 +563,34 @@ def test_medium_history_preserves_normalized_tokens_and_attention_keys_values(wo
     rows = np.concatenate([np.flatnonzero(part["row_round"] == r)[::13] for r in rounds])
     batch = ur.us.to_device(ur.make_batch(part, rounds, rows), "cpu")
     assert max(_history_width_errors(model, batch)) < 1e-5
+
+
+def _card_width_errors(model, batch, grouped):
+    from scripts.rt4m_history_width import widen_card_outputs
+
+    medium = ur.build(dict(model.config["trunk"], d=288, heads=6, enc_layers=6, xattn_layers=6),
+                      model.config["readout"]).eval()
+    widen_card_outputs(model, medium)
+    model.trunk.grouped_xattn = medium.trunk.grouped_xattn = grouped
+    with torch.no_grad():
+        expected, actual = model(batch), medium(batch)
+    return {head: (actual[head] - expected[head]).abs().max().item()
+            for head in ("belief", "policy", "leaf_value", "leaf_reply")}
+
+
+@pytest.mark.parametrize("grouped", [False, True])
+def test_medium_card_outputs_preserve_four_heads(world, grouped):
+    from tests.test_unified_seq import _loaded
+
+    torch.manual_seed(45)
+    model = ur.build(dict(ARCH, d=192, heads=4, enc_layers=4, xattn_layers=4, x_hidden=256)).eval()
+    with torch.no_grad():
+        for layer in model.modules():
+            if isinstance(layer, torch.nn.LayerNorm):
+                layer.weight.uniform_(0.6, 1.4)
+                layer.bias.normal_(std=0.3)
+    part, _ = _loaded(world)
+    rounds = np.unique(part["row_round"])[:2]
+    rows = np.concatenate([np.flatnonzero(part["row_round"] == r)[::13] for r in rounds])
+    batch = ur.us.to_device(ur.make_batch(part, rounds, rows), "cpu")
+    assert max(_card_width_errors(model, batch, grouped).values()) < 1e-5

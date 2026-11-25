@@ -476,3 +476,44 @@ def test_four_round_calibration_matches_full_calibration(world):
     assert actual.keys() == ref.keys()
     for key in ref:
         assert actual[key] == pytest.approx(ref[key], abs=5e-6), key
+
+
+def test_warm_depth_growth_preserves_all_logits_and_trains_new_blocks(world, tmp_path):
+    import hashlib
+    from scripts.rt4m_deepen import deepen
+    from tests.test_unified_seq import _loaded
+
+    torch.manual_seed(41)
+    original = ur.build(dict(ARCH, d=192, heads=4, enc_layers=4, xattn_layers=4, x_hidden=256)).eval()
+    source = tmp_path / "source.pt"
+    target = tmp_path / "depth.pt"
+    torch.save(dict(schema=ur.CKPT_SCHEMA, model=original.state_dict(), config=original.config), source)
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="SHA256 mismatch"):
+        deepen(source, "0" * 64, target, seed=19)
+    assert not target.exists()
+    deepen(source, digest, target, seed=19)
+    with pytest.raises(FileExistsError):
+        deepen(source, digest, target, seed=19)
+    deepened, saved = ur.load_checkpoint(target)
+    assert saved["initialization"] == dict(source_sha256=digest, depth_seed=19)
+    part, _ = _loaded(world)
+    rounds = np.unique(part["row_round"])[:2]
+    rows = np.concatenate([np.flatnonzero(part["row_round"] == r)[::13] for r in rounds])
+    batch = ur.us.to_device(ur.make_batch(part, rounds, rows), "cpu")
+    with torch.no_grad():
+        expected = original(batch)
+        actual = deepened(batch)
+    assert expected.keys() == actual.keys() == {"belief", "q", "policy", "leaf_value", "leaf_reply"}
+    for name in expected:
+        torch.testing.assert_close(actual[name], expected[name], atol=0, rtol=0)
+
+    out = tmp_path / "train"
+    assert ur.main(["train", "--init-readout-ckpt", str(target), "--data", str(world["data"]),
+                    "--out", str(out), "--threads", "1", "--loader-threads", "1",
+                    "--rounds-per-batch", "1", "--max-steps", "1", "--epochs", "1"]) == 0
+    trained, _ = ur.load_checkpoint(out / "best.pt")
+    for i in (4, 5):
+        enc = trained.trunk.encoder.layers[i]
+        for projection in (enc.self_attn.out_proj, enc.linear2, trained.trunk.xattn[i].o, trained.trunk.ff[i][-1]):
+            assert torch.count_nonzero(projection.weight) > 0

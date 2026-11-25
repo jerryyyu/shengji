@@ -2930,6 +2930,45 @@ def test_an_empty_room_plays_slowly_through_the_grace_then_closes(client, monkey
     assert min(steps) >= 0.6 * 0.95, f"a bot moved faster than the empty-room pace: {steps}"
     assert len(later) <= 2.5 / 0.6 + 1
     _wait_for(lambda: _room_tasks_done(room))
+    # the close is in the room log, so the bots' last move reads as a close, not a stall
+    events = [json.loads(line) for line in (room.log_dir / f"{code}.jsonl").read_text().splitlines()]
+    closed = [e for e in events if e["e"] == "room_closed"]
+    assert len(closed) == 1 and events[-1] is closed[0]
+    assert closed[0]["reason"] == "empty_ttl" and closed[0]["phase"] == "play"
+    assert closed[0]["tricks_played"] == len(room.round.history)
+    assert set(closed[0]) == {"t", "room", "round", "e", "reason", "phase", "tricks_played"}
+
+
+def test_the_last_human_leaving_logs_the_close_once(client):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a, to_play=True)
+        a.send_json({"type": "table_leave"})
+        _drain(a, "left")
+    _wait_for(lambda: code not in srv.rooms)
+    _wait_for(lambda: _room_tasks_done(room))
+    events = [json.loads(line) for line in (room.log_dir / f"{code}.jsonl").read_text().splitlines()]
+    closed = [e for e in events if e["e"] == "room_closed"]
+    assert len(closed) == 1
+    assert closed[0]["reason"] in ("other", "round_finished", "empty_ttl", "aborted")
+    assert closed[0]["phase"] in ("lobby", "declaring", "bury", "play", "round_end")
+    assert 0 <= closed[0]["tricks_played"] <= 25
+
+
+def test_close_phase_words():
+    from types import SimpleNamespace
+
+    from shengji.api import server as srv
+
+    def room(phase):
+        return SimpleNamespace(round=None if phase is None else SimpleNamespace(phase=phase))
+
+    assert srv._close_phase(room(None)) == "lobby"
+    assert srv._close_phase(room("deal")) == "declaring"
+    assert srv._close_phase(room("declare")) == "declaring"
+    for ph in ("bury", "play", "round_end"):
+        assert srv._close_phase(room(ph)) == ph
 
 
 def test_a_human_back_in_the_grace_restores_the_normal_pace(client, monkeypatch):

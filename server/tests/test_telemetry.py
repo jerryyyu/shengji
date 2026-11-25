@@ -589,3 +589,103 @@ def test_a_tap_and_a_queue_join_of_one_socket_count_once(sink, token, version):
     join, tap = _records(sink)
     assert "platform" not in join and tap["platform"] == "ios_app"
     assert summary.count_sessions(sink) == {("ios_app", version): 1}
+
+
+# the funnel events: enums, bools and bounded ints only
+
+@pytest.mark.parametrize("raw,kept", [
+    ({"e": "app_open", "t": 3, "cold": True, "ms_to_socket": 812},
+     {"e": "app_open", "t": 3, "cold": True, "ms_to_socket": 812}),
+    ({"e": "app_open", "cold": False}, {"e": "app_open", "cold": False}),
+    ({"e": "round_start", "mode": "casual", "bots": 3, "nth_round_this_load": 1},
+     {"e": "round_start", "mode": "casual", "bots": 3, "nth_round_this_load": 1}),
+    ({"e": "round_finish", "mode": "ranked", "won": True, "by": "end", "tricks_played": 25},
+     {"e": "round_finish", "mode": "ranked", "won": True, "by": "end", "tricks_played": 25}),
+    ({"e": "round_finish", "mode": "friend", "by": "closed", "tricks_played": 0},
+     {"e": "round_finish", "mode": "friend", "by": "closed", "tricks_played": 0}),
+    ({"e": "offline_digest", "rounds_started": 4, "rounds_finished": 2, "nearby_rounds": 1},
+     {"e": "offline_digest", "rounds_started": 4, "rounds_finished": 2, "nearby_rounds": 1}),
+    ({"e": "howto_step", "step": 10, "done": True}, {"e": "howto_step", "step": 10, "done": True}),
+    ({"e": "device_account", "step": "created", "first_round_before": False},
+     {"e": "device_account", "step": "created", "first_round_before": False}),
+    ({"e": "tap", "id": "duo"}, {"e": "tap", "id": "duo"}),
+])
+def test_the_funnel_events_validate(raw, kept):
+    assert telemetry.clean_event(raw) == kept
+
+
+def test_the_funnel_events_drop_bad_values_and_extra_fields():
+    assert telemetry.clean_event({
+        "e": "round_start", "mode": "casual", "bots": 4, "nth_round_this_load": 51,
+        "room": "ABCD", "seat": 2, "player": "Jerry"}) == {"e": "round_start", "mode": "casual"}
+    assert telemetry.clean_event({
+        "e": "round_finish", "mode": "Ranked", "by": "end", "won": 1, "tricks_played": 26,
+        "winner": "Sam"}) == {"e": "round_finish", "by": "end"}
+    assert telemetry.clean_event({
+        "e": "app_open", "cold": True, "ms_to_socket": 120_001, "device": "iPhone15,2",
+        "ua": "Mozilla/5.0"}) == {"e": "app_open", "cold": True}
+    assert telemetry.clean_event({
+        "e": "offline_digest", "rounds_started": 100, "rounds_finished": -1, "nearby_rounds": True,
+    }) is None
+    assert telemetry.clean_event({"e": "howto_step", "step": 0, "done": "yes"}) is None
+    assert telemetry.clean_event({"e": "howto_step", "step": 21}) is None
+    assert telemetry.clean_event({"e": "device_account", "step": "created",
+                                  "first_round_before": "yes", "account_id": 42}) == {
+        "e": "device_account", "step": "created"}
+    # the field without which each says nothing
+    for name in ("app_open", "round_start", "round_finish", "offline_digest", "howto_step"):
+        assert telemetry.clean_event({"e": name}) is None
+
+
+@pytest.mark.parametrize("value", ["u_1234", "Jerry", "ABCD", "8f14e45fceea167a", "S5", 1234567, None])
+def test_no_funnel_field_takes_an_id_or_a_name(value):
+    for name in ("app_open", "round_start", "round_finish", "offline_digest", "howto_step"):
+        for field in telemetry.SCHEMA[name]:
+            raw = {"e": name, telemetry.REQUIRED[name]: value, field: value}
+            ev = telemetry.clean_event(raw) or {}
+            assert value not in [v for k, v in ev.items() if k != "e"], (name, field, value)
+
+
+def test_message_stamps_take_only_their_buckets():
+    _, stamps = telemetry.clean_message(
+        {"v": 1, "days_since_first": "2-7", "session_n": "3-5", "lang": "zh",
+         "events": [{"e": "tap", "id": "play"}]})
+    assert stamps == {"days_since_first": "2-7", "session_n": "3-5", "lang": "zh"}
+    _, stamps = telemetry.clean_message(
+        {"v": 1, "days_since_first": 3, "session_n": "7", "lang": "zh-Hans",
+         "first_seen": "2026-11-20", "device_id": "abc", "events": [{"e": "tap", "id": "play"}]})
+    assert stamps == {}
+
+
+def test_the_stamps_reach_every_row_of_the_batch(sink):
+    sock = _Sock()
+    msg = {"v": 1, "days_since_first": "0", "session_n": "1", "lang": "en",
+           "events": [{"e": "app_open", "cold": True}, {"e": "round_start", "mode": "casual", "bots": 3}]}
+    assert telemetry.receive(sock, msg, "guest") == 2
+    for row in _records(sink):
+        assert row["days_since_first"] == "0" and row["session_n"] == "1" and row["lang"] == "en"
+
+
+def test_queue_rows_keep_their_mode_and_nothing_else_new(sink):
+    sock = _Sock()
+    assert telemetry.queue_event(sock, "join", who="guest", size=1, mode="casual", by_code=True)
+    assert telemetry.queue_event(sock, "start", humans=1, mode="Ranked Gold")
+    join, start = _records(sink)
+    assert join["mode"] == "casual" and "by_code" not in join
+    assert "mode" not in start
+
+
+def test_the_queue_logs_its_mode_to_telemetry(sink):
+    from tests.test_matchmaking import Env, FakeConn, run
+
+    async def go():
+        env = Env()
+        guest = FakeConn(-9, "Secret Name")
+        env.conns[-9] = guest
+        env.mm.connect(guest)
+        await env.send(-9, "queue_join", mode="casual")
+        await env.send(-9, "queue_start_bots")
+    run(go())
+    rows = [r for r in _records(sink) if r["e"] == "queue"]
+    assert [(r["q"], r.get("mode")) for r in rows][:3] == [
+        ("join", "casual"), ("leave", "casual"), ("start", "casual")]

@@ -3377,9 +3377,10 @@ def test_queue_events_reach_the_telemetry_sink_without_identity(tmp_path, monkey
             for line in f.read_text().splitlines()]
     assert {r["q"] for r in rows} == {"join", "leave", "start", "start_failed"}
     allowed = {"e", "q", "sid", "build", "ts", "who", "size", "wait", "table", "humans",
-               "queued", "reason", "max_wait"}
+               "queued", "reason", "max_wait", "mode"}
     for r in rows:
         assert r["e"] == "queue" and set(r) <= allowed
+        assert r["mode"] in ("ranked", "casual")
     joins = [r for r in rows if r["q"] == "join"]
     assert all(r["who"] == "account" and "sid" in r for r in joins)
     identity_values = {101, 102, 103, 104, "101", "102", "103", "104",

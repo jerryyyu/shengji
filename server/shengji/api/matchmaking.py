@@ -735,8 +735,11 @@ class Matchmaker:
     def _kind(self, uid: int) -> str:
         return "guest" if uid < 0 else "account"
 
-    def _qlog(self, event: str, e: Entry | None = None, **fields: Any) -> None:
-        """One queue event; ``e`` adds the entry's kind, size and wait."""
+    def _qlog(self, event: str, e: Entry | None = None, *, table_mode: str | None = None,
+              **fields: Any) -> None:
+        """One queue event; ``e`` adds the entry's kind, size and wait.
+        The telemetry row also carries the queue's mode: the entry's, else
+        ``table_mode`` (a start or failed start with no single entry)."""
         rec: dict[str, Any] = {"queue": event, "t": round(self.clock(), 1)}
         if e is not None:
             rec.update(who=self._kind(e.leader), size=e.size,
@@ -750,8 +753,10 @@ class Matchmaker:
         # The same event to the telemetry sink, under the leader's socket sid;
         # ``queue_event`` keeps only its allow-listed fields, so no id leaves.
         conn = self.conns.get(e.leader) if e is not None else None
+        mode = e.mode if e is not None else table_mode
         telemetry.queue_event(conn, event, **{k: v for k, v in rec.items()
-                                              if k not in ("queue", "t")})
+                                              if k not in ("queue", "t")},
+                              **({"mode": mode} if mode is not None and "mode" not in rec else {}))
 
     def _error(self, conn: Conn, err: QueueError) -> None:
         conn.push({"type": "error", "code": err.code, "message": err.message,
@@ -1462,7 +1467,8 @@ class Matchmaker:
             self._seat_alone(t, e)     # its own table seats the one left at 0
         p = self.parties.get(e.party_id) if e.party_id is not None else None
         e.party_id = None
-        self._qlog("leave", None, who=self._kind(uid), size=1, reason=reason, duo=True)
+        self._qlog("leave", None, who=self._kind(uid), size=1, reason=reason, duo=True,
+                   table_mode=e.mode)
         if p is not None:
             self._close_party(p, uid)
         self._send(uid, self.queue_state(uid))
@@ -1987,7 +1993,7 @@ class Matchmaker:
         slots = self._slots(t, entries, alone=False)
         for e in entries:
             self._remove(e, "matched")
-        self._qlog("start", table=True, humans=sum(not s.is_bot for s in slots),
+        self._qlog("start", table=True, table_mode=t.mode, humans=sum(not s.is_bot for s in slots),
                    max_wait=round(max(self.clock() - e.since for e in entries), 1))
         # The first arrival still here is the opener (``entries`` keeps
         # arrival order); only it can hold a seat.
@@ -2000,7 +2006,7 @@ class Matchmaker:
         bots now, as with ``queue_start_bots``."""
         t = e.table
         self._remove(e, "bots_timer")
-        self._qlog("start", table=False, humans=e.size, max_wait=round(self.clock() - e.since, 1))
+        self._qlog("start", table=False, table_mode=e.mode, humans=e.size, max_wait=round(self.clock() - e.since, 1))
         await self._start_room_for(None, self._slots(t, [e], alone=True), [e], mode=e.mode,
                                    chat=list(t.chat), chat_senders=dict(t.senders),
                                    **self._room_settings(t, e))
@@ -2046,7 +2052,7 @@ class Matchmaker:
             return True
         except Exception:          # noqa: BLE001 - players go back, never stranded
             log.exception("queued room failed to start")
-            self._qlog("start_failed", humans=sum(e.size for e in entries))
+            self._qlog("start_failed", table_mode=mode, humans=sum(e.size for e in entries))
             for e in entries:
                 e.front = True
                 self._enlist(e)
@@ -2092,7 +2098,7 @@ class Matchmaker:
         self.busy_told.clear()
         t = e.table
         self._remove(e, "bots")
-        self._qlog("start", table=False, humans=e.size, max_wait=round(self.clock() - e.since, 1))
+        self._qlog("start", table=False, table_mode=e.mode, humans=e.size, max_wait=round(self.clock() - e.since, 1))
         slots = self._slots(t, [e], alone=True)
         conns = {u: self.conns[u] for u in e.members}
         try:

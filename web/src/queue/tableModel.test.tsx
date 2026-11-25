@@ -299,6 +299,8 @@ const QUEUES: Fixture[] = [
   { name: "own: Duo friend, you ready", frames: () => [duoParty(false), duoState(false, 1, true)] },
   { name: "own: Duo friend, both ready", frames: () => [duoParty(false), duoState(false, 2, true)] },
   { name: "own: Duo opener, partner ready", frames: () => [duoParty(true), duoState(true, 1, false)] },
+  { name: "own: Duo opener, both ready", frames: () => [duoParty(true), duoState(true, 2, true)] },
+  { name: "own: Duo opener, both ready, casual", frames: () => [duoParty(true), duoState(true, 2, true, { mode: "casual" })] },
   { name: "own: Duo opener, leave sheet", frames: () => [duoParty(true), duoState(true, 0, false)],
     steps: [{ tap: "Leave" }] },
   { name: "join: Mei", frames: () => [coded({ offer: offer(), bots_paused: true, bots_at: null, code: null })] },
@@ -390,6 +392,20 @@ describe("the table panel, fixture by fixture", () => {
 });
 
 describe("the model and its dispatcher", () => {
+  it("a searching Duo's leader starts with bots; its partner and a Duo still to tap cannot", async () => {
+    const startsBots = async (frames: () => unknown[]) => {
+      const { taps } = await trace({ name: "", frames });
+      return taps.filter((tp) => tp.sent.some((m) => (m as { type?: string }).type === "table_start_bots"))
+        .map((tp) => tp.control);
+    };
+    expect(await startsBots(() => [duoParty(true), duoState(true, 2, true)])).toEqual(['button "60Start with bots"']);
+    expect(await startsBots(() => [duoParty(true), duoState(true, 2, true, { mode: "casual" })]))
+      .toEqual(['button "60Start with bots"']);
+    expect(await startsBots(() => [duoParty(false), duoState(false, 2, true)])).toEqual([]);
+    expect(await startsBots(() => [duoParty(true), duoState(true, 1, true)])).toEqual([]);
+    expect(await startsBots(() => [duoParty(true), duoState(true, 1, false)])).toEqual([]);
+  }, 60_000);
+
   it("a table's move needs the sitting token", async () => {
     vi.resetModules();
     const { conn } = await import("../ws");

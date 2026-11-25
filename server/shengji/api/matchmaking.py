@@ -930,13 +930,21 @@ class Matchmaker:
     def _panel_seq(self, e: Entry) -> int:
         """The entry's panel sequence number, advanced when what its panel
         shows changes kind or target (own table, an offer of one room, a
-        waiting table); re-renders of the same panel keep it."""
+        waiting table), and on a Duo's own table when the pair starts or
+        stops searching, since only a searching Duo's leader may start with
+        bots; re-renders of the same panel keep it."""
         t = self._table(e)
         key: tuple = (("table", t.id) if t is not None
-                      else ("offer", e.offer.code) if e.offer is not None else ("own",))
+                      else ("offer", e.offer.code) if e.offer is not None
+                      else ("own", self._duo_searching(e)))
         if key != e.panel_key:
             e.panel_key, e.panel_seq = key, next(self._panel)
         return e.panel_seq
+
+    @staticmethod
+    def _duo_searching(e: Entry) -> bool:
+        """Both members of a pair have tapped Start."""
+        return e.size == 2 and set(e.members) <= e.taps
 
     def _check_panel(self, e: Entry, msg: dict) -> None:
         """Refuse a tap sent against a panel the entry no longer shows; a
@@ -2066,6 +2074,12 @@ class Matchmaker:
             raise QueueError("not_queued", "Queue first.")
         if e.leader != uid:
             raise QueueError("not_leader", "Only your Duo's leader can start with bots.")
+        if e.taps and not self._duo_searching(e):
+            # a Start taken back since the tap was sent: a pair that has
+            # tapped starts with bots only while both Starts are in; a pair
+            # with no taps (Play's own Duo, an older client) starts at once
+            self._send_state(e)
+            raise QueueError("panel_changed", "Your table changed. Look again before you tap.")
         for m in e.members:
             if not self._available(m):
                 raise QueueError("partner_unavailable", "Your partner is not in the lobby.")

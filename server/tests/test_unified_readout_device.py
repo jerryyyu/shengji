@@ -685,10 +685,15 @@ def test_timed_resume_preserves_epoch_training_metrics_without_a_report(data, tm
     saved["state"].pop("epoch_sums", None)
     legacy.mkdir()
     torch.save(saved, legacy / "checkpoint.pt")
-    assert ur.main(args + ["--out", str(split)]) == 0
+    recover = args + ["--out", str(split), "--recover-checkpoint-sha256"]
+    assert ur.main(recover + ["0" * 64]) == 1
+    assert "checkpoint SHA256 mismatch" in (split / "status.log").read_text().splitlines()[-1]
+    digest = hashlib.sha256((split / "checkpoint.pt").read_bytes()).hexdigest()
+    assert ur.main(recover + [digest]) == 0
     baseline = torch.load(full / "checkpoint.pt", weights_only=False)
     resumed = torch.load(split / "checkpoint.pt", weights_only=False)
     assert resumed["state"]["history"][0]["train"] == baseline["state"]["history"][0]["train"]
+    torch.testing.assert_close(resumed["opt"], baseline["opt"], rtol=0, atol=0)
     torch.testing.assert_close(resumed["model"], baseline["model"], rtol=0, atol=0)
     assert ur.main(args + ["--out", str(legacy)]) == 0
     old = torch.load(legacy / "checkpoint.pt", weights_only=False)

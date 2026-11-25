@@ -503,8 +503,17 @@ def mps_worker_recipe(host):
     return supervisor, directory, log, recipe, SCRATCH
 
 
-def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_recipe, monkeypatch):
+@pytest.mark.parametrize("interrupt", [False, True], ids=["clean-stop", "trainer-abort"])
+def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_recipe, monkeypatch, interrupt):
     supervisor, directory, log, recipe, scratch = mps_worker_recipe
+    fault_script = directory / "fail_training.py"
+    fault_script.write_text(
+        "from shengji.train import unified_readout as trainer\n"
+        "def fail_objective(*args):\n"
+        "    raise RuntimeError('fixture fault')\n"
+        "trainer.objective = fail_objective\n"
+        "raise SystemExit(trainer.main())\n"
+    )
     emitter = directory / "server/scripts/rt4m_joint.py"
     emitter.write_text(
         "import json, sys\nfrom pathlib import Path\n"
@@ -512,27 +521,49 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
         "import rt4m_joint as arm\n"
         f"arm.RECIPE_SHA256 = {hashlib.sha256(recipe.read_bytes()).hexdigest()!r}\n"
         f"arm.ARCHITECTURE[6] = {scratch!r}\n"
-        f"argv = arm.command(Path(sys.argv[-1]), Path({str(recipe)!r}))\n"
-        "if '--expect-resume-buffer' not in argv: argv.extend(['--max-seconds','0.0001'])\n"
+        "root = Path(sys.argv[sys.argv.index('--root') + 1])\n"
+        "digest = sys.argv[-1] if '--recover-checkpoint-sha256' in sys.argv else None\n"
+        f"argv = arm.command(root, Path({str(recipe)!r}), recover_checkpoint_sha256=digest)\n"
+        "if '--expect-resume-buffer' not in argv and digest is None: argv.extend(['--max-seconds','0.0001'])\n"
+        "if (root / 'inject-fault').exists():\n"
+        f"    argv[2:4] = [{str(fault_script)!r}]\n"
         "print(json.dumps(argv))\n"
     )
     worker = [*supervisor, "--phase", "RT4-M-A", "--min-free-gib", "1"]
     env = {**os.environ, "PYTHONPATH": str(WORKER.parents[1])}
 
-    def run():
-        return subprocess.run(worker, env=env, capture_output=True, text=True, timeout=60)
+    def run(*extra):
+        return subprocess.run([*worker, *extra], env=env, capture_output=True, text=True, timeout=60)
 
     first = run()
     assert first.returncode == 3, (first.stdout, first.stderr)
     out = directory / "reserved/A/train"
     assert "STOPPED at epoch 1 buffer 1/" in (out / "status.log").read_text()
-    second = run()
+    recovery = []
+    if interrupt:
+        root = directory / "reserved"
+        fault = root / "inject-fault"
+        fault.touch()
+        assert run().returncode != 0
+        assert " UTR ABORT RuntimeError: fixture fault" in (out / "status.log").read_text().splitlines()[-1]
+        fault.unlink()
+        assert run().returncode != 0
+        assert run("--recover-checkpoint-sha256", "0" * 64).returncode != 0
+        digest = hashlib.sha256((out / "checkpoint.pt").read_bytes()).hexdigest()
+        recovery = ["--recover-checkpoint-sha256", digest]
+        (out / "STOP").touch()
+        assert run(*recovery).returncode != 0
+        (out / "STOP").unlink()
+        assert events(log) == ["stop", "restart"] * 2
+    second = run(*recovery)
     assert second.returncode == 0, (second.stdout, second.stderr)
     status = (out / "status.log").read_text()
     assert " RESUME epoch 0 buffer 1 device=mps" in status and " UTR DONE " in status.splitlines()[-1]
     assert (out / "best.pt").is_file()
     assert run().returncode != 0
-    assert events(log) == ["stop", "restart", "stop", "restart"]
+    if interrupt:
+        assert run(*recovery).returncode != 0
+    assert events(log) == ["stop", "restart"] * (3 if interrupt else 2)
 
     monkeypatch.syspath_prepend(str(WORKER.parent))
     import rt4m_cache

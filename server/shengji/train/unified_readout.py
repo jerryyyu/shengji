@@ -556,14 +556,22 @@ def _train(args, out: Path, status: str) -> int:
         return stats
 
     state = {"epoch": 0, "buffer": 0, "history": [], "best": float("inf")}
-    if ck.exists() or expect_resume_buffer is not None:
-        saved = torch.load(ck, weights_only=False, map_location="cpu")
+    recovery_digest = getattr(args, "recover_checkpoint_sha256", None)
+    if ck.exists() or expect_resume_buffer is not None or recovery_digest is not None:
+        with ck.open("rb") as checkpoint_file:
+            if recovery_digest is not None:
+                if hashlib.file_digest(checkpoint_file, "sha256").hexdigest() != recovery_digest:
+                    raise UnifiedReadoutError("resume: checkpoint SHA256 mismatch")
+                checkpoint_file.seek(0)
+            saved = torch.load(checkpoint_file, weights_only=False, map_location="cpu")
         was = (saved.get("run") or {}).get("device", "cpu")
         if was != args.device:
             raise UnifiedReadoutError(f"resume: the checkpoint was trained with --device {was}, not --device {args.device}")
         if saved.get("run") != _run_identity(args):
             raise UnifiedReadoutError("resume: the run's settings differ from the checkpoint's")
         state = saved["state"]
+        if recovery_digest is not None and (state["epoch"] != 0 or not 0 < state["buffer"] < n_buffers):
+            raise UnifiedReadoutError("resume: recovery requires an interior first-epoch checkpoint")
         if expect_resume_buffer is not None and (state["epoch"] != 0 or state["buffer"] != expect_resume_buffer):
             raise UnifiedReadoutError(f"resume: expected epoch 0 buffer {expect_resume_buffer}, "
                                       f"found epoch {state['epoch']} buffer {state['buffer']}")
@@ -1244,6 +1252,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="checkpoint and exit 7 at the first epoch's report boundary; omit to continue")
     t.add_argument("--expect-resume-buffer", type=int,
                    help="require a matching first-epoch checkpoint at this buffer before training")
+    t.add_argument("--recover-checkpoint-sha256", help="require these exact checkpoint bytes at an interior first-epoch buffer")
     t.add_argument("--save-every", type=float, default=600.0)
     t.add_argument("--exclude-seed-window", type=bs.seed_window, action="append", default=[])
     t.add_argument("--corpus-weight", action="append", default=[],

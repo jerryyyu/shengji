@@ -41,8 +41,11 @@ def recipe_inputs(root, recipe_path, *, phase="RT4-M-A"):
     return recipe, args, expected
 
 
-def command(root, recipe_path, *, phase="RT4-M-A"):
-    _, args, _ = recipe_inputs(root, recipe_path, phase=phase)
+def command(root, recipe_path, *, phase="RT4-M-A", recover_checkpoint_sha256=None):
+    _, args, expected = recipe_inputs(root, recipe_path, phase=phase)
+    if recover_checkpoint_sha256 is not None and (phase != "RT4-M-A"
+            or not re.fullmatch("[0-9a-f]{64}", recover_checkpoint_sha256)):
+        raise ValueError("checkpoint recovery requires full Arm A and a SHA256")
     if phase != "RT4-M-A":
         if (root / phase).exists() or (root / phase).is_symlink():
             raise ValueError("capacity smoke requires a fresh output")
@@ -50,16 +53,31 @@ def command(root, recipe_path, *, phase="RT4-M-A"):
     directory = root / "A/train"
     if directory.is_symlink() or directory.parent.is_symlink():
         raise ValueError("RT4-M-A output must be inside the reserved root")
-    if directory.exists():
-        status = (directory / "status.log").read_text().splitlines()
-        stopped = re.fullmatch(
-            r"\S+ STOPPED at epoch 1 buffer ([0-9]+)/([1-9][0-9]*) \(STOP file or --max-seconds\); checkpoint saved",
-            status[-1] if status else "",
-        )
-        if (not stopped or int(stopped[1]) >= int(stopped[2]) or not (directory / "checkpoint.pt").is_file()
+    if recover_checkpoint_sha256 is not None or directory.exists():
+        checkpoint = directory / "checkpoint.pt"
+        status_path = directory / "status.log"
+        if (checkpoint.is_symlink() or not checkpoint.is_file() or status_path.is_symlink()
                 or (directory / "STOP").exists() or (directory / "STOP").is_symlink()):
-            raise ValueError("RT4-M-A requires a fresh output or a clean checkpointed stop")
-        args.extend(["--expect-resume-buffer", stopped[1]])
+            raise ValueError("RT4-M-A requires a local checkpoint and a cleared STOP")
+        status = status_path.read_text().splitlines()
+        terminal = status[-1] if status else ""
+        if recover_checkpoint_sha256 is not None:
+            if not re.fullmatch(r"\S+ UTR ABORT \w+: .*", terminal) or any(" UTR DONE " in line for line in status):
+                raise ValueError("checkpoint recovery requires a terminal trainer ABORT")
+            if json.loads((directory / "run.json").read_bytes()) != expected:
+                raise ValueError("aborted run settings differ from RT4-M-A")
+            with checkpoint.open("rb") as stream:
+                if hashlib.file_digest(stream, "sha256").hexdigest() != recover_checkpoint_sha256:
+                    raise ValueError("aborted checkpoint SHA256 mismatch")
+            args.extend(["--recover-checkpoint-sha256", recover_checkpoint_sha256])
+        else:
+            stopped = re.fullmatch(
+                r"\S+ STOPPED at epoch 1 buffer ([0-9]+)/([1-9][0-9]*) \(STOP file or --max-seconds\); checkpoint saved",
+                terminal,
+            )
+            if not stopped or int(stopped[1]) >= int(stopped[2]):
+                raise ValueError("RT4-M-A requires a fresh output or a clean checkpointed stop")
+            args.extend(["--expect-resume-buffer", stopped[1]])
     return [sys.executable, "-B", "-m", "shengji.train.unified_readout", *args]
 
 
@@ -93,9 +111,10 @@ def main(argv=None):
     parser.add_argument("phase", choices=("RT4-M-A", SMOKE, MICROBATCH_SMOKE))
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--recipe", type=Path, default=RECIPE)
+    parser.add_argument("--recover-checkpoint-sha256")
     args = parser.parse_args(argv)
     try:
-        argv = command(args.root.resolve(), args.recipe, phase=args.phase)
+        argv = command(args.root.resolve(), args.recipe, phase=args.phase, recover_checkpoint_sha256=args.recover_checkpoint_sha256)
     except (OSError, ValueError) as exc:
         parser.exit(2, f"invalid RT4-M-A input: {exc}\n")
     print(json.dumps(argv))

@@ -255,7 +255,7 @@ def monitor(child, baseline, check_signal, verify_stopped, *, pressure_limit=4, 
                 child.wait(timeout=5)
 
 
-def run_segment(root, phase, check_signal, expected_sha=None, min_free_gib=None):
+def run_segment(root, phase, check_signal, expected_sha=None, min_free_gib=None, recover_checkpoint_sha256=None):
     expected_sha = provider_digest(expected_sha)
     root = root.resolve(strict=True)
     rt4_smoke = phase in ("RT4-M-A-smoke", "RT4-M-A-micro4-smoke")
@@ -281,10 +281,15 @@ def run_segment(root, phase, check_signal, expected_sha=None, min_free_gib=None)
             if free < min_free_gib * 1024 ** 3:
                 raise RuntimeError(f"disk guard: {free} bytes free at {root}, floor {min_free_gib} GiB")
 
+    recovery_args = []
+    if recover_checkpoint_sha256 is not None:
+        if phase != "RT4-M-A":
+            raise ValueError("checkpoint recovery requires full Arm A")
+        recovery_args = ["--recover-checkpoint-sha256", recover_checkpoint_sha256]
     guard()
     try:
         argv = json.loads(command(sys.executable, "-B", SCRIPTS / emitter, phase,
-                                  "--root", root, timeout=60))
+                                  "--root", root, *recovery_args, timeout=60))
     except subprocess.CalledProcessError as exc:
         if phase in ("medium-finish", "L-finish") and exc.returncode == 8:
             return 8
@@ -358,6 +363,7 @@ def main():
                                             "medium-finish"), default="smoke")
     parser.add_argument("--min-free-gib", type=int, help="minimum free space on the training volume")
     parser.add_argument("--provider-sha256", help="reviewed SHA256 of the provider configuration")
+    parser.add_argument("--recover-checkpoint-sha256", help="pinned full Arm A checkpoint after a trainer ABORT")
     args = parser.parse_args()
     if args.min_free_gib is not None and args.min_free_gib <= 0:
         parser.error("--min-free-gib must be positive")
@@ -374,7 +380,8 @@ def main():
     for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         signal.signal(signum, mark_signal)
     try:
-        return run_segment(args.root, args.phase, check_signal, args.provider_sha256, args.min_free_gib)
+        return run_segment(args.root, args.phase, check_signal, args.provider_sha256, args.min_free_gib,
+                           args.recover_checkpoint_sha256)
     except RestoreUnverified as exc:
         print(exc, file=sys.stderr, flush=True)
         return 9

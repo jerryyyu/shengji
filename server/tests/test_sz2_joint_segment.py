@@ -521,7 +521,7 @@ def test_full_mix_scratch_command_preserves_the_weighted_trainer_identity(segmen
     directory = tmp_path / "A/train"
     directory.mkdir(parents=True)
     (directory / "status.log").write_text("t STOPPED at epoch 1 buffer 1/2 (STOP file or --max-seconds); checkpoint saved\n")
-    with pytest.raises(ValueError, match="checkpointed stop"):
+    with pytest.raises(ValueError, match="requires a local checkpoint"):
         arm.command(tmp_path, source)
     with pytest.raises(ValueError, match="successful trainer terminal"):
         arm.verify_completion(tmp_path)

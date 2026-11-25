@@ -183,6 +183,23 @@ EXCLUDED_UNKNOWN = "rounds excluded: an event has no controller flag"
 EXCLUDED_SEATS = "rounds excluded: seat map is not seats 0-3"
 
 
+@pytest.mark.parametrize("ranked, previous, seats, late, included", [
+    (True, "standard", [], False, True),
+    (True, "beginner", [], False, False),
+    (True, "standard", [1, 3], False, False),
+    (True, "standard", [], True, False),
+    (False, "standard", [], False, False),
+])
+def test_ranked_rise_counts_only_rounds_played_at_advanced(tmp_path, ranked, previous, seats, late, included):
+    rnd = _rounds(_raw_prod())[0]
+    rnd[0].update(ranked=ranked, bot_level="standard", standard_seats=[1, 3])
+    idx = next(i + 1 for i, event in enumerate(rnd) if event["e"] == "play") if late else 1
+    rnd.insert(idx, {"e": "bot_levels", "level": "advanced", "rose_from": previous, "standard_seats": seats})
+    rounds, notes = md.load_prod([_write(tmp_path, rnd)])
+    assert len(rounds) == int(included)
+    assert notes["rounds excluded: standard bots"] == int(not included)
+
+
 def test_prod_fixture_counts_agree_with_the_raw_log(prod):
     """Sides come from each event's own ``bot`` flag; the fixture's ROOM3 and ROOM5
     have a bot covering seat 0 for part of the round, and ROOM2's roster says a

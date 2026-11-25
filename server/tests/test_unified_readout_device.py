@@ -7,8 +7,10 @@ this fixture; a change to the CPU path's arithmetic moves them past ``CPU_REL_TO
 """
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -763,3 +765,37 @@ def test_size_stop_rule_consumes_warm_trainer_reports(cpu_root, data, tmp_path, 
     decision(2, "INVALID")
     gate[-1] = "0" * 64
     decision(2, "expected warm start")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX volume without hard links")
+def test_cache_marker_resume_after_interrupted_publication(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    def no_links(*args):
+        raise OSError(errno.ENOTSUP, "volume without hard links")
+
+    def interrupt(*args):
+        raise InterruptedError("fixture interruption before rename")
+
+    monkeypatch.setattr(os, "link", no_links)
+    with monkeypatch.context() as fault:
+        fault.setattr(os, "replace", interrupt)
+        with pytest.raises(InterruptedError):
+            ur.bind_cache_device(tmp_path, "cpu")
+    assert not (tmp_path / ur.CACHE_DEVICE).exists()
+
+    barrier = Barrier(2, timeout=10)
+
+    def simultaneous(*args):
+        barrier.wait()
+        no_links()
+
+    monkeypatch.setattr(os, "link", simultaneous)
+    with ThreadPoolExecutor(2) as pool:
+        winners = list(pool.map(lambda device: ur._cache_marker(tmp_path, ur.CACHE_DEVICE, {"device": device}),
+                                ("cpu", "mps")))
+    assert winners[0] == winners[1] == json.loads((tmp_path / ur.CACHE_DEVICE).read_text())
+    other = "cpu" if winners[0]["device"] == "mps" else "mps"
+    with pytest.raises(ur.UnifiedReadoutError, match="shards were made with"):
+        ur.bind_cache_device(tmp_path, other)

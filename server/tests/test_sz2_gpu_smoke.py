@@ -101,6 +101,8 @@ if service == "darkbloom":
             print("Serving: Darkbloom network only — this Mac has no local API")
         models = ["gemma-4-26b-qat-4bit", "gpt-oss-20b", "qwen3.5-35b-a3b",
                   "Qwen3.5-9B", "qwen3.6-35b-a3b-vl-mtp-mxfp8"]
+        if (d / "inkling_enabled").exists() and not (restarted and (d / "lost_inkling").exists()):
+            models.append("thinkingmachines/Inkling-2-Mini")
         if (d / "wrong_initial_filter").exists() or (restarted and (d / "wrong_restored_filter").exists()):
             models[4] = models[3]
         print("Enabled model filter: " + ", ".join(models))
@@ -156,6 +158,7 @@ w.DARKBLOOM = d / "darkbloom"
 w.PAUSE = d / "keepalive.pause"
 w.PROVIDER_CONFIG = d / "provider.toml"
 w.PROVIDER_SHA256 = {hashlib.sha256(config.read_bytes()).hexdigest()!r}
+w.INKLING_CONFIG_SHA256 = {hashlib.sha256(b"inkling fixture").hexdigest()!r}
 w.SYSCTL = d / "sysctl"
 w.LAUNCHCTL = d / "launchctl"
 w.PS = d / "ps"
@@ -767,3 +770,22 @@ def test_serial_post_training_stops_on_first_incomplete_stage(tmp_path, monkeypa
         post.run("M", expected_sha="a" * 64)
     assert (tmp_path / "calls").read_text().splitlines() == calls
     assert digests == ["a" * 64] * (1 if failed else 2)
+
+@pytest.mark.parametrize("lose_filter", [False, True])
+def test_inkling_config_binds_the_same_filter_at_preflight_and_restore(host, lose_filter):
+    _, tmp, log = host
+    config = tmp / "provider.toml"
+    old_sha = hashlib.sha256(config.read_bytes()).hexdigest()
+    config.write_bytes(b"inkling fixture")
+    sha = hashlib.sha256(config.read_bytes()).hexdigest()
+    args = ["--provider-sha256", sha]
+    assert invoke(host, *args, "--check-provider").returncode == 1
+    (tmp / "inkling_enabled").touch()
+    assert invoke(host, "--provider-sha256", old_sha, "--check-provider").returncode == 1
+    assert invoke(host, *args, "--check-provider").returncode == 0
+    assert not log.exists() and not (tmp / "keepalive.pause").exists()
+    if lose_filter:
+        (tmp / "lost_inkling").touch()
+    result = invoke(host, *args)
+    assert result.returncode == (9 if lose_filter else 0), result.stderr
+    assert events(log) == ["stop", "train", "restart"]

@@ -33,6 +33,8 @@ def _entries(args):
         raise ValueError("empty or duplicate training shard selection")
     for e, name in zip(entries, names):
         e["candidate_sha256"] = sums[name]
+        if args.candidate_exclude_seed_window:
+            e["candidate_exclude_seed_windows"] = args.candidate_exclude_seed_window
     return entries
 
 
@@ -100,6 +102,8 @@ def main(argv=None):
     p.add_argument("--sha256", required=True)
     p.add_argument("--data", action="append", required=True)
     p.add_argument("--exclude-seed-window", action="append", type=bs.seed_window, default=[])
+    p.add_argument("--candidate-exclude-seed-window", action="append", type=bs.seed_window, default=[],
+                   help="window excluded when producing the candidate shards, also excluded from training")
     p.add_argument("--candidates", type=Path, required=True)
     p.add_argument("--candidate-sums", type=Path, required=True)
     p.add_argument("--out", type=Path, required=True)

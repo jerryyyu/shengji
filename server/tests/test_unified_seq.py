@@ -805,3 +805,43 @@ def test_candidate_head_skips_reserved_deals_before_joining_history(world, tmp_p
     assert trainer.fit_shard(model, head, optimizer, entry, tmp_path, verified) == 1
     entry["exclude_seed_windows"] = [(0, 2**32)]
     assert trainer.fit_shard(model, head, optimizer, entry, tmp_path, verified) == 0
+
+
+def test_candidate_schedule_trains_from_producer_filtered_shard(world, tmp_path):
+    from types import SimpleNamespace
+    from shengji.train import search_free_head as trainer
+    from shengji.train import search_free_schedule as schedule
+    from shengji.train import unified_readout
+
+    data = extract_dir(world["store"], tmp_path / "extract")
+    entry, = us.entries_for([str(data)], "train")
+    with np.load(entry["path"]) as rows:
+        first = int(rows["seed"][0])
+        producer_window = [(first, first + 1)]
+        retained = bs.seed_keep(rows, producer_window)
+        producer_seeds = rows["seed"][retained]
+    entry["exclude_seed_windows"] = producer_window
+    path, shard, _, _, _ = _candidate_fixture(world, entry, tmp_path, distinct_deals=True)
+    assert shard["n_rows"] == retained.sum() < entry["rows"]
+    counts = tmp_path / "SHA256SUMS"
+    counts.write_text(f"{us.sha256_file(path)}  {path.name}\n")
+    args = SimpleNamespace(data=[str(data)], candidate_sums=counts,
+                           candidate_exclude_seed_window=[], exclude_seed_window=[])
+    original, = schedule._entries(args)
+    with pytest.raises(ValueError, match="does not match the extract rows"):
+        list(trainer.candidate_batches(original, tmp_path, bs._Verified()))
+
+    args.candidate_exclude_seed_window = producer_window
+    prepared, = schedule._entries(args)
+    (both, ballots), = trainer.candidate_batches(prepared, tmp_path, bs._Verified(), rounds_per_batch=32)
+    assert len(both["X"]) == 2
+    drop = int(producer_seeds[shard["row"][0]])
+    args.exclude_seed_window = [(drop, drop + 1)]
+    prepared, = schedule._entries(args)
+    (one, ballot), = trainer.candidate_batches(prepared, tmp_path, bs._Verified(), rounds_per_batch=32)
+    np.testing.assert_array_equal(one["X"], both["X"][1:])
+    np.testing.assert_array_equal(ballot["tok_cards"], ballots["tok_cards"][ballots["row"] == 1])
+    model = unified_readout.build(SMALL).eval()
+    head = trainer.build_head(model.config["trunk"])
+    assert trainer.fit_shard(model, head, torch.optim.AdamW(head.parameters()), prepared,
+                             tmp_path, bs._Verified()) == 1

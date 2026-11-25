@@ -58,10 +58,11 @@ def candidate_batches(entry, directory, verified, *, rounds_per_batch=1):
     path = Path(directory) / candidate_name(entry)
     source = io.BytesIO(verified.read(str(path), entry["candidate_sha256"])) if "candidate_sha256" in entry else path
     cand, _ = load_public_candidates(source)
-    part = bs.load_part(entry, bs.ROW_KEYS, verified, include_source_rows=True)
+    part = bs.load_part(entry, bs.ROW_KEYS, verified, include_source_rows=True,
+                        source_seed_windows=entry.get("candidate_exclude_seed_windows", ()))
     row = cand["row"]
-    if (row.dtype.kind not in "iu" or int(cand["n_rows"]) != entry["rows"]
-            or np.any(row < 0) or np.any(row >= entry["rows"])):
+    if (row.dtype.kind not in "iu" or int(cand["n_rows"]) != part["source_count"]
+            or np.any(row < 0) or np.any(row >= part["source_count"])):
         raise ValueError("candidate shard does not match the extract rows")
     for rounds, rows in bs.round_batches(part, rounds_per_batch, None):
         keep = np.isin(row, part["source_row"][rows])

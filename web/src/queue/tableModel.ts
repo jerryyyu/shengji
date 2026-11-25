@@ -302,7 +302,19 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
     const youReady = yourReady(q);
     const ring = botsRing(ownBotsAt(q), now);
     if (tableDuo(q) && partner) {
-      // the pair's own table: both tap Start, then it searches as one
+      // the pair's own table: both tap Start, then it searches as one, and
+      // its leader may start with bots as a single does
+      if (q.leader && youReady && (q.duoReady ?? 0) >= 2) {
+        return {
+          ...base, ...extra, kind,
+          title: ownTitle(q, partner), status: { text: t("queue.status.ready", { n: 2, count: 2 }) },
+          seats, you: f.you,
+          primary: { label: t(q.pending === "bots" ? "queue.btn.starting" : "queue.btn.startBots"),
+                     disabled: q.pending !== null, act: { type: "start_bots" },
+                     ring: q.pending === "bots" ? null : ring },
+          secondary: leaveBtn,
+        };
+      }
       return {
         ...base, ...extra, kind,
         title: ownTitle(q, partner), status: { text: t("queue.status.ready", { n: q.duoReady ?? 0, count: 2 }) },

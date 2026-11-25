@@ -4541,6 +4541,27 @@ def test_a_duo_started_without_its_friend_tells_the_room_the_held_seat():
     run(go())
 
 
+def test_a_searching_table_duo_starts_with_bots_on_its_leaders_call_ranked_or_casual():
+    async def go():
+        for mode in ("ranked", "casual"):
+            env = Env()
+            await env.join(1, duo=True, mode=mode)
+            code = env.conns[1].last("queue_state")["code"]
+            env.player(2)
+            await env.send(2, "queue_join", code=code)
+            await env.send(1, "table_start")
+            await env.send(2, "table_start")
+            state = env.conns[1].last("queue_state")
+            assert state["duo_ready"] == 2 and state["leader"] is True and env.started == []
+            await env.send(2, "queue_start_bots")
+            assert env.conns[2].last("error")["code"] == "not_leader" and env.started == []
+            await env.send(1, "queue_start_bots")
+            (match_id, slots), = env.started
+            assert match_id is None and [s.user_id for s in slots] == [1, None, 2, None]
+            assert env.modes == [mode] and env.mm.entries == {}
+    run(go())
+
+
 # ------------------------------------------- taking back a Start
 def test_a_start_is_taken_back_before_the_table_starts_and_the_ready_count_drops():
     async def go():

@@ -170,6 +170,7 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
 - A Duo stays paired. After Start, or when Play matches you, the pair moves and is matched as one, as Duo is today, and a ranked Duo is rated as a pair. One Leave, on the panel, ends the Duo for you; your partner keeps the table.
 - The table is an inline panel, not a popup. Popups are only for decisions (Leave, take a seat, a Duo invite).
 - Built (client): the Duo sheet, the Duo chip and the separate party code are removed (`?party=` links read as `?code=`). Between games a formed pair shows one row, "Duo with <partner>" and Leave (`party_leave`), to both members; the leader keeps Play and Duo under it.
+- Once both have tapped Start and the pair is searching, the Duo's leader's main button is Start with bots, the same button and ring as a single at its own table, in ranked and casual (a ranked Duo gets its rating-matched bots); the partner keeps Finding a table, because only the leader starts with bots. Leave stays the way out of the search (2026-11-25).
 
 ## Decisions 2026-11-14 morning (Jerry)
 1. Duo flow as mocked (core.html section 5, "Duo: one table, paired"): approved, build it.

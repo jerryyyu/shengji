@@ -39,6 +39,19 @@ def _load_pair(directory, package_sha, belief_sha):
     return (str(package), package_sha, str(belief), belief_sha), model.metadata
 
 
+def verified_pair(directory, selected_sha, epoch, note, parity_rows, *, root_heads=False):
+    parity = json.loads((directory / "parity.json").read_text())
+    if (not isinstance(parity, dict) or parity.get("selected_checkpoint_sha256") != selected_sha
+            or type(parity.get("best_epoch")) is not int or parity["best_epoch"] != epoch):
+        raise ValueError(f"{note} parity receipt does not match the selected checkpoint")
+    package_sha = parity.get("package")
+    check_parity(parity, package_sha, parity_rows, root_heads=root_heads)
+    entry, metadata = _load_pair(directory, package_sha, parity.get("belief_sha256"))
+    if metadata.get("source_checkpoint_sha256") != selected_sha or metadata.get("note") != note:
+        raise ValueError(f"{note} unified package does not match the selected checkpoint and arm")
+    return entry
+
+
 def verified_exports():
     """Return the exact unified and belief paths and SHAs for each authorized duel arm."""
     for arm in ("S", "M"):
@@ -48,15 +61,6 @@ def verified_exports():
         checkpoint, directory, _ = arm_inputs(JOINT, arm, EXPORT, RECIPE, RECIPE_SHA)
         _, selected_sha, epoch = selected_checkpoint(POLISH / arm / directory.name, checkpoint,
                                                       directory.name.split("-", 1)[0])
-        parity = json.loads((directory / "parity.json").read_text())
-        if (not isinstance(parity, dict) or parity.get("selected_checkpoint_sha256") != selected_sha
-                or type(parity.get("best_epoch")) is not int or parity["best_epoch"] != epoch):
-            raise ValueError(f"{arm} parity receipt does not match the selected checkpoint")
-        package_sha = parity.get("package")
-        check_parity(parity, package_sha, PARITY_ROWS)
-        entry, metadata = _load_pair(directory, package_sha, parity.get("belief_sha256"))
-        if metadata.get("source_checkpoint_sha256") != selected_sha or metadata.get("note") != f"SZ2 {arm}":
-            raise ValueError(f"{arm} unified package does not match the selected checkpoint and arm")
-        exports[arm] = entry
+        exports[arm] = verified_pair(directory, selected_sha, epoch, f"SZ2 {arm}", PARITY_ROWS)
     exports["FT500"], _ = _load_pair(FT500, FT500_PACKAGE_SHA, FT500_BELIEF_SHA)
     return exports

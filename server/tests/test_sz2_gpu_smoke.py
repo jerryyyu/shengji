@@ -504,7 +504,7 @@ def mps_worker_recipe(host):
 
 
 @pytest.mark.parametrize("interrupt", [False, True], ids=["clean-stop", "trainer-abort"])
-def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_recipe, monkeypatch, interrupt):
+def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_recipe, monkeypatch, interrupt, capsys):
     supervisor, directory, log, recipe, scratch = mps_worker_recipe
     fault_script = directory / "fail_training.py"
     fault_script.write_text(
@@ -593,16 +593,30 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
     assert rt4m_cache.polish(directory / "reserved", cache_root, recipe, **cache_options) == 0
     assert (directory / "reserved/A/polish/selected.pt").is_file()
     import rt4m_export
-    from sz2_duel_exports import _load_pair
 
     root = directory / "reserved"
     assert rt4m_export.export(root, recipe, directory / "data/x", 132) == 0
     exported = root / "A/export"
     parity = json.loads((exported / "parity.json").read_text())
     assert set(parity["max_abs_diff"]) == {"belief", "outcome", "policy", "value", "reply"}
-    _, metadata = _load_pair(exported, parity["package"], parity["belief_sha256"])
-    assert metadata["note"] == "RT4-M-A"
-    assert metadata["source_checkpoint_sha256"] == hashlib.sha256((root / "A/polish/selected.pt").read_bytes()).hexdigest()
+    monkeypatch.setattr(rt4m_joint, "RECIPE", recipe)
+    monkeypatch.setattr(rt4m_export, "PARITY_ROWS", 132)
+    monkeypatch.setattr(sys, "argv", ["rt4m_export.py", "--root", str(root), "--duel-words"])
+    capsys.readouterr()
+    assert rt4m_export.main() == 0
+    assert json.loads(capsys.readouterr().out) == [
+        f"SHENGJI_PV_BELIEF_CKPT={exported / 'cand-belief.npz'}",
+        f"SHENGJI_PV_BELIEF_SHA256={parity['belief_sha256']}",
+        f"SHENGJI_PV_UNIFIED_CKPT={exported / 'cand.npz'}",
+        f"SHENGJI_PV_UNIFIED_SHA256={parity['package']}",
+    ]
+    for altered, error in [
+            (dict(parity, selected_checkpoint_sha256="0" * 64), "selected checkpoint"),
+            (dict(parity, max_abs_diff={"belief": 0, "value": 0, "reply": 0}), "parity errors")]:
+        (exported / "parity.json").write_text(json.dumps(altered))
+        with pytest.raises(ValueError, match=error):
+            rt4m_export.duel_words(root, recipe, 132)
+    (exported / "parity.json").write_text(json.dumps(parity))
     bad_cache = directory / "unreserved"
     status_path = out / "status.log"
     status_path.write_text(status[:status.rfind("sha256=")] + "sha256=" + "0" * 64 + "\n")

@@ -38,7 +38,7 @@ def _train_args(phase, root, recipe):
     return args
 
 
-def smoke_result(directory):
+def smoke_result(directory, *, required_batch_rounds=None):
     """Read both completed training legs and the final calibration."""
     lines = (directory / "status.log").read_text().splitlines()
     best = directory / "best.pt"
@@ -103,6 +103,12 @@ def smoke_result(directory):
     capacity = dict(epoch=1, rows=rows, steps=sum(sample["steps"] for sample in samples),
                     train_seconds=train_seconds, rows_per_second=rows / train_seconds)
     capacity.update((field, max(sample[field] for sample in samples)) for field in memory_fields)
+    if required_batch_rounds is not None:
+        observed = [sample.get("max_batch_rounds") for sample in samples]
+        if (any(type(n) is not int or not 0 < n <= required_batch_rounds for n in observed)
+                or max(observed) != required_batch_rounds):
+            raise ValueError("capacity smoke did not exercise the full training batch")
+        capacity["max_batch_rounds"] = max(observed)
     return dict(capacity=capacity, calibration=calib)
 
 

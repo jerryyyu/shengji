@@ -615,7 +615,7 @@ def _train(args, out: Path, status: str) -> int:
     def capacity_sample(epoch, rows, steps, train_start, tensor_bytes, driver_bytes):
         train_seconds = time.monotonic() - train_start
         sample = dict(epoch=epoch + 1, rows=rows, steps=steps, train_seconds=train_seconds,
-                      rows_per_second=rows / train_seconds)
+                      rows_per_second=rows / train_seconds, max_batch_rounds=max_batch_rounds)
         if device.type == "mps":
             sample.update(post_step_max_tensor_bytes=tensor_bytes, post_step_max_driver_bytes=driver_bytes)
         return sample
@@ -652,7 +652,7 @@ def _train(args, out: Path, status: str) -> int:
                 _status(status, f"epoch {epoch + 1} train metrics start at buffer {cur}: checkpoint lacks earlier sums")
         if capture_capacity:
             train_start = time.monotonic()
-            trained_rows = tensor_bytes = driver_bytes = 0
+            trained_rows = tensor_bytes = driver_bytes = max_batch_rounds = 0
         for gi, b in stream.batches(args.seed, epoch, state["buffer"]):
             if gi != cur:
                 if pause_at_report and gi > report_buffer:
@@ -679,6 +679,7 @@ def _train(args, out: Path, status: str) -> int:
             batch_sums = step_on(b, epoch * n_buffers + gi)
             sums += batch_sums
             if capture_capacity:
+                max_batch_rounds = max(max_batch_rounds, len(b["tok_int"]))
                 trained_rows += int(batch_sums[SUM_KEYS.index("rows")])
                 if device.type == "mps":
                     tensor_bytes = max(tensor_bytes, torch.mps.current_allocated_memory())

@@ -572,25 +572,45 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
 
 
 
-def test_large_smoke_resumes_the_real_trainer_and_consumes_its_capacity(mps_worker_recipe):
-    supervisor, directory, log, recipe, SCRATCH = mps_worker_recipe
-    emitter = directory / "server/scripts/sz3_joint_recipe.py"
+@pytest.mark.parametrize(("phase", "module", "pin", "depth"), [
+    ("L-smoke", "sz3_joint_recipe", "RECIPE_SHA", 8),
+    ("RT4-M-A-smoke", "rt4m_joint", "RECIPE_SHA256", 6),
+])
+def test_split_smoke_resumes_the_real_trainer_and_consumes_its_capacity(
+        mps_worker_recipe, phase, module, pin, depth):
+    supervisor, directory, log, recipe, scratch = mps_worker_recipe
+    if phase == "RT4-M-A-smoke":
+        from test_belief_labels import synthetic_cluster
+        from test_unified_seq import extract_dir, write_store
+
+        store = write_store(directory / "batch-store", [synthetic_cluster(s) for s in range(2000, 2009)], seed0=2000)
+        data = extract_dir(store, directory / "batch-data", task_clusters=1)
+        settings = json.loads(recipe.read_bytes())
+        settings.update(data=[str(data)], buffer_chunks=8, rounds_per_batch=16,
+                        corpus_weight=[f"{data}=policy:2,reply:2"])
+        recipe.write_text(json.dumps(settings))
+    emitter = directory / f"server/scripts/{module}.py"
     emitter.write_text(
         "import sys\n"
         f"sys.path.insert(0, {str(WORKER.parent)!r})\n"
-        "import sz3_joint_recipe as sz3\n"
-        f"sz3.RECIPE_SHA = {hashlib.sha256(recipe.read_bytes()).hexdigest()!r}\n"
-        f"sz3.ARCHITECTURE[8] = {SCRATCH!r}\n"
-        f"sz3.main([*sys.argv[1:], '--recipe', {str(recipe)!r}])\n"
+        f"import {module} as arm\n"
+        f"arm.{pin} = {hashlib.sha256(recipe.read_bytes()).hexdigest()!r}\n"
+        f"arm.ARCHITECTURE[{depth}] = {scratch!r}\n"
+        f"arm.main([*sys.argv[1:], '--recipe', {str(recipe)!r}])\n"
     )
-    cp = subprocess.run([*supervisor, "--phase", "L-smoke", "--min-free-gib", "1"],
+    cp = subprocess.run([*supervisor, "--phase", phase, "--min-free-gib", "1"],
                         env={**os.environ, "PYTHONPATH": str(WORKER.parents[1])},
                         capture_output=True, text=True, timeout=60)
     assert cp.returncode == 0, (cp.stdout, cp.stderr)
     result = json.loads(cp.stdout.splitlines()[-1])
-    assert result["capacity"]["rows"] == 344 and result["capacity"]["steps"] == 4
     assert result["capacity"]["post_step_max_driver_bytes"] > 0
-    training = directory / "reserved/L-smoke/train"
+    if phase == "RT4-M-A-smoke":
+        assert result["capacity"]["max_batch_rounds"] == 16
+        assert result["capacity"]["steps"] == 2
+        assert not (directory / "reserved/A").exists()
+    else:
+        assert result["capacity"]["rows"] == 344 and result["capacity"]["steps"] == 4
+    training = directory / "reserved" / phase / "train"
     status = (training / "status.log").read_text()
     assert " UTR PAUSED at epoch 1 buffer 1/" in status
     assert " RESUME epoch 0 buffer 1 device=mps" in status

@@ -13,23 +13,30 @@ RECIPE = Path.home() / "fleet/claude-ut-retrain4/cand/train/run.json"
 RECIPE_SHA256 = "d7778348cce3aead7f991c1683577af3f9760bab795ef4d548b721ea8bfacb48"
 
 
-def recipe_inputs(root, recipe_path):
+def recipe_inputs(root, recipe_path, *, smoke=False):
     raw = recipe_path.read_bytes()
     if hashlib.sha256(raw).hexdigest() != RECIPE_SHA256:
         raise ValueError("RT4 joint recipe SHA mismatch")
     from shengji.train.unified_readout import _run_identity, build_parser
 
     recipe = json.loads(raw)
-    directory = root / "A/train"
+    directory = root / ("RT4-M-A-smoke" if smoke else "A") / "train"
     args = joint_args(recipe, ["--scratch-arch", ARCHITECTURE[6]], directory, "mps", None, False)
     expected = dict(recipe, init_readout_ckpt=None, scratch_arch=ARCHITECTURE[6], device="mps")
+    if smoke:
+        args.extend(["--max-train-rows", "120000", "--report-buffer", "1", "--capacity-stats"])
+        expected.update(max_train_rows=120000, report_buffer=1)
     if _run_identity(build_parser().parse_args(args)) != expected:
         raise ValueError("the trainer settings differ from RT4 beyond initialization and device")
     return recipe, args, expected
 
 
-def command(root, recipe_path):
-    _, args, _ = recipe_inputs(root, recipe_path)
+def command(root, recipe_path, *, smoke=False):
+    _, args, _ = recipe_inputs(root, recipe_path, smoke=smoke)
+    if smoke:
+        if (root / "RT4-M-A-smoke").exists() or (root / "RT4-M-A-smoke").is_symlink():
+            raise ValueError("capacity smoke requires a fresh output")
+        return [sys.executable, "-B", "-m", "shengji.train.unified_readout", *args]
     directory = root / "A/train"
     if directory.is_symlink() or directory.parent.is_symlink():
         raise ValueError("RT4-M-A output must be inside the reserved root")
@@ -71,14 +78,14 @@ def completed_inputs(root, recipe_path):
     return checkpoint, digest, recipe
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("phase", choices=("RT4-M-A",))
+    parser.add_argument("phase", choices=("RT4-M-A", "RT4-M-A-smoke"))
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--recipe", type=Path, default=RECIPE)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
-        argv = command(args.root.resolve(), args.recipe)
+        argv = command(args.root.resolve(), args.recipe, smoke=args.phase == "RT4-M-A-smoke")
     except (OSError, ValueError) as exc:
         parser.exit(2, f"invalid RT4-M-A input: {exc}\n")
     print(json.dumps(argv))

@@ -258,12 +258,14 @@ def monitor(child, baseline, check_signal, verify_stopped, *, pressure_limit=4, 
 def run_segment(root, phase, check_signal, expected_sha=None, min_free_gib=None):
     expected_sha = provider_digest(expected_sha)
     root = root.resolve(strict=True)
-    smoke = phase in ("smoke", "L-smoke")
-    output = root / ("L-smoke" if phase == "L-smoke" else "smoke")
-    emitter = {"L-smoke": "sz3_joint_recipe.py", "RT4-M-A": "rt4m_joint.py"}.get(phase, "sz2_joint_segment.py")
+    split_smoke = phase in ("L-smoke", "RT4-M-A-smoke")
+    smoke = phase == "smoke" or split_smoke
+    output = root / phase
+    emitter = {"L-smoke": "sz3_joint_recipe.py", "RT4-M-A": "rt4m_joint.py",
+               "RT4-M-A-smoke": "rt4m_joint.py"}.get(phase, "sz2_joint_segment.py")
     if smoke and os.path.lexists(output):
         raise RuntimeError(f"smoke output already exists: {output}")
-    if phase in ("L-smoke", "RT4-M-A") and (min_free_gib is None or min_free_gib <= 0):
+    if (split_smoke or phase == "RT4-M-A") and (min_free_gib is None or min_free_gib <= 0):
         raise ValueError(f"{phase} requires a positive --min-free-gib")
 
     def guard():
@@ -305,17 +307,17 @@ def run_segment(root, phase, check_signal, expected_sha=None, min_free_gib=None)
                                      stdin=subprocess.DEVNULL)
             return monitor(child, baseline, guard, verify_stopped)
 
-        if phase == "L-smoke":
+        if split_smoke:
             rc = train([*argv, "--pause-at-report"])
             if rc != 7:
-                raise RuntimeError(f"L-smoke trainer exited {rc} before its checkpoint pause")
+                raise RuntimeError(f"{phase} trainer exited {rc} before its checkpoint pause")
             directory = output / "train"
             last = (directory / "status.log").read_text().splitlines()
             if not last or not re.fullmatch(
                     r"\S+ UTR PAUSED at epoch 1 buffer 1/[1-9][0-9]* \(report boundary\); checkpoint saved", last[-1]):
-                raise RuntimeError("L-smoke lacks the expected trainer pause")
+                raise RuntimeError(f"{phase} lacks the expected trainer pause")
             if os.path.lexists(directory / "STOP"):
-                raise RuntimeError("L-smoke operator STOP present before continuation")
+                raise RuntimeError(f"{phase} operator STOP present before continuation")
             argv = [*argv, "--expect-resume-buffer", "1"]
         rc = train(argv)
     guard()
@@ -325,9 +327,17 @@ def run_segment(root, phase, check_signal, expected_sha=None, min_free_gib=None)
         return 7
     if rc or phase == "medium-prefix":
         raise RuntimeError(f"{phase} trainer exited {rc}")
-    if phase == "L-smoke":
+    if split_smoke:
         from sz3_joint_recipe import smoke_result
-        print(json.dumps(smoke_result(output / "train"), allow_nan=False), flush=True)
+        rounds = None
+        if phase == "RT4-M-A-smoke":
+            from shengji.train.unified_readout import _run_identity, build_parser
+            parsed = build_parser().parse_args(argv[4:])
+            if (parsed.microbatch_rounds is not None or
+                    json.loads((output / "train/run.json").read_bytes()) != _run_identity(parsed)):
+                raise ValueError("capacity smoke must match the full-batch trainer recipe")
+            rounds = parsed.rounds_per_batch
+        print(json.dumps(smoke_result(output / "train", required_batch_rounds=rounds), allow_nan=False), flush=True)
     if phase == "RT4-M-A":
         from rt4m_joint import verify_completion
         verify_completion(root)
@@ -337,7 +347,7 @@ def run_segment(root, phase, check_signal, expected_sha=None, min_free_gib=None)
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
-    parser.add_argument("--phase", choices=("smoke", "L-smoke", "RT4-M-A", "small", "medium-prefix", "medium-finish"), default="smoke")
+    parser.add_argument("--phase", choices=("smoke", "L-smoke", "RT4-M-A-smoke", "RT4-M-A", "small", "medium-prefix", "medium-finish"), default="smoke")
     parser.add_argument("--min-free-gib", type=int, help="minimum free space on the training volume")
     parser.add_argument("--provider-sha256", help="reviewed SHA256 of the provider configuration")
     args = parser.parse_args()

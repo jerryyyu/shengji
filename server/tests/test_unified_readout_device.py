@@ -260,6 +260,8 @@ def test_split_capacity_reads_real_pause_and_resume(data, tmp_path, device, monk
     monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
     from sz3_joint_recipe import smoke_result
     result = smoke_result(out)
+    with pytest.raises(ValueError, match="full training batch"):
+        smoke_result(out, required_batch_rounds=16)
     capacity = result["capacity"]
     assert capacity["steps"] == first["steps"] + second["steps"]
     assert capacity["rows"] == first["rows"] + second["rows"]

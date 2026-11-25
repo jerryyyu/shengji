@@ -445,12 +445,11 @@ def registry_entries(registry: Mapping[str, Any], environ: Mapping[str, str] | N
         raise SearchFreeError(f"SHENGJI_BOT {base_name!r} is not a registered policy")
     base_factory = registry[base_name]
     name = f"{base_name}-{TOKEN}{sha[:8]}"
-    cache: list[SearchFreeModel] = []
 
     def make(**kw):
         import inspect
-        if not cache:
-            cache.append(load_package(path, sha256=sha))
+        from .relaxed_play import casual_model
+
         try:
             params = inspect.signature(base_factory).parameters
         except (TypeError, ValueError):
@@ -462,7 +461,8 @@ def registry_entries(registry: Mapping[str, Any], environ: Mapping[str, str] | N
                 base.policy_name = base_name
             except AttributeError:
                 pass
-        bot = SearchFreeBot(base, cache[0])
+        model = casual_model(path, sha, shared_unified=getattr(base, "unified_prior_model", None))
+        bot = SearchFreeBot(base, model)
         bot.policy_name = name
         return bot
     return {name: make}

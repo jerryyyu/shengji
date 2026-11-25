@@ -688,10 +688,25 @@ def test_fixed_trunk_candidate_update_exports_served_scores(world, tmp_path, mon
         assert is_legal(rnd, seat, bot.decide_play(rnd, seat))
         assert bot.last_decision_record["schema"] == rp.RECORD_SCHEMA
 
+    from shengji.ai import registry
+    monkeypatch.setattr(registry, "REGISTRY", {**registry.REGISTRY, "fixture-base": lambda: served})
+    monkeypatch.setenv("SHENGJI_BOT", "fixture-base")
+    monkeypatch.setenv(sf.ENV_CKPT, str(head_path))
+    monkeypatch.setenv(sf.ENV_SHA256, head_sha)
+    registry._register_search_free_from_env()
+    name = f"fixture-base-{sf.TOKEN}{head_sha[:8]}"
+    registered = registry.make_bot(name, seed=17)
+    assert registered.model.unified is shared
+    assert registry.make_bot(name, seed=18).model is registered.model
+    assert is_legal(rnd, seat, registered.decide_play(rnd, seat))
+    assert registered.last_decision_record["schema"] == sf.DECISION_SCHEMA
+
     # A different loaded package with identical weights is still a different runtime pin.
     other_path = tmp_path / "other.npz"
     other_pin = rn.save_package(other_path, m.config, runtime.unified.trunk.w, runtime.unified.h, readout, {"other": True})
     served.unified_prior_model = unified_serving.load_unified(str(other_path), other_pin)
+    with pytest.raises(sf.SearchFreeError, match="pinned unified model"):
+        registry.make_bot(name, seed=17)
     assert server.make_relaxed_bot(served, seed=17) is served
     del served.unified_prior_model
     assert server.make_beginner_bot(served, seed=17) is served

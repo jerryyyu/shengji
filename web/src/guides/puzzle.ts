@@ -67,8 +67,9 @@ export function neutralTitle(meta: FrontMatter, headings: Heading[]): string {
 }
 
 // An option's note of which bot played it, in either language; hidden until the pick.
-const BOT_PLAY = /\s*(This is the rule-based bot's play\.|Our bot's play: |这是规则机器人的出法。|我们 AI 的出法：)/;
-const LATER = (m: string) => `${/^\s/.test(m) ? " " : ""}<span data-pz-later>${m.trim()}</span>${m.endsWith(" ") ? " " : ""}`;
+// Each is a whole sentence, so the option reads the same with it hidden.
+const BOT_PLAY = /\s*(This is (?:the rule-based|our) bot's play\.|这是(?:规则机器人|我们 AI )的出法。)/;
+const LATER = (m: string) => `${/^\s/.test(m) ? " " : ""}<span data-pz-later>${m.trim()}</span>`;
 
 const OPTION_ITEM = /^<li><strong>([A-D])\.<\/strong>/;
 

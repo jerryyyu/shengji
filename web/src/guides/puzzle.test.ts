@@ -91,12 +91,28 @@ describe("a puzzle page with its script", () => {
     expect($("[data-pz-verdict]").textContent).toBe("你选了 B。模拟结果支持 A。");
   });
 
+  it("leave every option reading as whole sentences with its bot label hidden", () => {
+    for (const lang of ["en", "zh"] as const) {
+      for (const slug of PUZZLES) {
+        window.localStorage.clear();
+        open(page(lang, slug));
+        for (const b of document.querySelectorAll("button.pz-opt")) {
+          const text = visibleText(b).replace(/\s+/g, " ").trim();
+          const where = `${lang}/${slug} ${b.getAttribute("data-opt")}: ${text}`;
+          expect(text, where).not.toMatch(/\. [a-z]/);
+          expect(text, where).not.toMatch(/[:：]$/);
+          expect(text, where).toMatch(lang === "en" ? /[.]$/ : /[。]$/);
+        }
+      }
+    }
+  });
+
   it("names neither bot's play, nor the answer in the tab title, before the pick", () => {
     const cases: [string, string, string, string][] = [
       ["en", "tough-bury-short-suits", "A is our bot's choice", "Toughest decisions 1: what would you bury? | Sheng Ji guides"],
-      ["en", "tough-keep-the-big-jokers", "Our bot's play", "Toughest decisions 4: what would you play? | Sheng Ji guides"],
+      ["en", "tough-keep-the-big-jokers", "This is our bot's play", "Toughest decisions 4: what would you play? | Sheng Ji guides"],
       ["zh", "tough-dont-feed-the-trick", "这是规则机器人的出法", "难题精选 3：你出什么？ | 升级攻略"],
-      ["zh", "tough-keep-the-big-jokers", "我们 AI 的出法", "难题精选 4：你出什么？ | 升级攻略"],
+      ["zh", "tough-keep-the-big-jokers", "这是我们 AI 的出法", "难题精选 4：你出什么？ | 升级攻略"],
     ];
     for (const [lang, slug, hint, tab] of cases) {
       const html = page(lang as "en" | "zh", slug);

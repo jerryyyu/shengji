@@ -1660,6 +1660,10 @@ async def advance_if_all_ready(room: Room) -> bool:
         # the levels restarted: the bots' level is chosen again, from this
         # round's ordered rating read (``run_deal`` settles it)
         ranked_bots.begin_game(room)
+    else:
+        # a relaxed level is re-checked from this round's ordered rating
+        # read, and rises if a rating crossed its line (``run_deal``)
+        ranked_bots.begin_round(room)
     _log_round_start(room)
     saved_games.round_started(room)
     ratings.round_started(room)
@@ -1679,8 +1683,9 @@ def _log_round_start(room: Room) -> int | None:
     # ``bot_policy`` names what plays the bot seats, so a relaxed room's
     # rounds (``bot_level`` "standard") stay out of the served bot's tallies;
     # a ranked room with Beginner or Standard opponents logs that level, and
-    # names those seats (``standard_seats``); a game's first round logs its
-    # choice in a ``bot_levels`` record once it is read. The log is server-only.
+    # names those seats (``standard_seats``); a round whose level is chosen
+    # (a game's first) or rises (a later round) logs it in a ``bot_levels``
+    # record once it is read. The log is server-only.
     standard = ranked_bots.standard(room)
     return room.log_event("round_start", deck=rnd.deck, banker=rnd.banker,
                    trump_rank=rnd.trump_rank, levels=list(game.levels),

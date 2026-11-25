@@ -12,7 +12,7 @@ its level's anchor (``BOT_ANCHORS``): ``ADVANCED_BOT_RATING`` (1059) for the
 served bot, or ``STANDARD_BOT_RATING`` or ``BEGINNER_BOT_RATING`` (1000) when
 it played Standard or Beginner (``ranked_bots``: the opposing pair of a table
 whose people all rate 1000 or less, or 800 or less for Beginner; which seats
-did is read when the round starts). A guest seat (a person with no account, in a
+did is settled before the round's first card). A guest seat (a person with no account, in a
 queue-matched room) counts ``GUEST_RATING`` (800, a new account's start) and
 is never rated itself, so solo games against bots, games
 with a partner and mixed tables share one scale. A round with a guest rates

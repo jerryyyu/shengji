@@ -23,7 +23,9 @@ them under `room.lock` before committing; on a mismatch, discard or redo.
   and `_paced_deal` (a virtual clock over the real `run_deal`) (#1776).
 - `test_ranked_bots.py`:
   `test_a_handover_between_search_and_commit_replays_the_turn_at_advanced` and
-  `test_a_seat_that_changes_during_the_settling_read_is_read_again` (#1781).
+  `test_a_seat_that_changes_during_the_settling_read_is_read_again` (#1781);
+  for a later round's level rise, `test_a_round_replaced_during_the_rise_read_changes_nothing`
+  and `test_a_seat_that_changes_during_the_rise_read_is_read_again`.
 
 ## 3. Seat or identity change mid-game
 
@@ -34,7 +36,9 @@ round or game start is checked against the new holder.
 - `test_ratings.py`: `Table` (four assigned seats played in-process), as in
   `test_a_mid_round_claimant_does_not_change_the_round_for_the_others`.
 - `test_ranked_bots.py`: `test_a_guest_seat_resumed_as_a_1200_account_promotes`
-  and `test_a_guest_who_signs_in_during_the_opening_deal_is_read_as_the_account` (#1781).
+  and `test_a_guest_who_signs_in_during_the_opening_deal_is_read_as_the_account` (#1781);
+  a holder check overlapping a later round's rise read, in both completion orders:
+  `test_the_rise_settle_is_authoritative_over_an_overlapping_seat_check`.
 
 ## 4. Old and new peers
 

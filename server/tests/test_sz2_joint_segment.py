@@ -350,6 +350,8 @@ def test_matched_scratch_recipe_consumed_by_trainer(segment, cpu_root, tmp_path,
         return ur.build_parser().parse_args(cmd[4:])
 
     medium, large, smoke = map(parsed, ("M", "L-prefix", "L-smoke"))
+    for args in (medium, large, smoke):
+        assert (args.lr, args.head_lr, args.readout_lr) == (3e-4, 1e-3, 1e-3)
     for args, expected in ((medium, 9303324), (large, 20874972)):
         assert args.init_readout_ckpt is None and args.init is None and args.init_ckpt is None
         assert args.max_train_rows is None and args.report_buffer == 400

@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 BOUNDARY = 400
 SMOKE_BOUNDARY = 1
 DEVICE = "mps"
+SCRATCH_RATES = dict(lr=3e-4, head_lr=1e-3, readout_lr=1e-3)
 ARCHITECTURE = {
     depth: f"d={48 * depth},heads={depth},enc_layers={depth},xattn_layers={depth},x_hidden=256"
     for depth in (6, 8)
@@ -29,7 +30,7 @@ def _train_args(phase, root, recipe):
     smoke = phase == "L-smoke"
     depth = 6 if phase == "M" else 8
     directory = "L" if phase in ("L-prefix", "L-finish") else phase
-    args = joint_args(recipe, ["--scratch-arch", ARCHITECTURE[depth]], root / directory / "train", DEVICE,
+    args = joint_args({**recipe, **SCRATCH_RATES}, ["--scratch-arch", ARCHITECTURE[depth]], root / directory / "train", DEVICE,
                       SMOKE_BOUNDARY if smoke else BOUNDARY, phase == "L-prefix")
     args.extend(["--microbatch-rounds", "4"])
     if smoke:

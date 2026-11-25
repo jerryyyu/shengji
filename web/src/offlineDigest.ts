@@ -89,7 +89,7 @@ export class OfflineDigest {
   private readonly deps: DigestDeps;
 
   constructor(deps: Partial<DigestDeps> & { kv?: () => Kv | null } = {}) {
-    this.deps = { kv: deps.kv ?? deviceKv, locks: deps.locks ?? webLocks, onePage: deps.onePage ?? isNative };
+    this.deps = { kv: deps.kv ?? deviceKv, locks: deps.locks ?? webLocks, onePage: deps.onePage ?? (() => isNative()) };
   }
 
   /** One read-change-write at a time: in call order on this page, and under

@@ -442,6 +442,32 @@ def test_accumulated_rounds_preserve_weighted_gradient_and_batch_totals(world):
         torch.testing.assert_close(p.grad, q.grad, rtol=2e-4, atol=2e-6)
 
 
+def test_trainer_reads_loss_vectors_at_buffer_boundaries(world, tmp_path, monkeypatch):
+    from tests.test_unified_seq import extract_dir
+
+    data = extract_dir(world["store"], tmp_path / "data", calib=0.5, task_clusters=1)
+    reads = []
+    read_totals = ur._buffer_totals
+
+    def record(vectors):
+        assert all(v.shape == (len(ur.SUM_KEYS),) and not v.requires_grad for v in vectors)
+        totals = read_totals(vectors)
+        reads.append((len(vectors), totals))
+        return totals
+
+    monkeypatch.setattr(ur, "_buffer_totals", record)
+    out = tmp_path / "train"
+    _train_run([data], _readout_ckpt(tmp_path), out, "--microbatch-rounds", "1",
+               "--buffer-chunks", "1", "--report-buffer", "1")
+    report = json.loads((out / "epoch-1-buffer-1.json").read_text())
+    assert len(reads) > 1 and reads[0][0] > 1
+    assert report["rows"] == reads[0][1][ur.SUM_KEYS.index("rows")]
+    assert report["train"] == ur.means(reads[0][1])
+    state = torch.load(out / "checkpoint.pt", weights_only=False)["state"]
+    np.testing.assert_allclose(list(state["history"][0]["train"].values()),
+                               list(ur.means(np.sum([v for _, v in reads], axis=0)).values()))
+
+
 @pytest.mark.skipif(not torch.backends.mps.is_available(), reason="requires MPS")
 def test_microbatch_cli_preserves_optimizer_step_count_on_mps(world, tmp_path, monkeypatch):
     from tests.test_unified_seq import extract_dir

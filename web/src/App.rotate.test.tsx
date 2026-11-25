@@ -34,10 +34,10 @@ const playing = {
   last_trick: null, attacker_points: 0, kitty_count: 8, message: null, notice: null, round_result: null,
 };
 
-/** A viewport answering the layout queries as `portrait` / `short` / `touch`. */
-function viewport({ portrait, short, touch = false }: { portrait: boolean; short: boolean; touch?: boolean }) {
+/** A viewport answering the layout queries as `portrait` / `short` / `large` (TABLET_SCREEN). */
+function viewport({ portrait, short, large = false }: { portrait: boolean; short: boolean; large?: boolean }) {
   window.matchMedia = ((q: string) => ({
-    matches: q === PORTRAIT_PHONE ? portrait : q === SHORT_VIEWPORT ? short : q === TABLET_SCREEN ? touch : false,
+    matches: q === PORTRAIT_PHONE ? portrait : q === SHORT_VIEWPORT ? short : q === TABLET_SCREEN ? large : false,
     media: q, addEventListener() {}, removeEventListener() {},
   })) as unknown as typeof window.matchMedia;
 }
@@ -114,7 +114,7 @@ describe("a phone held sideways, a desktop", () => {
     expect(document.documentElement.classList.contains(PHONE_CLASS)).toBe(true);
   });
 
-  it("leaves a tall landscape screen without the phone class or a turn", async () => {
+  it("leaves a landscape window under 810x740 that is not short without the phone class, the tablet class or a turn", async () => {
     viewport({ portrait: false, short: false });
     const ws = await mountApp();
     act(() => ws.deliver(playing));
@@ -124,9 +124,9 @@ describe("a phone held sideways, a desktop", () => {
   });
 });
 
-describe("a tablet", () => {
+describe("a tablet, a large desktop window", () => {
   it("draws the table with the tablet class, and the lobby without it", async () => {
-    viewport({ portrait: false, short: false, touch: true });
+    viewport({ portrait: false, short: false, large: true });
     const ws = await mountApp();
     expect(document.documentElement.classList.contains(TABLET_CLASS)).toBe(false);
     act(() => ws.deliver(playing));
@@ -138,7 +138,7 @@ describe("a tablet", () => {
   });
 
   it("leaves a phone, which is a touch screen too, on the phone table", async () => {
-    viewport({ portrait: false, short: true, touch: true });
+    viewport({ portrait: false, short: true, large: true });
     const ws = await mountApp();
     act(() => ws.deliver(playing));
     expect(document.documentElement.classList.contains(PHONE_CLASS)).toBe(true);
@@ -155,12 +155,13 @@ it("turns only the table, and only on a portrait phone", () => {
   expect(phoneLayout(false, false, true)).toEqual({ phone: false, rotated: false, tablet: false });
 });
 
-it("sizes the table to the screen only on a touch screen large enough for the tablet table", () => {
+it("sizes the table to the screen only on a screen large enough for the tablet table, touch or mouse", () => {
   expect(phoneLayout(false, false, true, true)).toEqual({ phone: false, rotated: false, tablet: true });
-  // a mouse-driven browser, or a touch window under 810x740, keeps the wide table's fixed sizes
+  // a window under 810x740, touch or mouse, keeps the wide table's fixed sizes
   expect(phoneLayout(false, false, true, false).tablet).toBe(false);
-  // below 740px tall or 810px wide the cross cannot keep a six-card trick at 52px cards
-  expect(TABLET_SCREEN).toBe("(pointer: coarse) and (min-width: 810px) and (min-height: 740px)");
+  // below 740px tall or 810px wide the cross cannot keep a six-card trick at
+  // 52px cards; the query names no pointer, so an iPad matches as before
+  expect(TABLET_SCREEN).toBe("(min-width: 810px) and (min-height: 740px)");
   // a sideways touch window under that height takes the phone table, which fits a short screen
   expect(SHORT_VIEWPORT).toBe("(max-height: 500px), (pointer: coarse) and (orientation: landscape) and (max-height: 739px)");
   // the phone table and the turned table are touch screens that are not tablets

@@ -3585,10 +3585,10 @@ dialog.modal-backdrop::backdrop { background: transparent; }
        - the trick cross's card is as large as the height between the top
          seat and your row allows, the side seats level with its centre; the
          hand gives up to a fifth of its card where that lets it grow.
-     phoneLayout.ts sets the class only on a touch screen at least 810x740
-     (TABLET_SCREEN): from there the cross keeps a six-card trick's cards at
-     the wide table's 52px or more. A mouse-driven browser and a smaller
-     touch window never match this block. */
+     phoneLayout.ts sets the class only on a screen at least 810x740
+     (TABLET_SCREEN), touch or mouse: from there the cross keeps a six-card
+     trick's cards at the wide table's 52px or more. A smaller window never
+     matches this block. */
   /* on the root, so the toast, drawn outside the table, reads them too */
   & {
     --u: clamp(1px, min(calc(100vw / 880), calc(100dvh / 640)), 1.5px);
@@ -3662,6 +3662,17 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .hand .card.selected::after {
     bottom: calc(-18 * var(--u));
+  }
+
+  /* a mouse's hover lift grows with the selected card's, staying above it */
+  @media (hover: hover) and (pointer: fine) {
+    .hand.selectable .card.clickable:hover {
+      transform: translateY(calc(-10 * var(--u)));
+    }
+
+    .hand.selectable .card.selected:hover {
+      transform: translateY(calc(-22 * var(--u)));
+    }
   }
 
   .trick-area {
@@ -5579,6 +5590,19 @@ body.keyboard-open .tabbar { display: none; }
 }
 /* Me and the Leaderboard are the phone's column at every width, centred */
 .me-page .home-col, .lb-page .home-col { max-width: 560px; }
+/* A large desktop window draws every page off the table larger, whole: the
+   home column, its top bar and each sheet or dialog over them keep the phone
+   column's design, read from further away. A mouse only, so a touch screen
+   is never zoomed; the table sizes itself to the screen (.tablet-table). */
+@media (hover: hover) and (pointer: fine) and (min-width: 1600px) and (min-height: 900px) {
+  :root:not(:has(.table-screen)) { zoom: 1.25; }
+  /* a zoomed 100dvh is taller than the window; the root's 100% is not */
+  :root:not(:has(.table-screen)) .app { height: 100%; }
+}
+
+@media (hover: hover) and (pointer: fine) and (min-width: 2200px) and (min-height: 1200px) {
+  :root:not(:has(.table-screen)) { zoom: 1.4; }
+}
 /* Me's two parts flow as one column at every width, the phone's page
    centred and capped like every other page */
 .me-cols, .me-col { display: contents; }

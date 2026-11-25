@@ -705,6 +705,39 @@ def test_fixed_trunk_candidate_update_exports_served_scores(world, tmp_path, mon
     with pytest.raises(ValueError, match="recorded attempt"):
         next(trainer.candidate_batches(entry, tmp_path, verified))
 
+def test_candidate_scores_use_only_completed_plays_and_ignore_targets(world, tmp_path):
+    from shengji.train import search_free_head as trainer
+    from shengji.train import unified_readout
+
+    entry = us.entries_for([str(world["data"])], "train")[0]
+    _candidate_fixture(world, entry, tmp_path)
+    batch, ballot = next(trainer.candidate_batches(entry, tmp_path, bs._Verified(), rounds_per_batch=16))
+    torch.manual_seed(5)
+    model = unified_readout.build(SMALL).eval()
+    head = trainer.build_head(model.config["trunk"]).eval()
+
+    @torch.no_grad()
+    def scores(b, c):
+        return torch.stack(trainer.score_batch(model, head, b, c))
+
+    original = scores(batch, ballot)
+    decision = int(np.argmax(batch["ply"]))
+    ply = batch["ply"][decision]
+    assert ply > 0
+    rr = batch["rr"][decision]
+    keep = ballot["row"] == decision
+    later = {key: value.copy() for key, value in batch.items()}
+    for key in ("tok_f", "tok_cards", "tok_att"):
+        later[key][rr, ply:] = 1 - later[key][rr, ply:]
+    later["tok_int"][rr, ply:, 0] = (later["tok_int"][rr, ply:, 0] + 1) % 4
+    later["Y"] = np.roll(later["Y"], 1, axis=-1)
+    other_targets = dict(ballot, mean=-ballot["mean"], played=~ballot["played"])
+    torch.testing.assert_close(scores(later, other_targets)[:, keep], original[:, keep], rtol=0, atol=0)
+
+    later["tok_f"][rr, ply - 1] += 1
+    assert not torch.allclose(scores(later, other_targets)[:, keep], original[:, keep])
+
+
 def test_candidate_schedule_recovers_from_an_interrupted_update(world, tmp_path, monkeypatch):
     from shengji.ai import unified_readout_numpy as rn
     from shengji.train import search_free_head as trainer

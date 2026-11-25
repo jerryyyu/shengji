@@ -1120,6 +1120,9 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
             if rnd.declaration else None),
         "trick": trick_json(rnd.trick, rnd.ordering),
         "last_trick": trick_json(rnd.last_trick, rnd.ordering),
+        # tricks resolved this round: two tricks can look alike in
+        # last_trick, and a reconnect skips some; older clients ignore it
+        "tricks_done": len(rnd.history),
         "attacker_points": rnd.attacker_points,
         "kitty_count": 8,
         "round_result": ({

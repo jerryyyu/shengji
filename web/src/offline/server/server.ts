@@ -514,6 +514,7 @@ export function stateFor(room: LocalRoom, seat: number, now = 0): Json {
     current_declaration: rnd.declaration ? { seat: rnd.declaration.seat, cards: rnd.declaration.cards } : null,
     trick: trickJson(rnd.trick, ordering),
     last_trick: trickJson(rnd.lastTrick, ordering),
+    tricks_done: rnd.history.length,
     attacker_points: rnd.attackerPoints,
     kitty_count: 8,
     round_result: result

@@ -176,8 +176,10 @@ export default function PrivacyPage() {
             device, roughly how long ago this device first opened the game (the same day, the next day,
             within a week, a month, or longer) and how many visits it has made (one, two, a few, or
             more), the app's language, the app version, and a random id that lasts for one connection.
-            To tell those, your device keeps the day it first opened the game and a count of its
-            visits; only the rough ranges are sent. Each sign-in is also
+            To tell those, your device keeps the day it first opened the game, a count of its
+            visits, whether it has played a round, and, while a round is open, that round's kind and
+            trick count; only the rough ranges are sent. Each browser, and in the iPhone app each of
+            its online and offline pages, keeps these on its own. Each sign-in is also
             counted, by Apple or Google and whether it made a new account, with no id at all.
           </p>
           <p>

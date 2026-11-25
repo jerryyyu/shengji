@@ -27,6 +27,23 @@ dropped, and the socket's ``app_version`` and queue events carry the same
 value. Apps up to 1.0.1 send no token: a ``platform`` ``ios_app`` row with no
 ``app_version`` is from 1.0.1 or earlier.
 
+What the page keeps to compute its stamps and round events lives in that
+page's own origin storage (web/src/telemetryStamps.ts, roundTelemetry.ts):
+the first-seen date, the session counter and the played-a-round flag in
+local storage, an open online round in the tab's session storage. Two
+origins never share them: a browser's site, and in the iOS app the hosted
+site and the bundled offline page, each count on their own. So
+``device_account.first_round_before`` says only whether this origin saw a
+round, never a round played on the app's other origin, and a device's
+``days_since_first`` restarts on cleared site data. Only the offline digest's
+counts are shared across the app's two origins (its native store).
+
+``round_finish.tricks_played`` is the server's own ``tricks_done`` count; a
+round whose page saw any state without it sends no count. ``by: closed`` is
+said at a pagehide, or on the same tab's next load when the page went
+without one; a session that ended with the page (an app killed in the
+background) leaves no such record.
+
 A batch holding any event sent at a sign-in or identity change
 (``signin``, ``device_account`` or the ``signin_open`` tap) is an identity
 batch: every row of it keeps ``ts`` only to the hour and drops ``t``, and it

@@ -2919,6 +2919,8 @@ def test_an_empty_room_plays_slowly_through_the_grace_then_closes(client, monkey
         code, room = _banker_leads(client, a, monkeypatch, bot_delay=0.3)
         times = _play_times(room)
         _real_play(client, a, room)
+        # the frame carries the round's resolved tricks, the client's trick count
+        assert srv.state_for(room, 0)["tricks_done"] == len(room.round.history)
     finally:
         a.__exit__(None, None, None)
     gone = time.monotonic()

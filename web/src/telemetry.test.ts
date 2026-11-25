@@ -130,7 +130,7 @@ describe("funnel events and batch stamps", () => {
     t.roundStart("casual", 7, 900);
     t.roundFinish("casual", "end", 40, true);
     t.roundFinish("casual", "left", -2, true);
-    t.offlineDigest({ rounds_started: 500, rounds_finished: 1, nearby_rounds: -1 });
+    t.roundFinish("friend", "closed");
     t.howtoStep(99, false);
     expect(t.pending().map(({ t: _t, ...e }) => e)).toEqual([
       { e: "app_open", cold: true, ms_to_socket: 120_000 },
@@ -138,9 +138,22 @@ describe("funnel events and batch stamps", () => {
       { e: "round_start", mode: "casual", bots: 3, nth_round_this_load: 50 },
       { e: "round_finish", mode: "casual", by: "end", tricks_played: 25, won: true },
       { e: "round_finish", mode: "casual", by: "left", tricks_played: 0 },
-      { e: "offline_digest", rounds_started: 99, rounds_finished: 1, nearby_rounds: 0 },
+      { e: "round_finish", mode: "friend", by: "closed" },          // an unknown count is no count
       { e: "howto_step", step: 20, done: false },
     ]);
+  });
+
+  it("the offline digest goes in a batch of its own, only while collecting, and says whether it went", () => {
+    const t = new Telemetry(sender(), true);
+    expect(t.sendOfflineDigest({ rounds_started: 500, rounds_finished: 1, nearby_rounds: -1 })).toBe(true);
+    expect(t.pending()).toEqual([]);                                  // never buffered
+    expect(sent[0].events).toEqual([expect.objectContaining(
+      { e: "offline_digest", rounds_started: 99, rounds_finished: 1, nearby_rounds: 0 })]);
+    expect(new Telemetry(sender(false), true).sendOfflineDigest({ rounds_started: 1, rounds_finished: 0, nearby_rounds: 0 }))
+      .toBe(false);                                                   // the socket refused it
+    expect(new Telemetry(sender(), false).sendOfflineDigest({ rounds_started: 1, rounds_finished: 0, nearby_rounds: 0 }))
+      .toBe(false);                                                   // offline: not collecting
+    expect(sent).toHaveLength(1);
   });
 
   it("device_account says whether a round came first", () => {

@@ -17,7 +17,7 @@ function memKv(): Kv & { data: Record<string, string> } {
   return { data, get: async (k) => data[k] ?? null, set: async (k, v) => { data[k] = v; } };
 }
 
-let trickNo = 0;
+let done = 0;
 function state(phase: Phase, over: Partial<GameState> = {}): GameState {
   return {
     type: "state", room: "ROOM", you: 0, phase, players: [0, 1, 2, 3].map((seat) => ({
@@ -25,23 +25,29 @@ function state(phase: Phase, over: Partial<GameState> = {}): GameState {
       controller: seat === 0 ? "human" : "bot",
     })), hand: [], levels: ["2", "2"], games_won: [0, 0], banker: 0, trump: null, turn: null,
     declare_options: [], current_declaration: null, passed: [], trick: null, last_trick: null,
-    attacker_points: 0, kitty_count: 8, round_result: null, message: null, notice: null, ...over,
+    attacker_points: 0, kitty_count: 8, round_result: null, message: null, notice: null, tricks_done: done, ...over,
   } as unknown as GameState;
 }
+/** A play-phase state after one more resolved trick, its last trick the
+ *  same four cards every time (two decks: alike tricks happen). */
 function afterTrick(): GameState {
-  trickNo += 1;
-  return state("play", { last_trick: { leader: 0, winner: 1, plays: [{ seat: 0, cards: [`S${trickNo}`] }] } } as Partial<GameState>);
+  done += 1;
+  return state("play", { tricks_done: done,
+                         last_trick: { leader: 0, winner: 1, plays: [{ seat: 0, cards: ["SA"] }] } } as Partial<GameState>);
 }
 function ended(winner: 0 | 1): GameState {
-  return state("round_end", { round_result: { winner_team: winner } } as Partial<GameState>);
+  return state("round_end", { tricks_done: done, round_result: { winner_team: winner } } as Partial<GameState>);
 }
 
 let store: ReturnType<typeof memStore>;
+let tab: ReturnType<typeof memStore>;
 let kv: ReturnType<typeof memKv>;
 let mode: { offline: boolean; nearby: boolean };
-function tracker(): RoundTracker {
+/** A page's tracker: the device's storage is shared, `session` is its tab's. */
+function tracker(session = tab): RoundTracker {
   const deps: RoundDeps = { online: () => !mode.offline && !mode.nearby, offline: () => mode.offline,
-                            nearby: () => mode.nearby, store: () => store, digest: new OfflineDigest(() => kv) };
+                            nearby: () => mode.nearby, store: () => store, session: () => session,
+                            digest: new OfflineDigest(() => kv) };
   return new RoundTracker(deps);
 }
 const events = () => telemetry.pending().filter((e) => e.e === "round_start" || e.e === "round_finish");
@@ -49,7 +55,9 @@ const events = () => telemetry.pending().filter((e) => e.e === "round_start" || 
 beforeEach(() => {
   telemetry.reset();
   store = memStore();
+  tab = memStore();
   kv = memKv();
+  done = 0;
   mode = { offline: false, nearby: false };
 });
 
@@ -59,16 +67,18 @@ describe("rounds as the page sees them", () => {
     r.observe(state("deal"));
     r.observe(state("declare"));
     r.observe(afterTrick());
+    const again = afterTrick();
+    r.observe(again);
+    r.observe(again);          // the same state twice is still two tricks
     r.observe(afterTrick());
-    r.observe(afterTrick());   // the same trick again is not counted twice
-    r.observe({ ...afterTrick(), last_trick: { leader: 0, winner: 1, plays: [{ seat: 0, cards: [`S${trickNo}`] }] } } as GameState);
+    r.observe(afterTrick());   // alike last tricks, each counted by the server's count
     r.observe(ended(0));
     r.observe(ended(0));       // a second round_end state says nothing more
     expect(events()).toEqual([
       expect.objectContaining({ e: "round_start", mode: "casual", bots: 3, nth_round_this_load: 1 }),
       expect.objectContaining({ e: "round_finish", mode: "casual", by: "end", won: true, tricks_played: 4 }),
     ]);
-    expect(store.data[OPEN_ROUND_KEY]).toBeUndefined();
+    expect(tab.data[OPEN_ROUND_KEY]).toBeUndefined();
     expect(store.data[PLAYED_KEY]).toBe("1");
   });
 
@@ -105,7 +115,7 @@ describe("rounds as the page sees them", () => {
     r.observe(null);
     r.closed();
     expect(events().map((e) => e.e)).toEqual(["round_start"]);
-    expect(store.data[OPEN_ROUND_KEY]).toBeUndefined();
+    expect(tab.data[OPEN_ROUND_KEY]).toBeUndefined();
   });
 
   it("a round first seen mid-play is not tracked", () => {
@@ -116,16 +126,48 @@ describe("rounds as the page sees them", () => {
     expect(events()).toEqual([]);
   });
 
-  it("the page closing mid-round says closed now; a load after a lost page says it once", () => {
+  it("a reconnect that skips tricks takes the server's count", () => {
     const r = tracker();
-    r.observe(state("deal"));
+    r.observe(state("deal", { tricks_done: 0 } as Partial<GameState>));
+    r.observe(state("play", { tricks_done: 7 } as Partial<GameState>));
+    r.observe(state("round_end", { tricks_done: 25, round_result: { winner_team: 1 } } as Partial<GameState>));
+    expect(events()[1]).toMatchObject({ e: "round_finish", by: "end", tricks_played: 25, won: false });
+  });
+
+  it("a round with any state lacking the server's count has no count, said as none", () => {
+    const r = tracker();
+    r.observe(state("deal", { tricks_done: 0 } as Partial<GameState>));
+    r.observe(state("play", { tricks_done: undefined }));         // an older server
+    r.observe(state("play", { tricks_done: 3 } as Partial<GameState>));
+    expect(tab.data[OPEN_ROUND_KEY]).toBe("casual:u");
+    r.left();
+    expect(events()[1]).toEqual(expect.objectContaining({ e: "round_finish", by: "left" }));
+    expect(events()[1]).not.toHaveProperty("tricks_played");
+  });
+
+  it("two tabs: one tab's open round is never the other's, and both finish as they played", () => {
+    const tabA = memStore(), tabB = memStore();
+    const a = tracker(tabA);
+    a.observe(state("deal", { tricks_done: 0 } as Partial<GameState>));
+    a.observe(afterTrick());
+    const b = tracker(tabB);                                      // a second tab opens
+    b.takeLastOpen();
+    b.sayLastClosed();
+    a.observe(ended(0));
+    expect(events().map((e) => [e.e, (e as { by?: string }).by])).toEqual([["round_start", undefined], ["round_finish", "end"]]);
+    expect(tabA.data[OPEN_ROUND_KEY]).toBeUndefined();
+  });
+
+  it("the page closing mid-round says closed now; a reload of the tab after a lost page says it once", () => {
+    const r = tracker();
+    r.observe(state("deal", { tricks_done: 0 } as Partial<GameState>));
     r.observe(afterTrick());
-    expect(store.data[OPEN_ROUND_KEY]).toBe("casual:1");
-    // the page went with no pagehide (an app killed in the background)
+    expect(tab.data[OPEN_ROUND_KEY]).toBe("casual:1");
+    // the page went with no pagehide; the same tab loads again
     telemetry.reset();
     const next = tracker();
     next.takeLastOpen();
-    expect(store.data[OPEN_ROUND_KEY]).toBeUndefined();
+    expect(tab.data[OPEN_ROUND_KEY]).toBeUndefined();
     next.sayLastClosed();
     next.sayLastClosed();
     expect(events()).toEqual([expect.objectContaining({ e: "round_finish", mode: "casual", by: "closed", tricks_played: 1 })]);
@@ -134,15 +176,15 @@ describe("rounds as the page sees them", () => {
     next.observe(state("deal"));
     next.closed();
     expect(events().map((e) => (e as { by?: string }).by)).toEqual([undefined, "closed"]);
-    expect(store.data[OPEN_ROUND_KEY]).toBeUndefined();
+    expect(tab.data[OPEN_ROUND_KEY]).toBeUndefined();
   });
 
   it("a stored round that is not one of ours is ignored", () => {
-    store.data[OPEN_ROUND_KEY] = "Jerry:3";
+    tab.data[OPEN_ROUND_KEY] = "Jerry:3";
     const r = tracker();
     r.takeLastOpen();
     r.sayLastClosed();
-    store.data[OPEN_ROUND_KEY] = "offline:3";
+    tab.data[OPEN_ROUND_KEY] = "offline:3";
     r.takeLastOpen();
     r.sayLastClosed();
     expect(events()).toEqual([]);
@@ -163,6 +205,6 @@ describe("rounds as the page sees them", () => {
     await new Promise((res) => setTimeout(res, 0));
     expect(events()).toEqual([]);
     expect(kv.data["shengji.telemetry.offline"]).toBe("3,1,2");
-    expect(store.data[OPEN_ROUND_KEY]).toBeUndefined();
+    expect(tab.data[OPEN_ROUND_KEY]).toBeUndefined();
   });
 });

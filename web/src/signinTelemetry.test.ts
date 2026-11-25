@@ -126,7 +126,7 @@ describe("no identifier in any payload", () => {
     t.appOpen(true, 900);
     t.roundStart("friend", 2, 3);
     t.roundFinish("friend", "closed", 4);
-    t.offlineDigest({ rounds_started: 2, rounds_finished: 1, nearby_rounds: 0 });
+    expect(t.sendOfflineDigest({ rounds_started: 2, rounds_finished: 1, nearby_rounds: 0 })).toBe(true);
     t.howtoStep(4, false);
     t.flush();
     const text = JSON.stringify(sent);

@@ -61,16 +61,15 @@ export class OfflineDigest {
     this.kv = kv;
   }
 
-  /** One read-change-write at a time, in call order; a failure changes nothing. */
-  private run(change: (c: OfflineCounts) => OfflineCounts | null, after?: (c: OfflineCounts) => void): Promise<void> {
+  /** One read-change-write at a time, in call order; a failure changes
+   *  nothing. `change` runs after the read and returns null to write nothing. */
+  private run(change: (c: OfflineCounts) => OfflineCounts | null): Promise<void> {
     this.chain = this.chain.then(async () => {
       const kv = this.kv();
       if (!kv) return;
-      const was = parseCounts(await kv.get(DIGEST_KEY));
-      const next = change(was);
+      const next = change(parseCounts(await kv.get(DIGEST_KEY)));
       if (next === null) return;
       await kv.set(DIGEST_KEY, formatCounts(next));
-      after?.(was);
     }).catch(() => undefined);
     return this.chain;
   }
@@ -82,10 +81,15 @@ export class OfflineDigest {
       : { ...c, rounds_finished: c.rounds_finished + 1 });
   }
 
-  /** Hands any counts to `send` and zeroes them; nothing when all are zero. */
-  drain(send: (c: OfflineCounts) => void): Promise<void> {
-    return this.run((c) => (c.rounds_started || c.rounds_finished || c.nearby_rounds ? { ...ZERO } : null),
-                    (was) => send(was));
+  /** Offers any counts to `send`, after the stored ones are read, and takes
+   *  them off only when `send` says its transport accepted them; a refusal
+   *  (no socket, the page gone offline meanwhile) keeps them for the next
+   *  online socket. Nothing is offered when all are zero. */
+  drain(send: (c: OfflineCounts) => boolean): Promise<void> {
+    return this.run((c) => {
+      if (!(c.rounds_started || c.rounds_finished || c.nearby_rounds)) return null;
+      return send(c) ? { ...ZERO } : null;
+    });
   }
 }
 

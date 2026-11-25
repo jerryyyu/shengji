@@ -86,7 +86,7 @@ type Event =
   | { e: "device_account"; t: number; step: DeviceStep; first_round_before: boolean }
   | { e: "app_open"; t: number; cold: boolean; ms_to_socket?: number }
   | { e: "round_start"; t: number; mode: RoundMode; bots: number; nth_round_this_load: number }
-  | { e: "round_finish"; t: number; mode: RoundMode; by: RoundBy; won?: boolean; tricks_played: number }
+  | { e: "round_finish"; t: number; mode: RoundMode; by: RoundBy; won?: boolean; tricks_played?: number }
   | ({ e: "offline_digest"; t: number } & OfflineCounts)
   | { e: "howto_step"; t: number; step: number; done: boolean }
   | { e: "notice"; t: number; code: string; where: Screen | "toast" | "other"; cause?: DropCause; ms?: number }
@@ -319,17 +319,29 @@ export class Telemetry {
                 nth_round_this_load: clamp(nth, 1, MAX_ROUNDS_PER_LOAD) });
   }
 
-  /** A round ended as the page saw it; `won` only at its round end. */
-  roundFinish(mode: RoundMode, by: RoundBy, tricks: number, won?: boolean): void {
-    const ev: Event = { e: "round_finish", t: now(), mode, by, tricks_played: clamp(tricks, 0, 25) };
+  /** A round ended as the page saw it; `won` only at its round end, and
+   *  no trick count when the round's count is unknown. */
+  roundFinish(mode: RoundMode, by: RoundBy, tricks?: number, won?: boolean): void {
+    const ev: Event = { e: "round_finish", t: now(), mode, by };
+    if (tricks !== undefined) ev.tricks_played = clamp(tricks, 0, 25);
     if (won !== undefined && by === "end") ev.won = won;
     this.push(ev);
   }
 
-  /** The rounds played on the device since the last digest. */
-  offlineDigest(c: OfflineCounts): void {
-    this.push({ e: "offline_digest", t: now(), rounds_started: clamp(c.rounds_started, 0, 99),
-                rounds_finished: clamp(c.rounds_finished, 0, 99), nearby_rounds: clamp(c.nearby_rounds, 0, 99) });
+  /** The rounds played on the device since the last digest, in a batch of
+   *  its own on the socket now: true only when the socket took it. Never
+   *  buffered, so counts kept for a later try are never sent twice. */
+  sendOfflineDigest(c: OfflineCounts): boolean {
+    if (!this.enabledNow()) return false;
+    try {
+      this.stamps.touch();
+      const ev: Event = { e: "offline_digest", t: now(), rounds_started: clamp(c.rounds_started, 0, 99),
+                          rounds_finished: clamp(c.rounds_finished, 0, 99), nearby_rounds: clamp(c.nearby_rounds, 0, 99) };
+      return this.send({ type: "client_event", v: 1, form: formFactor(), platform: platform(),
+                         first_visit: this.firstVisit, ...this.bucketStamps(), events: [ev] }) === true;
+    } catch {
+      return false;
+    }
   }
 
   /** A How to play step in view, or its last step's Start playing (`done`). */

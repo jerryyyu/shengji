@@ -31,11 +31,18 @@ def _entries(args):
     names = [trainer.candidate_name(e) for e in entries]
     if not entries or len(set(names)) != len(entries):
         raise ValueError("empty or duplicate training shard selection")
+    if args.select_from_candidate_sums:
+        if not sums or set(sums).difference(names):
+            raise ValueError("candidate selection is empty or includes a shard outside the training extracts")
+    selected = []
     for e, name in zip(entries, names):
+        if args.select_from_candidate_sums and name not in sums:
+            continue
+        selected.append(e)
         e["candidate_sha256"] = sums[name]
         if args.candidate_exclude_seed_window:
             e["candidate_exclude_seed_windows"] = args.candidate_exclude_seed_window
-    return entries
+    return selected
 
 
 def _fit(args, entries):
@@ -106,6 +113,8 @@ def main(argv=None):
                    help="window excluded when producing the candidate shards, also excluded from training")
     p.add_argument("--candidates", type=Path, required=True)
     p.add_argument("--candidate-sums", type=Path, required=True)
+    p.add_argument("--select-from-candidate-sums", action="store_true",
+                   help="train on exactly the train-shard basenames listed in the sums file")
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--epochs", type=int, required=True)
     p.add_argument("--lr", type=float, required=True)

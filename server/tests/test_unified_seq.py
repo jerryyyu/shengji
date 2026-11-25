@@ -778,6 +778,29 @@ def test_candidate_schedule_recovers_from_an_interrupted_update(world, tmp_path,
         bot = builder(served, resumed / "head.npz", seed=7, sha256=sha)
         assert is_legal(rnd, seat, bot.decide_play(rnd, seat))
         assert bot.last_decision_record["schema"] == rp.RECORD_SCHEMA
+    subset = tmp_path / "subset-sums"
+    extra_data = extract_dir(world["store"], tmp_path / "extra-extract")
+    extra_entry, = us.entries_for([str(extra_data)], "train")
+    subset.write_text(lines[-1])
+    selected_out = tmp_path / "selected"
+    selected_args = args + ["--data", str(extra_data), "--candidate-sums", str(subset), "--out", str(selected_out)]
+    with pytest.raises(KeyError):
+        schedule.main(selected_args)
+    selected_args.append("--select-from-candidate-sums")
+    assert schedule.main(selected_args) == 0
+    saved = torch.load(selected_out / "checkpoint.pt", weights_only=True)
+    assert saved["next_shard"] == 2 and saved["decisions"] == 4
+    for builder in (rp.build_casual, rp.build_beginner):
+        bot = builder(served, selected_out / "head.npz", seed=7, sha256=us.sha256_file(selected_out / "head.npz"))
+        assert is_legal(rnd, seat, bot.decide_play(rnd, seat))
+    subset.write_text(lines[-1] + "\n" + "0" * 64 + "  unknown.npz")
+    with pytest.raises(ValueError, match="outside the training extracts"):
+        schedule.main(selected_args)
+    subset.write_text(f"{'0' * 64}  {trainer.candidate_name(extra_entry)}")
+    with pytest.raises(FileNotFoundError):
+        schedule.main(selected_args + ["--out", str(tmp_path / "missing")])
+    with pytest.raises(ValueError, match="different training recipe"):
+        schedule.main(selected_args)
     monkeypatch.setattr(trainer, "fit_shard", lambda *a, **kw: pytest.fail("replayed a completed shard"))
     assert schedule.main(args + ["--out", str(resumed)]) == 0
 
@@ -826,7 +849,7 @@ def test_candidate_schedule_trains_from_producer_filtered_shard(world, tmp_path)
     counts = tmp_path / "SHA256SUMS"
     counts.write_text(f"{us.sha256_file(path)}  {path.name}\n")
     args = SimpleNamespace(data=[str(data)], candidate_sums=counts,
-                           candidate_exclude_seed_window=[], exclude_seed_window=[])
+                           candidate_exclude_seed_window=[], exclude_seed_window=[], select_from_candidate_sums=False)
     original, = schedule._entries(args)
     with pytest.raises(ValueError, match="does not match the extract rows"):
         list(trainer.candidate_batches(original, tmp_path, bs._Verified()))

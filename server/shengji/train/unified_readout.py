@@ -33,11 +33,13 @@ caller, and the run's status log says so.
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import math
 import os
 import sys
+import tempfile
 import time
 import traceback
 from pathlib import Path
@@ -812,22 +814,35 @@ def _cache_marker(out: Path, name: str, payload: dict) -> dict:
     """Atomically bind a cache producer setting before any worker writes shards."""
     marker = out / name
     if not marker.exists():
-        tmp = out / f"{name}.{os.getpid()}.tmp"
-        tmp.write_text(json.dumps(payload))
+        fd, tmp_name = tempfile.mkstemp(dir=out, prefix=f"{name}.", suffix=".tmp")
+        tmp = Path(tmp_name)
         try:
-            os.link(tmp, marker)
-        except FileExistsError:
-            pass
-        except OSError:
+            with os.fdopen(fd, "w") as stream:
+                json.dump(payload, stream)
+                stream.flush()
+                os.fsync(stream.fileno())
             try:
-                fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
-                with os.fdopen(fd, "w") as fh:
-                    fh.write(json.dumps(payload))
+                os.link(tmp, marker)
             except FileExistsError:
                 pass
+            except OSError as exc:
+                if os.name == "nt":
+                    try:
+                        os.rename(tmp, marker)
+                    except FileExistsError:
+                        pass
+                elif exc.errno in (errno.ENOTSUP, errno.EOPNOTSUPP):
+                    import fcntl
+                    # The lock serializes the existence check and rename on volumes without hard links.
+                    with (out / f"{name}.lock").open("ab") as lock:
+                        fcntl.flock(lock, fcntl.LOCK_EX)
+                        if not marker.exists():
+                            os.replace(tmp, marker)
+                else:
+                    raise
         finally:
-            tmp.unlink()
-    for _ in range(50):                              # the fallback writer may have opened the file without writing yet
+            tmp.unlink(missing_ok=True)
+    for _ in range(50):                              # an older writer may still be publishing its record
         text = marker.read_text()
         if text:
             break

@@ -84,19 +84,26 @@ def candidate_batches(entry, directory, verified, *, rounds_per_batch=1):
         yield b, c
 
 
-def score_batch(model, head, batch, candidates):
-    """Score corrected candidate tokens with detached pre-play states from the fixed trunk."""
+def _frozen_states(model, batch):
     import torch
-    from torch.nn.functional import one_hot
 
     m = model.trunk
     if m.training:
         raise ValueError("fixed trunk must be in evaluation mode")
-    device = next(m.parameters()).device
-    b = us.to_device(batch, device)
-    c = us.to_device(candidates, device)
+    b = us.to_device(batch, next(m.parameters()).device)
     with torch.no_grad():
         _, enc, q, g = us.trunk_forward(m, b)
+        table = m.card_id[None] + m.card_feat(b["card_feat"])
+    return b, enc, q, g, table
+
+
+def _score_candidates(m, head, states, candidates):
+    import torch
+    from torch.nn.functional import one_hot
+
+    b, enc, q, g, card_table = states
+    c = us.to_device(candidates, enc.device)
+    with torch.no_grad():
         row = c["row"].long()
         rr, ply = b["rr"][row], b["ply"][row]
         seat, pos, trick, lead = c["tok_int"].long().unbind(-1)
@@ -104,14 +111,19 @@ def score_batch(model, head, batch, candidates):
         role = (seat - b["banker"][rr]) % 4
         raw = torch.cat((tf, one_hot(pos, 4)), -1)
         meta = torch.cat((one_hot(pos, 4), one_hot(lead, 5), tf, one_hot(role, 4)), -1)
-        table = (m.card_id[None] + m.card_feat(b["card_feat"]))[rr]
+        table = card_table[rr]
         emb = (m.tok_meta(meta) + m.trick_emb(trick) + torch.bmm(cards[:, None], table)[:, 0]
                + m.pos_emb.weight[ply] + m.rel_emb.weight[0])
         prev = enc[rr * 4 + seat, (ply - 1).clamp_min(0)] * (ply > 0)[:, None]
     return head(emb, raw, cards, prev, g[row], q[row], b["X"][row, :54] > 0)
 
 
-def candidate_loss(values, logits, candidates):
+def score_batch(model, head, batch, candidates):
+    """Score corrected tokens in caller order from the fixed trunk's pre-play states."""
+    return _score_candidates(model.trunk, head, _frozen_states(model, batch), candidates)
+
+
+def candidate_loss(values, logits, candidates, *, decision_count=None, candidate_count=None):
     """Decision-balanced soft search and chosen-action losses plus candidate value regression."""
     import torch
     from torch.nn import functional as F
@@ -119,7 +131,10 @@ def candidate_loss(values, logits, candidates):
     row = torch.as_tensor(candidates["row"], device=logits.device).long()
     mean = torch.as_tensor(candidates["mean"], device=logits.device, dtype=logits.dtype)
     played = torch.as_tensor(candidates["played"], device=logits.device)
-    n = int(row.max()) + 1
+    groups, row = torch.unique(row, return_inverse=True)
+    n = groups.numel()
+    decisions = n if decision_count is None else decision_count
+    count = len(mean) if candidate_count is None else candidate_count
 
     def log_probs(x):
         mx = x.new_full((n,), -torch.inf).scatter_reduce_(0, row, x.detach(), "amax")
@@ -128,21 +143,42 @@ def candidate_loss(values, logits, candidates):
         return centered - total.log()[row]
 
     logp = log_probs(logits)
-    soft_ce = -(log_probs(mean / 0.05).exp() * logp).sum() / n
-    chosen_ce = -logp[played].sum() / n
-    return soft_ce + 0.5 * chosen_ce + F.smooth_l1_loss(values, mean)
+    soft_ce = -(log_probs(mean / 0.05).exp() * logp).sum() / decisions
+    chosen_ce = -logp[played].sum() / decisions
+    return soft_ce + 0.5 * chosen_ce + F.smooth_l1_loss(values, mean, reduction="sum") / count
 
 
-def fit_shard(model, head, optimizer, entry, directory, verified, *, rounds_per_batch=1):
+def _whole_ballots(candidates, target):
+    """Pack complete decisions; an individual ballot above the target runs by itself."""
+    rows = candidates["row"]
+    if len(rows) <= target:
+        yield candidates
+        return
+    order = np.argsort(rows, kind="stable")
+    start = stop = 0
+    for size in np.bincount(rows):
+        if stop > start and stop + size - start > target:
+            yield {k: v[order[start:stop]] for k, v in candidates.items()}
+            start = stop
+        stop += size
+    yield {k: v[order[start:stop]] for k, v in candidates.items()}
+
+
+def fit_shard(model, head, optimizer, entry, directory, verified, *, rounds_per_batch=1, candidate_target=128):
     """Update the candidate head on whole ballots from one prepared training chunk."""
+    if candidate_target < 1:
+        raise ValueError("candidate_target must be positive")
     decisions = 0
     for batch, candidates in candidate_batches(entry, directory, verified, rounds_per_batch=rounds_per_batch):
         optimizer.zero_grad(set_to_none=True)
-        values, logits = score_batch(model, head, batch, candidates)
-        loss = candidate_loss(values, logits, candidates)
-        if not loss.isfinite().item():
-            raise ValueError("non-finite candidate loss")
-        loss.backward()
+        states = _frozen_states(model, batch)
+        for group in _whole_ballots(candidates, candidate_target):
+            values, logits = _score_candidates(model.trunk, head, states, group)
+            loss = candidate_loss(values, logits, group, decision_count=len(batch["X"]),
+                                  candidate_count=len(candidates["row"]))
+            if not loss.isfinite().item():
+                raise ValueError("non-finite candidate loss")
+            loss.backward()
         optimizer.step()
         decisions += len(batch["X"])
     return decisions

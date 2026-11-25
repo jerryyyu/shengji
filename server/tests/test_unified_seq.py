@@ -592,13 +592,16 @@ def test_fixed_trunk_candidate_update_exports_served_scores(world, tmp_path, mon
         actions = enumerate_legal(rnd, seat, cap=20).actions
         if len(actions) < 2:
             continue
-        other = next(a for a in actions if Counter(a) != Counter(rec["action"]))
-        for j, action in enumerate((other, rec["action"])):
+        alternatives = [a for a in actions if Counter(a) != Counter(rec["action"])]
+        needed = 2 if row else 1
+        if len(alternatives) < needed:
+            continue
+        for j, action in enumerate([rec["action"], *alternatives[:needed]]):
             tokens.append(sf.candidate_token(rnd, seat, action))
             row.append(i)
             slot.append(j)
             mean.append(0.2 * j)
-            played.append(j == 1)
+            played.append(j == 0)
         if len(set(row)) == 2:
             break
     assert len(set(row)) == 2
@@ -613,7 +616,19 @@ def test_fixed_trunk_candidate_update_exports_served_scores(world, tmp_path, mon
     before = {k: v.clone() for k, v in m.state_dict().items()}
     pred = trainer.score_batch(m, head, b, c)
     opt = torch.optim.SGD(head.parameters(), lr=0.01)
-    assert trainer.fit_shard(m, head, opt, entry, tmp_path, verified, rounds_per_batch=16) == 2
+    reference = copy.deepcopy(head)
+    full = trainer.score_batch(m, reference, b, c)
+    trainer.candidate_loss(*full, c).backward()
+    torch.optim.SGD(reference.parameters(), lr=0.01).step()
+    group_sizes, trunk_calls = [], []
+    with head.register_forward_pre_hook(lambda _, args: group_sizes.append(len(args[0]))), \
+            m.trunk.encoder.register_forward_pre_hook(lambda *_: trunk_calls.append(1)):
+        assert trainer.fit_shard(m, head, opt, entry, tmp_path, verified,
+                                 rounds_per_batch=16, candidate_target=2) == 2
+    assert group_sizes == [2, 3] and trunk_calls == [1]
+    for actual, expected in zip(head.parameters(), reference.parameters()):
+        torch.testing.assert_close(actual.grad, expected.grad, atol=1e-5, rtol=1e-5)
+        torch.testing.assert_close(actual, expected, atol=1e-6, rtol=1e-5)
     assert all(p.grad is None for p in m.parameters())
     assert all(torch.equal(v, before[k]) for k, v in m.state_dict().items())
     with torch.no_grad():
@@ -675,6 +690,6 @@ def test_fixed_trunk_candidate_update_exports_served_scores(world, tmp_path, mon
         trainer.export(tmp_path / "wrong.npz", m, head, {}, shared_unified=shared)
 
     np.savez(tmp_path / (key + ".npz"), n_rows=len(part["X"]), row=row, slot=slot,
-             mean=mean, played=np.logical_not(played), **arrays)
+             mean=mean, played=np.asarray(slot) == 1, **arrays)
     with pytest.raises(ValueError, match="recorded attempt"):
         next(trainer.candidate_batches(entry, tmp_path, verified))

@@ -626,3 +626,36 @@ def test_vault_does_not_lift_a_path_pin(world):
     (world / "archive/pk/commands.json").write_text(f'{{"init_sha256": "{h}", "init": "{world}/root/run/best.pt"}}\n')
     rc, out = run(world, "--dry-run", world / "root/run")
     assert rc == 1 and "names" in out and "vaulted at" in out
+
+
+@pytest.mark.parametrize("name", ["missing/../prod/best.pt", "prod/../prod/best.pt", "*prod/best.pt",
+                                  "./prod/./best.pt", "prod//best.pt"])
+def test_manifest_name_that_is_not_a_plain_literal_path_refuses(world, name):
+    # the digest and the copy at prod/best.pt are right; the name is taken as written (a second '*' is part of it)
+    # and any '..', '.' or empty component refuses, even where the filesystem would resolve it
+    vault, h = _vaulted(world)
+    (vault / "MANIFEST.sha256").write_text(f"{h}  {name}\n")
+    rc, out = run(world, "--dry-run", world / "root/run")
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_escaped_manifest_record_refuses(world):
+    vault, h = _vaulted(world)
+    (vault / "MANIFEST.sha256").write_text(f"\\{h}  ./prod/best.pt\n")
+    rc, out = run(world, "--dry-run", world / "root/run")
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_one_unsupported_manifest_line_disables_the_vault(world):
+    vault, h = _vaulted(world)
+    (vault / "MANIFEST.sha256").write_text(f"{h}  ./prod/best.pt\n{h} ./prod/best.pt\n")
+    rc, out = run(world, "--dry-run", world / "root/run")
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+@pytest.mark.parametrize("record", ["{h} *./prod/best.pt", "{h} *prod/best.pt", "{h}  prod/best.pt"])
+def test_valid_text_and_binary_mode_records_are_exempt(world, record):
+    vault, h = _vaulted(world)
+    (vault / "MANIFEST.sha256").write_text(record.format(h=h) + "\n")
+    rc, out = run(world, "--dry-run", world / "root/run")
+    assert rc == 0 and f"EXEMPT pin {h[:12]} vaulted at {vault / 'prod/best.pt'}" in out

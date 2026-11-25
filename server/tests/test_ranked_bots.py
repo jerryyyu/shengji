@@ -5,7 +5,8 @@ rates at most 800 (a guest counts 800), Standard when every person rates at
 most 1000 and not all at most 800, and Advanced otherwise; a person's
 partner bot always plays Advanced, so people on both teams meet Advanced
 everywhere; the level is chosen when the game starts and at a new game's
-first round, never because a rating moved mid-game; a newcomer who takes a
+first round, and inside a game it rises at the next round once a rating
+crosses its line, never mid-round and never lower; a newcomer who takes a
 Standard seat makes that team Advanced; a rated round against Standard
 opponents uses ``ratings.STANDARD_BOT_RATING`` and one against Beginner
 ``ratings.BEGINNER_BOT_RATING`` (1000 both), and the Advanced partner and
@@ -471,7 +472,8 @@ def _settled(room, timeout=10.0):
 
 def _quiet(room):
     levels = room.bot_levels
-    return not getattr(levels, "pending_game", False) and not getattr(levels, "checks", 0)
+    return (not getattr(levels, "pending_game", False) and not getattr(levels, "pending_rise", False)
+            and not getattr(levels, "checks", 0))
 
 
 def _bot_levels_records(srv, room):
@@ -549,28 +551,215 @@ def test_a_new_game_reads_the_ratings_after_the_last_round_is_settled(env, monke
     assert [r["level"] for r in _bot_levels_records(srv, room)] == ["advanced"]
 
 
-def test_the_level_is_fixed_for_the_game(env, monkeypatch):  # noqa: F811
-    srv, store, _ = env
-    uid, _ = _user(store, "mover")
-    _force_outcome(monkeypatch, 30)
-    table = Table(srv, [uid, "bot", "bot", "bot"], code="FIXD")
+# --------------------------------------- the level rises at the next round
+def _rising_table(srv, store, ratings_by_seat, code):
+    """A ranked table whose people (seat -> rating) are accounts, its level
+    chosen at the start from those ratings and its first round started."""
+    seats = ["bot"] * 4
+    uids = {}
+    for seat, rating in ratings_by_seat.items():
+        uids[seat], _ = _user(store, f"{code.lower()}{seat}", rating=rating)
+        seats[seat] = uids[seat]
+    table = Table(srv, seats, code=code)
     room = table.room
+    room.game.start_round()
+    room.index_round()
+    room.saved_game = None
+    ranked_bots.choose(room, srv.make_relaxed_bot,
+                       _ratings({uids[s]: r for s, r in ratings_by_seat.items()}),
+                       srv.make_beginner_bot)
+    ratings.start(room)
+    return room, uids
+
+
+async def _written():
+    """Every rating write queued so far has landed."""
+    await asyncio.wrap_future(ratings._EXECUTOR.submit(lambda: None))
+
+
+def _levels(room):
+    return [ranked_bots.level_of(room, s) for s in range(4)]
+
+
+def test_a_rating_that_crosses_800_meets_standard_from_the_next_round(env, monkeypatch):  # noqa: F811
+    """A new account at 800 meets Beginner; the round it wins takes it above
+    800, so the next round of the same game plays Standard."""
+    srv, store, _ = env
+    _force_outcome(monkeypatch, 30)               # the bankers (team 0) go up 2
+    room, uids = _rising_table(srv, store, {0: 800.0}, "RISE")
 
     async def scenario():
-        room.game.start_round()
-        room.index_round()
-        room.saved_game = None
-        ranked_bots.choose(room, srv.make_relaxed_bot, _ratings({uid: 1000.0}))
-        ratings.start(room)
-        assert ranked_bots.standard(room) == {1, 3}
+        assert _levels(room) == ["advanced", "beginner", "advanced", "beginner"]
         result = _play_out(srv, room)
-        assert not result.point_scored
-        await asyncio.wrap_future(ratings._EXECUTOR.submit(lambda: None))
-        _set(store, uid, 1300.0)                  # the rating moved mid-game
+        assert not result.point_scored and result.winner_team == 0
         await _advance_and_settle(srv, room)
     asyncio.run(scenario())
-    assert ranked_bots.standard(room) == {1, 3}
-    assert room.ratings.anchors[1] == ratings.STANDARD_BOT_RATING
+    ratings.flush()
+    assert store.user(uids[0])["rating"] > ranked_bots.BEGINNER_UP_TO
+    assert _levels(room) == ["advanced", "standard", "advanced", "standard"]
+    assert type(room.bot.relaxed) is FakeRelaxed and room.bot.level == "standard"
+    assert room.ratings.anchors[1:] == [ratings.STANDARD_BOT_RATING, ratings.ADVANCED_BOT_RATING,
+                                        ratings.STANDARD_BOT_RATING]
+    rose, = _bot_levels_records(srv, room)
+    assert (rose["level"], rose["standard_seats"], rose["rose_from"]) == ("standard", [1, 3], "beginner")
+    assert rose["round"] == room.game.round_no
+
+
+def test_a_rating_that_crosses_1000_meets_advanced_and_is_rated_at_its_anchor(
+        env, monkeypatch):  # noqa: F811
+    """Standard at 1000; a won round takes the rating above 1000, so the next
+    round plays Advanced and is rated against the Advanced anchor."""
+    srv, store, _ = env
+    _force_outcome(monkeypatch, 30)
+    room, uids = _rising_table(srv, store, {0: 1000.0}, "RIS2")
+    uid = uids[0]
+
+    async def scenario():
+        assert ranked_bots.standard(room) == {1, 3}
+        assert room.ratings.anchors[1:] == [ratings.STANDARD_BOT_RATING, ratings.ADVANCED_BOT_RATING,
+                                            ratings.STANDARD_BOT_RATING]
+        _play_out(srv, room)
+        await _advance_and_settle(srv, room)
+        assert ranked_bots.standard(room) == frozenset()
+        assert not isinstance(room.bot, ranked_bots.RankedBots)
+        assert room.ratings.anchors[1:] == [ratings.ADVANCED_BOT_RATING] * 3
+        _play_out(srv, room)                      # the second round, played at Advanced
+        await _written()
+    asyncio.run(scenario())
+    ratings.flush()
+    first, second = _events(store, "SELECT * FROM rating_events WHERE user_id = ? ORDER BY round_no", uid)
+    assert second["rating_before"] > ranked_bots.STANDARD_UP_TO
+    us, them = ratings.team_strengths([second["rating_before"], ratings.ADVANCED_BOT_RATING,
+                                       ratings.ADVANCED_BOT_RATING, ratings.ADVANCED_BOT_RATING],
+                                      banker_team=0 if second["banker_team"] else 1)
+    assert second["team"] == 0 and second["expected"] == pytest.approx(ratings.expected_score(us, them))
+    rose, = _bot_levels_records(srv, room)
+    assert (rose["level"], rose["standard_seats"], rose["rose_from"]) == ("advanced", [], "standard")
+
+
+def test_a_rating_back_under_its_line_keeps_the_level_until_the_next_game(
+        env, monkeypatch):  # noqa: F811
+    """After the rise to Standard the rating falls back under 800: the rest
+    of the game stays Standard; the next game chooses again, Beginner."""
+    from shengji.engine.game import A_INDEX
+
+    srv, store, _ = env
+    _force_outcome(monkeypatch, 30)
+    room, uids = _rising_table(srv, store, {0: 800.0}, "FALL")
+    uid = uids[0]
+
+    async def scenario():
+        _play_out(srv, room)
+        await _advance_and_settle(srv, room)
+        assert ranked_bots.level_of(room, 1) == "standard"
+        await _written()
+        _set(store, uid, 700.0)                   # back under the line
+        result = _play_out(srv, room)
+        assert not result.point_scored
+        await _advance_and_settle(srv, room)
+        assert ranked_bots.level_of(room, 1) == "standard"
+        assert room.ratings.anchors[1] == ratings.STANDARD_BOT_RATING
+        result = _play_out(srv, room, [A_INDEX, A_INDEX])
+        assert result.point_scored               # the point ends the game
+        await _advance_and_settle(srv, room)
+    asyncio.run(scenario())
+    ratings.flush()
+    assert store.user(uid)["rating"] <= ranked_bots.BEGINNER_UP_TO
+    assert _levels(room) == ["advanced", "beginner", "advanced", "beginner"]
+    assert type(room.bot.relaxed) is FakeBeginner
+    assert [(r["level"], r.get("rose_from")) for r in _bot_levels_records(srv, room)] == [
+        ("standard", "beginner"), ("beginner", None)]
+
+
+def test_two_partners_rise_on_either_rating(env, monkeypatch):  # noqa: F811
+    """Partners at 700 and 1000 meet Standard (both ratings count); the round
+    takes the 1000 partner above 1000, so the next round is Advanced though
+    the other alone would meet Beginner."""
+    srv, store, _ = env
+    _force_outcome(monkeypatch, 30)
+    room, uids = _rising_table(srv, store, {0: 700.0, 2: 1000.0}, "DUOR")
+
+    async def scenario():
+        assert _levels(room) == ["advanced", "standard", "advanced", "standard"]
+        _play_out(srv, room)
+        await _advance_and_settle(srv, room)
+    asyncio.run(scenario())
+    ratings.flush()
+    assert store.user(uids[0])["rating"] <= ranked_bots.BEGINNER_UP_TO
+    assert store.user(uids[2])["rating"] > ranked_bots.STANDARD_UP_TO
+    assert ranked_bots.standard(room) == frozenset()
+    assert room.ratings.anchors[1] == room.ratings.anchors[3] == ratings.ADVANCED_BOT_RATING
+
+
+def test_a_rating_unchanged_by_the_round_keeps_the_level(env, monkeypatch):  # noqa: F811
+    """A lost round leaves 800 under its line: the next round stays Beginner
+    and logs no change."""
+    srv, store, _ = env
+    _force_outcome(monkeypatch, 200)              # the attackers (team 1) win
+    room, uids = _rising_table(srv, store, {0: 800.0}, "STAY")
+
+    async def scenario():
+        result = _play_out(srv, room)
+        assert result.winner_team == 1 and not result.point_scored
+        await _advance_and_settle(srv, room)
+    asyncio.run(scenario())
+    ratings.flush()
+    assert store.user(uids[0])["rating"] < 800.0
+    assert ranked_bots.level_of(room, 1) == "beginner" and type(room.bot.relaxed) is FakeBeginner
+    assert _bot_levels_records(srv, room) == []
+
+
+def test_a_rise_waits_for_the_round_boundary_and_a_pinned_search_keeps_its_level(
+        env, tmp_path):  # noqa: F811
+    """A rating that moves mid-round changes nothing until the round's
+    settle point; a search snapshotted at Beginner plays Beginner through
+    the rise, and its card is discarded and searched again at Standard."""
+    import random
+
+    from shengji.ai import env as play_env
+    from shengji.api import server as srv
+    from shengji.engine.game import Game
+
+    _, store, _ = env
+    uid, _ = _user(store, "pinned", rating=800.0)
+
+    async def scenario():
+        game = Game(random.Random(11))
+        play_env.prepare_round(game, [HeuristicBot()] * 4)
+        rnd = game.round
+        room = srv.Room(code="PINR", game=game, log_dir=tmp_path, bot=HeuristicBot(), matched=True,
+                        seats=[srv.Seat(str(s), is_bot=True) for s in range(4)])
+        person = room.seats[0]
+        person.is_bot, person.user_id, person.connected = False, uid, True
+        ranked_bots.choose(room, srv.make_relaxed_bot, _ratings({uid: 800.0}), srv.make_beginner_bot)
+        assert ranked_bots.level_of(room, 3) == "beginner"
+        room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
+        room._kitty_given = True
+        person.is_bot = True                      # the bot plays the person's seat for the test
+        while rnd.turn != 3:
+            prepared = await srv._paced_bot_step(room, rnd.turn, minimum_turn_seconds=0)
+            assert srv._commit_bot_turn(room, prepared)
+        _set(store, uid, 900.0)                   # mid-round
+        person.is_bot = False
+        await ranked_bots.settle_game(room, srv.make_relaxed_bot, srv.make_beginner_bot)
+        assert ranked_bots.level_of(room, 3) == "beginner"     # no rise mid-round
+        person.is_bot = True
+        snapshot = srv._snapshot_bot_turn(room, 3, "bot")
+        assert snapshot.level == "beginner"
+        FakeBeginner.played, FakeRelaxed.played = [], []
+        decision = srv._compute_bot_turn(snapshot)
+        assert FakeBeginner.played == [3] and decision.level == "beginner"
+        person.is_bot = False
+        ranked_bots.begin_round(room)             # the boundary's re-check
+        await ranked_bots.settle_game(room, srv.make_relaxed_bot, srv.make_beginner_bot)
+        assert ranked_bots.level_of(room, 3) == "standard"
+        person.is_bot = True
+        assert srv._commit_bot_turn(room, srv._PreparedBotTurn(decision, 0.0, 0.0, 0.0)) is False
+        again = await srv._paced_bot_step(room, 3, minimum_turn_seconds=0)
+        assert srv._commit_bot_turn(room, again)
+        assert again.decision.level == "standard" and FakeRelaxed.played == [3]
+        assert FakeBeginner.played == [3]
+    asyncio.run(scenario())
 
 
 def test_a_1200_partner_joining_a_998_host_through_the_queue_promotes(wsenv, monkeypatch):  # noqa: F811

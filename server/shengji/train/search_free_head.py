@@ -49,7 +49,8 @@ def build_head(trunk_config):
 
 
 def candidate_name(entry):
-    key = hashlib.sha256((str(entry["dir"]) + "|" + entry["sha256"]).encode()).hexdigest()[:20]
+    source_dir = entry.get("candidate_source_dir", entry["dir"])
+    key = hashlib.sha256((str(source_dir) + "|" + entry["sha256"]).encode()).hexdigest()[:20]
     return key + ".npz"
 
 

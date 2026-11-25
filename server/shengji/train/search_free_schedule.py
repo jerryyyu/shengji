@@ -28,6 +28,12 @@ def _entries(args):
             raise ValueError("invalid or repeated candidate digest")
         sums[name] = digest
     entries = bs.extract_entries(args.data, "train", exclude_seed_windows=args.exclude_seed_window)
+    producer_dirs = dict(args.candidate_source_dir)
+    if len(producer_dirs) != len(args.candidate_source_dir) or producer_dirs.keys() - set(args.data):
+        raise ValueError("candidate source mapping must name each mapped training directory exactly once")
+    for entry in entries:
+        if entry["dir"] in producer_dirs:
+            entry["candidate_source_dir"] = producer_dirs[entry["dir"]]
     names = [trainer.candidate_name(e) for e in entries]
     if not entries or len(set(names)) != len(entries):
         raise ValueError("empty or duplicate training shard selection")
@@ -112,6 +118,8 @@ def main(argv=None):
     p.add_argument("--candidate-exclude-seed-window", action="append", type=bs.seed_window, default=[],
                    help="window excluded when producing the candidate shards, also excluded from training")
     p.add_argument("--candidates", type=Path, required=True)
+    p.add_argument("--candidate-source-dir", nargs=2, action="append", default=[], metavar=("LOCAL", "ORIGINAL"),
+                   help="use the original extract directory spelling for candidate filenames of a relocated --data")
     p.add_argument("--candidate-sums", type=Path, required=True)
     p.add_argument("--select-from-candidate-sums", action="store_true",
                    help="train on exactly the train-shard basenames listed in the sums file")

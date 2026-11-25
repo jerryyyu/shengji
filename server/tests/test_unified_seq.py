@@ -778,6 +778,15 @@ def test_candidate_schedule_recovers_from_an_interrupted_update(world, tmp_path,
         bot = builder(served, resumed / "head.npz", seed=7, sha256=sha)
         assert is_legal(rnd, seat, bot.decide_play(rnd, seat))
         assert bot.last_decision_record["schema"] == rp.RECORD_SCHEMA
+    from shutil import copytree
+    relocated = copytree(world["data"], tmp_path / "copied-extract")
+    moved_args = [str(relocated) if arg == str(world["data"]) else arg for arg in args]
+    moved_args += ["--out", str(tmp_path / "moved")]
+    with pytest.raises(KeyError):
+        schedule.main(moved_args)
+    assert schedule.main(moved_args + ["--candidate-source-dir", str(relocated), str(world["data"])]) == 0
+    moved_state = torch.load(tmp_path / "moved" / "checkpoint.pt", weights_only=True)
+    assert all(torch.equal(v, moved_state["head"][k]) for k, v in a["head"].items())
     subset = tmp_path / "subset-sums"
     extra_data = extract_dir(world["store"], tmp_path / "extra-extract")
     extra_entry, = us.entries_for([str(extra_data)], "train")
@@ -849,7 +858,8 @@ def test_candidate_schedule_trains_from_producer_filtered_shard(world, tmp_path)
     counts = tmp_path / "SHA256SUMS"
     counts.write_text(f"{us.sha256_file(path)}  {path.name}\n")
     args = SimpleNamespace(data=[str(data)], candidate_sums=counts,
-                           candidate_exclude_seed_window=[], exclude_seed_window=[], select_from_candidate_sums=False)
+                           candidate_exclude_seed_window=[], exclude_seed_window=[], select_from_candidate_sums=False,
+                           candidate_source_dir=[])
     original, = schedule._entries(args)
     with pytest.raises(ValueError, match="does not match the extract rows"):
         list(trainer.candidate_batches(original, tmp_path, bs._Verified()))

@@ -10,6 +10,7 @@
 // row at a thumb-sized pitch, and every control keeps a 44px hit area. Rendered checks live in the PR's screenshot sweep.
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { SHORT_VIEWPORT, TABLET_SCREEN } from "./phoneLayout";
 
 const css = readFileSync(new URL("./index.css", import.meta.url), "utf8");
 
@@ -648,10 +649,89 @@ describe("phone controls", () => {
   });
 });
 
-describe("a desktop is untouched", () => {
-  // A desktop matches neither the phone block nor the tablet block (an iPad
-  // is at least 744px tall, and a mouse is not a finger), so everything they
-  // style for the small and the touch screen must live inside them.
+/** Whether a media query of `(min-|max-)(width|height)`, `pointer`, `hover`
+ *  and `orientation` features, joined by `and` and listed by commas, matches a window. */
+function mediaMatches(query: string, w: number, h: number, pointer: "fine" | "coarse"): boolean {
+  return query.split(",").some((alt) => alt.trim().split(/\s+and\s+/).every((f) => {
+    const m = /^\((min|max)-(width|height):\s*(\d+)px\)$/.exec(f.trim());
+    if (m) {
+      const v = m[2] === "width" ? w : h;
+      return m[1] === "min" ? v >= Number(m[3]) : v <= Number(m[3]);
+    }
+    const p = /^\(pointer:\s*(\w+)\)$/.exec(f.trim());
+    if (p) return p[1] === pointer;
+    if (/^\(orientation:\s*landscape\)$/.test(f.trim())) return w > h;
+    // a mouse hovers, a finger does not
+    if (/^\(hover:\s*hover\)$/.test(f.trim())) return pointer === "fine";
+    throw new Error(`unread feature ${f}`);
+  }));
+}
+
+describe("a desktop window", () => {
+  // A desktop window at least 810x740 takes the tablet table, as an iPad
+  // does; a smaller one keeps the wide table's fixed sizes, and only one
+  // under 500px tall the phone table.
+  const table = (w: number, h: number) =>
+    mediaMatches(SHORT_VIEWPORT, w, h, "fine") ? "phone" : mediaMatches(TABLET_SCREEN, w, h, "fine") ? "tablet" : "wide";
+
+  it("draws the tablet table from 810x740", () => {
+    expect(table(1440, 900)).toBe("tablet");
+    expect(table(1920, 1080)).toBe("tablet");
+    expect(table(2560, 1440)).toBe("tablet");
+    expect(table(810, 740)).toBe("tablet");
+  });
+
+  it("keeps the wide table below 810x740, the phone table under 500px tall", () => {
+    expect(table(1024, 700)).toBe("wide");
+    expect(table(1280, 739)).toBe("wide");
+    expect(table(809, 900)).toBe("wide");
+    expect(table(1024, 500)).toBe("phone");
+  });
+
+  it("leaves the touch screens where they were", () => {
+    const touch = (w: number, h: number) =>
+      mediaMatches(SHORT_VIEWPORT, w, h, "coarse") ? "phone" : mediaMatches(TABLET_SCREEN, w, h, "coarse") ? "tablet" : "wide";
+    expect(touch(1133, 744)).toBe("tablet");
+    expect(touch(1366, 1024)).toBe("tablet");
+    expect(touch(820, 1180)).toBe("tablet");
+    expect(touch(1133, 700)).toBe("phone");
+    expect(touch(744, 1133)).toBe("wide");
+  });
+});
+
+describe("a large desktop window draws the pages off the table larger, whole", () => {
+  const zooms = [...css.matchAll(/@media ([^{]+)\{\s*:root:not\(:has\(\.table-screen\)\) \{ zoom: ([\d.]+); \}/g)]
+    .map((m) => ({ query: m[1].trim(), zoom: Number(m[2]) }));
+  /** The page's zoom in a window: the last matching rule wins. */
+  const zoomAt = (w: number, h: number, pointer: "fine" | "coarse") =>
+    zooms.filter((z) => mediaMatches(z.query, w, h, pointer)).reduce((_, z) => z.zoom, 1);
+
+  it("holds two steps, for a mouse only", () => {
+    expect(zooms).toHaveLength(2);
+    for (const z of zooms) expect(z.query.startsWith("(hover: hover) and (pointer: fine) and ")).toBe(true);
+  });
+
+  it("zooms by a quarter from 1600x900 and by two fifths from 2200x1200", () => {
+    expect(zoomAt(1440, 900, "fine")).toBe(1);
+    expect(zoomAt(1920, 880, "fine")).toBe(1);
+    expect(zoomAt(1920, 1080, "fine")).toBe(1.25);
+    expect(zoomAt(2560, 1440, "fine")).toBe(1.4);
+    expect(zoomAt(2560, 1100, "fine")).toBe(1.25);
+  });
+
+  it("never zooms a touch screen, nor the table", () => {
+    expect(zoomAt(2732, 2048, "coarse")).toBe(1);
+    // the root is zoomed only while no table is drawn, and the page's frame
+    // follows the window rather than a zoomed 100dvh
+    expect(css).toMatch(/:root:not\(:has\(\.table-screen\)\) \.app \{ height: 100%; \}/);
+    expect(css.match(/zoom: 1\.(25|4);/g)).toHaveLength(2);
+  });
+});
+
+describe("a desktop leaves the small and the touch screen's rules alone", () => {
+  // Everything the phone and the tablet blocks style for their screens must
+  // live inside them, so a window that matches neither (the wide table) is
+  // untouched.
   const outside = css.replace(block, "").replace(blockAt(TABLET_BLOCK), "");
 
   it("styles the phone-only classes only inside the phone block", () => {
@@ -872,10 +952,17 @@ describe("the tablet table's trick cross", () => {
     "iPad 11\" upright 820x1180": { w: 820, h: 1180, left: 0, right: 0, bottom: 20, top: 24 },
     "iPad 13\" upright 1024x1366": { w: 1024, h: 1366, left: 0, right: 0, bottom: 20, top: 24 },
   };
-  const SIZES: [string, Viewport][] = Object.entries(IPADS).flatMap(([name, vp]) => [
+  // desktop browser windows, which take the same block
+  const DESKTOPS: Record<string, Viewport> = {
+    "desktop 1440x900": { w: 1440, h: 900, left: 0, right: 0, bottom: 0, top: 0 },
+    "desktop 1920x1080": { w: 1920, h: 1080, left: 0, right: 0, bottom: 0, top: 0 },
+    "desktop 2560x1440": { w: 2560, h: 1440, left: 0, right: 0, bottom: 0, top: 0 },
+    "desktop 1280x760": { w: 1280, h: 760, left: 0, right: 0, bottom: 0, top: 0 },
+  };
+  const SIZES: [string, Viewport][] = [...Object.entries(IPADS).flatMap(([name, vp]) => [
     [`${name} (app)`, vp] as [string, Viewport],
     [`${name} (browser)`, { ...vp, top: 0, bottom: 0 }] as [string, Viewport],
-  ]);
+  ]), ...Object.entries(DESKTOPS)];
   const at = (vp: Viewport) => {
     const L = (name: string) => evalLength(`var(${name})`, vp, root);
     const pitch = (r: Record<string, string>, n: number, vars = root) => evalLength(r["--pitch"], vp, { ...vars, "--cw": r["--cw"] ?? "var(--hcw)" }, { n });

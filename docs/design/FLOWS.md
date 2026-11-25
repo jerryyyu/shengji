@@ -322,7 +322,7 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
   exists, and the room starts on it. The last one left alone keeps the table's code as its own.
 
 ## The iPad table: Fill (Jerry 2026-11-17: picked option B of the three iPad table mocks)
-- A touch screen at least 810×740 (an iPad sideways, mini included, and 11" and 13" upright; the root class
+- A screen at least 810×740, touch or mouse (an iPad sideways, mini included, and 11" and 13" upright, or a desktop window; the root class
   `tablet-table` from `phoneLayout.ts`) draws the wide table sized to the screen. Below that the cross could not
   keep a six-card trick's cards at the wide table's 52 px. A sideways touch window under 740 px tall (Split View,
   Safari with its toolbar on a mini) gets the phone table instead, whose cross fits a short screen; one under 810 px
@@ -337,7 +337,11 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
   packs tighter so it never spans more than four would. Seat panels keep their card counts; a side seat ends before
   its trick slot, and a long name there ends in an ellipsis, shown whole on a long press as on the phone.
 - The round's result dialog grows with the screen, whole (×1.15 from 1100×700, ×1.35 on a 13" iPad).
-- A laptop or desktop browser (a mouse, not a finger) keeps the wide table at its fixed sizes.
+- A laptop or desktop window takes the same rule (Jerry 2026-11-25, "do we want to apply the iPad view?"): from
+  810×740 the tablet table, below it the wide table at its fixed sizes. A mouse clicks a card (no slide), and the
+  hover lift grows with the selected card's.
+- Off the table a large desktop window (a mouse; from 1600×900, ×1.25; from 2200×1200, ×1.4) draws every page, its
+  top bar and each sheet or dialog over it larger, whole, as the phone column's design; a touch screen is never zoomed.
 
 ## Blocking a player (Jerry 2026-11-17: "Yes" to keeping a mute across games)
 - A long press (or a right click) on another person's seat opens its options (`OpponentActions.tsx`): Block player

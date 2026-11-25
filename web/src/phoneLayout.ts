@@ -6,12 +6,12 @@ import { useLayoutEffect, useSyncExternalStore } from "react";
 export const SHORT_VIEWPORT = "(max-height: 500px), (pointer: coarse) and (orientation: landscape) and (max-height: 739px)";
 /** A phone held upright (an iPad is at least 744px wide in portrait). */
 export const PORTRAIT_PHONE = "(orientation: portrait) and (max-width: 600px)";
-/** A touch screen large enough for the tablet table: its first pointer is a
- *  finger, and the screen holds the edge-to-edge hand and a trick cross whose
- *  cards are at least the wide table's 52px (index.css, .tablet-table). An
- *  iPad mini is 744px tall sideways; a shorter or narrower touch window keeps
- *  the wide table's fixed sizes. */
-export const TABLET_SCREEN = "(pointer: coarse) and (min-width: 810px) and (min-height: 740px)";
+/** A screen large enough for the tablet table, touch or mouse alike: it
+ *  holds the edge-to-edge hand and a trick cross whose cards are at least the
+ *  wide table's 52px (index.css, .tablet-table). An iPad mini is 744px tall
+ *  sideways; a shorter or narrower window, a desktop's included, keeps the
+ *  wide table's fixed sizes. */
+export const TABLET_SCREEN = "(min-width: 810px) and (min-height: 740px)";
 /** The root class every phone-table rule in index.css is keyed on. */
 export const PHONE_CLASS = "phone-landscape";
 /** The root class every tablet-table rule in index.css is keyed on. */
@@ -22,7 +22,7 @@ export interface PhoneLayout {
   phone: boolean;
   /** The table is drawn a quarter turn round, filling a portrait screen. */
   rotated: boolean;
-  /** The tablet table's rules apply: the wide table, sized to fill a touch screen. */
+  /** The tablet table's rules apply: the wide table, sized to fill the screen. */
   tablet: boolean;
 }
 
@@ -30,9 +30,10 @@ export interface PhoneLayout {
  *  at the table gets the table turned a quarter turn, sized to the screen's
  *  long side, so it lays out exactly as on a phone held sideways. The lobby
  *  has one design, the portrait column, which a phone held sideways shows
- *  too, so the phone class is the table's alone. A touch screen that matches
- *  TABLET_SCREEN (an iPad) draws the wide table at the screen's size; any
- *  other screen that is not a phone keeps the wide table's fixed sizes. */
+ *  too, so the phone class is the table's alone. A screen that matches
+ *  TABLET_SCREEN (an iPad, a desktop window) draws the wide table at the
+ *  screen's size; any other screen that is not a phone keeps the wide
+ *  table's fixed sizes. */
 export function phoneLayout(short: boolean, portraitPhone: boolean, atTable: boolean, tabletScreen = false): PhoneLayout {
   const rotated = atTable && portraitPhone;
   const phone = atTable && (short || rotated);

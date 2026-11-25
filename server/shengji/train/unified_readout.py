@@ -29,6 +29,7 @@ took).  Batches are built on the CPU and moved to the device; every checkpoint i
 A non-CPU run records its device in its identity, so a resume on another device refuses.  An op the MPS
 backend lacks raises; PyTorch's CPU fallback runs only when ``PYTORCH_ENABLE_MPS_FALLBACK=1`` is set by the
 caller, and the run's status log says so.
+Pass ``--device mps --fused-adamw`` to ``train`` to select fused AdamW for a throughput comparison.
 """
 from __future__ import annotations
 
@@ -271,18 +272,39 @@ SUM_KEYS = ("belief_sum", "belief_n", "q_sum", "p_sum", "rows", "v_sum", "leaves
 def objective(L, args):
     """The training loss: the five head means (corpus-weighted sums over unweighted counts when the
     batch carries ``row_w``), times the head weights."""
-    m = means([L[k + "_w"] if k + "_w" in L else L[k] for k in SUM_KEYS])
-    return (args.belief_weight * m["belief"] + args.q_weight * m["q"] + args.policy_weight * m["policy"]
-            + args.value_weight * m["leaf_value"] + args.reply_weight * m["reply"])
+    import torch
+
+    def head_mean(total, count):
+        n = L[count]
+        denominator = n.clamp_min(1.0) if torch.is_tensor(n) else max(n, 1.0)
+        return L.get(total + "_w", L[total]) / denominator
+
+    return (args.belief_weight * head_mean("belief_sum", "belief_n")
+            + args.q_weight * head_mean("q_sum", "rows") + args.policy_weight * head_mean("p_sum", "rows")
+            + args.value_weight * head_mean("v_sum", "leaves") + args.reply_weight * head_mean("r_sum", "replies"))
 
 
-def _backward_batch(model, b, device, args):
+def _loss_vector(loss):
+    import torch
+    values = {k: loss[k].detach() for k in SUM_KEYS}
+    # Shape counts are CPU scalars in the objective. Create their stats slots on device.
+    for key, output in (("rows", "q"), ("leaves", "leaf_value")):
+        values[key] = values["belief_sum"].new_full((), len(loss["out"][output]))
+    return torch.stack([values[k] for k in SUM_KEYS])
+
+
+def _buffer_totals(vectors):
+    import torch
+    return torch.stack(vectors).cpu().numpy().sum(axis=0, dtype=np.float64)
+
+
+def _backward_batch(model, b, device, args, *, pending_stats=None):
     """Accumulate one logical batch's gradient before the caller clips and steps."""
     limit = getattr(args, "microbatch_rounds", None)
     rounds = len(b["banker"])
     totals = dict(belief_n=float(b["Y"].sum(dtype=np.float64)), rows=len(b["rr"]),
                   leaves=len(b["leaf_row"]), replies=int(b["leaf_has_reply"].sum()))
-    stats = np.zeros(len(SUM_KEYS))
+    vectors = [] if pending_stats is None else pending_stats
     round_fields = {"tok_int", "tok_f", "tok_cards", "tok_att", "card_feat", "banker"}
     leaf_rounds = b["rr"][b["leaf_row"]]
     for start in range(0, rounds, limit):
@@ -301,9 +323,10 @@ def _backward_batch(model, b, device, args):
         micro["leaf_row"] = np.searchsorted(rows, micro["leaf_row"])
         loss = losses(model, us.to_device(micro, device))
         objective({**loss, **totals}, args).backward()
-        stats += [float(loss[k].detach()) for k in SUM_KEYS]
+        vectors.append(_loss_vector(loss))
         del loss
-    return stats
+    if pending_stats is None:
+        return _buffer_totals(vectors)
 
 
 #: the heads a corpus weight names, in the column order of ``row_w``
@@ -412,6 +435,23 @@ def _on_cpu(obj):
     return obj
 
 
+def _train_optimizer(groups, *, weight_decay, device, fused_adamw=False):
+    import torch
+
+    if device.type != "mps":
+        return torch.optim.AdamW(groups, weight_decay=weight_decay)
+
+    fused = True if fused_adamw else None
+    optimizer = torch.optim.AdamW(groups, weight_decay=weight_decay, fused=fused)
+
+    def restore_mode(_optimizer, state):
+        # The saved group flags determine where PyTorch restores the step counters.
+        state["param_groups"] = [dict(group, fused=fused) for group in state["param_groups"]]
+
+    optimizer.register_load_state_dict_pre_hook(restore_mode)
+    return optimizer
+
+
 def _status(path: str, msg: str) -> None:
     line = f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} {msg}"
     print(line, flush=True)
@@ -512,7 +552,8 @@ def _train(args, out: Path, status: str) -> int:
         model.to(device)
 
     stream = us.Stream(entries, index=index, suit_aug=False, verified=verified, threads=args.loader_threads,
-                    buffer_chunks=args.buffer_chunks, rounds_per_batch=args.rounds_per_batch, row_frac=1.0)
+                       buffer_chunks=args.buffer_chunks, rounds_per_batch=args.rounds_per_batch,
+                       row_frac=1.0, batch_builder=make_batch)
     calib = us.load_calib(args.calib_data or args.data, verified, index, max_rows=args.calib_rows, seed=args.seed,
                           exclude_seed_windows=args.exclude_seed_window)
     started = time.time()
@@ -521,7 +562,8 @@ def _train(args, out: Path, status: str) -> int:
               {"params": list(model.readout.parameters()), "base_lr": args.readout_lr}]
     for g in groups:
         g["lr"] = g["base_lr"]
-    opt = torch.optim.AdamW(groups, weight_decay=args.weight_decay)
+    opt = _train_optimizer(groups, weight_decay=args.weight_decay, device=device,
+                           fused_adamw=getattr(args, "fused_adamw", False))
     n_buffers = math.ceil(len(stream.entries) / args.buffer_chunks)
     if report_buffer is not None and not 0 < report_buffer < n_buffers:
         raise UnifiedReadoutError("--report-buffer must be an interior buffer boundary")
@@ -533,27 +575,23 @@ def _train(args, out: Path, status: str) -> int:
         warm = max(1, int(0.02 * total))
         return (step + 1) / warm if step < warm else 0.5 * (1 + math.cos(math.pi * min(1.0, step / total)))
 
-    def step_on(b, step):
+    def step_on(b, step, pending_stats):
         scale = lr_scale(step)
         for g in opt.param_groups:
             g["lr"] = g["base_lr"] * scale
         if step < args.head_warmup_buffers and not args.scratch_arch and not args.init_readout_ckpt:
             opt.param_groups[0]["lr"] = 0.0             # the new readout fits a frozen trunk first
             opt.param_groups[1]["lr"] = 0.0
-        for k, v in leaf_batch(b).items():
-            b["leaf_" + k] = v
         if getattr(args, "microbatch_rounds", None) is None:
             loss = losses(model, us.to_device(b, device))
             opt.zero_grad()
             objective(loss, args).backward()
+            pending_stats.append(_loss_vector(loss))
         else:
             opt.zero_grad()
-            stats = _backward_batch(model, b, device, args)
+            _backward_batch(model, b, device, args, pending_stats=pending_stats)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         opt.step()
-        if getattr(args, "microbatch_rounds", None) is None:
-            return np.asarray([float(loss[k].detach()) for k in SUM_KEYS])
-        return stats
 
     state = {"epoch": 0, "buffer": 0, "history": [], "best": float("inf")}
     recovery_digest = getattr(args, "recover_checkpoint_sha256", None)
@@ -661,10 +699,14 @@ def _train(args, out: Path, status: str) -> int:
         if capture_capacity:
             train_start = time.monotonic()
             trained_rows = tensor_bytes = driver_bytes = max_batch_rounds = 0
+        pending_stats = []
         for gi, b in stream.batches(args.seed, epoch, state["buffer"]):
             if gi != cur:
                 if pause_at_report and gi > report_buffer:
                     raise UnifiedReadoutError("the stream skipped the requested report boundary")
+                if pending_stats:
+                    sums += _buffer_totals(pending_stats)
+                    pending_stats.clear()
                 state["buffer"] = cur = gi
                 state["epoch_sums"] = sums.tolist()
                 if gi == report_buffer:
@@ -684,17 +726,18 @@ def _train(args, out: Path, status: str) -> int:
                 if (out / "STOP").exists() or (args.max_seconds and time.time() - started > args.max_seconds):
                     save()
                     return stopped()
-            batch_sums = step_on(b, epoch * n_buffers + gi)
-            sums += batch_sums
+            step_on(b, epoch * n_buffers + gi, pending_stats)
             if capture_capacity:
                 max_batch_rounds = max(max_batch_rounds, len(b["tok_int"]))
-                trained_rows += int(batch_sums[SUM_KEYS.index("rows")])
+                trained_rows += len(b["rr"])
                 if device.type == "mps":
                     tensor_bytes = max(tensor_bytes, torch.mps.current_allocated_memory())
                     driver_bytes = max(driver_bytes, torch.mps.driver_allocated_memory())
             steps += 1
             if args.max_steps and steps >= args.max_steps:
                 break
+        if pending_stats:
+            sums += _buffer_totals(pending_stats)
         if pause_at_report:
             raise UnifiedReadoutError("training ended before the requested report boundary")
         if capture_capacity:
@@ -1259,6 +1302,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="PREFIX=head:w[,head:w...]: loss weights of the rows of data dirs under PREFIX "
                         f"(heads {','.join(CORPUS_HEADS)}; default 1)")
     t.add_argument("--device", choices=("cpu", "mps"), default="cpu", help="where the model runs; batches are built on the CPU")
+    t.add_argument("--fused-adamw", action="store_true", help="use fused AdamW for MPS train comparisons")
     c = sub.add_parser("cache")
     c.add_argument("--ckpt", required=True)
     c.add_argument("--data", nargs="+", required=True)

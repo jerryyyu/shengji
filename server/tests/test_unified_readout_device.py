@@ -206,6 +206,67 @@ def test_the_cpu_path_gives_the_reference_losses(cpu_default):
 mps = pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS is not available")
 
 
+@mps
+@pytest.mark.parametrize("resume_fused", [True, False])
+def test_mps_adamw_resumes_with_the_selected_mode(tmp_path, resume_fused):
+    device = torch.device("mps")
+
+    def optimizer(values, fused):
+        params = [torch.nn.Parameter(v.to(device)) for v in values]
+        groups = [{"params": [p], "lr": lr} for p, lr in zip(params, (1e-3, 3e-3))]
+        if fused is None:
+            return params, torch.optim.AdamW(groups, weight_decay=0.03)
+        return params, ur._train_optimizer(groups, device=device, weight_decay=0.03, fused_adamw=fused)
+
+    def step(params, opt, i):
+        opt.zero_grad()
+        params[0].grad = torch.tensor([0.1 * i, -0.25], device=device)
+        if i % 2 == 0:
+            params[1].grad = torch.tensor([0.7, 0.2 - 0.1 * i], device=device)
+        opt.step()
+
+    values = [torch.tensor([0.3, -0.7]), torch.tensor([0.4, -0.5])]
+    reference, unfused = optimizer(values, None)
+    source, source_opt = optimizer(values, None if resume_fused else True)
+    for i in range(3):
+        step(reference, unfused, i)
+        step(source, source_opt, i)
+
+    path = tmp_path / "checkpoint.pt"
+    torch.save(ur._on_cpu({"model": [p.detach() for p in source], "opt": source_opt.state_dict()}), path)
+    saved = torch.load(path, weights_only=False, map_location="cpu")
+    resumed, resumed_opt = optimizer(saved["model"], resume_fused)
+    resumed_opt.load_state_dict(saved["opt"])
+    assert [g["fused"] for g in resumed_opt.param_groups] == [True if resume_fused else None] * 2
+    assert [s["step"].device.type for s in resumed_opt.state.values()] == ["mps" if resume_fused else "cpu"] * 2
+
+    for i in range(3, 7):
+        step(reference, unfused, i)
+        step(resumed, resumed_opt, i)
+        for want, got in zip(reference, resumed):
+            torch.testing.assert_close(got.cpu(), want.cpu(), rtol=1e-6, atol=1e-7)
+            for key in ("step", "exp_avg", "exp_avg_sq"):
+                torch.testing.assert_close(resumed_opt.state[got][key].cpu(), unfused.state[want][key].cpu(),
+                                           rtol=1e-6, atol=1e-7)
+
+
+@mps
+def test_mps_train_can_opt_in_to_fused_adamw_on_resume(data, tmp_path):
+    args = ["train", "--data", str(data), "--out", str(tmp_path), "--device", "mps",
+            "--scratch-arch", SCRATCH, "--threads", "1", "--loader-threads", "1",
+            "--rounds-per-batch", "1", "--epochs", "1", "--buffer-chunks", "1", "--report-buffer", "1"]
+    path = tmp_path / "checkpoint.pt"
+    assert ur.main([*args, "--pause-at-report"]) == 7
+    original = torch.load(path, weights_only=False)
+    assert all(g["fused"] is None for g in original["opt"]["param_groups"])
+
+    assert ur.main([*args, "--expect-resume-buffer", "1", "--fused-adamw"]) == 0
+    resumed = torch.load(path, weights_only=False)
+    assert resumed["run"] == original["run"]
+    assert _tensors_on_cpu(resumed)
+    assert all(g["fused"] is True for g in resumed["opt"]["param_groups"])
+
+
 @pytest.mark.parametrize("device", ["cpu", pytest.param("mps", marks=mps)])
 def test_capacity_sample_counts_actual_training_work(data, tmp_path, device):
     args = ["train", "--data", str(data), "--out", str(tmp_path), "--device", device,

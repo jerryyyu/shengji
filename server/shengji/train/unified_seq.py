@@ -246,12 +246,14 @@ def make_unified_batch(part, round_ids, rows, *, perm=None) -> dict[str, np.ndar
 
 class Stream(bs.Stream):
     """``belief_seq.Stream`` with outcome labels joined and one suit relabeling per batch.  The
-    relabeling stream is seeded by (seed, epoch, buffer), so a resumed run draws the same ones."""
+    relabeling stream is seeded by (seed, epoch, buffer), so a resumed run draws the same ones.
+    ``batch_builder`` runs in the producer before the batch enters the prefetch queue."""
 
-    def __init__(self, entries, *, index: OutcomeIndex, suit_aug: bool, **kw):
+    def __init__(self, entries, *, index: OutcomeIndex, suit_aug: bool, batch_builder=make_unified_batch, **kw):
         super().__init__(entries, no_history=False, permute=False, **kw)
         self.index = index
         self.suit_aug = suit_aug
+        self.batch_builder = batch_builder
 
     def batches(self, seed: int, epoch: int, start_buffer: int = 0, prefetch: int = 6):
         order = self.order(seed, epoch)
@@ -286,7 +288,7 @@ class Stream(bs.Stream):
                         prng = np.random.default_rng([seed, epoch, gi, 24])
                         for rids, rows in bs.round_batches(cat, self.rounds_per_batch, rng, self.row_frac):
                             perm = suit_perm.draw(prng) if self.suit_aug else None
-                            if stopped.is_set() or not offer((gi, make_unified_batch(cat, rids, rows, perm=perm))):
+                            if stopped.is_set() or not offer((gi, self.batch_builder(cat, rids, rows, perm=perm))):
                                 return
                         gi += 1
                 offer(done)

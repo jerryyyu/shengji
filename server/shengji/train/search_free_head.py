@@ -58,17 +58,17 @@ def candidate_batches(entry, directory, verified, *, rounds_per_batch=1):
     path = Path(directory) / candidate_name(entry)
     source = io.BytesIO(verified.read(str(path), entry["candidate_sha256"])) if "candidate_sha256" in entry else path
     cand, _ = load_public_candidates(source)
-    part = bs.load_part(entry, bs.ROW_KEYS, verified)
+    part = bs.load_part(entry, bs.ROW_KEYS, verified, include_source_rows=True)
     row = cand["row"]
-    if (row.dtype.kind not in "iu" or int(cand["n_rows"]) != len(part["X"])
-            or np.any(row < 0) or np.any(row >= len(part["X"]))):
+    if (row.dtype.kind not in "iu" or int(cand["n_rows"]) != entry["rows"]
+            or np.any(row < 0) or np.any(row >= entry["rows"])):
         raise ValueError("candidate shard does not match the extract rows")
     for rounds, rows in bs.round_batches(part, rounds_per_batch, None):
-        keep = np.isin(row, rows)
+        keep = np.isin(row, part["source_row"][rows])
         if not np.any(keep):
             continue
         decisions, local = np.unique(row[keep], return_inverse=True)
-        b = bs.make_batch(part, rounds, decisions)
+        b = bs.make_batch(part, rounds, np.searchsorted(part["source_row"], decisions))
         c = {k: cand[k][keep] for k in ("tok_int", "tok_f", "tok_cards", "tok_att", "mean", "played", "slot")}
         c["row"] = local
         recorded = b["tok_int"][b["rr"], b["ply"]]

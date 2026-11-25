@@ -571,7 +571,7 @@ def test_check_init_belief_ll_rules():
             us.check_init_belief_ll(bad, 0.98782)
 
 
-def _candidate_fixture(world, entry, tmp_path):
+def _candidate_fixture(world, entry, tmp_path, *, distinct_deals=False):
     from shengji.harvest.legal import enumerate_legal
     from shengji.harvest.rebuild import state_for_record
     from shengji.train import search_free_play as sf
@@ -580,6 +580,8 @@ def _candidate_fixture(world, entry, tmp_path):
     part = us.load_unified_part(entry, verified, us.OutcomeIndex())
     tokens, row, slot, mean, played = [], [], [], [], []
     for i, ply in enumerate(part["row_ply"]):
+        if distinct_deals and row and part["deal"][i] == part["deal"][row[0]]:
+            continue
         if ply not in (0, 4):
             continue
         records = bl.game_order(world["clusters"][part["cluster"][i]])
@@ -778,3 +780,28 @@ def test_candidate_schedule_recovers_from_an_interrupted_update(world, tmp_path,
         assert bot.last_decision_record["schema"] == rp.RECORD_SCHEMA
     monkeypatch.setattr(trainer, "fit_shard", lambda *a, **kw: pytest.fail("replayed a completed shard"))
     assert schedule.main(args + ["--out", str(resumed)]) == 0
+
+def test_candidate_head_skips_reserved_deals_before_joining_history(world, tmp_path):
+    from shengji.train import search_free_head as trainer
+    from shengji.train import unified_readout
+
+    data = extract_dir(world["store"], tmp_path / "extract")
+    entry, = us.entries_for([str(data)], "train")
+    _, shard, _, _, _ = _candidate_fixture(world, entry, tmp_path, distinct_deals=True)
+    first, second = np.unique(shard["row"])
+    with np.load(entry["path"]) as z:
+        seed = int(z["seed"][first])
+        assert z["seed"][second] != seed
+    verified = bs._Verified()
+    original, = trainer.candidate_batches(entry, tmp_path, verified, rounds_per_batch=32)
+    entry["exclude_seed_windows"] = [(seed, seed + 1)]
+    (batch, ballot), = trainer.candidate_batches(entry, tmp_path, verified, rounds_per_batch=32)
+    np.testing.assert_array_equal(batch["X"], original[0]["X"][1:])
+    np.testing.assert_array_equal(ballot["tok_cards"], original[1]["tok_cards"][original[1]["row"] == 1])
+    assert len(ballot["row"]) == 3 and np.all(ballot["row"] == 0)
+    model = unified_readout.build(SMALL).eval()
+    head = trainer.build_head(model.config["trunk"])
+    optimizer = torch.optim.AdamW(head.parameters())
+    assert trainer.fit_shard(model, head, optimizer, entry, tmp_path, verified) == 1
+    entry["exclude_seed_windows"] = [(0, 2**32)]
+    assert trainer.fit_shard(model, head, optimizer, entry, tmp_path, verified) == 0

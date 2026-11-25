@@ -160,7 +160,7 @@ def seed_keep(arrays, windows):
 
 
 def load_part(entry: Mapping[str, Any], keys: Sequence[str], verified: _Verified, *,
-              sampler_rows_only: bool = False) -> dict[str, np.ndarray]:
+              sampler_rows_only: bool = False, include_source_rows: bool = False) -> dict[str, np.ndarray]:
     """One chunk's rows (residualized: unknown copies only) joined with its
     history; round arrays keep their chunk-local indices."""
     with np.load(io.BytesIO(verified.read(entry["path"], entry["sha256"]))) as z:
@@ -184,6 +184,8 @@ def load_part(entry: Mapping[str, Any], keys: Sequence[str], verified: _Verified
         keep &= part["S_n"] > 0
     if not keep.all():
         part = {k: v[keep] for k, v in part.items()}
+    if include_source_rows:
+        part["source_row"] = np.flatnonzero(keep)
     if len(part["X"]):
         residualize(part)
         if np.any((part["Y"] > 0) & ~part["M"]):

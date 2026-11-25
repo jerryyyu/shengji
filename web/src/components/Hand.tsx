@@ -10,8 +10,9 @@ import { useT } from "../i18n";
 const MAX_ARRIVALS = 8;
 /** Gap between the flights of cards that arrive together (the kitty). */
 const ARRIVAL_STAGGER = 40;
-/** Stacking of a card while it flies in: above your row (z-index 3). */
-export const ARRIVAL_Z = 4;
+/** The class a slot wears while its card flies in: index.css stacks it
+ *  above your row (z-index 3). */
+const ARRIVING = "arriving";
 /** A longer hand (the banker's 33 with the kitty) is drawn with smaller
  *  cards on a phone, so it still fits one row; only the phone layout styles
  *  `.hand.small-cards`. */
@@ -255,22 +256,25 @@ export default function Hand({ hand, selected, selectable, onToggle, rects, lit 
       const origin = watching && fresh.length > 0 && fresh.length <= MAX_ARRIVALS
         ? el.closest(".table-screen")?.querySelector(".trick-area")?.getBoundingClientRect() : undefined;
       if (origin) {
-        fresh.forEach((slot, i) => {
-          if (!canAnimate(slot)) return;
-          const r = slot.getBoundingClientRect();
+        // every box is read before the first flight starts, so no write
+        // forces a layout for the next card's read
+        const flying = fresh.map((slot, i) => ({ slot, i, r: canAnimate(slot) ? slot.getBoundingClientRect() : null }));
+        for (const { slot, i, r } of flying) {
+          if (!r) continue;
           const dx = origin.left + origin.width / 2 - (r.left + r.width / 2);
           const dy = origin.top + origin.height / 2 - (r.top + r.height / 2);
           const flight = slot.animate(
             [{ transform: `translate(${Math.round(dx)}px, ${Math.round(dy)}px) scale(0.6)`, opacity: 0 },
              { transform: "none", opacity: 1 }],
             { duration: DUR.flight, easing: EASE.outExpo, delay: i * ARRIVAL_STAGGER, fill: "backwards" });
-          // a card in flight passes over your row (Declare, Bury), not under it
-          slot.style.position = "relative";
-          slot.style.zIndex = String(ARRIVAL_Z);
-          const land = () => { slot.style.position = ""; slot.style.zIndex = ""; };
+          // a card in flight passes over your row (Declare, Bury), not under
+          // it: the class raises the already positioned slot, so landing
+          // lays nothing out again
+          slot.classList.add(ARRIVING);
+          const land = () => { slot.classList.remove(ARRIVING); };
           flight.onfinish = land;
           flight.oncancel = land;
-        });
+        }
       }
     }
     for (const id of [...anims.current.keys()]) {

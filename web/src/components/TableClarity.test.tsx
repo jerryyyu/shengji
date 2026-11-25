@@ -137,11 +137,11 @@ describe("declaring", () => {
       const view = render(<Table state={makeState({ phase: "declare", hand: hand(["S5"]), declare_deadline: 5 })} />);
       const ring = () => view.host.querySelector(".action-bar .timer-ring");
       expect(ring()!.textContent).toBe("5");
-      expect(ring()!.getAttribute("style")).toContain("--ring-deg: 360deg");
+      expect(ring()!.querySelector(".timer-ring-band")?.getAttribute("style")).toContain("--ring-at: 0s");
       expect(ring()!.className).toContain("low");
       act(() => { vi.advanceTimersByTime(2000); });
       expect(ring()!.textContent).toBe("3");
-      expect(ring()!.getAttribute("style")).toContain("--ring-deg: 216deg");
+      expect(ring()!.querySelector(".timer-ring-band")?.getAttribute("style")).toContain("--ring-at: 0s");
       view.unmount();
     } finally { vi.useRealTimers(); }
   });

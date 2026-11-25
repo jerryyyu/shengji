@@ -11,7 +11,9 @@ export const BUZZ_SECS = 5;
 
 /** Seconds left on a move timer (yours, or another seat's), ticked locally between server states.
  *  `stamp` is the state the number came with: every state restarts the count
- *  from the server's own figure, so the two never drift apart. */
+ *  from the server's own figure, so the two never drift apart. It ticks as
+ *  each whole second is reached, when the number shown changes: the ring's
+ *  drain is its own animation (MoveClock.tsx). */
 export function useMoveClock(seconds: number | null | undefined, stamp: unknown,
                              buzz = true): number | null {
   const [left, setLeft] = useState<number | null>(seconds ?? null);
@@ -21,10 +23,14 @@ export function useMoveClock(seconds: number | null | undefined, stamp: unknown,
       return;
     }
     const end = Date.now() + seconds * 1000;
-    const tick = () => setLeft(Math.max(0, (end - Date.now()) / 1000));
+    let id = 0;
+    const tick = () => {
+      const ms = Math.max(0, end - Date.now());
+      setLeft(ms / 1000);
+      if (ms > 0) id = window.setTimeout(tick, ms % 1000 || 1000);
+    };
     tick();
-    const id = window.setInterval(tick, 250);
-    return () => window.clearInterval(id);
+    return () => window.clearTimeout(id);
   }, [seconds, stamp]);
   // one buzz per decision, the first time the clock is at BUZZ_SECS or less
   const buzzed = useRef(false);

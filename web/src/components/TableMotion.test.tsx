@@ -204,6 +204,30 @@ describe("deal arrival", () => {
     view.unmount();
   });
 
+  it("reads every arriving card's box before its first flight, and raises each by a class until it lands", () => {
+    const view = renderTable(makeState({ phase: "bury", hand: HAND.slice(0, 1) }));
+    const events: string[] = [];
+    vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
+      if (this.classList.contains("hand-slot")) events.push("read");
+      return fakeRect.call(this);
+    });
+    const animate = HTMLElement.prototype.animate;
+    HTMLElement.prototype.animate = function (this: HTMLElement, frames, opts) {
+      if ((opts as KeyframeAnimationOptions).fill === "backwards") events.push("fly");
+      return animate.call(this, frames, opts);
+    };
+    view.rerender(makeState({ phase: "bury", hand: HAND }));
+    const flying = events.slice(events.indexOf("fly") - 4);
+    expect(flying).toEqual(["read", "read", "read", "read", "fly", "fly", "fly", "fly"]);
+    const slots = arrivals().map((c) => c.el);
+    expect(slots.every((el) => el.classList.contains("arriving"))).toBe(true);
+    expect(slots.every((el) => el.style.position === "" && el.style.zIndex === "")).toBe(true);
+    const anim = arrivals()[0].anim as unknown as { onfinish: () => void };
+    anim.onfinish();
+    expect(slots[0].classList.contains("arriving")).toBe(false);
+    view.unmount();
+  });
+
   it("does not fly cards under reduced motion", () => {
     reduceMotion();
     const view = renderTable(makeState({ phase: "deal", hand: [] }));

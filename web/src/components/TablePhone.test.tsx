@@ -743,14 +743,14 @@ describe("move timer", () => {
     expect(ring()!.getAttribute("role")).toBe("timer");
     expect(ring()!.textContent).toBe("60");
     expect(ring()!.getAttribute("aria-label")).toBe("60 seconds left");
-    expect(ring()!.getAttribute("style")).toContain("--ring-deg: 360deg");
+    expect(ring()!.querySelector(".timer-ring-band")?.getAttribute("style")).toContain("--ring-at: 0s");
     expect(ring()!.className).not.toContain("thin");
     expect(ring()!.className).not.toContain("low");
     act(() => { vi.advanceTimersByTime(2500); });
     expect(ring()!.textContent).toBe("58");
     act(() => { vi.advanceTimersByTime(27_500); });
     expect(ring()!.textContent).toBe("30");
-    expect(ring()!.getAttribute("style")).toContain("--ring-deg: 180deg");
+    expect(ring()!.querySelector(".timer-ring-band")?.getAttribute("style")).toContain("--ring-at: 0s");
     expect(host.querySelector(".action-bar")!.classList.contains("clock-low")).toBe(false);
     act(() => { vi.advanceTimersByTime(20_000); });
     expect(ring()!.textContent).toBe("10");

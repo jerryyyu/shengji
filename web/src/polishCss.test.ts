@@ -98,6 +98,47 @@ describe("keyframes", () => {
   });
 });
 
+describe("hand cards", () => {
+  it("never repaint a shadow per frame: choosing a card fades a layer drawn once", () => {
+    // How to play's pictures move one step at a time and keep theirs
+    const shadowed = rules.filter((r) => /transition(?:-property)?:[^;]*\bbox-shadow\b/.test(r.body))
+      .flatMap((r) => r.sels).filter((x) => /\.card\b/.test(x));
+    expect(shadowed).toEqual([".howto-frame .howto-cards .card", ".howto-felt .trick-cards .card"]);
+    const layer = bodies(".hand .card::before").join(";");
+    expect(layer).toContain("box-shadow: 0 0 0 2px var(--gold), 0 6px 16px rgba(0, 0, 0, 0.45);");
+    expect(layer).toContain("opacity: 0;");
+    expect(layer).toContain("transition: opacity var(--dur-fast);");
+    expect(bodies(".hand .card.selected::before").join(";")).toContain("opacity: 1;");
+    expect(reduced).toContain(".hand .card::before");
+  });
+
+  it("a card that clips its face draws the chosen ring on itself, where the clip cannot hide it", () => {
+    const ring = "box-shadow: 0 0 0 2px var(--gold), 0 6px 16px rgba(0, 0, 0, 0.45);";
+    const clipping = rules.filter((r) => /overflow: hidden/.test(r.body))
+      .flatMap((r) => r.sels).filter((x) => /^\.card\.[\w-]+$/.test(x)).map((x) => x.slice(".card".length));
+    expect(clipping).toEqual([".joker"]);
+    for (const c of clipping) expect(bodies(`.hand .card${c}.selected`).join(";"), c).toContain(ring);
+  });
+});
+
+describe("the timer ring", () => {
+  const drains = keyframes.filter((k) => k.name.startsWith("ring-drain"));
+  it("drains by one composited animation: two half rings turned by transform", () => {
+    expect(drains.map((k) => k.name).sort()).toEqual(["ring-drain-l", "ring-drain-r"]);
+    for (const k of drains) expect(k.props.every((p) => p === "transform"), k.name).toBe(true);
+    const half = bodies(".timer-ring-half > span").join(";");
+    expect(half).toContain("animation: var(--ring-total, 60s) linear var(--ring-at, 0s) both;");
+    expect(bodies(".timer-ring-half.l > span").join(";")).toContain("animation-name: ring-drain-l;");
+    expect(bodies(".timer-ring-half.r > span").join(";")).toContain("animation-name: ring-drain-r;");
+    // nothing redraws the band's gradient as time passes
+    expect(css).not.toMatch(/--ring-deg|conic-gradient/);
+  });
+
+  it("steps the drain once a second under Reduce Motion", () => {
+    expect(reduced).toContain(".timer-ring-half > span { animation-timing-function: steps(var(--ring-steps, 30)); }");
+  });
+});
+
 describe("live numbers", () => {
   const LIVE = [
     ".off-tag.counting", ".card-count", ".chat-badge", ".tp-chat-badge", ".play-presence",

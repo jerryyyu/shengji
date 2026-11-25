@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 from pathlib import Path
 
 import numpy as np
@@ -47,10 +48,16 @@ def build_head(trunk_config):
     return Head()
 
 
+def candidate_name(entry):
+    key = hashlib.sha256((str(entry["dir"]) + "|" + entry["sha256"]).encode()).hexdigest()[:20]
+    return key + ".npz"
+
+
 def candidate_batches(entry, directory, verified, *, rounds_per_batch=1):
     """Join whole ballots to pre-play decision rows using the extractor's chunk key."""
-    key = hashlib.sha256((str(entry["dir"]) + "|" + entry["sha256"]).encode()).hexdigest()[:20]
-    cand, _ = load_public_candidates(Path(directory) / (key + ".npz"))
+    path = Path(directory) / candidate_name(entry)
+    source = io.BytesIO(verified.read(str(path), entry["candidate_sha256"])) if "candidate_sha256" in entry else path
+    cand, _ = load_public_candidates(source)
     part = bs.load_part(entry, bs.ROW_KEYS, verified)
     row = cand["row"]
     if (row.dtype.kind not in "iu" or int(cand["n_rows"]) != len(part["X"])

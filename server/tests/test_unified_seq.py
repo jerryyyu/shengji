@@ -571,14 +571,11 @@ def test_check_init_belief_ll_rules():
             us.check_init_belief_ll(bad, 0.98782)
 
 
-def test_fixed_trunk_candidate_update_exports_served_scores(world, tmp_path, monkeypatch):
+def _candidate_fixture(world, entry, tmp_path):
     from shengji.harvest.legal import enumerate_legal
     from shengji.harvest.rebuild import state_for_record
-    from shengji.train import search_free_head as trainer
     from shengji.train import search_free_play as sf
-    from shengji.train import unified_readout
 
-    entry = us.entries_for([str(world["data"])], "train")[0]
     verified = bs._Verified()
     part = us.load_unified_part(entry, verified, us.OutcomeIndex())
     tokens, row, slot, mean, played = [], [], [], [], []
@@ -607,8 +604,20 @@ def test_fixed_trunk_candidate_update_exports_served_scores(world, tmp_path, mon
     assert len(set(row)) == 2
     key = hashlib.sha256((str(entry["dir"]) + "|" + entry["sha256"]).encode()).hexdigest()[:20]
     arrays = dict(zip(("tok_int", "tok_f", "tok_cards", "tok_att"), map(np.stack, zip(*tokens))))
-    np.savez(tmp_path / (key + ".npz"), n_rows=len(part["X"]), row=row, slot=slot, mean=mean,
-             played=played, **arrays)
+    shard = tmp_path / (key + ".npz")
+    data = dict(n_rows=len(part["X"]), row=row, slot=slot, mean=mean, played=played, **arrays)
+    np.savez(shard, **data)
+    return shard, data, tokens, rnd, seat
+
+
+def test_fixed_trunk_candidate_update_exports_served_scores(world, tmp_path, monkeypatch):
+    from shengji.train import search_free_head as trainer
+    from shengji.train import search_free_play as sf
+    from shengji.train import unified_readout
+
+    entry = us.entries_for([str(world["data"])], "train")[0]
+    shard, data, tokens, rnd, seat = _candidate_fixture(world, entry, tmp_path)
+    verified = bs._Verified()
     b, c = next(trainer.candidate_batches(entry, tmp_path, verified, rounds_per_batch=16))
     torch.manual_seed(5)
     m = unified_readout.build(SMALL).eval()
@@ -689,7 +698,83 @@ def test_fixed_trunk_candidate_update_exports_served_scores(world, tmp_path, mon
     with pytest.raises(ValueError, match="training and serving weights differ"):
         trainer.export(tmp_path / "wrong.npz", m, head, {}, shared_unified=shared)
 
-    np.savez(tmp_path / (key + ".npz"), n_rows=len(part["X"]), row=row, slot=slot,
-             mean=mean, played=np.asarray(slot) == 1, **arrays)
+    data["played"] = np.asarray(data["slot"]) == 1
+    np.savez(shard, **data)
     with pytest.raises(ValueError, match="recorded attempt"):
         next(trainer.candidate_batches(entry, tmp_path, verified))
+
+def test_candidate_schedule_recovers_from_an_interrupted_update(world, tmp_path, monkeypatch):
+    from shengji.ai import unified_readout_numpy as rn
+    from shengji.train import search_free_head as trainer
+    from shengji.train import search_free_schedule as schedule
+    from shengji.train import unified_readout
+
+    m = unified_readout.build(SMALL).eval()
+    base = tmp_path / "base.npz"
+    weights = {k: v.detach().numpy() for k, v in m.state_dict().items()}
+    pin = rn.save_package(base, m.config, {k[6:]: v for k, v in weights.items() if k.startswith("trunk.")},
+                          {k: v for k, v in weights.items() if k.startswith(("p_head.", "q_head."))},
+                          {k[8:]: v for k, v in weights.items() if k.startswith("readout.")}, {})
+    sums = tmp_path / "SHA256SUMS"
+    entries = us.entries_for([str(world["data"])], "train")
+    lines = []
+    for entry in entries:
+        shard, _, _, rnd, seat = _candidate_fixture(world, entry, tmp_path)
+        lines.append(f"{us.sha256_file(shard)}  {shard.name}")
+    sums.write_text("\n".join(lines))
+    args = ["--base", str(base), "--sha256", pin, "--data", str(world["data"]),
+            "--candidates", str(tmp_path), "--candidate-sums", str(sums), "--seed", "7",
+            "--epochs", "2", "--lr", "0.0005", "--threads", "1"]
+    clean, resumed = tmp_path / "clean", tmp_path / "resumed"
+    assert schedule.main(args + ["--out", str(clean)]) == 0
+    calls = []
+    fit = trainer.fit_shard
+
+    def interrupt(*a, **kw):
+        decisions = fit(*a, **kw)
+        calls.append(a[3]["sha256"])
+        if len(calls) == 2:
+            raise InterruptedError("fixture stopped before checkpoint")
+        return decisions
+
+    import fcntl
+    resumed.mkdir()
+    with (resumed / ".writer.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(BlockingIOError):
+            schedule.main(args + ["--out", str(resumed)])
+    assert not (resumed / "checkpoint.pt").exists()
+    with monkeypatch.context() as patch:
+        patch.setattr(trainer, "fit_shard", interrupt)
+        with pytest.raises(InterruptedError):
+            schedule.main(args + ["--out", str(resumed)])
+    assert torch.load(resumed / "checkpoint.pt", weights_only=True)["next_shard"] == 1
+    assert not (resumed / "head.npz").exists()
+    with pytest.raises(ValueError, match="different training recipe"):
+        schedule.main(args + ["--lr", "0.01", "--out", str(resumed)])
+    blob = shard.read_bytes()
+    shard.write_bytes(blob + b"modified")
+    with pytest.raises(bs.BeliefSeqError, match="sha256 mismatch"):
+        schedule.main(args + ["--out", str(tmp_path / "bad-data")])
+    assert not (tmp_path / "bad-data/head.npz").exists()
+    shard.write_bytes(blob)
+    assert schedule.main(args + ["--out", str(resumed)]) == 0
+    a, b = [torch.load(d / "checkpoint.pt", weights_only=True) for d in (clean, resumed)]
+    assert a["next_shard"] == b["next_shard"] == len(entries) * 2
+    assert a["decisions"] == b["decisions"] == len(entries) * 4
+    assert all(torch.equal(v, b["head"][k]) for k, v in a["head"].items())
+    for k, state in a["optimizer"]["state"].items():
+        for key, v in state.items():
+            assert torch.equal(v, b["optimizer"]["state"][k][key])
+    from shengji.harvest.legal import is_legal
+    from shengji.train import relaxed_play as rp
+    sha = us.sha256_file(resumed / "head.npz")
+    assert us.sha256_file(clean / "head.npz") == sha
+    served = tbl.HeuristicBot()
+    served.unified_prior_model = rn.load_unified_readout_numpy(base, pin)
+    for builder in (rp.build_casual, rp.build_beginner):
+        bot = builder(served, resumed / "head.npz", seed=7, sha256=sha)
+        assert is_legal(rnd, seat, bot.decide_play(rnd, seat))
+        assert bot.last_decision_record["schema"] == rp.RECORD_SCHEMA
+    monkeypatch.setattr(trainer, "fit_shard", lambda *a, **kw: pytest.fail("replayed a completed shard"))
+    assert schedule.main(args + ["--out", str(resumed)]) == 0

@@ -258,14 +258,19 @@ def monitor(child, baseline, check_signal, verify_stopped, *, pressure_limit=4, 
 def run_segment(root, phase, check_signal, expected_sha=None, min_free_gib=None):
     expected_sha = provider_digest(expected_sha)
     root = root.resolve(strict=True)
-    split_smoke = phase in ("L-smoke", "RT4-M-A-smoke")
+    rt4_smoke = phase in ("RT4-M-A-smoke", "RT4-M-A-micro4-smoke")
+    sz3 = phase in ("L-smoke", "M", "L-prefix", "L-finish")
+    split_smoke = phase == "L-smoke" or rt4_smoke
     smoke = phase == "smoke" or split_smoke
     output = root / phase
-    emitter = {"L-smoke": "sz3_joint_recipe.py", "RT4-M-A": "rt4m_joint.py",
-               "RT4-M-A-smoke": "rt4m_joint.py"}.get(phase, "sz2_joint_segment.py")
+    emitter = "sz2_joint_segment.py"
+    if sz3:
+        emitter = "sz3_joint_recipe.py"
+    elif rt4_smoke or phase == "RT4-M-A":
+        emitter = "rt4m_joint.py"
     if smoke and os.path.lexists(output):
         raise RuntimeError(f"smoke output already exists: {output}")
-    if (split_smoke or phase == "RT4-M-A") and (min_free_gib is None or min_free_gib <= 0):
+    if (sz3 or rt4_smoke or phase == "RT4-M-A") and (min_free_gib is None or min_free_gib <= 0):
         raise ValueError(f"{phase} requires a positive --min-free-gib")
 
     def guard():
@@ -281,7 +286,7 @@ def run_segment(root, phase, check_signal, expected_sha=None, min_free_gib=None)
         argv = json.loads(command(sys.executable, "-B", SCRIPTS / emitter, phase,
                                   "--root", root, timeout=60))
     except subprocess.CalledProcessError as exc:
-        if phase == "medium-finish" and exc.returncode == 8:
+        if phase in ("medium-finish", "L-finish") and exc.returncode == 8:
             return 8
         raise
     if not isinstance(argv, list) or not argv or not all(isinstance(item, str) for item in argv):
@@ -323,19 +328,20 @@ def run_segment(root, phase, check_signal, expected_sha=None, min_free_gib=None)
     guard()
     if not smoke and rc == 3:
         return 3
-    if phase == "medium-prefix" and rc == 7:
+    if phase in ("medium-prefix", "L-prefix") and rc == 7:
         return 7
-    if rc or phase == "medium-prefix":
+    if rc or phase in ("medium-prefix", "L-prefix"):
         raise RuntimeError(f"{phase} trainer exited {rc}")
     if split_smoke:
         from sz3_joint_recipe import smoke_result
         rounds = None
-        if phase == "RT4-M-A-smoke":
+        if rt4_smoke:
             from shengji.train.unified_readout import _run_identity, build_parser
             parsed = build_parser().parse_args(argv[4:])
-            if (parsed.microbatch_rounds is not None or
+            expected_micro = 4 if phase == "RT4-M-A-micro4-smoke" else None
+            if (parsed.microbatch_rounds != expected_micro or
                     json.loads((output / "train/run.json").read_bytes()) != _run_identity(parsed)):
-                raise ValueError("capacity smoke must match the full-batch trainer recipe")
+                raise ValueError("capacity smoke must match the requested trainer recipe")
             rounds = parsed.rounds_per_batch
         print(json.dumps(smoke_result(output / "train", required_batch_rounds=rounds), allow_nan=False), flush=True)
     if phase == "RT4-M-A":
@@ -347,7 +353,9 @@ def run_segment(root, phase, check_signal, expected_sha=None, min_free_gib=None)
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
-    parser.add_argument("--phase", choices=("smoke", "L-smoke", "RT4-M-A-smoke", "RT4-M-A", "small", "medium-prefix", "medium-finish"), default="smoke")
+    parser.add_argument("--phase", choices=("smoke", "L-smoke", "M", "L-prefix", "L-finish", "RT4-M-A-smoke",
+                                            "RT4-M-A-micro4-smoke", "RT4-M-A", "small", "medium-prefix",
+                                            "medium-finish"), default="smoke")
     parser.add_argument("--min-free-gib", type=int, help="minimum free space on the training volume")
     parser.add_argument("--provider-sha256", help="reviewed SHA256 of the provider configuration")
     args = parser.parse_args()

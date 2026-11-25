@@ -575,11 +575,12 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
 @pytest.mark.parametrize(("phase", "module", "pin", "depth"), [
     ("L-smoke", "sz3_joint_recipe", "RECIPE_SHA", 8),
     ("RT4-M-A-smoke", "rt4m_joint", "RECIPE_SHA256", 6),
+    ("RT4-M-A-micro4-smoke", "rt4m_joint", "RECIPE_SHA256", 6),
 ])
 def test_split_smoke_resumes_the_real_trainer_and_consumes_its_capacity(
         mps_worker_recipe, phase, module, pin, depth):
     supervisor, directory, log, recipe, scratch = mps_worker_recipe
-    if phase == "RT4-M-A-smoke":
+    if module == "rt4m_joint":
         from test_belief_labels import synthetic_cluster
         from test_unified_seq import extract_dir, write_store
 
@@ -604,18 +605,55 @@ def test_split_smoke_resumes_the_real_trainer_and_consumes_its_capacity(
     assert cp.returncode == 0, (cp.stdout, cp.stderr)
     result = json.loads(cp.stdout.splitlines()[-1])
     assert result["capacity"]["post_step_max_driver_bytes"] > 0
-    if phase == "RT4-M-A-smoke":
+    if module == "rt4m_joint":
         assert result["capacity"]["max_batch_rounds"] == 16
         assert result["capacity"]["steps"] == 2
         assert not (directory / "reserved/A").exists()
     else:
         assert result["capacity"]["rows"] == 344 and result["capacity"]["steps"] == 4
     training = directory / "reserved" / phase / "train"
+    if module == "rt4m_joint":
+        actual = json.loads((training / "run.json").read_bytes())
+        assert actual.get("microbatch_rounds") == (4 if phase == "RT4-M-A-micro4-smoke" else None)
     status = (training / "status.log").read_text()
     assert " UTR PAUSED at epoch 1 buffer 1/" in status
     assert " RESUME epoch 0 buffer 1 device=mps" in status
     assert " UTR DONE " in status.splitlines()[-1]
     assert events(log) == ["stop", "restart"]
+
+
+def test_full_sz3_worker_consumes_the_real_trainer(mps_worker_recipe):
+    supervisor, directory, log, recipe, scratch = mps_worker_recipe
+    emitter = directory / "server/scripts/sz3_joint_recipe.py"
+    emitter.write_text(
+        "import sys\n"
+        f"sys.path.insert(0, {str(WORKER.parent)!r})\n"
+        "import sz3_joint_recipe as sz3\n"
+        f"sz3.RECIPE_SHA = {hashlib.sha256(recipe.read_bytes()).hexdigest()!r}\n"
+        f"sz3.ARCHITECTURE = {{6: {scratch!r}, 8: {scratch!r}}}\n"
+        "sz3.BOUNDARY = 1\n"
+        f"sz3.main([*sys.argv[1:], '--recipe', {str(recipe)!r}])\n"
+    )
+    def run(phase):
+        return subprocess.run([*supervisor, "--phase", phase, "--min-free-gib", "1"],
+                              env={**os.environ, "PYTHONPATH": str(WORKER.parents[1])},
+                              capture_output=True, text=True, timeout=60)
+
+    assert run("M").returncode == 0
+    assert run("L-prefix").returncode == 7
+    result = run("L-finish")
+    assert result.returncode == 8, (result.stdout, result.stderr)
+    assert events(log) == ["stop", "restart"] * 2
+    root = directory / "reserved"
+    report = root / "M/train/epoch-1-buffer-1.json"
+    prefix = json.loads(report.read_bytes())
+    prefix["train"]["leaf_value"] += 0.01
+    report.write_text(json.dumps(prefix))
+    assert run("L-finish").returncode == 0
+    status = (root / "L/train/status.log").read_text()
+    assert " RESUME epoch 0 buffer 1 device=mps" in status and " UTR DONE " in status.splitlines()[-1]
+    assert run("M").returncode != 0
+    assert events(log) == ["stop", "restart"] * 3
 
 
 @pytest.mark.parametrize("failed", [None, "M 0", "M 1", "M 2", "polish", "export", "disk"])

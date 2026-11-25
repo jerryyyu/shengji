@@ -890,3 +890,35 @@ def test_mixpolish_checkpoint_reproduces_selected_calibration(cpu_root, tmp_path
     assert saved["calib"]["mixpolish_epoch"] == (1 if same_target else 0)
     observed = ur.mix_eval(selected.readout, [calib])
     assert observed["mixture_nll"] == pytest.approx(saved["calib"]["mixpolish"]["mixture_nll"])
+
+def test_scratch_matches_warm_medium_layout_and_refuses_stock_resume(data, tmp_path):
+    from scripts.rt4m_deepen import deepen
+    from scripts.sz2_export_parity import measure_parity
+
+    stock_arch = "d=288,heads=6,enc_layers=6,xattn_layers=6,x_hidden=256"
+    matched_arch = stock_arch + ",outcome_history_width=192"
+    out = tmp_path / "control"
+    args = ["train", "--data", str(data), "--out", str(out), "--threads", "1", "--loader-threads", "1",
+            "--rounds-per-batch", "1", "--epochs", "1", "--buffer-chunks", "1", "--report-buffer", "1"]
+    assert ur.main([*args, "--scratch-arch", matched_arch, "--pause-at-report"]) == 7
+    assert ur.main([*args, "--scratch-arch", stock_arch, "--expect-resume-buffer", "1"]) == 1
+    assert "settings differ" in (out / "status.log").read_text()
+    assert ur.main([*args, "--scratch-arch", matched_arch, "--expect-resume-buffer", "1"]) == 0
+
+    scratch, saved = ur.load_checkpoint(out / "best.pt")
+    source = tmp_path / "small.pt"
+    small = ur.build(dict(d=192, heads=4, enc_layers=4, xattn_layers=4, x_hidden=256, card_self_attn=True))
+    torch.save(dict(schema=ur.CKPT_SCHEMA, config=small.config, model=small.state_dict()), source)
+    warm_path = tmp_path / "warm.pt"
+    deepen(source, hashlib.sha256(source.read_bytes()).hexdigest(), warm_path,
+           seed=45, medium_keep_outcome_history=True)
+    warm, _ = ur.load_checkpoint(warm_path)
+    assert scratch.config == warm.config
+    assert {k: v.shape for k, v in scratch.state_dict().items()} == {k: v.shape for k, v in warm.state_dict().items()}
+    assert saved["run"]["scratch_arch"] == matched_arch and saved["run"]["init_readout_ckpt"] is None
+    assert not torch.equal(scratch.trunk.card_id, warm.trunk.card_id)
+    package = tmp_path / "control.npz"
+    assert ur.main(["export", "--ckpt", str(out / "best.pt"), "--out", str(package), "--temperature", "1"]) == 0
+    parity = measure_parity(out / "best.pt", package, str(data), 12, root_heads=True)
+    assert parity["rows"] == 12 and parity["parity"] == "OK"
+    assert set(parity["max_abs_diff"]) == {"belief", "value", "reply", "outcome", "policy"}

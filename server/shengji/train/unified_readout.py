@@ -482,13 +482,20 @@ def _train(args, out: Path, status: str) -> int:
         if args.init or args.init_ckpt or args.init_readout_ckpt:
             raise UnifiedReadoutError("--scratch-arch takes no init")
         arch = dict(bs.DEFAULT_ARCH)
+        outcome_history_width = None
         for item in args.scratch_arch.split(","):
             k, v = item.split("=")
+            if k == "outcome_history_width":
+                outcome_history_width = int(v)
+                continue
             if k not in arch:
                 raise UnifiedReadoutError(f"--scratch-arch: unknown key {k}")
             arch[k] = type(arch[k])(int(v))
-        model = build(arch)
-        init = {"sha256": "scratch:" + json.dumps(arch, sort_keys=True)}
+        model = build(arch, outcome_history_width=outcome_history_width)
+        layout = dict(arch)
+        if "outcome_history_width" in model.config["heads"]:
+            layout["outcome_history_width"] = outcome_history_width
+        init = {"sha256": "scratch:" + json.dumps(layout, sort_keys=True)}
     elif args.init_readout_ckpt:
         if args.init or args.init_ckpt:
             raise UnifiedReadoutError("--init-readout-ckpt is the whole init")
@@ -1241,7 +1248,7 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--out", required=True)
     t.add_argument("--init", default=None, help="a served-shape belief package whose trunk warms the trunk")
     t.add_argument("--init-readout-ckpt", default=None, help="a unified_readout checkpoint: warms the whole model")
-    t.add_argument("--scratch-arch", default=None, help="d=..,heads=..,enc_layers=..,xattn_layers=..,x_hidden=..: random init at that size")
+    t.add_argument("--scratch-arch", default=None, help="d=..,heads=..,enc_layers=..,xattn_layers=..,x_hidden=..[,outcome_history_width=..]: random init at that size")
     t.add_argument("--calib-data", nargs="+", default=None, help="the dirs whose calib split is scored (default: --data)")
     t.add_argument("--max-seconds", type=float, default=None, help="save and exit 3 at the next buffer after this long (resume continues)")
     t.add_argument("--init-sha256", default=None)

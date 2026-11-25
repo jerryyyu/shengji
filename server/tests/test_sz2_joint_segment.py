@@ -520,7 +520,7 @@ def test_full_mix_scratch_command_preserves_the_weighted_trainer_identity(segmen
     source_recipe, _, expected = arm.recipe_inputs(tmp_path, source)
     assert source_recipe == recipe
     assert ur._run_identity(parsed) == expected == dict(
-        recipe, scratch_arch=arm.ARCHITECTURE[6], init_readout_ckpt=None, device="mps",
+        recipe, scratch_arch=arm.ARCHITECTURE[6], init_readout_ckpt=None, device="mps", microbatch_rounds=4,
         lr=3e-4, head_lr=1e-3, readout_lr=1e-3)
     directory = tmp_path / "A/train"
     directory.mkdir(parents=True)

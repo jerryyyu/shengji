@@ -248,6 +248,10 @@ jobs:
           tests/test_expert_label_producer.py
           tests/test_expert_label_check.py
           tests/test_check_comment_provenance.py
+          tests/test_sz3_filler.py
+          tests/test_sz3_filler_generator.py
+          tests/test_sz3_filler_pace.py
+          tests/test_sz3_filler_process.py
           tests/test_lane_lib.py
           tests/test_s160_rt4_attrib.py
           tests/test_ci_path_classifier.py

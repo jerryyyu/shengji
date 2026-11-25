@@ -80,7 +80,7 @@ Rule tokens used in the figures and tables:
 
 | change | against | result | reading | External benchmarks |
 |---|---|---|---|---|
-| the RT4 unified model, the 500k-round retrain (release 55; paired head-to-head duels) | release 54 | confirmation +0.0612 [+0.0510, +0.0712] (S159, 7,840 fresh deals); no screen vs release 54 (DEV: R4H +0.0689 [+0.0546, +0.0834] vs release 53's unified model) | CONFIRMED, M5 Ultra; Fly timing 0.993× release 54 with one game; Fly strength not measured | shengji.org (RT4 with the adapter's pair+singles safeguards): full games to A 11–0 in completed games (5 unfinished games not counted), +0.50 [+0.35, +0.66] by round (203 rounds), +0.65 [+0.35, +0.95] by game (11 games), 11-23 to 11-24 (S106); 5-round games +0.18 [−0.15, +0.50] by round (45 rounds, 9 games), 11-22 to 11-23 ([S106](https://github.com/jerryyyu/shengji/issues/1263#issuecomment-7093521135)) |
+| the RT4 unified model, the 500k-round retrain (release 55; paired head-to-head duels) | release 54 | confirmation +0.0612 [+0.0510, +0.0712] (S159, 7,840 fresh deals); no screen vs release 54 (DEV: R4H +0.0689 [+0.0546, +0.0834] vs release 53's unified model) | CONFIRMED, M5 Ultra; Fly timing 0.993× release 54 with one game; Fly strength not measured | shengji.org (RT4 with adapter safeguards that changed during the runs; pooled, no safeguard effect isolated): full games to A 11–0 in completed games (5 unfinished games not counted), +0.50 [+0.35, +0.66] by round (203 rounds), +0.65 [+0.35, +0.95] by game (11 games), 11-23 to 11-24 (S106); 5-round games pooled +0.18 [−0.15, +0.50] by round (45 rounds, 9 games, one before the lead safeguard; the 8-game lead-safeguard subset +0.23 [−0.13, +0.58] over 40 rounds), 11-22 to 11-23 ([S106](https://github.com/jerryyyu/shengji/issues/1263#issuecomment-7093521135)) |
 | bury budget 3 s (release 54) | release 53 | not measured | configuration change, no strength claim; on a Mac mini no bury reached the old 2 s deadline (#1605) | — |
 | the all-data unified model in four play slots (release 53; paired head-to-head duels) | release 52 | screen +0.0573 [+0.0422, +0.0728]; confirmation +0.0521 [+0.0410, +0.0633] (7,840 fresh deals) | SCREEN_PASS and CONFIRMED (UT-alldata-screen, UT-alldata-confirm), M5 Ultra; Fly timing 0.992× release 52 with one game; Fly strength not measured | — |
 | combo51: elt + elm + els1600 + wht + rcec (release 52; paired head-to-head duels) | release 51 | screen +0.0418 [+0.0332, +0.0506]; confirmation +0.0438 [+0.0381, +0.0497] (7,840 fresh deals) | SCREEN_PASS and CONFIRMED (combo51, combo51C), M5 Ultra; Fly strength not measured | shengji.org: 8–3 in games, +0.20 [+0.05, +0.35] by round (233 rounds), [−0.09, +0.50] by game (11 games), 11-13 to 11-16 ([S106 pilot](https://github.com/jerryyyu/shengji/issues/1263#issuecomment-6869869578), [pooled](https://github.com/jerryyyu/shengji/issues/1263#issuecomment-7093521135)) |
@@ -108,11 +108,11 @@ None of them is on the screen scale, and none of them ranks the releases
   bots, under the shengji.org rules profile (kitty bonus 2 × the largest component of the last lead, a no-bid round
   plays no-trump). Each of our seats sees only its own hand and the public play, never the site's hidden-card
   fields; plays and burials wait at least 2 s. Entries are our levels gained minus theirs per round, with a
-  t-interval 95% CI over rounds; rounds within a game are correlated, so the by-game interval is the more honest
+  t-interval 95% CI over rounds, using approximate t critical values; rounds within a game are correlated, so the by-game interval is the more honest
   one. Samples are small (3 to 11 games), the opponent is one bot type, and the deals are not paired, so the
-  entries are descriptive. The RT4 games ran with an adapter safeguard that replaces any pair+singles play by
-  the bot's next-best legal play (the site went down twice after such plays), so they do not measure release 55
-  exactly as served. MC-LCB's single game, −0.400 [−0.761, −0.039] over 25 rounds, is on the ladder's row 1.
+  entries are descriptive. The RT4 games ran with adapter safeguards that replace a pair+singles play by the
+  bot's next-best legal play when an alternative exists (the site went down twice after such plays) and changed
+  during the runs, so they do not measure release 55 exactly as served and isolate no safeguard effect. MC-LCB's single game, −0.400 [−0.761, −0.039] over 25 rounds, is on the ladder's row 1.
 
 The exact contract, the caveats on these reads, what was tried and not taken, and every earlier release:
 [AI_POLICIES.md](AI_POLICIES.md#production-contract) and its

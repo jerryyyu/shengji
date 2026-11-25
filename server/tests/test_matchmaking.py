@@ -1189,6 +1189,41 @@ def test_ws_pair_start_bots_seats_both_partners(wsenv):
         assert [s.user_id for s in room.seats] == [u1, None, u2, None]
 
 
+def test_ws_a_duo_leaders_start_with_bots_sent_before_the_partner_took_back_start_is_refused(
+        wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    calls = []
+    real = srv.MATCHMAKER.start_room
+
+    async def spy(*a, **kw):
+        calls.append(a)
+        return await real(*a, **kw)
+    monkeypatch.setattr(srv.MATCHMAKER, "start_room", spy)
+    u1, h1 = _user(store, "lead", "Lead")
+    u2, h2 = _user(store, "mate", "Mate")
+    with client.websocket_connect("/ws", headers=h1) as a, \
+            client.websocket_connect("/ws", headers=h2) as b:
+        _ws_duo(a, b)
+        a.send_json({"type": "table_start"})
+        _next_where(a, "queue_state", lambda m: m.get("duo_ready") == 1)
+        b.send_json({"type": "table_start"})
+        shown = _next_where(a, "queue_state", lambda m: m.get("duo_ready") == 2)
+        assert shown["mode"] == "ranked" and shown["leader"] is True
+        b.send_json({"type": "table_start", "on": False})
+        now = _next_where(a, "queue_state", lambda m: m.get("duo_ready") == 1)
+        assert now["panel_seq"] != shown["panel_seq"]
+        a.send_json({"type": "table_start_bots", "panel_seq": shown["panel_seq"]})
+        assert _drain(a, "error")["code"] == "panel_changed"
+        assert calls == [] and srv.MATCHMAKER._entry(u1) is not None
+        # both Starts in again: the leader's tap on the fresh panel starts it
+        b.send_json({"type": "table_start"})
+        fresh = _next_where(a, "queue_state", lambda m: m.get("duo_ready") == 2)
+        a.send_json({"type": "table_start_bots", "panel_seq": fresh["panel_seq"]})
+        code = _drain(b, "match_started")["room"]
+        assert len(calls) == 1
+        assert [s.user_id for s in srv.rooms[code].seats] == [u1, None, u2, None]
+
+
 def test_ws_two_starts_take_a_waiting_table_to_a_rated_game_with_bots(wsenv):
     srv, store, client, clock = wsenv
     (u1, h1), (u2, h2) = _user(store, "t1", "One"), _user(store, "t2", "Two")
@@ -4559,6 +4594,20 @@ def test_a_searching_table_duo_starts_with_bots_on_its_leaders_call_ranked_or_ca
             (match_id, slots), = env.started
             assert match_id is None and [s.user_id for s in slots] == [1, None, 2, None]
             assert env.modes == [mode] and env.mm.entries == {}
+        # a Start taken back first: the leader's tap is refused, with or
+        # without the panel it was sent against, and nothing starts
+        for stale in (True, False):
+            env = Env()
+            await _duo_table(env, 1, friend=2)
+            await env.send(1, "table_start")
+            await env.send(2, "table_start")
+            shown = env.conns[1].last("queue_state")["panel_seq"]
+            await env.send(2, "table_unready")
+            assert env.conns[1].last("queue_state")["panel_seq"] != shown
+            fields = {"panel_seq": shown} if stale else {}
+            await env.send(1, "queue_start_bots", **fields)
+            assert env.conns[1].last("error")["code"] == "panel_changed"
+            assert env.started == [] and env.mm._entry(1) is not None
     run(go())
 
 

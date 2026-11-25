@@ -482,7 +482,8 @@ sys.exit(w.main())
     assert (directory / "reserved/L-smoke").is_dir()
 
 
-def test_large_smoke_resumes_the_real_trainer_and_consumes_its_capacity(host):
+@pytest.mark.parametrize("full", [False, True])
+def test_sz3_worker_consumes_the_real_trainer(host, full):
     torch = pytest.importorskip("torch")
     if not torch.backends.mps.is_available():
         pytest.skip("the smoke measures MPS allocations")
@@ -504,12 +505,33 @@ def test_large_smoke_resumes_the_real_trainer_and_consumes_its_capacity(host):
         f"sys.path.insert(0, {str(WORKER.parent)!r})\n"
         "import sz3_joint_recipe as sz3\n"
         f"sz3.RECIPE_SHA = {hashlib.sha256(recipe.read_bytes()).hexdigest()!r}\n"
-        f"sz3.ARCHITECTURE[8] = {SCRATCH!r}\n"
+        f"sz3.ARCHITECTURE = {{6: {SCRATCH!r}, 8: {SCRATCH!r}}}\n"
+        "sz3.BOUNDARY = 1\n"
         f"sz3.main([*sys.argv[1:], '--recipe', {str(recipe)!r}])\n"
     )
-    cp = subprocess.run([*supervisor, "--phase", "L-smoke", "--min-free-gib", "1"],
-                        env={**os.environ, "PYTHONPATH": str(WORKER.parents[1])},
-                        capture_output=True, text=True, timeout=60)
+    def run(phase):
+        return subprocess.run([*supervisor, "--phase", phase, "--min-free-gib", "1"],
+                              env={**os.environ, "PYTHONPATH": str(WORKER.parents[1])},
+                              capture_output=True, text=True, timeout=60)
+
+    if full:
+        assert run("M").returncode == 0
+        assert run("L-prefix").returncode == 7
+        result = run("L-finish")
+        assert result.returncode == 8, (result.stdout, result.stderr)
+        assert events(log) == ["stop", "restart"] * 2
+        root = directory / "reserved"
+        report = root / "M/train/epoch-1-buffer-1.json"
+        prefix = json.loads(report.read_bytes())
+        prefix["train"]["leaf_value"] += 0.01
+        report.write_text(json.dumps(prefix))
+        assert run("L-finish").returncode == 0
+        status = (root / "L/train/status.log").read_text()
+        assert " RESUME epoch 0 buffer 1 device=mps" in status and " UTR DONE " in status.splitlines()[-1]
+        assert run("M").returncode != 0
+        assert events(log) == ["stop", "restart"] * 3
+        return
+    cp = run("L-smoke")
     assert cp.returncode == 0, (cp.stdout, cp.stderr)
     result = json.loads(cp.stdout.splitlines()[-1])
     assert result["capacity"]["rows"] == 344 and result["capacity"]["steps"] == 4

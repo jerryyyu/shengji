@@ -172,21 +172,20 @@ def _prefix(directory, expected, arch, *, paused):
     return counts, losses
 
 
-def prefix_decision(root, recipe):
-    """Check the matched trainer artifacts before comparing the cumulative loss."""
+def arm_prefix(phase, root, recipe):
     from shengji.train import unified_readout as trainer
 
-    parser = trainer.build_parser()
+    args = trainer.build_parser().parse_args(_train_args(phase, root, recipe))
+    arch = dict(trainer.bs.DEFAULT_ARCH)
+    arch.update((key, int(value)) for key, value in
+                (word.split("=") for word in args.scratch_arch.split(",")))
+    return _prefix(Path(args.out), trainer._run_identity(args), arch, paused=args.pause_at_report)
 
-    def prefix(phase):
-        args = parser.parse_args(_train_args(phase, root, recipe))
-        arch = dict(trainer.bs.DEFAULT_ARCH)
-        arch.update((key, int(value)) for key, value in
-                    (word.split("=") for word in args.scratch_arch.split(",")))
-        return _prefix(Path(args.out), trainer._run_identity(args), arch, paused=args.pause_at_report)
 
-    m_counts, medium = prefix("M")
-    l_counts, large = prefix("L-prefix")
+def prefix_decision(root, recipe):
+    """Check the matched trainer artifacts before comparing the cumulative loss."""
+    m_counts, medium = arm_prefix("M", root, recipe)
+    l_counts, large = arm_prefix("L-prefix", root, recipe)
     if m_counts != l_counts:
         raise ValueError("the scratch prefix row or leaf counts differ")
     leaf, policy = (m - l for m, l in zip(medium, large))
@@ -200,15 +199,33 @@ def command(phase, root, recipe_path):
     if hashlib.sha256(raw).hexdigest() != RECIPE_SHA:
         raise ValueError("FT-500k recipe SHA mismatch")
     recipe = json.loads(raw)
-    if phase == "L-finish":
-        stop = root / "L/train/STOP"
+    args = _train_args(phase, root, recipe)
+    directory = Path(args[args.index("--out") + 1])
+    if directory.is_symlink() or directory.parent.is_symlink():
+        raise ValueError("arm output must be inside its reserved root")
+    if phase != "L-smoke":
+        stop = directory / "STOP"
         if stop.exists() or stop.is_symlink():
-            raise ValueError("operator STOP present on the large arm")
+            raise ValueError("operator STOP present on the arm")
+    if phase == "L-finish":
         proceed, detail = prefix_decision(root, recipe)
         if not proceed:
             raise FailOffline(detail)
         print(f"CONTINUE {detail}", file=sys.stderr)
-    return [sys.executable, "-B", "-m", "shengji.train.unified_readout", *_train_args(phase, root, recipe)]
+    if directory.exists() and phase != "L-smoke":
+        status = (directory / "status.log").read_text().splitlines()
+        terminal = re.fullmatch(
+            r"\S+ (STOPPED|UTR PAUSED) at epoch 1 buffer ([1-9][0-9]*)/([1-9][0-9]*) "
+            r"\((STOP file or --max-seconds|report boundary)\); checkpoint saved", status[-1] if status else "",
+        )
+        if (not terminal or int(terminal[2]) >= int(terminal[3]) or not (directory / "checkpoint.pt").is_file()
+                or (terminal[1], terminal[4]) not in {("STOPPED", "STOP file or --max-seconds"),
+                                                       ("UTR PAUSED", "report boundary")}
+                or (terminal[1] == "UTR PAUSED" and phase != "L-finish")
+                or (phase == "L-prefix" and int(terminal[2]) >= BOUNDARY)):
+            raise ValueError("expected a clean checkpointed segment before resuming")
+        args.extend(["--expect-resume-buffer", terminal[2]])
+    return [sys.executable, "-B", "-m", "shengji.train.unified_readout", *args]
 
 
 def main(argv=None):

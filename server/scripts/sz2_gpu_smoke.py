@@ -260,11 +260,12 @@ def run_segment(root, phase, check_signal, expected_sha=None, min_free_gib=None)
     root = root.resolve(strict=True)
     smoke = phase in ("smoke", "L-smoke")
     output = root / ("L-smoke" if phase == "L-smoke" else "smoke")
-    emitter = "sz3_joint_recipe.py" if phase == "L-smoke" else "sz2_joint_segment.py"
+    sz3 = phase in ("L-smoke", "M", "L-prefix", "L-finish")
+    emitter = "sz3_joint_recipe.py" if sz3 else "sz2_joint_segment.py"
     if smoke and os.path.lexists(output):
         raise RuntimeError(f"smoke output already exists: {output}")
-    if phase == "L-smoke" and (min_free_gib is None or min_free_gib <= 0):
-        raise ValueError("L-smoke requires a positive --min-free-gib")
+    if sz3 and (min_free_gib is None or min_free_gib <= 0):
+        raise ValueError(f"{phase} requires a positive --min-free-gib")
 
     def guard():
         check_signal()
@@ -279,7 +280,7 @@ def run_segment(root, phase, check_signal, expected_sha=None, min_free_gib=None)
         argv = json.loads(command(sys.executable, "-B", SCRIPTS / emitter, phase,
                                   "--root", root, timeout=60))
     except subprocess.CalledProcessError as exc:
-        if phase == "medium-finish" and exc.returncode == 8:
+        if phase in ("medium-finish", "L-finish") and exc.returncode == 8:
             return 8
         raise
     if not isinstance(argv, list) or not argv or not all(isinstance(item, str) for item in argv):
@@ -321,9 +322,9 @@ def run_segment(root, phase, check_signal, expected_sha=None, min_free_gib=None)
     guard()
     if not smoke and rc == 3:
         return 3
-    if phase == "medium-prefix" and rc == 7:
+    if phase in ("medium-prefix", "L-prefix") and rc == 7:
         return 7
-    if rc or phase == "medium-prefix":
+    if rc or phase in ("medium-prefix", "L-prefix"):
         raise RuntimeError(f"{phase} trainer exited {rc}")
     if phase == "L-smoke":
         from sz3_joint_recipe import smoke_result
@@ -334,7 +335,7 @@ def run_segment(root, phase, check_signal, expected_sha=None, min_free_gib=None)
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
-    parser.add_argument("--phase", choices=("smoke", "L-smoke", "small", "medium-prefix", "medium-finish"), default="smoke")
+    parser.add_argument("--phase", choices=("smoke", "L-smoke", "M", "L-prefix", "L-finish", "small", "medium-prefix", "medium-finish"), default="smoke")
     parser.add_argument("--min-free-gib", type=int, help="minimum free space on the training volume")
     parser.add_argument("--provider-sha256", help="reviewed SHA256 of the provider configuration")
     args = parser.parse_args()

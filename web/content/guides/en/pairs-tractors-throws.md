@@ -3,7 +3,7 @@ title: Pairs, tractors and throws in Sheng Ji
 description: What counts as a pair, a tractor or a throw, how you must follow each one, and what happens when a throw fails.
 slug: pairs-tractors-throws
 order: 5
-related: [how-to-play, declaring-trump, scoring-and-levels]
+related: [how-to-play, declaring-trump, scoring-and-levels, sheng-ji-by-the-numbers]
 updated: 2026-11-23
 lang: en
 ---

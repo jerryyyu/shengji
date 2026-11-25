@@ -3,7 +3,7 @@ title: Burying the kitty in Sheng Ji: what to put down and why
 description: How the banker should choose the 8 cards to bury, with a real 33-card hand, the point risk of the last trick, and the choices that make a void.
 slug: burying-the-kitty
 order: 4
-related: [scoring-and-levels, declaring-trump, how-to-play]
+related: [scoring-and-levels, declaring-trump, how-to-play, sheng-ji-by-the-numbers]
 updated: 2026-11-23
 lang: en
 schema: HowTo

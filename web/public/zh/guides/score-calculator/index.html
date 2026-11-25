@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#14171e" />
+<meta name="color-scheme" content="dark" />
+<meta name="apple-itunes-app" content="app-id=6833598710" />
+<title>升级算分器：谁升级、升几级、下局谁坐庄 | 升级攻略</title>
+<meta name="description" content="填上闲家得分、底牌分数和最后一轮的出牌，马上算出这一局的结果：哪方赢、升几级、下局谁坐庄、这一盘是不是赢了。" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="canonical" href="https://playshengji.com/zh/guides/score-calculator" />
+<link rel="alternate" hreflang="en" href="https://playshengji.com/guides/score-calculator" />
+<link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides/score-calculator" />
+<link rel="alternate" hreflang="x-default" href="https://playshengji.com/guides/score-calculator" />
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Sheng Ji 升级" />
+<meta property="og:url" content="https://playshengji.com/zh/guides/score-calculator" />
+<meta property="og:title" content="升级算分器：谁升级、升几级、下局谁坐庄" />
+<meta property="og:description" content="填上闲家得分、底牌分数和最后一轮的出牌，马上算出这一局的结果：哪方赢、升几级、下局谁坐庄、这一盘是不是赢了。" />
+<meta property="og:image" content="https://playshengji.com/og/preview.jpg" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Four cards on a green card table: the ace of spades led and the big joker glowing gold as it wins the trick." />
+<meta property="og:locale" content="zh_CN" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="升级算分器：谁升级、升几级、下局谁坐庄" />
+<meta name="twitter:description" content="填上闲家得分、底牌分数和最后一轮的出牌，马上算出这一局的结果：哪方赢、升几级、下局谁坐庄、这一盘是不是赢了。" />
+<meta name="twitter:image" content="https://playshengji.com/og/preview.jpg" />
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@graph": [
+  {
+   "@type": "Article",
+   "@id": "https://playshengji.com/zh/guides/score-calculator#article",
+   "headline": "升级算分器：谁升级、升几级、下局谁坐庄",
+   "description": "填上闲家得分、底牌分数和最后一轮的出牌，马上算出这一局的结果：哪方赢、升几级、下局谁坐庄、这一盘是不是赢了。",
+   "inLanguage": "zh-Hans",
+   "url": "https://playshengji.com/zh/guides/score-calculator",
+   "mainEntityOfPage": "https://playshengji.com/zh/guides/score-calculator",
+   "image": "https://playshengji.com/og/preview.jpg",
+   "dateModified": "2026-11-24",
+   "datePublished": "2026-11-24",
+   "author": {
+    "@type": "Organization",
+    "name": "Sheng Ji 升级",
+    "url": "https://playshengji.com/"
+   },
+   "publisher": {
+    "@type": "Organization",
+    "name": "Sheng Ji 升级",
+    "url": "https://playshengji.com/"
+   },
+   "about": {
+    "@type": "Game",
+    "name": "Sheng Ji",
+    "alternateName": [
+     "升级",
+     "Tractor",
+     "拖拉机",
+     "八十分"
+    ]
+   },
+   "isPartOf": {
+    "@type": "WebSite",
+    "name": "Sheng Ji 升级",
+    "url": "https://playshengji.com/"
+   }
+  },
+  {
+   "@type": "BreadcrumbList",
+   "@id": "https://playshengji.com/zh/guides/score-calculator#breadcrumb",
+   "itemListElement": [
+    {
+     "@type": "ListItem",
+     "position": 1,
+     "name": "首页",
+     "item": "https://playshengji.com/"
+    },
+    {
+     "@type": "ListItem",
+     "position": 2,
+     "name": "攻略",
+     "item": "https://playshengji.com/zh/guides"
+    },
+    {
+     "@type": "ListItem",
+     "position": 3,
+     "name": "升级算分器：谁升级、升几级、下局谁坐庄",
+     "item": "https://playshengji.com/zh/guides/score-calculator"
+    }
+   ]
+  },
+  {
+   "@type": "WebApplication",
+   "@id": "https://playshengji.com/zh/guides/score-calculator#app",
+   "name": "升级算分器：谁升级、升几级、下局谁坐庄",
+   "description": "填上闲家得分、底牌分数和最后一轮的出牌，马上算出这一局的结果：哪方赢、升几级、下局谁坐庄、这一盘是不是赢了。",
+   "url": "https://playshengji.com/zh/guides/score-calculator",
+   "inLanguage": "zh-Hans",
+   "applicationCategory": "GameApplication",
+   "operatingSystem": "Any",
+   "isAccessibleForFree": true,
+   "isPartOf": {
+    "@type": "WebSite",
+    "name": "Sheng Ji 升级",
+    "url": "https://playshengji.com/"
+   }
+  }
+ ]
+}
+</script>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #14171e; color: #e8ecf2; }
+  body { font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { box-sizing: border-box; max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+  h1 { margin: 8px 0 4px; font-size: 30px; line-height: 1.2; color: #f2c14e; }
+  h2 { margin: 32px 0 8px; font-size: 20px; color: #f2c14e; }
+  h3 { margin: 18px 0 4px; font-size: 16px; }
+  p, li { color: #d3d8e0; }
+  .sub { margin: 0; color: #9aa3b2; }
+  a { color: #f2c14e; }
+  .play { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 20px;
+          border: 1.5px solid #f2c14e; border-radius: 14px; background: linear-gradient(180deg, #8a6a22, #6b5219);
+          color: #fff3cf; font-size: 17px; font-weight: 700; text-decoration: none; }
+  .lang { font-size: 14px; }
+  .note { margin-top: 40px; padding-top: 16px; border-top: 1px solid #3a4150; font-size: 14px; color: #9aa3b2; }
+  .crumbs { margin: 16px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; font-size: 14px; color: #9aa3b2; }
+  .crumbs li { color: #9aa3b2; }
+  .crumbs li + li::before { content: "/"; margin-right: 6px; }
+  .red { color: #ff7a8a; }
+  code { font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; color: #e8ecf2; }
+  .aside { margin: 16px 0; padding: 10px 14px; border-left: 3px solid #f2c14e; background: #1b2029; border-radius: 0 8px 8px 0; }
+  .table { overflow-x: auto; margin: 12px 0; }
+  table { border-collapse: collapse; min-width: 100%; font-size: 15px; }
+  th, td { padding: 7px 10px; border-bottom: 1px solid #3a4150; text-align: left; vertical-align: top; color: #d3d8e0; }
+  th { color: #e8ecf2; font-weight: 700; }
+  .gv { margin: 18px 0; padding: 0; }
+  .gv-svg { display: block; width: 100%; max-width: var(--gv-w); height: auto; border-radius: 12px;
+            background: radial-gradient(ellipse at 50% 35%, #2a7049 0%, #1d5638 60%, #164530 100%); }
+  .gv figcaption { margin-top: 6px; font-size: 14px; color: #9aa3b2; }
+  .gv-anim .gv-p, .gv-anim .gv-win, .gv-anim .gv-back, .gv-anim .gv-stay, .gv-anim .gv-tl,
+  .gv-anim .gv-lv, .gv-anim .gv-chg { animation-duration: 9s; animation-iteration-count: infinite;
+                                      animation-timing-function: ease-out; animation-fill-mode: both; }
+  .gv-trick .gv-p0 { animation-name: gv-p0; } .gv-trick .gv-p1 { animation-name: gv-p1; }
+  .gv-trick .gv-p2 { animation-name: gv-p2; } .gv-trick .gv-p3 { animation-name: gv-p3; }
+  .gv-trick .gv-win { animation-name: gv-win; }
+  @keyframes gv-p0 { 0%, 3% { opacity: 0; transform: translateY(14px); } 8%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+  @keyframes gv-p1 { 0%, 14% { opacity: 0; transform: translateY(14px); } 19%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+  @keyframes gv-p2 { 0%, 25% { opacity: 0; transform: translateY(14px); } 30%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+  @keyframes gv-p3 { 0%, 36% { opacity: 0; transform: translateY(14px); } 41%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+  @keyframes gv-win { 0%, 48% { opacity: 0; } 54%, 92% { opacity: 1; } 100% { opacity: 0; } }
+  .gv-throw .gv-back { animation-name: gv-back; } .gv-throw .gv-stay { animation-name: gv-stay; }
+  .gv-throw .gv-tl { animation-name: gv-tl; }
+  @keyframes gv-back { 0%, 30% { transform: translate(var(--dx), var(--dy)); } 50%, 100% { transform: none; } }
+  @keyframes gv-stay { 0%, 30% { transform: translateX(var(--dx)); } 50%, 100% { transform: none; } }
+  @keyframes gv-tl { 0%, 28% { opacity: 0; } 34%, 100% { opacity: 1; } }
+  .gv-levels .gv-lv { animation-name: gv-lv; } .gv-levels .gv-chg { animation-name: gv-chg; }
+  @keyframes gv-lv { 0%, 20% { transform: translateX(var(--dx)); } 55%, 100% { transform: none; } }
+  @keyframes gv-chg { 0%, 52% { opacity: 0; } 60%, 100% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .gv-anim * { animation: none !important; } }
+  .cta { margin: 36px 0 8px; padding: 18px 16px; border: 1px solid #3a4150; border-radius: 14px; background: #1b2029; }
+  .cta h2 { margin-top: 0; }
+  .cta p { margin: 8px 0 0; }
+  .related { padding-left: 20px; }
+  .hub { list-style: none; padding: 0; }
+  .hub li { margin: 0 0 18px; }
+  .hub a { font-size: 18px; font-weight: 700; }
+  .hub p { margin: 2px 0 0; }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <a class="lang" href="/guides/score-calculator" hreflang="en" lang="en">English</a>
+  <a class="play" href="/">开始游戏</a>
+</header>
+<nav aria-label="导航"><ol class="crumbs"><li><a href="/">首页</a></li><li><a href="/zh/guides">攻略</a></li><li>升级算分器：谁升级、升几级、下局谁坐庄</li></ol></nav>
+<article>
+<h1>升级算分器：谁升级、升几级、下局谁坐庄</h1>
+<p class="sub">填上闲家得分、底牌分数和最后一轮的出牌，马上算出这一局的结果：哪方赢、升几级、下局谁坐庄、这一盘是不是赢了。</p>
+<style>
+  .calc { margin: 20px 0 8px; padding: 16px; border: 1px solid #3a4150; border-radius: 14px; background: #1b2029; }
+  .calc h2 { margin-top: 0; }
+  .calc fieldset { margin: 0 0 12px; padding: 0; border: 0; display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .calc legend { padding: 0; margin-bottom: 6px; font-weight: 700; color: #e8ecf2; }
+  .calc label { display: grid; gap: 4px; font-size: 15px; color: #d3d8e0; }
+  .calc input, .calc select { box-sizing: border-box; width: 100%; min-height: 44px; padding: 0 10px; font: inherit; color: #e8ecf2;
+                              background: #14171e; border: 1px solid #3a4150; border-radius: 10px; }
+  .calc select:disabled, .calc input:disabled { opacity: 0.5; }
+  .calc-out { margin-top: 4px; padding: 12px 14px; border-left: 3px solid #f2c14e; background: #14171e; border-radius: 0 8px 8px 0; }
+  .calc-out .calc-head { margin: 0; font-size: 18px; font-weight: 700; color: #f2c14e; }
+  .calc-out ul { margin: 6px 0 0; padding-left: 20px; }
+  @media (min-width: 560px) { .calc fieldset { grid-template-columns: 1fr 1fr; } .calc legend { grid-column: 1 / -1; } }
+</style>
+<section class="calc" aria-labelledby="calc-h">
+<h2 id="calc-h">算一局</h2>
+<form id="calc-form">
+<fieldset>
+<legend>牌桌</legend>
+<label>庄家<select name="banker"><option value="0" selected>北家</option><option value="1">东家</option><option value="2">南家</option><option value="3">西家</option></select></label>
+<label>南北打几<select name="level0"><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="J">J</option><option value="Q">Q</option><option value="K">K</option><option value="A">A</option></select></label>
+<label>东西打几<select name="level1"><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="J">J</option><option value="Q">Q</option><option value="K">K</option><option value="A">A</option></select></label>
+</fieldset>
+<fieldset>
+<legend>这一局</legend>
+<label>闲家牌面得分<input name="trickPoints" type="number" inputmode="numeric" min="0" max="200" step="5" value="70" /></label>
+<label>最后一轮谁赢<select name="last"><option value="attackers" selected>闲家</option><option value="defenders">庄家方</option></select></label>
+<label>底牌里的分<input name="kittyPoints" type="number" inputmode="numeric" min="0" max="80" step="5" value="10" /></label>
+<label>最后一轮首家出了几张<input name="leadCards" type="number" inputmode="numeric" min="1" max="25" step="1" value="1" /></label>
+<label>其中最大的一部分几张<input name="leadLargest" type="number" inputmode="numeric" min="1" max="24" step="1" value="1" /></label>
+<label>抠底算法<select name="variant"><option value="site" selected>本站：按首家出牌张数翻倍</option><option value="largest-part">按最大部分：按最大的一部分翻倍</option></select></label>
+</fieldset>
+</form>
+<div id="calc-out" class="calc-out" aria-live="polite"><noscript><p>计算器需要 JavaScript。下面“结果怎么算”里的表，手算也能得到同样的结果。</p></noscript></div>
+</section>
+<script>
+var RANKS = ["2","3","4","5","6","7","8","9","10","J","Q","K","A"];
+var MAX_LEAD = 25;
+var L = {"teams":["南北","东西"],"seats":["北家","东家","南家","西家"],"kitty":"抠底：{k} × {m} = {b} 分","kittyNone":"抠底：没有，最后一轮庄家方赢了","total":"闲家共得 {t} 分","deal":"{w}上台，不升级。","up":"{w}升 {n} 级，打到 {r}。","upCapped":"{w}升 {n} 级，到 A 封顶。","won":"{w}守住了 A，赢下这一盘。","next":"下局庄家：{s}。","levels":"现在：{a}打 {x}，{b}打 {y}。","bad":"请检查输入：{e}。","errTricks":"牌面得分在 0 到 200 之间，以 5 为单位","errKitty":"底牌里最多 80 分，以 5 为单位","errBoth":"牌面得分加底分最多 200 分","errLead":"首家出牌在 1 到 25 张之间","errLargest":"最大的一部分是 1 张（单张）、2 张（对子）或 4、6……张（拖拉机），而且不超过出牌张数"};
+function shengjiScore(i) {
+  var fives = function (n) { return Number.isInteger(n) && n % 5 === 0; };
+  if (!fives(i.trickPoints) || i.trickPoints < 0 || i.trickPoints > 200) throw new RangeError("errTricks");
+  if (!fives(i.kittyPoints) || i.kittyPoints < 0 || i.kittyPoints > 80) throw new RangeError("errKitty");
+  if (i.trickPoints + i.kittyPoints > 200) throw new RangeError("errBoth");
+  if (i.attackersWonLast) {
+    var n = i.leadCards, k = i.leadLargest;
+    if (!Number.isInteger(n) || n < 1 || n > MAX_LEAD) throw new RangeError("errLead");
+    if (!Number.isInteger(k) || k < 1 || k > n || (k > 1 && k % 2 === 1)) throw new RangeError("errLargest");
+  }
+  var multiplier = i.attackersWonLast ? 2 * (i.variant === "largest-part" ? i.leadLargest : i.leadCards) : 0;
+  var bonus = i.kittyPoints * multiplier;
+  var total = i.trickPoints + bonus;
+  var bankerTeam = i.banker % 2;
+  var attackersWin = total >= 80;
+  var winnerTeam = attackersWin ? 1 - bankerTeam : bankerTeam;
+  var gained = attackersWin ? Math.floor((total - 80) / 40) : total === 0 ? 3 : total < 40 ? 2 : 1;
+  var idx = [RANKS.indexOf(i.levels[0]), RANKS.indexOf(i.levels[1])];
+  var top = RANKS.length - 1;
+  var gameWon = !attackersWin && idx[bankerTeam] === top;
+  if (!gameWon) idx[winnerTeam] = Math.min(top, idx[winnerTeam] + gained);
+  return {
+    multiplier: multiplier, bonus: bonus, total: total,
+    winner: attackersWin ? "attackers" : "defenders", winnerTeam: winnerTeam,
+    levelsGained: gained, nextBanker: (i.banker + (attackersWin ? 1 : 2)) % 4,
+    newLevels: [RANKS[idx[0]], RANKS[idx[1]]], gameWon: gameWon
+  };
+}
+function shengjiDescribe(i, r) {
+  var fill = function (s, v) { return s.replace(/\{(\w)\}/g, function (_, k) { return String(v[k]); }); };
+  var w = L.teams[r.winnerTeam];
+  var lines = [];
+  lines.push(i.attackersWonLast ? fill(L.kitty, { k: i.kittyPoints, m: r.multiplier, b: r.bonus }) : L.kittyNone);
+  lines.push(fill(L.total, { t: r.total }));
+  var capped = RANKS.indexOf(i.levels[r.winnerTeam]) + r.levelsGained > RANKS.length - 1;
+  var head = r.gameWon ? fill(L.won, { w: w })
+    : r.levelsGained === 0 ? fill(L.deal, { w: w })
+    : fill(capped ? L.upCapped : L.up, { w: w, n: r.levelsGained, r: r.newLevels[r.winnerTeam] });
+  lines.push(fill(L.next, { s: L.seats[r.nextBanker] }));
+  if (!r.gameWon) lines.push(fill(L.levels, { a: L.teams[0], x: r.newLevels[0], b: L.teams[1], y: r.newLevels[1] }));
+  return { head: head, lines: lines };
+}
+if (typeof document !== "undefined") {
+  (function () {
+    var form = document.getElementById("calc-form");
+    var out = document.getElementById("calc-out");
+    if (!form || !out) return;
+    var val = function (name) { return form.elements.namedItem(name).value; };
+    var update = function () {
+      var input = {
+        trickPoints: Number(val("trickPoints")), attackersWonLast: val("last") === "attackers",
+        kittyPoints: Number(val("kittyPoints")), leadCards: Number(val("leadCards")),
+        leadLargest: Number(val("leadLargest")), variant: val("variant"),
+        banker: Number(val("banker")), levels: [val("level0"), val("level1")]
+      };
+      ["leadCards", "leadLargest"].forEach(function (name) {
+        form.elements.namedItem(name).disabled = !input.attackersWonLast;
+      });
+      out.textContent = "";
+      var head = document.createElement("p");
+      head.className = "calc-head";
+      try {
+        var d = shengjiDescribe(input, shengjiScore(input));
+        head.textContent = d.head;
+        out.appendChild(head);
+        var list = document.createElement("ul");
+        d.lines.forEach(function (t) { var li = document.createElement("li"); li.textContent = t; list.appendChild(li); });
+        out.appendChild(list);
+      } catch (e) {
+        head.textContent = L.bad.replace("{e}", L[e.message] || e.message);
+        out.appendChild(head);
+      }
+    };
+    form.addEventListener("input", update);
+    form.addEventListener("change", update);
+    form.addEventListener("submit", function (e) { e.preventDefault(); update(); });
+    update();
+  })();
+}
+</script>
+<p>这个算分器和本站的游戏引擎算法一样。填上闲家牌面上拿的分、庄家埋了多少分、最后一轮首家出了几张牌。如果你们那桌抠底按最后一手里最大的那一部分算，把抠底算法换一下就行。</p>
+<h2 id="s1">要填什么</h2>
+<ul>
+<li><strong>庄家和级数。</strong> 每一局打的是坐庄那一队的级。座位按出牌顺序：北、东、南、西。南北是一家，东西是一家。</li>
+<li><strong>闲家牌面得分。</strong> 闲家赢下的轮次里的 5、10、K，不算底牌。</li>
+<li><strong>最后一轮谁赢。</strong> 只有闲家赢下最后一轮，底牌才算分。</li>
+<li><strong>底牌里的分。</strong> 庄家埋的 8 张牌里有多少分。8 张牌最多 80 分。</li>
+<li><strong>最后一轮首家出了几张。</strong> 数首家出的牌，不是赢的那一手：单张 1 张，对子 2 张，甩一对加一张是 3 张，五连对是 10 张。本站只看这个数翻倍，跟谁赢下、用什么牌赢的无关。</li>
+<li><strong>其中最大的一部分几张。</strong> 单张算 1，对子算 2，两连对算 4，三连对算 6，以此类推。甩两连对加一张单牌，一共 5 张，最大的一部分是 4 张。只有按最大部分算的牌桌才用到它。</li>
+</ul>
+<h2 id="s2">结果怎么算</h2>
+<figure class="gv" style="--gv-w:529px"><svg class="gv-svg " viewBox="0 0 529 120" role="img" aria-labelledby="gv1" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif"><title id="gv1">单张：×2: 方块9；对子：×4: 方块9、方块9；一对加一张：本站 ×6，按最大部分 ×4: 方块A、方块A、方块K；拖拉机：×8: 方块9、方块9、方块10、方块10</title><g transform="translate(12.5 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">9</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">9</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g><text x="37.5" y="99" fill="#d3d8e0" font-size="12" text-anchor="middle">单张：×2</text><g transform="translate(85 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">9</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">9</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g><g transform="translate(104 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">9</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">9</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g><text x="119.5" y="99" fill="#d3d8e0" font-size="12" text-anchor="middle">对子：×4</text><g transform="translate(238 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">A</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">A</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g><g transform="translate(257 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">A</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">A</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g><g transform="translate(276 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">K</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">K</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g><text x="282" y="99" fill="#d3d8e0" font-size="12" text-anchor="middle">一对加一张：本站 ×6，按最大部分 ×4</text><g transform="translate(410 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">9</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">9</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g><g transform="translate(429 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">9</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">9</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g><g transform="translate(448 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g><g transform="translate(467 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g><text x="463.5" y="99" fill="#d3d8e0" font-size="12" text-anchor="middle">拖拉机：×8</text></svg><figcaption>本站按首家出牌张数的两倍翻倍。按最大部分算的话，甩牌只看里面最大的那一部分。</figcaption></figure>
+<ol>
+<li><strong>抠底。</strong> 闲家赢下最后一轮，底里的分要翻倍：本站按首家出牌张数的两倍；另一种算法按这一手里最大部分张数的两倍。庄家方赢下最后一轮，底牌不算分。</li>
+<li><strong>总分。</strong> 牌面得分加上抠底的分。总分可以超过 200，但只能靠抠底。</li>
+<li><strong>输赢。</strong> 闲家到 80 分就赢，不到 80 分就是庄家方赢。</li>
+<li><strong>升几级。</strong> 闲家从 80 分往上每多 40 分升一级，所以 80 到 115 分是上台不升级。庄家方光头（闲家 0 分）升 3 级，闲家 5 到 35 分升 2 级，40 到 75 分升 1 级。完整的表在<a href="/zh/guides/scoring-and-levels">怎么算分</a>。</li>
+<li><strong>下局谁坐庄。</strong> 庄家方赢，庄家的对家坐庄；闲家赢，庄家的下家坐庄。</li>
+<li><strong>封顶。</strong> 谁都升不过 A。只有作为庄家方在自己的 A 上守住一局，这一盘才算赢。闲家打到 A 不算赢，还得上台再守一次。</li>
+</ol>
+<h2 id="s3">算几个例子</h2>
+<p>下面每一局都是算分器的测试用例，由游戏引擎算出结果。级数一栏先写南北，再写东西。</p>
+<div class="table"><table>
+<thead><tr><th>这一局</th><th>庄家</th><th>级数</th><th>闲家牌面分</th><th>抠底</th><th>总分</th><th>结果</th></tr></thead>
+<tbody>
+<tr><td>光头</td><td>北家</td><td>2、2</td><td>0</td><td>庄家方赢了最后一轮</td><td>0</td><td>南北升 3 级，打到 5</td></tr>
+<tr><td>差一点</td><td>南家</td><td>9、6</td><td>75</td><td>庄家方赢了最后一轮</td><td>75</td><td>南北升 1 级，打到 10</td></tr>
+<tr><td>抠底翻盘</td><td>北家</td><td>3、3</td><td>70</td><td>10 × 2 = 20（单张）</td><td>90</td><td>东西上台，不升级</td></tr>
+<tr><td>最后一轮出对子</td><td>东家</td><td>8、5</td><td>100</td><td>25 × 4 = 100</td><td>200</td><td>南北升 3 级，打到 J</td></tr>
+<tr><td>甩一对加一张，本站算法</td><td>北家</td><td>7、7</td><td>40</td><td>20 × 6 = 120</td><td>160</td><td>东西升 2 级，打到 9</td></tr>
+<tr><td>同样的甩牌，按最大部分</td><td>北家</td><td>7、7</td><td>40</td><td>20 × 4 = 80</td><td>120</td><td>东西升 1 级，打到 8</td></tr>
+<tr><td>守 A</td><td>南家</td><td>A、Q</td><td>60</td><td>庄家方赢了最后一轮</td><td>60</td><td>南北赢下这一盘</td></tr>
+<tr><td>到 A 封顶</td><td>北家</td><td>10、K</td><td>165</td><td>庄家方赢了最后一轮</td><td>165</td><td>东西升 2 级，到 A 封顶</td></tr>
+<tr><td>首家出五连对</td><td>北家</td><td>4、4</td><td>20</td><td>5 × 20 = 100，两种算法一样</td><td>120</td><td>东西升 1 级，打到 5</td></tr>
+</tbody>
+</table></div>
+<p>把出对子那一局打出来看。东家坐庄，打 5，红桃做主。进最后一轮前闲家有 60 分：</p>
+<figure class="gv" style="--gv-w:372px"><svg class="gv-svg gv-anim gv-trick" viewBox="0 0 372 154" role="img" aria-labelledby="gv2" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif"><title id="gv2">南家: 方块A、方块A；西家: 方块6、方块8；北家: 方块K、方块K；东家: 方块10、方块10。南家这一轮最大。</title><g class="gv-p gv-p0"><text x="55.5" y="20" fill="#d3d8e0" font-size="12" font-weight="600" text-anchor="middle">南家</text><g class="gv-win"><rect x="15" y="26" width="81" height="82" rx="9" fill="#f2c14e" fill-opacity=".16" stroke="#f2c14e" stroke-width="2.5"/><text x="55.5" y="124" fill="#f2c14e" font-size="12" font-weight="700" text-anchor="middle">这一轮最大</text></g><g transform="translate(21 32)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">A</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">A</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g><g transform="translate(40 32)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">A</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">A</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g><text x="55.5" y="140" fill="#9aa3b2" font-size="11" text-anchor="middle">出一对</text></g><g class="gv-p gv-p1"><text x="142.5" y="20" fill="#d3d8e0" font-size="12" font-weight="600" text-anchor="middle">西家</text><g transform="translate(108 32)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">6</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">6</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g><g transform="translate(127 32)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">8</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">8</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g></g><g class="gv-p gv-p2"><text x="229.5" y="20" fill="#d3d8e0" font-size="12" font-weight="600" text-anchor="middle">北家</text><g transform="translate(195 32)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">K</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">K</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g><g transform="translate(214 32)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">K</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">K</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g><text x="229.5" y="124" fill="#9aa3b2" font-size="11" text-anchor="middle">垫两张 K</text></g><g class="gv-p gv-p3"><text x="316.5" y="20" fill="#d3d8e0" font-size="12" font-weight="600" text-anchor="middle">东家</text><g transform="translate(282 32)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g><g transform="translate(301 32)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g></g></svg><figcaption>南家一对 A 赢下最后一轮，这一轮有 40 分：牌面一共 100 分。底里 25 分乘 4，总共 200 分。</figcaption></figure>
+<p class="aside">这个算分器和游戏引擎对过 123 个用例，包括 0 到 200 的每一个总分，以及从单张到十二连对的各种首家出牌在两种抠底算法下的结果。</p>
+<h2 id="s4">两条常有争议的规矩</h2>
+<p><strong>80 分就够。</strong> 闲家正好 80 分就上台；75 分是庄家方升一级。</p>
+<p><strong>翻倍看首家出的牌，不看谁赢。</strong> 最后一轮首家出单张、闲家用主牌毙了，还是 ×2。首家出对子、闲家赢下，就是 ×4。</p>
+<p>各种牌型多久出现一次，可以看<a href="/zh/guides/sheng-ji-by-the-numbers">升级的数字</a>。</p>
+</article>
+<aside class="cta" data-cta="app">
+<h2>和机器人练一练</h2>
+<p><a class="play" href="https://apps.apple.com/app/id6833598710?ct=guides-zh-score-calculator">下载 iPhone / iPad 版</a></p>
+<p><a href="/">或者直接在浏览器里玩</a></p>
+</aside>
+<h2>相关攻略</h2>
+<ul class="related">
+<li><a href="/zh/guides/scoring-and-levels">升级怎么算分：分牌、抠底翻倍和升几级</a></li>
+<li><a href="/zh/guides/burying-the-kitty">埋底怎么埋：该埋什么、为什么</a></li>
+<li><a href="/zh/guides/sheng-ji-by-the-numbers">升级的数字：对子、拖拉机、大小王和底牌的概率</a></li>
+<li><a href="/rules/zh">完整规则</a></li>
+</ul>
+<p class="sub">更新于 2026-11-24</p>
+<p class="note">本站禁止自动化对局：AI 代理和其他自动化程序不得加入、排队或进行游戏。阅读这些页面不受限制。详见 <a href="/llms.txt">llms.txt</a> 和<a href="/privacy">隐私页面</a>。</p>
+</main>
+</body>
+</html>

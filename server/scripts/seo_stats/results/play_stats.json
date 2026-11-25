@@ -1,0 +1,114 @@
+{
+ "method": "4x SmartBot (shengji.ai.smart, search-free heuristic) complete games via shengji.ai.env.play_round + engine.game.Game.finish_round, default rules (kitty bonus = buried points x 2 x cards in the last lead). Here 'declarers' = the banker's team, 'attackers' = the other team (engine attacker_points = card points the non-banker team captured).",
+ "bot_play_not_human": true,
+ "seed_first": 20261124,
+ "seed_last": 20261180,
+ "n_games_complete": 57,
+ "n_rounds": 2020,
+ "rounds_per_game_mean": 35.43859649122807,
+ "rounds_per_game_median": 35,
+ "banker_team_keeps_deal": {
+  "p": 0.39801980198019804,
+  "count": 804,
+  "n": 2020
+ },
+ "attacker_points_mean": 86.14851485148515,
+ "attacker_points_median": 85.0,
+ "attacker_points_sd": 30.97655969066903,
+ "attacker_points_bins": {
+  "0": 0,
+  "5-35": 112,
+  "40-75": 692,
+  "80-115": 877,
+  "120-155": 322,
+  "160-195": 17,
+  "200+": 0
+ },
+ "attacker_points_bins_share": {
+  "0": 0.0,
+  "5-35": 0.055445544554455446,
+  "40-75": 0.3425742574257426,
+  "80-115": 0.43415841584158416,
+  "120-155": 0.1594059405940594,
+  "160-195": 0.008415841584158416,
+  "200+": 0.0
+ },
+ "levels_per_round_mean_banker_team": 0.4534653465346535,
+ "levels_per_round_mean_attacker_team": 0.17623762376237623,
+ "levels_per_win_mean_banker_team": 1.1393034825870647,
+ "levels_per_win_mean_attacker_team": 0.29276315789473684,
+ "level_outcomes": {
+  "attackers+0": 877,
+  "attackers+1": 322,
+  "attackers+2": 17,
+  "defenders+1": 692,
+  "defenders+2": 112
+ },
+ "attackers_win_last_trick": {
+  "p": 0.38613861386138615,
+  "count": 780,
+  "n": 2020
+ },
+ "kitty_bonus_nonzero": {
+  "p": 0.009900990099009901,
+  "count": 20,
+  "n": 2020
+ },
+ "kitty_bonus_mean_when_nonzero": 19.5,
+ "kitty_flipped_winner": {
+  "p": 0.0029702970297029703,
+  "count": 6,
+  "n": 2020
+ },
+ "kitty_changed_result": {
+  "p": 0.0039603960396039604,
+  "count": 8,
+  "n": 2020
+ },
+ "buried_points_mean": 0.4430693069306931,
+ "buried_points_zero_share": 0.949009900990099,
+ "last_lead_size_hist": {
+  "1": 2009,
+  "2": 10,
+  "3": 1
+ },
+ "tricks_mean": 18.446039603960397,
+ "tricks_min": 11,
+ "tricks_max": 24,
+ "tricks_sd": 2.116076875958475,
+ "declared_share": 1.0,
+ "no_trump_share": 0.0801980198019802,
+ "bootstrap": {
+  "method": "game-clustered bootstrap, 2000 resamples, 95% percentile",
+  "ci95": {
+   "banker_team_keeps_deal": [
+    0.37890255439924314,
+    0.41778697001034126
+   ],
+   "attacker_points_mean": [
+    84.81377551020408,
+    87.38566713814238
+   ],
+   "levels_per_round_mean_banker_team": [
+    0.4300325430032543,
+    0.4779938587512794
+   ],
+   "levels_per_round_mean_attacker_team": [
+    0.1606776180698152,
+    0.1918547595682041
+   ],
+   "attackers_win_last_trick": [
+    0.36658227848101266,
+    0.4068292682926829
+   ],
+   "tricks_mean": [
+    18.353376047313947,
+    18.540029112081513
+   ],
+   "rounds_per_game_mean": [
+    33.73684210526316,
+    37.31578947368421
+   ]
+  }
+ }
+}

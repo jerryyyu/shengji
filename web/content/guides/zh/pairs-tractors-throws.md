@@ -3,7 +3,7 @@ title: 对子、拖拉机和甩牌：怎么出、怎么跟、甩失败怎么办
 description: 什么算对子、什么算拖拉机、什么算甩牌，跟牌时必须怎么跟，甩牌失败会怎样。
 slug: pairs-tractors-throws
 order: 5
-related: [how-to-play, declaring-trump, scoring-and-levels]
+related: [how-to-play, declaring-trump, scoring-and-levels, sheng-ji-by-the-numbers]
 updated: 2026-11-23
 lang: zh
 ---

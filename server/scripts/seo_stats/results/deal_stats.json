@@ -1,0 +1,108 @@
+{
+ "exact": {
+  "p_both_little_jokers": 0.05192107995846314,
+  "p_both_big_jokers": 0.05192107995846314,
+  "p_both_jokers_of_some_colour": 0.1014816867400186,
+  "p_all_four_jokers": 0.0023604731769076683,
+  "p_holds_a_trump_rank_card": 0.8879535361204318,
+  "kitty_mean_point_cards": 1.7777777777777777,
+  "kitty_mean_points": 14.814814814814815,
+  "kitty_mean_points_closed_form": 14.814814814814815,
+  "kitty_p_zero_points": 0.12384082849847007,
+  "kitty_p_ge_20": 0.38231804778952616,
+  "kitty_p_ge_30": 0.11496587276134847,
+  "kitty_p_ge_40": 0.020751524916105425,
+  "kitty_points_distribution": {
+   "0": 0.12384082849847007,
+   "5": 0.10293263667405304,
+   "10": 0.23819667845726378,
+   "15": 0.15271180858068695,
+   "20": 0.17823564048478577,
+   "25": 0.08911653454339191,
+   "30": 0.06783104983198449,
+   "35": 0.026383298013258564,
+   "40": 0.014303120434715684,
+   "45": 0.004253157960899712,
+   "50": 0.00169630612710494,
+   "55": 0.00037044866373227487,
+   "60": 0.00010884668843136384,
+   "65": 1.5981745448626904e-05,
+   "70": 3.3667548641776133e-06,
+   "75": 2.599810705928659e-07,
+   "80": 3.655983805212177e-08
+  },
+  "method": "exact hypergeometric counting over the 108-card deck"
+ },
+ "simulated": {
+  "method": "engine Round(trump_rank='2') shuffle+deal, hands of 25; tractors via engine.combos.has_tractor per effective suit under Ordering(H, '2') (and Ordering(None,'2') for no-trump); 4 hands per deal, so hands within a deal are not independent",
+  "seeds": [
+   20261124,
+   20261125,
+   20261126,
+   20261127
+  ],
+  "n_deals": 1000000,
+  "n_hands": 4000000,
+  "p_ge1_pair": {
+   "p": 0.97392975,
+   "count": 3895719,
+   "n_hands": 4000000
+  },
+  "mean_pairs_per_hand": 2.8032565,
+  "pairs_hist": {
+   "0": 104281,
+   "1": 522768,
+   "2": 1064932,
+   "3": 1164139,
+   "4": 753082,
+   "5": 303201,
+   "6": 74749,
+   "7": 11699,
+   "8": 1087,
+   "9": 59,
+   "10": 3
+  },
+  "p_tractor_in_trump": {
+   "p": 0.0422005,
+   "count": 168802,
+   "n_hands": 4000000
+  },
+  "p_tractor_in_a_side_suit": {
+   "p": 0.0738055,
+   "count": 295222,
+   "n_hands": 4000000
+  },
+  "p_tractor_any_suit": {
+   "p": 0.114242,
+   "count": 456968,
+   "n_hands": 4000000
+  },
+  "p_three_pair_tractor_any_suit": {
+   "p": 0.004478,
+   "count": 17912,
+   "n_hands": 4000000
+  },
+  "p_tractor_any_suit_if_no_trump": {
+   "p": 0.10802125,
+   "count": 432085,
+   "n_hands": 4000000
+  },
+  "p_joker_pair": {
+   "p": 0.10138925,
+   "count": 405557,
+   "n_hands": 4000000
+  },
+  "p_declarable_pair_at_level2": {
+   "p": 0.27798975,
+   "count": 1111959,
+   "n_hands": 4000000
+  },
+  "p_holds_a_trump_rank_card": {
+   "p": 0.887906,
+   "count": 3551624,
+   "n_hands": 4000000
+  },
+  "kitty_mean_points_sim": 14.82055,
+  "kitty_mean_point_cards_sim": 1.778895
+ }
+}

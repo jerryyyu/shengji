@@ -72,6 +72,20 @@
     <xhtml:link rel="alternate" hreflang="x-default" href="https://playshengji.com/guides/scoring-and-levels" />
   </url>
   <url>
+    <loc>https://playshengji.com/guides/score-calculator</loc>
+    <lastmod>2026-11-24</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/guides/score-calculator" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides/score-calculator" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://playshengji.com/guides/score-calculator" />
+  </url>
+  <url>
+    <loc>https://playshengji.com/guides/sheng-ji-by-the-numbers</loc>
+    <lastmod>2026-11-24</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/guides/sheng-ji-by-the-numbers" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides/sheng-ji-by-the-numbers" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://playshengji.com/guides/sheng-ji-by-the-numbers" />
+  </url>
+  <url>
     <loc>https://playshengji.com/zh/guides</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/guides" />
     <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides" />
@@ -118,6 +132,20 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/guides/scoring-and-levels" />
     <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides/scoring-and-levels" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://playshengji.com/guides/scoring-and-levels" />
+  </url>
+  <url>
+    <loc>https://playshengji.com/zh/guides/score-calculator</loc>
+    <lastmod>2026-11-24</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/guides/score-calculator" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides/score-calculator" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://playshengji.com/guides/score-calculator" />
+  </url>
+  <url>
+    <loc>https://playshengji.com/zh/guides/sheng-ji-by-the-numbers</loc>
+    <lastmod>2026-11-24</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/guides/sheng-ji-by-the-numbers" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides/sheng-ji-by-the-numbers" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://playshengji.com/guides/sheng-ji-by-the-numbers" />
   </url>
   <!-- /guides -->
 </urlset>

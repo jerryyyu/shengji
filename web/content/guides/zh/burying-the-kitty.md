@@ -3,7 +3,7 @@ title: 埋底怎么埋：该埋什么、为什么
 description: 庄家拿底后怎么挑 8 张埋下去：用一手真实的 33 张牌，讲抠底的风险、做绝门和该留的牌。
 slug: burying-the-kitty
 order: 4
-related: [scoring-and-levels, declaring-trump, how-to-play]
+related: [scoring-and-levels, declaring-trump, how-to-play, sheng-ji-by-the-numbers]
 updated: 2026-11-23
 lang: zh
 schema: HowTo

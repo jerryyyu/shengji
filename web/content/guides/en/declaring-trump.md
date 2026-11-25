@@ -3,7 +3,7 @@ title: Declaring trump in Sheng Ji: when to show, overcalls, and which suit
 description: How declaring works while the cards are dealt, what beats what, how to count whether a suit is worth calling, and when not to overcall your partner.
 slug: declaring-trump
 order: 3
-related: [how-to-play, burying-the-kitty, pairs-tractors-throws]
+related: [how-to-play, burying-the-kitty, pairs-tractors-throws, sheng-ji-by-the-numbers]
 updated: 2026-11-23
 lang: en
 ---

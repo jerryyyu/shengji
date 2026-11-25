@@ -4,8 +4,9 @@
 // header, footer and look are the /rules pages'. scripts/build_guides.ts
 // writes the files; --check and guides.test.ts compare them with the sources.
 
-import { appStoreUrl } from "../appStore.ts";
+import { APP_STORE_URL, appStoreUrl } from "../appStore.ts";
 import { SITE_ORIGIN } from "../siteOrigin.ts";
+import { CALCULATOR_SLUG, calculatorHtml } from "./calculator.ts";
 import { esc, resetIds, type Lang } from "./cards.ts";
 import { GuideError, parseFrontMatter, plain, render, type FrontMatter, type Heading } from "./markdown.ts";
 
@@ -25,6 +26,8 @@ export interface Guide {
 const IMAGE = `${SITE_ORIGIN}/og/preview.jpg`;
 const IMAGE_ALT = "Four cards on a green card table: the ace of spades led and the big joker glowing gold as it wins the trick.";
 const SITE_NAME = "Sheng Ji 升级";
+/** Safari's Smart App Banner, the same tag web/index.html carries. */
+const APP_STORE_SMART_BANNER = `app-id=${/id(\d+)$/.exec(APP_STORE_URL)![1]}`;
 
 export const GUIDE_DIRS: Record<Lang, string> = { en: "guides", zh: "zh/guides" };
 
@@ -157,6 +160,7 @@ function head(opts: {
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="theme-color" content="#14171e" />
 <meta name="color-scheme" content="dark" />
+<meta name="apple-itunes-app" content="${APP_STORE_SMART_BANNER}" />
 <title>${esc(opts.title)}</title>
 <meta name="description" content="${esc(opts.description)}" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -270,6 +274,20 @@ export function guidePage(guide: Guide, byKey: Map<string, Guide>): string {
       })),
     });
   }
+  const site = { "@type": "WebSite", name: SITE_NAME, url: `${SITE_ORIGIN}/` };
+  if (meta.schema === "WebApplication") {
+    graph.push({
+      "@type": "WebApplication", "@id": `${url}#app`, name: title, description, url, inLanguage: t.htmlLang,
+      applicationCategory: "GameApplication", operatingSystem: "Any", isAccessibleForFree: true, isPartOf: site,
+    });
+  }
+  if (meta.schema === "Dataset") {
+    graph.push({
+      "@type": "Dataset", "@id": `${url}#data`, name: title, description, url, inLanguage: t.htmlLang,
+      dateModified: meta.updated, isAccessibleForFree: true, isPartOf: site,
+      creator: { "@type": "Organization", name: SITE_NAME, url: `${SITE_ORIGIN}/` },
+    });
+  }
   const related = meta.related.map((slug) => {
     const g = byKey.get(`${lang}/${slug}`);
     if (!g) throw new GuideError(`${lang}/${meta.slug}: related guide ${slug} does not exist`);
@@ -286,7 +304,7 @@ ${crumbs(lang, title)}
 <article>
 <h1>${esc(title)}</h1>
 <p class="sub">${esc(description)}</p>
-${guide.html}
+${meta.slug === CALCULATOR_SLUG ? `${calculatorHtml(lang)}\n` : ""}${guide.html}
 </article>
 ${cta(lang, meta.slug)}
 <h2>${t.related}</h2>

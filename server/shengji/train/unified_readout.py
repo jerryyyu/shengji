@@ -33,6 +33,7 @@ caller, and the run's status log says so.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -828,30 +829,93 @@ def bind_cache_device(out: Path, device: str) -> None:
 CACHE_ENCODE = "cache_encode.json"
 
 
-def bind_cache_encode_rounds(out: Path, rounds: int) -> None:
-    """A cache without an encode record uses the default batch size."""
+def bind_cache_encode_rounds(out: Path, rounds: int, *, sample=None) -> None:
+    """Bind the encoder and optional sampled shard layout before any worker writes."""
     marker = out / CACHE_ENCODE
-    if rounds != CACHE_DEFAULT_ENCODE_ROUNDS and not marker.exists() and _cache_has_output(out) and not marker.exists():
-        raise UnifiedReadoutError(f"cache {out}: existing shards have the default encode batch size")
-    was = _cache_marker(out, CACHE_ENCODE, {"rounds_per_batch": rounds}).get("rounds_per_batch")
-    if was != rounds:
-        raise UnifiedReadoutError(f"cache {out}: shards use --encode-rounds-per-batch {was}, not {rounds}")
+    if not marker.exists() and _cache_has_output(out) and not marker.exists():
+        if rounds != CACHE_DEFAULT_ENCODE_ROUNDS:
+            raise UnifiedReadoutError(f"cache {out}: existing shards have the default encode batch size")
+        if sample is not None:
+            raise UnifiedReadoutError(f"cache {out}: existing shards have no sampled selection binding")
+        for receipt in out.glob("DONE.*"):
+            try:
+                record = json.loads(receipt.read_text())
+            except (OSError, ValueError):
+                continue
+            if isinstance(record, dict) and "sample" in record:
+                raise UnifiedReadoutError(f"cache {out}: existing shards come from an unbound sampled cache")
+    expected = {"rounds_per_batch": rounds}
+    if sample is not None:
+        expected["sample"] = sample
+    record = _cache_marker(out, CACHE_ENCODE, expected)
+    if record.get("rounds_per_batch") != rounds:
+        raise UnifiedReadoutError(f"cache {out}: shards use --encode-rounds-per-batch "
+                                  f"{record.get('rounds_per_batch')}, not {rounds}")
+    if record.get("sample") != sample:
+        raise UnifiedReadoutError(f"cache {out}: sampled selection or worker layout differs")
+
+
+def sample_entries(entries, cap, seed):
+    """Visit chunks in seeded random order, keep those that fit, and return them in input order."""
+    if cap is None or sum(int(e["rows"]) for e in entries) <= cap:
+        return entries
+    keep, total = np.zeros(len(entries), bool), 0
+    for i in np.random.default_rng([int(seed), 0x5A3C]).permutation(len(entries)):
+        rows = int(entries[i]["rows"])
+        if total + rows <= cap:
+            keep[i], total = True, total + rows
+    return [entry for entry, kept in zip(entries, keep) if kept]
+
+
+def _cache_sample_binding(args, receipt, entries):
+    manifests = [
+        (path, us.sha256_file(Path(path) / "manifest.json"), us.sha256_file(Path(path) / "hist/manifest.json"))
+        for path in args.data
+    ]
+    selected = hashlib.sha256()
+    for entry in entries:
+        selected.update(bytes.fromhex(entry["sha256"]))
+        selected.update(bytes.fromhex(entry["hist_sha256"]))
+    inputs = dict(manifests=manifests, selection_sha256=selected.hexdigest(), store_map=args.store_map,
+                  calib_rows=args.calib_rows, exclude_seed_windows=args.exclude_seed_window,
+                  corpus_weight=args.corpus_weight, checkpoint_sha256=us.sha256_file(args.ckpt))
+    inputs_sha256 = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
+    return dict(receipt=receipt, inputs_sha256=inputs_sha256, workers=args.workers,
+                group_chunks=args.group_chunks, max_groups=args.max_groups)
 
 
 def cache(args) -> int:
     """Write the polish cache of a checkpoint: ``OUT/calib-0000.npz`` (the trainer's calibration rows) and
     ``OUT/train-NNNN.npz`` (consecutive groups of ``--group-chunks`` train chunks; ``--worker I --workers N``
-    takes every N-th group). Existing shards are reused only when the cache producer's device and
-    encode batch size match this run."""
+    takes every N-th group). Existing shards are reused when the cache producer's device, encode batch
+    size, and optional sampled selection match this run."""
     import torch
     if args.encode_rounds_per_batch <= 0:
         raise UnifiedReadoutError("--encode-rounds-per-batch must be positive")
+    cap = getattr(args, "sample_train_rows", None)
+    if cap is not None and cap <= 0:
+        raise UnifiedReadoutError("--sample-train-rows must be positive")
+
+    def train_entries():
+        return weight_entries(us.entries_for(args.data, "train", exclude_seed_windows=args.exclude_seed_window),
+                              parse_corpus_weights(args.corpus_weight))
+
+    receipt = binding = entries = None
+    if cap is not None:
+        available = train_entries()
+        entries = sample_entries(available, cap, args.seed)
+        if not entries:
+            raise UnifiedReadoutError("--sample-train-rows fits no training chunks")
+        receipt = dict(cap_rows=cap, seed=args.seed, chunks=len(entries),
+                       rows=sum(int(e["rows"]) for e in entries), of_chunks=len(available),
+                       of_rows=sum(int(e["rows"]) for e in available))
+        binding = _cache_sample_binding(args, receipt, entries)
     torch.set_num_threads(args.threads)
     device = _device(args.device)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     bind_cache_device(out, args.device)
-    bind_cache_encode_rounds(out, args.encode_rounds_per_batch)
+    bind_cache_encode_rounds(out, args.encode_rounds_per_batch, sample=binding)
     model, _ = load_checkpoint(args.ckpt)
     if device.type != "cpu":
         model.to(device)
@@ -865,8 +929,8 @@ def cache(args) -> int:
     if args.worker == 0 and not (out / "calib-0000.npz").exists():
         write("calib-0000", us.load_calib(args.data, verified, index, max_rows=args.calib_rows, seed=args.seed,
                                           exclude_seed_windows=args.exclude_seed_window))
-    entries = weight_entries(us.entries_for(args.data, "train", exclude_seed_windows=args.exclude_seed_window),
-                             parse_corpus_weights(args.corpus_weight))
+    if entries is None:
+        entries = train_entries()
     groups = [entries[i:i + args.group_chunks] for i in range(0, len(entries), args.group_chunks)]
     if args.max_groups:
         groups = groups[:args.max_groups]
@@ -880,6 +944,8 @@ def cache(args) -> int:
             write(name, bs.concat_parts(parts))
         print(f"[cache] {name} of {len(groups)}", flush=True)
     done = {"groups": len(groups), "chunks": len(entries)}
+    if receipt is not None:
+        done["sample"] = receipt
     if args.corpus_weight:
         done["corpus_weight"] = list(args.corpus_weight)
     (out / f"DONE.{args.worker}").write_text(json.dumps(done))
@@ -1184,6 +1250,8 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--encode-rounds-per-batch", type=int, default=CACHE_DEFAULT_ENCODE_ROUNDS,
                    help="maximum rounds per trunk forward for cache training and calibration shards")
     c.add_argument("--max-groups", type=int, default=None, help="only the first groups (smoke)")
+    c.add_argument("--sample-train-rows", type=int,
+                   help="cache a seeded sample of whole train chunks within this manifest row cap")
     c.add_argument("--worker", type=int, default=0)
     c.add_argument("--workers", type=int, default=1)
     c.add_argument("--threads", type=int, default=8)

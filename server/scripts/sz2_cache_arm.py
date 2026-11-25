@@ -42,18 +42,27 @@ def arm_inputs(joint, arm, output, recipe_path, recipe_sha):
 
 
 def cache_partition(joint, arm, worker, output, recipe_path, recipe_sha):
+    if worker not in range(WORKERS):
+        raise ValueError("invalid cache partition")
+    checkpoint, cache, recipe = arm_inputs(joint, arm, output, recipe_path, recipe_sha)
+    return write_partition(checkpoint, cache, recipe, worker,
+                           encode_rounds=MEDIUM_ENCODE_ROUNDS if arm == "M" else None)
+
+
+def write_partition(checkpoint, cache, recipe, worker, *, encode_rounds=None, sample_rows=None):
     from shengji.train import unified_readout
 
     if worker not in range(WORKERS):
         raise ValueError("invalid cache partition")
-    checkpoint, cache, recipe = arm_inputs(joint, arm, output, recipe_path, recipe_sha)
     cache.mkdir(parents=True, exist_ok=True)
     args = ["cache", "--ckpt", str(checkpoint), "--data", *recipe["data"], "--out", str(cache),
             "--seed", str(recipe["seed"]), "--device", "cpu", "--threads", "8",
             "--worker", str(worker), "--workers", str(WORKERS), "--group-chunks", "24",
             "--calib-rows", "180000"]
-    if arm == "M":
-        args.extend(["--encode-rounds-per-batch", str(MEDIUM_ENCODE_ROUNDS)])
+    if encode_rounds is not None:
+        args.extend(["--encode-rounds-per-batch", str(encode_rounds)])
+    if sample_rows is not None:
+        args.extend(["--sample-train-rows", str(sample_rows)])
     for key in ("store_map", "corpus_weight"):
         for value in recipe[key]:
             args.extend(["--" + key.replace("_", "-"), value])

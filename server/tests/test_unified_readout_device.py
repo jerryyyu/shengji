@@ -429,6 +429,70 @@ def test_cache_refuses_mixed_encode_batches(data, cpu_root, tmp_path):
     assert not (cache / ur.CACHE_ENCODE).exists()
 
 
+def test_sampled_cache_keeps_historical_chunk_selection():
+    entries = [{"index": index, "rows": rows} for index, rows in enumerate([3, 9, 1, 8, 4, 3])]
+    chosen = ur.sample_entries(entries, 7, 7)
+    assert [entry["index"] for entry in chosen] == [0, 2, 5]
+    assert ur.sample_entries(entries, None, 7) is entries
+    assert ur.sample_entries(entries, 28, 7) is entries
+
+
+def test_sampled_cache_workers_resume_and_feed_the_real_polisher(cpu_root, tmp_path):
+    clusters = [synthetic_cluster(seed) for seed in range(1000, 1008)]
+    data = extract_dir(write_store(tmp_path / "store", clusters), tmp_path / "data",
+                       calib=0.25, task_clusters=1)
+    entries = ur.us.entries_for([str(data)], "train")
+    chosen = sorted(np.random.default_rng([7, 0x5A3C]).permutation(len(entries))[:3])
+    cap = sum(entries[index]["rows"] for index in chosen)
+    full, sampled, polish = (tmp_path / name for name in ("full", "sampled", "polish"))
+    weights = ["--corpus-weight", f"{data}=policy:2,reply:2"]
+    base = ["--seed", "7", *weights]
+    assert ur.main(_cache_argv(data, cpu_root, full, *base)) == 0
+    assert json.loads((full / ur.CACHE_ENCODE).read_text()) == {"rounds_per_batch": ur.CACHE_DEFAULT_ENCODE_ROUNDS}
+    assert "sample" not in json.loads((full / "DONE.0").read_text())
+    full_shards = _shard_bytes(full)
+    sample = ["--sample-train-rows", str(cap)]
+    with pytest.raises(ur.UnifiedReadoutError, match="sampled selection"):
+        ur.main(_cache_argv(data, cpu_root, full, *base, *sample))
+    (full / ur.CACHE_ENCODE).unlink()
+    with pytest.raises(ur.UnifiedReadoutError, match="no sampled selection binding"):
+        ur.main(_cache_argv(data, cpu_root, full, *base, *sample))
+    assert _shard_bytes(full) == full_shards
+    assert not (full / ur.CACHE_ENCODE).exists()
+    with pytest.raises(ur.UnifiedReadoutError, match="fits no training chunks"):
+        ur.main(_cache_argv(data, cpu_root, sampled, *base, "--sample-train-rows", "1"))
+    assert not sampled.exists()
+
+    def work(worker, *extra):
+        return ur.main(_cache_argv(data, cpu_root, sampled, *base, "--workers", "2", "--worker", str(worker), *extra))
+
+    assert work(1, *sample) == 0
+    partial = _shard_bytes(sampled)
+    assert set(partial) == {"train-0001.npz"}
+    for options in ([], ["--sample-train-rows", str(cap + 1)],
+                    [*sample, "--seed", "8"], [*sample, "--group-chunks", "2"], [*sample, "--workers", "3"]):
+        with pytest.raises(ur.UnifiedReadoutError, match="sampled selection or worker layout differs"):
+            work(0, *options)
+        assert _shard_bytes(sampled) == partial
+
+    assert work(0, *sample) == 0
+    assert work(1, *sample) == 0
+    finished = _shard_bytes(sampled)
+    assert finished["train-0001.npz"] == partial["train-0001.npz"]
+    assert finished["calib-0000.npz"][1] == full_shards["calib-0000.npz"][1]
+    for group, original in enumerate(chosen):
+        assert finished[f"train-{group:04d}.npz"][1] == full_shards[f"train-{original:04d}.npz"][1]
+    witness = dict(cap_rows=cap, seed=7, chunks=3, rows=cap, of_chunks=len(entries),
+                   of_rows=sum(entry["rows"] for entry in entries))
+    first, second = (json.loads((sampled / f"DONE.{worker}").read_text()) for worker in range(2))
+    assert first == second == {"groups": 3, "chunks": 3, "sample": witness, "corpus_weight": weights[1:]}
+
+    ckpt = cpu_root[0] / "train/best.pt"
+    assert ur.main(["polish", "--ckpt", str(ckpt), "--cache", str(sampled), "--out", str(polish),
+                    "--epochs", "1", "--threads", "1", "--batch", "32"]) == 0
+    assert " POLISH DONE " in (polish / "status.log").read_text().splitlines()[-1]
+
+
 def test_medium_cache_bounds_encode_rounds_for_calibration_and_training(cpu_root, tmp_path, monkeypatch):
     monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
     from sz2_cache_arm import cache_partition

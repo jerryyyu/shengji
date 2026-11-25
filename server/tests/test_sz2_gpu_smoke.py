@@ -482,56 +482,99 @@ sys.exit(w.main())
     assert (directory / "reserved/L-smoke").is_dir()
 
 
-@pytest.mark.parametrize("full", [False, True])
-def test_sz3_worker_consumes_the_real_trainer(host, full):
+@pytest.fixture
+def mps_worker_recipe(host):
     torch = pytest.importorskip("torch")
     if not torch.backends.mps.is_available():
-        pytest.skip("the smoke measures MPS allocations")
+        pytest.skip("the worker runs the trainer on MPS")
     from test_unified_readout_device import SCRATCH, make_data
 
     supervisor, directory, log = host
     data = make_data(directory / "data")
     recipe = directory / "recipe.json"
     recipe.write_text(json.dumps(dict(
-        data=[str(data)], calib_data=[str(data)], epochs=1, lr=3e-5, head_lr=9e-5,
+        init=None, init_ckpt=None, init_sha256=None, init_readout_ckpt="previous.pt", scratch_arch=None,
+        max_train_rows=None, data=[str(data)], calib_data=[str(data)], epochs=1, lr=3e-5, head_lr=9e-5,
         readout_lr=1.5e-4, head_warmup_buffers=0, weight_decay=0.01, belief_weight=1,
         q_weight=1, policy_weight=1, value_weight=1, reply_weight=1, seed=1,
         buffer_chunks=1, rounds_per_batch=1, calib_rows=10000, store_map=[],
-        corpus_weight=[], exclude_seed_window=[],
+        corpus_weight=[f"{data}=policy:2,reply:2"], exclude_seed_window=[],
     )))
+    return supervisor, directory, log, recipe, SCRATCH
+
+
+def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_recipe, monkeypatch):
+    supervisor, directory, log, recipe, scratch = mps_worker_recipe
+    emitter = directory / "server/scripts/rt4m_joint.py"
+    emitter.write_text(
+        "import json, sys\nfrom pathlib import Path\n"
+        f"sys.path.insert(0, {str(WORKER.parent)!r})\n"
+        "import rt4m_joint as arm\n"
+        f"arm.RECIPE_SHA256 = {hashlib.sha256(recipe.read_bytes()).hexdigest()!r}\n"
+        f"arm.ARCHITECTURE[6] = {scratch!r}\n"
+        f"argv = arm.command(Path(sys.argv[-1]), Path({str(recipe)!r}))\n"
+        "if '--expect-resume-buffer' not in argv: argv.extend(['--max-seconds','0.0001'])\n"
+        "print(json.dumps(argv))\n"
+    )
+    worker = [*supervisor, "--phase", "RT4-M-A", "--min-free-gib", "1"]
+    env = {**os.environ, "PYTHONPATH": str(WORKER.parents[1])}
+
+    def run():
+        return subprocess.run(worker, env=env, capture_output=True, text=True, timeout=60)
+
+    first = run()
+    assert first.returncode == 3, (first.stdout, first.stderr)
+    out = directory / "reserved/A/train"
+    assert "STOPPED at epoch 1 buffer 1/" in (out / "status.log").read_text()
+    second = run()
+    assert second.returncode == 0, (second.stdout, second.stderr)
+    status = (out / "status.log").read_text()
+    assert " RESUME epoch 0 buffer 1 device=mps" in status and " UTR DONE " in status.splitlines()[-1]
+    assert (out / "best.pt").is_file()
+    assert run().returncode != 0
+    assert events(log) == ["stop", "restart", "stop", "restart"]
+
+    monkeypatch.syspath_prepend(str(WORKER.parent))
+    import rt4m_cache
+    import rt4m_joint
+
+    monkeypatch.setattr(rt4m_joint, "RECIPE_SHA256", hashlib.sha256(recipe.read_bytes()).hexdigest())
+    monkeypatch.setitem(rt4m_joint.ARCHITECTURE, 6, scratch)
+    cache_root = directory / "cache"
+    for worker_id in range(rt4m_cache.WORKERS):
+        assert rt4m_cache.partition(directory / "reserved", cache_root, worker_id, recipe) == 0
+    cache, = (cache_root / "A").iterdir()
+    assert (cache / "train-0000.npz").is_file()
+    with pytest.raises(ValueError, match="expected sampled training set"):
+        rt4m_cache.polish(directory / "reserved", cache_root, recipe)
+    sample = json.loads((cache / "DONE.0").read_text())["sample"]
+    assert sample["rows"] == 344 and sample["chunks"] == 2
+    monkeypatch.setattr(rt4m_cache, "RT4_SAMPLE", sample)
+    assert rt4m_cache.polish(directory / "reserved", cache_root, recipe) == 0
+    assert (directory / "reserved/A/polish/selected.pt").is_file()
+    bad_cache = directory / "unreserved"
+    status_path = out / "status.log"
+    status_path.write_text(status[:status.rfind("sha256=")] + "sha256=" + "0" * 64 + "\n")
+    with pytest.raises(ValueError, match="checkpoint differs"):
+        rt4m_cache.partition(directory / "reserved", bad_cache, 0, recipe)
+    assert not bad_cache.exists()
+
+
+
+def test_large_smoke_resumes_the_real_trainer_and_consumes_its_capacity(mps_worker_recipe):
+    supervisor, directory, log, recipe, SCRATCH = mps_worker_recipe
     emitter = directory / "server/scripts/sz3_joint_recipe.py"
     emitter.write_text(
         "import sys\n"
         f"sys.path.insert(0, {str(WORKER.parent)!r})\n"
         "import sz3_joint_recipe as sz3\n"
         f"sz3.RECIPE_SHA = {hashlib.sha256(recipe.read_bytes()).hexdigest()!r}\n"
-        f"sz3.ARCHITECTURE = {{6: {SCRATCH!r}, 8: {SCRATCH!r}}}\n"
-        "sz3.BOUNDARY = 1\n"
+        f"sz3.ARCHITECTURE[8] = {SCRATCH!r}\n"
         f"sz3.main([*sys.argv[1:], '--recipe', {str(recipe)!r}])\n"
     )
-    def run(phase):
-        return subprocess.run([*supervisor, "--phase", phase, "--min-free-gib", "1"],
-                              env={**os.environ, "PYTHONPATH": str(WORKER.parents[1])},
-                              capture_output=True, text=True, timeout=60)
-
-    if full:
-        assert run("M").returncode == 0
-        assert run("L-prefix").returncode == 7
-        result = run("L-finish")
-        assert result.returncode == 8, (result.stdout, result.stderr)
-        assert events(log) == ["stop", "restart"] * 2
-        root = directory / "reserved"
-        report = root / "M/train/epoch-1-buffer-1.json"
-        prefix = json.loads(report.read_bytes())
-        prefix["train"]["leaf_value"] += 0.01
-        report.write_text(json.dumps(prefix))
-        assert run("L-finish").returncode == 0
-        status = (root / "L/train/status.log").read_text()
-        assert " RESUME epoch 0 buffer 1 device=mps" in status and " UTR DONE " in status.splitlines()[-1]
-        assert run("M").returncode != 0
-        assert events(log) == ["stop", "restart"] * 3
-        return
-    cp = run("L-smoke")
+    cp = subprocess.run([*supervisor, "--phase", "L-smoke", "--min-free-gib", "1"],
+                        env={**os.environ, "PYTHONPATH": str(WORKER.parents[1])},
+                        capture_output=True, text=True, timeout=60)
     assert cp.returncode == 0, (cp.stdout, cp.stderr)
     result = json.loads(cp.stdout.splitlines()[-1])
     assert result["capacity"]["rows"] == 344 and result["capacity"]["steps"] == 4

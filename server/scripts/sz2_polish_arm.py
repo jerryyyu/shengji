@@ -12,9 +12,13 @@ from sz2_cache_arm import FLEET, JOINT, RECIPE, RECIPE_SHA, WORKERS, arm_inputs
 
 
 def polish_arm(joint, arm, cache_root, output, recipe_path, recipe_sha):
+    checkpoint, cache, recipe = arm_inputs(joint, arm, cache_root, recipe_path, recipe_sha)
+    return polish_checkpoint(checkpoint, cache, recipe, output / arm / cache.name, epochs=2, lr=3e-4)
+
+
+def polish_checkpoint(checkpoint, cache, recipe, out, *, epochs, lr, expected_sample=None):
     from shengji.train import unified_readout
 
-    checkpoint, cache, recipe = arm_inputs(joint, arm, cache_root, recipe_path, recipe_sha)
     with ExitStack() as leases:
         for worker in range(WORKERS):
             lock = leases.enter_context((cache / f"worker-{worker}.lock").open("rb"))
@@ -27,6 +31,9 @@ def polish_arm(joint, arm, cache_root, output, recipe_path, recipe_sha):
                 or groups != (chunks + 23) // 24 or any(r != records[0] for r in records)
                 or records[0]["corpus_weight"] != recipe["corpus_weight"]):
             raise ValueError("inconsistent cache partition totals or weights")
+        if expected_sample is not None and (
+                records[0].get("sample") != expected_sample or chunks != expected_sample["chunks"]):
+            raise ValueError("cache does not match the expected sampled training set")
         expected = {f"train-{i:04d}.npz" for i in range(groups)}
         if expected != {p.name for p in cache.glob("train-*.npz")} or not (cache / "calib-0000.npz").is_file():
             raise ValueError("incomplete dense cache")
@@ -34,19 +41,18 @@ def polish_arm(joint, arm, cache_root, output, recipe_path, recipe_sha):
             with ZipFile(cache / name) as shard:
                 if "leaf_w.npy" not in shard.namelist():
                     raise ValueError(f"missing corpus weights in {name}")
-        out = output / arm / cache.name
         out.mkdir(parents=True, exist_ok=False)
         rc = unified_readout.main(["polish", "--ckpt", str(checkpoint), "--cache", str(cache),
-                                   "--out", str(out), "--epochs", "2", "--lr", "3e-4",
+                                   "--out", str(out), "--epochs", str(epochs), "--lr", str(lr),
                                    "--weight-decay", "0.01", "--reply-weight", "0.2", "--batch", "4096",
                                    "--threads", "16", "--seed", "1", "--device", "cpu"])
         if rc:
             return rc
         terminal = (out / "status.log").read_text().splitlines()[-1]
-        result = re.fullmatch(r"\S+ POLISH DONE best_epoch=([012]) calib .+ sha256=[0-9a-f]{64}", terminal)
-        if not result:
+        result = re.fullmatch(r"\S+ POLISH DONE best_epoch=([0-9]+) calib .+ sha256=[0-9a-f]{64}", terminal)
+        if not result or int(result[1]) > epochs:
             raise ValueError("missing polish selection")
-        # The joint checkpoint is the selected model when neither pass improved it.
+        # The joint checkpoint is the selected model when no polish epoch improved it.
         os.link(checkpoint if result[1] == "0" else out / "best.pt", out / "selected.pt")
         return 0
 

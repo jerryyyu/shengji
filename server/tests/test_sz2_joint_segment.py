@@ -485,3 +485,27 @@ def test_large_finish_consumes_the_matched_scratch_trainer_prefixes(segment, tmp
     assert ur.main(sz3.command("L-finish", root, recipe_path)[4:]) == 0
     assert " RESUME epoch 0 buffer 2\n" in status.read_text()
     assert (large / "best.pt").is_file()
+
+
+def test_full_mix_scratch_command_preserves_the_weighted_trainer_identity(segment, cpu_root, tmp_path, monkeypatch):
+    import rt4m_joint as arm
+
+    recipe = json.loads((cpu_root[0] / "train/run.json").read_bytes())
+    recipe.update(scratch_arch=None, init_readout_ckpt="warm-source.pt", max_train_rows=None,
+                  calib_data=recipe["data"], corpus_weight=["utg-=policy:2,reply:2", "pvs-=q:0.5,policy:0.5"])
+    source = tmp_path / "run.json"
+    source.write_text(json.dumps(recipe))
+    with pytest.raises(ValueError, match="SHA mismatch"):
+        arm.command(tmp_path, source)
+    monkeypatch.setattr(arm, "RECIPE_SHA256", hashlib.sha256(source.read_bytes()).hexdigest())
+    parsed = ur.build_parser().parse_args(arm.command(tmp_path, source)[4:])
+    assert parsed.init_readout_ckpt is None and parsed.scratch_arch == arm.ARCHITECTURE[6]
+    assert ur._run_identity(parsed) == dict(recipe, scratch_arch=arm.ARCHITECTURE[6], init_readout_ckpt=None,
+                                            device="mps")
+    directory = tmp_path / "A/train"
+    directory.mkdir(parents=True)
+    (directory / "status.log").write_text("t STOPPED at epoch 1 buffer 1/2 (STOP file or --max-seconds); checkpoint saved\n")
+    with pytest.raises(ValueError, match="checkpointed stop"):
+        arm.command(tmp_path, source)
+    with pytest.raises(ValueError, match="successful trainer terminal"):
+        arm.verify_completion(tmp_path)

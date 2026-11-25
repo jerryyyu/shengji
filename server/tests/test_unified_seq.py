@@ -569,3 +569,73 @@ def test_check_init_belief_ll_rules():
     for bad in ({"belief_ll": 0.97}, {"belief_ll": float("inf")}, {"belief_ll": None}, {}, None):
         with pytest.raises(us.UnifiedSeqError):
             us.check_init_belief_ll(bad, 0.98782)
+
+
+def test_fixed_trunk_candidate_update_exports_served_scores(world, tmp_path):
+    from shengji.harvest.legal import enumerate_legal
+    from shengji.harvest.rebuild import state_for_record
+    from shengji.train import search_free_head as trainer
+    from shengji.train import search_free_play as sf
+    from shengji.train import unified_readout
+
+    entry = us.entries_for([str(world["data"])], "train")[0]
+    verified = bs._Verified()
+    part = us.load_unified_part(entry, verified, us.OutcomeIndex())
+    tokens, row, slot, mean, played = [], [], [], [], []
+    for i, ply in enumerate(part["row_ply"]):
+        if ply not in (0, 4):
+            continue
+        records = bl.game_order(world["clusters"][part["cluster"][i]])
+        rec = records[part["decision"][i]]
+        rnd = state_for_record(rec)
+        seat = rec["seat"]
+        actions = enumerate_legal(rnd, seat, cap=20).actions
+        if len(actions) < 2:
+            continue
+        other = next(a for a in actions if Counter(a) != Counter(rec["action"]))
+        for j, action in enumerate((other, rec["action"])):
+            tokens.append(sf.candidate_token(rnd, seat, action))
+            row.append(i)
+            slot.append(j)
+            mean.append(0.2 * j)
+            played.append(j == 1)
+        if len(set(row)) == 2:
+            break
+    assert len(set(row)) == 2
+    key = hashlib.sha256((str(entry["dir"]) + "|" + entry["sha256"]).encode()).hexdigest()[:20]
+    arrays = dict(zip(("tok_int", "tok_f", "tok_cards", "tok_att"), map(np.stack, zip(*tokens))))
+    np.savez(tmp_path / (key + ".npz"), n_rows=len(part["X"]), row=row, slot=slot, mean=mean,
+             played=played, **arrays)
+    b, c = next(trainer.candidate_batches(entry, tmp_path, verified, rounds_per_batch=16))
+    torch.manual_seed(5)
+    m = unified_readout.build(SMALL).eval()
+    head = trainer.build_head(m.config["trunk"])
+    before = {k: v.clone() for k, v in m.state_dict().items()}
+    pred = trainer.score_batch(m, head, b, c)
+    opt = torch.optim.SGD(head.parameters(), lr=0.01)
+    assert trainer.fit_shard(m, head, opt, entry, tmp_path, verified, rounds_per_batch=16) == 2
+    assert all(p.grad is None for p in m.parameters())
+    assert all(torch.equal(v, before[k]) for k, v in m.state_dict().items())
+    with torch.no_grad():
+        after = torch.stack(trainer.score_batch(m, head, b, c)).numpy()
+    assert not np.allclose(after, torch.stack(pred).detach().numpy())
+    path = tmp_path / "sf.npz"
+    sha = trainer.export(path, m, head, {})
+    runtime = sf.load_package(path, sha256=sha)
+    for i in range(len(b["X"])):
+        inp = un.batch_inputs(b, i, with_play=False)
+        keep = c["row"] == i
+        live = runtime.score(inp, runtime.trunk_states(inp), [tokens[k] for k in np.flatnonzero(keep)])
+        np.testing.assert_allclose(live, after[:, keep], atol=1e-4, rtol=1e-4)
+
+    from shengji.harvest.legal import is_legal
+    from shengji.train import relaxed_play as rp
+    for builder in (rp.build_casual, rp.build_beginner):
+        bot = builder(tbl.HeuristicBot(), path, seed=17, sha256=sha)
+        assert is_legal(rnd, seat, bot.decide_play(rnd, seat))
+        assert bot.last_decision_record["schema"] == rp.RECORD_SCHEMA
+
+    np.savez(tmp_path / (key + ".npz"), n_rows=len(part["X"]), row=row, slot=slot,
+             mean=mean, played=np.logical_not(played), **arrays)
+    with pytest.raises(ValueError, match="recorded attempt"):
+        next(trainer.candidate_batches(entry, tmp_path, verified))

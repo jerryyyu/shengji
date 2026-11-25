@@ -23,7 +23,7 @@ import HandLine from "./HandLine";
 import { leadToFollow } from "../follow";
 import { followHint, followsSuit } from "../followRules";
 import { TimerRing } from "./MoveClock";
-import { LOW_SECS, MOVE_SECS, useMoveClock } from "../useMoveClock";
+import { LOW_SECS, MOVE_SECS, useMoveClockSample } from "../useMoveClock";
 import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subscribeCoach, useAccountNewcomer, useCoachSetting } from "../firstTurns";
 import { showToast } from "../toast";
 import { TurnClock, leadKind, nextTurnNumber, telemetry, useScreen } from "../telemetry";
@@ -139,7 +139,7 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
   const takeover = useCountdown(player.takeover_in ?? null);
   // the seat's own move clock, so everyone sees whom the table waits for;
   // only the seat's owner is buzzed
-  const moveClock = useMoveClock(player.turn_deadline, state, false);
+  const moveClock = useMoveClockSample(player.turn_deadline, state, false);
   const status = seatStatus(player, takeover);
   const countdown = seatStatusParts(player, takeover);
   const onTurn = state.turn === player.seat;
@@ -200,7 +200,7 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
         <span className={`opp-name-text${player.left ? " left-tag" : ""}`}>{player.left ? status : shownName}</span>
         {/* always drawn, so the label's width never changes with the turn */}
         <span className={`turn-dots${onTurn && actionPhase ? " shown" : ""}`} aria-hidden="true">…</span>
-        <TimerRing left={moveClock} total={MOVE_SECS} thin />
+        <TimerRing left={moveClock.left} end={moveClock.end} total={MOVE_SECS} thin />
         {player.is_bot ? <span className="bot-tag">{t("table.botTag")}</span> : null}
         {hasPassed ? <span className="ready-tag">{t("table.readyTag")}</span> : null}
         {player.away && player.connected ? <span className="away-tag">{t("table.awayTag")}</span> : null}
@@ -475,9 +475,10 @@ export default function Table({ state }: { state: GameState }) {
   useTableHaptics(state);
   // your move timer (ranked tables): the ring for the whole decision, red in
   // its last seconds, and a haptic at five
-  const clock = useMoveClock(me?.turn_deadline, state);
+  const clockSample = useMoveClockSample(me?.turn_deadline, state);
+  const clock = clockSample.left;
   // the post-deal declare window: a ring on its buttons, no haptic
-  const declareClock = useMoveClock(state.phase === "declare" ? state.declare_deadline : null, state, false);
+  const declareClock = useMoveClockSample(state.phase === "declare" ? state.declare_deadline : null, state, false);
   const away = me?.away ?? false;
   // a bot holds your seat: one pill, and any tap or key counts as back; while
   // the socket is down the connection pill says Reconnecting in its place
@@ -620,7 +621,7 @@ export default function Table({ state }: { state: GameState }) {
     if (canDeclare && coachOn) phaseHelp = declareHelp(state);
     actionBar = (
       <>
-        {state.phase === "declare" && !iPassed ? <TimerRing left={declareClock} total={DECLARE_WINDOW_SECS} /> : null}
+        {state.phase === "declare" && !iPassed ? <TimerRing left={declareClock.left} end={declareClock.end} total={DECLARE_WINDOW_SECS} /> : null}
         {state.declare_options.map((ids) => (
           <button
             key={ids.join("-")}
@@ -645,7 +646,7 @@ export default function Table({ state }: { state: GameState }) {
     if (coachOn) phaseHelp = buryHelp();
     actionBar = (
       <>
-      <TimerRing left={clock} total={MOVE_SECS} />
+      <TimerRing left={clock} end={clockSample.end} total={MOVE_SECS} />
       {/* drawn at full contrast, its fill the count's share of 8 */}
       <button
         className="btn primary bury-btn"
@@ -684,7 +685,7 @@ export default function Table({ state }: { state: GameState }) {
     if (offSuit && lead) blocked = followHint(lead, state.trump);
     actionBar = (
       <>
-        <TimerRing left={clock} total={MOVE_SECS} />
+        <TimerRing left={clock} end={clockSample.end} total={MOVE_SECS} />
         <span className="play-wrap" onClick={whyNot}>
           <button
             className={`btn primary${choosing ? " your-turn" : ""}`}
@@ -760,7 +761,7 @@ export default function Table({ state }: { state: GameState }) {
       </div>
 
       {state.phase === "round_end" && state.round_result ? (
-        <RoundEndModal state={state} result={state.round_result} clock={clock} live={liveHere}
+        <RoundEndModal state={state} result={state.round_result} clock={clock} clockEnd={clockSample.end} live={liveHere}
                        before={liveHere ? lastLive.current!.levels : null} />
       ) : null}
 

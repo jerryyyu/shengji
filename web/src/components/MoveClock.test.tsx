@@ -5,7 +5,7 @@ import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { RING_RESYNC_MS, TimerRing } from "./MoveClock";
-import { useMoveClock } from "../useMoveClock";
+import { useMoveClockSample } from "../useMoveClock";
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -72,8 +72,8 @@ let redraw: () => void = () => {};
 function Clocked({ seconds, stamp }: { seconds: number; stamp: number }) {
   const [, setChosen] = useState(0);
   redraw = () => setChosen((n) => n + 1);
-  const left = useMoveClock(seconds, stamp, false);
-  return <TimerRing left={left} total={60} />;
+  const clock = useMoveClockSample(seconds, stamp, false);
+  return <TimerRing left={clock.left} end={clock.end} total={60} />;
 }
 
 it("keeps the drain through a local redraw between ticks, and starts again on a new server deadline", () => {
@@ -93,4 +93,24 @@ it("keeps the drain through a local redraw between ticks, and starts again on a 
   act(() => root.render(<Clocked seconds={60} stamp={3} />));     // the server restarted the window
   expect(band()).not.toBe(first);
   expect(at()).toBe("0s");
+});
+
+it("keeps the drain through a local redraw 750 ms into a window", () => {
+  act(() => root.render(<Clocked seconds={60} stamp={1} />));
+  const first = band();
+  act(() => { vi.advanceTimersByTime(750); });
+  act(() => redraw());
+  expect(band()).toBe(first);
+  expect(at()).toBe("0s");
+});
+
+it("starts again on a fresh server figure that repeats the seconds with a moved deadline", () => {
+  act(() => root.render(<Clocked seconds={60} stamp={1} />));
+  const first = band();
+  act(() => { vi.advanceTimersByTime(750); });
+  // the same 60 s, in a new state: the deadline is 750 ms later
+  act(() => root.render(<Clocked seconds={60} stamp={2} />));
+  expect(band()).not.toBe(first);
+  expect(at()).toBe("0s");
+  expect(host.querySelector(".timer-ring-secs")!.textContent).toBe("60");
 });

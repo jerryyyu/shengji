@@ -49,6 +49,8 @@ interface RoundEndModalProps {
   result: RoundResult;
   /** Seconds left on your move timer for Next (ranked tables), else null. */
   clock?: number | null;
+  /** The deadline `clock` counts to (useMoveClockSample), for its ring. */
+  clockEnd?: number | null;
   /** The result arrived while the table was open: a won game's crown may
    *  flash. False when the table opened onto it, which draws it settled. */
   live?: boolean;
@@ -240,7 +242,7 @@ function kittyBonusText(state: GameState, result: RoundResult): string | null {
            { times, points: result.kitty_points });
 }
 
-export default function RoundEndModal({ state, result, clock = null, live = false, before = null }: RoundEndModalProps) {
+export default function RoundEndModal({ state, result, clock = null, clockEnd = null, live = false, before = null }: RoundEndModalProps) {
   const t = useT();
   const titleId = useId();
   useScreen("round_end");
@@ -337,7 +339,7 @@ export default function RoundEndModal({ state, result, clock = null, live = fals
               if (conn.send({ type: "next_round" })) setSent(true);
             }}
           >
-            {iAmReady ? null : <TimerRing left={clock} total={MOVE_SECS} />}
+            {iAmReady ? null : <TimerRing left={clock} end={clockEnd} total={MOVE_SECS} />}
             {iAmReady ? t("roundend.waiting") : gameWon ? t("roundend.nextGame") : t("roundend.nextRound")}
           </button>
           <RoundEndLeave ranked={ranked} guest={state.guest === true} />

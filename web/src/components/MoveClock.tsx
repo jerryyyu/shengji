@@ -10,8 +10,9 @@ export const RING_RESYNC_MS = 500;
 /** Where the drain starts: the deadline it runs to, and the seconds already
  *  gone from the window when it starts (negative while a window the server
  *  extended is still above `total`). `key` changes on every restart; `left`
- *  is the last sample read against the deadline. */
-interface Anchor { end: number; total: number; gone: number; key: number; left: number }
+ *  is the last sample read against the deadline, and `seen` the last `end`
+ *  the caller gave with it. */
+interface Anchor { end: number; total: number; gone: number; key: number; left: number; seen: number | null }
 
 /** The one timer: a ring that drains from full over the whole window, with
  *  the seconds left in its centre. It turns red for the last LOW_SECS.
@@ -23,25 +24,31 @@ interface Anchor { end: number; total: number; gone: number; key: number; left: 
  *  turned by `transform`, so it runs on the compositor and is continuous;
  *  React redraws only the seconds. Each `left` is checked against the
  *  running drain's deadline, and a deadline that has moved (the server
- *  restarted or extended the window) starts the drain again from it. */
-export function TimerRing({ left, total, thin = false }: { left: number | null; total: number; thin?: boolean }) {
+ *  restarted or extended the window) starts the drain again from it.
+ *
+ *  `end` is the deadline the sample counts to (useMoveClockSample), when the
+ *  caller has it: it is compared as given, so a fresh server figure that
+ *  repeats the seconds still restarts the drain if its deadline moved. */
+export function TimerRing({ left, total, end = null, thin = false }: {
+  left: number | null; total: number; end?: number | null; thin?: boolean;
+}) {
   const t = useT();
   const anchor = useRef<Anchor | null>(null);
   if (left === null) {
     anchor.current = null;
     return null;
   }
-  // A new sample of `left` is drawn as it is taken, so the deadline it
-  // implies is read then. A redraw that brings the same sample (a card
-  // chosen between ticks) reads nothing: the sample has aged since, and
-  // would look like a moved deadline.
+  // Without `end`, a new sample of `left` is drawn as it is taken, so the
+  // deadline it implies is read then. A redraw that brings the same sample
+  // (a card chosen between ticks) reads nothing: the sample has aged since,
+  // and would look like a moved deadline.
   let a = anchor.current;
-  if (!a || a.total !== total || a.left !== left) {
-    const end = Date.now() + left * 1000;
-    if (!a || a.total !== total || Math.abs(end - a.end) > RING_RESYNC_MS) {
-      a = { end, total, gone: total - left, key: (a?.key ?? 0) + 1, left };
+  if (!a || a.total !== total || a.left !== left || (end !== null && end !== a.seen)) {
+    const at = end ?? Date.now() + left * 1000;
+    if (!a || a.total !== total || Math.abs(at - a.end) > RING_RESYNC_MS) {
+      a = { end: at, total, gone: total - left, key: (a?.key ?? 0) + 1, left, seen: end };
     } else {
-      a = { ...a, left };
+      a = { ...a, left, seen: end };
     }
     anchor.current = a;
   }

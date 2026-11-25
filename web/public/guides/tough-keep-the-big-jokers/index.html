@@ -207,12 +207,11 @@
 <h2 id="what-would-you-play">What would you play?</h2>
 <p>You're out of hearts, so any two cards will do.</p>
 <ul class="pz-opts">
-<li data-pz-opt="A"><strong>A.</strong> The big joker pair. It wins the trick and its 10 points. This is the rule-based bot's play.</li>
-<li data-pz-opt="B"><strong>B.</strong> ♣K ♠J. Our bot's play: the attackers win the trick, 20 points with your ♣K.</li>
+<li data-pz-opt="A"><strong>A.</strong> The big joker pair. It wins the trick and its 10 points. <span data-pz-later>This is the rule-based bot's play.</span></li>
+<li data-pz-opt="B"><strong>B.</strong> ♣K ♠J. <span data-pz-later>Our bot's play:</span> the attackers win the trick, 20 points with your ♣K.</li>
 <li data-pz-opt="C"><strong>C.</strong> ♠4 ♠9. The attackers win it, 10 points.</li>
 <li data-pz-opt="D"><strong>D.</strong> ♠8 ♠9. The same as C.</li>
 </ul>
-
 <p class="pz-verdict" data-pz-verdict aria-live="polite" hidden></p>
 <div class="pz-reveal" data-pz-reveal>
 <h2 id="the-answer-keep-the-jokers">The answer: keep the jokers</h2>
@@ -244,7 +243,8 @@
 </div>
 <script>
 (function () {
-  var C = {"key":"shengji.guides.puzzles.v1","text":{"right":"Solved: you picked {p}, and the play-outs favour {f}.","wrong":"You picked {p}. The play-outs favour {f}.","progress":"{n} of {t} solved","comma":", ","or":" or "},"puzzles":[{"slug":"tough-bury-short-suits","href":"/guides/tough-bury-short-suits","favoured":["A"]},{"slug":"tough-feed-partners-throw","href":"/guides/tough-feed-partners-throw","favoured":["A"]},{"slug":"tough-dont-feed-the-trick","href":"/guides/tough-dont-feed-the-trick","favoured":["A"]},{"slug":"tough-keep-the-big-jokers","href":"/guides/tough-keep-the-big-jokers","favoured":["B","C","D"]},{"slug":"tough-last-trick-throw","href":"/guides/tough-last-trick-throw","favoured":["C"]}]};
+  var C = {"key":"shengji.guides.puzzles.v1","text":{"right":"Solved: you picked {p}, and the play-outs favour {f}.","wrong":"You picked {p}. The play-outs favour {f}.","progress":"{n} of {t} solved","puzzle":"Puzzle {n}","comma":", ","or":" or "},"puzzles":[{"slug":"tough-bury-short-suits","href":"/guides/tough-bury-short-suits","favoured":["A"]},{"slug":"tough-feed-partners-throw","href":"/guides/tough-feed-partners-throw","favoured":["A"]},{"slug":"tough-dont-feed-the-trick","href":"/guides/tough-dont-feed-the-trick","favoured":["A"]},{"slug":"tough-keep-the-big-jokers","href":"/guides/tough-keep-the-big-jokers","favoured":["B","C","D"]},{"slug":"tough-last-trick-throw","href":"/guides/tough-last-trick-throw","favoured":["C"]}]};
+  var each = function (list, f) { Array.prototype.forEach.call(list, f); };
   function load() {
     try {
       var raw = window.localStorage.getItem(C.key);
@@ -259,41 +259,61 @@
   function join(xs) {
     return xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(C.text.comma) + C.text.or + xs[xs.length - 1];
   }
+  var picks = load();
+  var picked = function (slug) { var v = picks[slug]; return typeof v === "string" && /^[A-D]$/.test(v) ? v : null; };
+  // links to a puzzle not yet tried read "Puzzle N", and the hub's hints for it wait
+  C.puzzles.forEach(function (p, i) {
+    if (picked(p.slug)) return;
+    each(document.querySelectorAll('a[href="' + p.href + '"]'), function (a) {
+      if (!a.closest(".pz-next, [data-pz-hub]")) a.textContent = fill(C.text.puzzle, { n: i + 1 });
+    });
+    each(document.querySelectorAll('[data-pz-later="' + (i + 1) + '"]'), function (el) { el.hidden = true; });
+  });
   var root = document.querySelector("[data-pz-slug]");
   if (root) {
     var slug = root.getAttribute("data-pz-slug");
     var favoured = root.getAttribute("data-pz-favoured").split(" ");
     var reveal = root.querySelector("[data-pz-reveal]");
     var verdict = root.querySelector("[data-pz-verdict]");
+    var later = root.querySelectorAll("[data-pz-later]");
     var rows = reveal.querySelectorAll("tbody tr");
-    var buttons = [];
     var titles = document.querySelectorAll("[data-pz-title]");
     var lede = document.querySelector("[data-pz-lede]");
-    var full = [];
-    Array.prototype.forEach.call(titles, function (el, i) {
-      full[i] = el.textContent;
-      el.textContent = el.getAttribute("data-pz-title");
+    var fullTitles = [], fullDoc = document.title, neutralDoc = fullDoc;
+    var buttons = [];
+    var scored = picked(slug);
+    each(titles, function (el, i) {
+      fullTitles[i] = el.textContent;
+      if (i === 0) neutralDoc = fullDoc.replace(el.textContent, el.getAttribute("data-pz-title"));
     });
-    if (lede) lede.hidden = true;
+    var hide = function () {
+      each(titles, function (el) { el.textContent = el.getAttribute("data-pz-title"); });
+      document.title = neutralDoc;
+      if (lede) lede.hidden = true;
+      each(later, function (el) { el.hidden = true; });
+      reveal.hidden = true;
+    };
     var show = function (letter) {
-      Array.prototype.forEach.call(titles, function (el, i) { el.textContent = full[i]; });
+      each(titles, function (el, i) { el.textContent = fullTitles[i]; });
+      document.title = fullDoc;
       if (lede) lede.hidden = false;
+      each(later, function (el) { el.hidden = false; });
       buttons.forEach(function (b) {
         var l = b.getAttribute("data-opt");
         b.setAttribute("aria-pressed", l === letter ? "true" : "false");
         b.classList.toggle("pz-good", favoured.indexOf(l) >= 0);
         b.classList.toggle("pz-bad", l === letter && favoured.indexOf(l) < 0);
       });
-      Array.prototype.forEach.call(rows, function (tr) {
+      each(rows, function (tr) {
         var m = /^\s*([A-D])[:\uff1a]/.exec(tr.cells[0] ? tr.cells[0].textContent : "");
         tr.classList.toggle("pz-row-good", !!m && favoured.indexOf(m[1]) >= 0);
         tr.classList.toggle("pz-row-pick", !!m && m[1] === letter);
       });
-      verdict.textContent = fill(favoured.indexOf(letter) >= 0 ? C.text.right : C.text.wrong, { p: letter, f: join(favoured) });
+      verdict.textContent = fill(favoured.indexOf(scored) >= 0 ? C.text.right : C.text.wrong, { p: scored, f: join(favoured) });
       verdict.hidden = false;
       reveal.hidden = false;
     };
-    Array.prototype.forEach.call(root.querySelectorAll("[data-pz-opt]"), function (li) {
+    each(root.querySelectorAll("[data-pz-opt]"), function (li) {
       var letter = li.getAttribute("data-pz-opt");
       var b = document.createElement("button");
       b.type = "button";
@@ -303,24 +323,24 @@
       while (li.firstChild) b.appendChild(li.firstChild);
       li.appendChild(b);
       b.addEventListener("click", function () {
-        var picks = load();
-        if (!picks[slug]) { picks[slug] = letter; save(picks); }
+        if (!scored) {
+          scored = letter;
+          var now = load();
+          if (!now[slug]) { now[slug] = letter; save(now); }
+        }
         show(letter);
       });
       buttons.push(b);
     });
     root.classList.add("pz-js");
-    reveal.hidden = true;
-    var prior = load()[slug];
-    if (typeof prior === "string" && root.querySelector('[data-opt="' + prior.replace(/[^A-D]/g, "") + '"]')) show(prior);
+    if (scored && root.querySelector('[data-opt="' + scored + '"]')) show(scored); else { scored = null; hide(); }
   }
   var hub = document.querySelector("[data-pz-hub]");
   if (hub) {
-    var picks = load();
     var answered = 0, solved = 0, open = null;
     C.puzzles.forEach(function (p) {
-      var pick = picks[p.slug];
-      if (typeof pick === "string") {
+      var pick = picked(p.slug);
+      if (pick) {
         answered += 1;
         if (p.favoured.indexOf(pick) >= 0) solved += 1;
       } else if (!open) open = p.href;

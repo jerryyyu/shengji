@@ -30,6 +30,7 @@ const page = (lang: "en" | "zh", slug: string) => built.get(`${lang === "en" ? "
 
 /** Loads a built page's <main> into the document and runs its inline script, as a browser would. */
 function open(html: string): void {
+  document.title = /<title>([^<]*)<\/title>/.exec(html)![1];
   document.body.innerHTML = /<main>[\s\S]*<\/main>/.exec(html)![0];
   const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
   expect(scripts).toHaveLength(1);
@@ -69,14 +70,46 @@ describe("a puzzle page with its script", () => {
     expect(reveal.querySelector('[data-cta="app"]')).not.toBeNull();
   });
 
-  it("keeps the first pick and shows it again on the next visit", () => {
+  it("scores the first pick only: a later pick moves the highlight, not the verdict or the save", () => {
     open(page("en", "tough-dont-feed-the-trick"));
-    option("C").click();
+    option("B").click();
     option("A").click();
-    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toEqual({ "tough-dont-feed-the-trick": "C" });
+    expect($("[data-pz-verdict]").textContent).toBe("You picked B. The play-outs favour A.");
+    expect(option("A").getAttribute("aria-pressed")).toBe("true");
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toEqual({ "tough-dont-feed-the-trick": "B" });
     open(page("en", "tough-dont-feed-the-trick"));
     expect($("[data-pz-reveal]").hidden).toBe(false);
-    expect(option("C").getAttribute("aria-pressed")).toBe("true");
+    expect(option("B").getAttribute("aria-pressed")).toBe("true");
+    expect($("[data-pz-verdict]").textContent).toBe("You picked B. The play-outs favour A.");
+  });
+
+  it("keeps the first pick for the visit when storage throws", () => {
+    vi.spyOn(window, "localStorage", "get").mockImplementation(() => { throw new DOMException("denied", "SecurityError"); });
+    open(page("zh", "tough-dont-feed-the-trick"));
+    option("B").click();
+    option("A").click();
+    expect($("[data-pz-verdict]").textContent).toBe("你选了 B。模拟结果支持 A。");
+  });
+
+  it("names neither bot's play, nor the answer in the tab title, before the pick", () => {
+    const cases: [string, string, string, string][] = [
+      ["en", "tough-bury-short-suits", "A is our bot's choice", "Toughest decisions 1: what would you bury? | Sheng Ji guides"],
+      ["en", "tough-keep-the-big-jokers", "Our bot's play", "Toughest decisions 4: what would you play? | Sheng Ji guides"],
+      ["zh", "tough-dont-feed-the-trick", "这是规则机器人的出法", "难题精选 3：你出什么？ | 升级攻略"],
+      ["zh", "tough-keep-the-big-jokers", "我们 AI 的出法", "难题精选 4：你出什么？ | 升级攻略"],
+    ];
+    for (const [lang, slug, hint, tab] of cases) {
+      const html = page(lang as "en" | "zh", slug);
+      const full = /<title>([^<]*)<\/title>/.exec(html)![1];
+      window.localStorage.clear();
+      open(html);
+      expect(document.title, slug).toBe(tab);
+      expect(visibleText(document.body), slug).not.toContain(hint);
+      expect(visibleText(document.body), slug).not.toMatch(/rule-based bot|规则机器人|our bot|我们 AI/i);
+      option("A").click();
+      expect(document.title, slug).toBe(full);
+      expect(visibleText(document.body), slug).toContain(hint);
+    }
   });
 
   it("works when storage throws", () => {
@@ -142,6 +175,45 @@ describe("a puzzle page before the pick", () => {
 });
 
 describe("the puzzle hub", () => {
+  it("walks hub, puzzle, reveal, reload and hub score in both languages", () => {
+    for (const lang of ["en", "zh"] as const) {
+      window.localStorage.clear();
+      const base = lang === "en" ? "/guides" : "/zh/guides";
+      const t = lang === "en"
+        ? { p4: "Puzzle 4", start: "Try the puzzles", score: (n: number) => `${n} of 5 solved`, right: "Solved: you picked C, and the play-outs favour B, C or D." }
+        : { p4: "第 4 题", start: "开始做题", score: (n: number) => `已答对 ${n} / 5 题`, right: "答对了：你选 C，模拟结果支持 B、C 或 D。" };
+      open(page(lang, "toughest-decisions"));
+      const hubLinks = () => [...document.querySelectorAll(`article a[href^="${base}/tough-"]`)].filter((a) => !a.closest("[data-pz-hub]"));
+      expect(hubLinks().map((a) => a.textContent), lang).toEqual([1, 2, 3, 4, 5].map((n) => t.p4.replace("4", String(n))));
+      expect($('[data-pz-later="4"]').hidden, lang).toBe(true);
+      expect($("[data-pz-start]").textContent, lang).toBe(t.start);
+      expect($("[data-pz-start]").getAttribute("href"), lang).toBe(`${base}/tough-bury-short-suits`);
+
+      open(page(lang, "tough-keep-the-big-jokers"));
+      expect($("[data-pz-reveal]").hidden, lang).toBe(true);
+      option("C").click();
+      option("A").click();
+      expect($("[data-pz-reveal]").hidden, lang).toBe(false);
+      expect($("[data-pz-verdict]").textContent, lang).toBe(t.right);
+
+      open(page(lang, "tough-keep-the-big-jokers"));
+      expect($("[data-pz-verdict]").textContent, lang).toBe(t.right);
+      expect(option("C").getAttribute("aria-pressed"), lang).toBe("true");
+
+      open(page(lang, "tough-dont-feed-the-trick"));
+      option("B").click();
+
+      open(page(lang, "toughest-decisions"));
+      expect($("[data-pz-progress]").textContent, lang).toBe(t.score(1));
+      expect($('[data-pz-later="4"]').hidden, lang).toBe(false);
+      const names = hubLinks().map((a) => a.textContent!);
+      expect(names[0], lang).toBe(t.p4.replace("4", "1"));
+      expect(names[2], lang).not.toMatch(/^Puzzle|^第/);
+      expect(names[3], lang).not.toMatch(/^Puzzle|^第/);
+      expect($("[data-pz-start]").getAttribute("href"), lang).toBe(`${base}/tough-bury-short-suits`);
+    }
+  });
+
   it("counts solved puzzles from storage and starts at the first one not tried", () => {
     open(page("en", "toughest-decisions"));
     expect($("[data-pz-progress]").hidden).toBe(true);
@@ -173,7 +245,7 @@ describe("the puzzle pages without JavaScript", () => {
         const html = page(lang, slug);
         const where = `${lang}/${slug}`;
         expect(html, where).toContain('<div class="pz-reveal" data-pz-reveal>');
-        expect(html.replace(/<script>[\s\S]*?<\/script>/g, ""), where).not.toMatch(/data-pz-(reveal|lede)[^>]*hidden/);
+        expect(html.replace(/<script>[\s\S]*?<\/script>/g, ""), where).not.toMatch(/data-pz-(reveal|lede|later)[^>]*hidden/);
         expect(html, where).not.toContain("<button");
         expect(html.indexOf("<table>"), where).toBeGreaterThan(html.indexOf("data-pz-reveal"));
         expect(html.match(/<li data-pz-opt="[A-D]"><strong>[A-D]\.<\/strong>/g)!.length, where).toBeGreaterThanOrEqual(2);

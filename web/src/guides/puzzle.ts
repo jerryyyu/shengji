@@ -26,6 +26,7 @@ const T = {
       right: "Solved: you picked {p}, and the play-outs favour {f}.",
       wrong: "You picked {p}. The play-outs favour {f}.",
       progress: "{n} of {t} solved",
+      puzzle: "Puzzle {n}",
       comma: ", ",
       or: " or ",
     },
@@ -38,6 +39,7 @@ const T = {
       right: "答对了：你选 {p}，模拟结果支持 {f}。",
       wrong: "你选了 {p}。模拟结果支持 {f}。",
       progress: "已答对 {n} / {t} 题",
+      puzzle: "第 {n} 题",
       comma: "、",
       or: " 或 ",
     },
@@ -63,6 +65,10 @@ export function neutralTitle(meta: FrontMatter, headings: Heading[]): string {
   if (!prefix || !question) throw new GuideError(`${meta.lang}/${meta.slug}: a puzzle title needs a "name N:" part and a question`);
   return meta.lang === "en" ? `${prefix}: ${question[0].toLowerCase()}${question.slice(1)}` : `${prefix}：${question}`;
 }
+
+// An option's note of which bot played it, in either language; hidden until the pick.
+const BOT_PLAY = /\s*(This is the rule-based bot's play\.|Our bot's play: |这是规则机器人的出法。|我们 AI 的出法：)/;
+const LATER = (m: string) => `${/^\s/.test(m) ? " " : ""}<span data-pz-later>${m.trim()}</span>${m.endsWith(" ") ? " " : ""}`;
 
 const OPTION_ITEM = /^<li><strong>([A-D])\.<\/strong>/;
 
@@ -126,8 +132,12 @@ export function puzzleBody(opts: {
   for (const l of favoured) {
     if (!letters.includes(l)) throw new GuideError(`${where}: answer ${l} is not an option`);
   }
-  const choices = items.map((li, i) => li.replace("<li>", `<li data-pz-opt="${letters[i]}">`)).join("\n");
-  question = question.replace(list[0], `<ul class="pz-opts">\n${choices}\n</ul>`);
+  const choices = items.map((li, i) => li.replace("<li>", `<li data-pz-opt="${letters[i]}">`).replace(BOT_PLAY, LATER)).join("\n");
+  // what follows the options says which bot played what: it waits for the pick
+  const listEnd = question.indexOf(list[0]) + list[0].length;
+  const after = question.slice(listEnd).trim();
+  question = `${question.slice(0, question.indexOf(list[0]))}<ul class="pz-opts">\n${choices}\n</ul>`
+    + (after ? `\n<div data-pz-later>\n${after}\n</div>` : "");
 
   const named = /^[^:：]*[:：]\s*([A-D])[,，]/.exec(h2[2].text);
   if (named && (favoured.length !== 1 || favoured[0] !== named[1])) {
@@ -190,10 +200,13 @@ export const PUZZLE_CSS = `
 `;
 
 // Plain ES2017, no imports. It finds its elements by their data-pz-*
-// attributes, so one script serves the puzzle pages and the hub.
+// attributes, so one script serves the puzzle pages and the hub. The first
+// pick on a puzzle is the scored one: the verdict and the saved progress
+// both name it, and later picks only move the highlight.
 const SCRIPT = `
 (function () {
   var C = __CONFIG__;
+  var each = function (list, f) { Array.prototype.forEach.call(list, f); };
   function load() {
     try {
       var raw = window.localStorage.getItem(C.key);
@@ -208,41 +221,61 @@ const SCRIPT = `
   function join(xs) {
     return xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(C.text.comma) + C.text.or + xs[xs.length - 1];
   }
+  var picks = load();
+  var picked = function (slug) { var v = picks[slug]; return typeof v === "string" && /^[A-D]$/.test(v) ? v : null; };
+  // links to a puzzle not yet tried read "Puzzle N", and the hub's hints for it wait
+  C.puzzles.forEach(function (p, i) {
+    if (picked(p.slug)) return;
+    each(document.querySelectorAll('a[href="' + p.href + '"]'), function (a) {
+      if (!a.closest(".pz-next, [data-pz-hub]")) a.textContent = fill(C.text.puzzle, { n: i + 1 });
+    });
+    each(document.querySelectorAll('[data-pz-later="' + (i + 1) + '"]'), function (el) { el.hidden = true; });
+  });
   var root = document.querySelector("[data-pz-slug]");
   if (root) {
     var slug = root.getAttribute("data-pz-slug");
     var favoured = root.getAttribute("data-pz-favoured").split(" ");
     var reveal = root.querySelector("[data-pz-reveal]");
     var verdict = root.querySelector("[data-pz-verdict]");
+    var later = root.querySelectorAll("[data-pz-later]");
     var rows = reveal.querySelectorAll("tbody tr");
-    var buttons = [];
     var titles = document.querySelectorAll("[data-pz-title]");
     var lede = document.querySelector("[data-pz-lede]");
-    var full = [];
-    Array.prototype.forEach.call(titles, function (el, i) {
-      full[i] = el.textContent;
-      el.textContent = el.getAttribute("data-pz-title");
+    var fullTitles = [], fullDoc = document.title, neutralDoc = fullDoc;
+    var buttons = [];
+    var scored = picked(slug);
+    each(titles, function (el, i) {
+      fullTitles[i] = el.textContent;
+      if (i === 0) neutralDoc = fullDoc.replace(el.textContent, el.getAttribute("data-pz-title"));
     });
-    if (lede) lede.hidden = true;
+    var hide = function () {
+      each(titles, function (el) { el.textContent = el.getAttribute("data-pz-title"); });
+      document.title = neutralDoc;
+      if (lede) lede.hidden = true;
+      each(later, function (el) { el.hidden = true; });
+      reveal.hidden = true;
+    };
     var show = function (letter) {
-      Array.prototype.forEach.call(titles, function (el, i) { el.textContent = full[i]; });
+      each(titles, function (el, i) { el.textContent = fullTitles[i]; });
+      document.title = fullDoc;
       if (lede) lede.hidden = false;
+      each(later, function (el) { el.hidden = false; });
       buttons.forEach(function (b) {
         var l = b.getAttribute("data-opt");
         b.setAttribute("aria-pressed", l === letter ? "true" : "false");
         b.classList.toggle("pz-good", favoured.indexOf(l) >= 0);
         b.classList.toggle("pz-bad", l === letter && favoured.indexOf(l) < 0);
       });
-      Array.prototype.forEach.call(rows, function (tr) {
+      each(rows, function (tr) {
         var m = /^\\s*([A-D])[:\\uff1a]/.exec(tr.cells[0] ? tr.cells[0].textContent : "");
         tr.classList.toggle("pz-row-good", !!m && favoured.indexOf(m[1]) >= 0);
         tr.classList.toggle("pz-row-pick", !!m && m[1] === letter);
       });
-      verdict.textContent = fill(favoured.indexOf(letter) >= 0 ? C.text.right : C.text.wrong, { p: letter, f: join(favoured) });
+      verdict.textContent = fill(favoured.indexOf(scored) >= 0 ? C.text.right : C.text.wrong, { p: scored, f: join(favoured) });
       verdict.hidden = false;
       reveal.hidden = false;
     };
-    Array.prototype.forEach.call(root.querySelectorAll("[data-pz-opt]"), function (li) {
+    each(root.querySelectorAll("[data-pz-opt]"), function (li) {
       var letter = li.getAttribute("data-pz-opt");
       var b = document.createElement("button");
       b.type = "button";
@@ -252,24 +285,24 @@ const SCRIPT = `
       while (li.firstChild) b.appendChild(li.firstChild);
       li.appendChild(b);
       b.addEventListener("click", function () {
-        var picks = load();
-        if (!picks[slug]) { picks[slug] = letter; save(picks); }
+        if (!scored) {
+          scored = letter;
+          var now = load();
+          if (!now[slug]) { now[slug] = letter; save(now); }
+        }
         show(letter);
       });
       buttons.push(b);
     });
     root.classList.add("pz-js");
-    reveal.hidden = true;
-    var prior = load()[slug];
-    if (typeof prior === "string" && root.querySelector('[data-opt="' + prior.replace(/[^A-D]/g, "") + '"]')) show(prior);
+    if (scored && root.querySelector('[data-opt="' + scored + '"]')) show(scored); else { scored = null; hide(); }
   }
   var hub = document.querySelector("[data-pz-hub]");
   if (hub) {
-    var picks = load();
     var answered = 0, solved = 0, open = null;
     C.puzzles.forEach(function (p) {
-      var pick = picks[p.slug];
-      if (typeof pick === "string") {
+      var pick = picked(p.slug);
+      if (pick) {
         answered += 1;
         if (p.favoured.indexOf(pick) >= 0) solved += 1;
       } else if (!open) open = p.href;

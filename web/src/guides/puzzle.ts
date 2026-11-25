@@ -53,6 +53,17 @@ export function favouredOptions(meta: FrontMatter): string[] {
   return letters;
 }
 
+/**
+ * The title shown before a pick: the title's "Toughest decisions 2" part and
+ * the question heading, e.g. "Toughest decisions 2: what would you play?".
+ */
+export function neutralTitle(meta: FrontMatter, headings: Heading[]): string {
+  const prefix = /^[^:：]+(?=[:：])/.exec(meta.title)?.[0];
+  const question = headings.filter((h) => h.level === 2)[1]?.text;
+  if (!prefix || !question) throw new GuideError(`${meta.lang}/${meta.slug}: a puzzle title needs a "name N:" part and a question`);
+  return meta.lang === "en" ? `${prefix}: ${question[0].toLowerCase()}${question.slice(1)}` : `${prefix}：${question}`;
+}
+
 const OPTION_ITEM = /^<li><strong>([A-D])\.<\/strong>/;
 
 function textOf(html: string): string {
@@ -205,7 +216,17 @@ const SCRIPT = `
     var verdict = root.querySelector("[data-pz-verdict]");
     var rows = reveal.querySelectorAll("tbody tr");
     var buttons = [];
+    var titles = document.querySelectorAll("[data-pz-title]");
+    var lede = document.querySelector("[data-pz-lede]");
+    var full = [];
+    Array.prototype.forEach.call(titles, function (el, i) {
+      full[i] = el.textContent;
+      el.textContent = el.getAttribute("data-pz-title");
+    });
+    if (lede) lede.hidden = true;
     var show = function (letter) {
+      Array.prototype.forEach.call(titles, function (el, i) { el.textContent = full[i]; });
+      if (lede) lede.hidden = false;
       buttons.forEach(function (b) {
         var l = b.getAttribute("data-opt");
         b.setAttribute("aria-pressed", l === letter ? "true" : "false");

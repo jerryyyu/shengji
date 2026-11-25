@@ -163,10 +163,10 @@
   <a class="lang" href="/guides/tough-last-trick-throw" hreflang="en" lang="en">English</a>
   <a class="play" href="/">开始游戏</a>
 </header>
-<nav aria-label="导航"><ol class="crumbs"><li><a href="/">首页</a></li><li><a href="/zh/guides">攻略</a></li><li>难题精选 5：最后六张、三对方块，全甩</li></ol></nav>
+<nav aria-label="导航"><ol class="crumbs"><li><a href="/">首页</a></li><li><a href="/zh/guides">攻略</a></li><li data-pz-title="难题精选 5：你出什么？">难题精选 5：最后六张、三对方块，全甩</li></ol></nav>
 <article>
-<h1>难题精选 5：最后六张、三对方块，全甩</h1>
-<p class="sub">你是闲家，先出，手里 ♦3♦3 ♦6♦6 ♦8♦8，你方 20 分。出单张、出一对，还是六张一起甩？数一下方块：只有 ♦J♦J 压得住你。模拟 256 局检验。</p>
+<h1 data-pz-title="难题精选 5：你出什么？">难题精选 5：最后六张、三对方块，全甩</h1>
+<p class="sub" data-pz-lede>你是闲家，先出，手里 ♦3♦3 ♦6♦6 ♦8♦8，你方 20 分。出单张、出一对，还是六张一起甩？数一下方块：只有 ♦J♦J 压得住你。模拟 256 局检验。</p>
 <style>
   .pz-state { list-style: none; margin: 12px 0; padding: 12px 14px; border: 1px solid #3a4150; border-radius: 14px; background: #1b2029; }
   .pz-state li { margin: 0; padding: 4px 0; }
@@ -265,7 +265,17 @@
     var verdict = root.querySelector("[data-pz-verdict]");
     var rows = reveal.querySelectorAll("tbody tr");
     var buttons = [];
+    var titles = document.querySelectorAll("[data-pz-title]");
+    var lede = document.querySelector("[data-pz-lede]");
+    var full = [];
+    Array.prototype.forEach.call(titles, function (el, i) {
+      full[i] = el.textContent;
+      el.textContent = el.getAttribute("data-pz-title");
+    });
+    if (lede) lede.hidden = true;
     var show = function (letter) {
+      Array.prototype.forEach.call(titles, function (el, i) { el.textContent = full[i]; });
+      if (lede) lede.hidden = false;
       buttons.forEach(function (b) {
         var l = b.getAttribute("data-opt");
         b.setAttribute("aria-pressed", l === letter ? "true" : "false");

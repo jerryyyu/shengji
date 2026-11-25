@@ -163,10 +163,10 @@
   <a class="lang" href="/zh/guides/tough-feed-partners-throw" hreflang="zh-Hans" lang="zh-Hans">中文</a>
   <a class="play" href="/">Play now</a>
 </header>
-<nav aria-label="Breadcrumb"><ol class="crumbs"><li><a href="/">Home</a></li><li><a href="/guides">Guides</a></li><li>Toughest decisions 2: partner's throw stands, so pile your points on it</li></ol></nav>
+<nav aria-label="Breadcrumb"><ol class="crumbs"><li><a href="/">Home</a></li><li><a href="/guides">Guides</a></li><li data-pz-title="Toughest decisions 2: what would you play?">Toughest decisions 2: partner's throw stands, so pile your points on it</li></ol></nav>
 <article>
-<h1>Toughest decisions 2: partner's throw stands, so pile your points on it</h1>
-<p class="sub">Your partner threw five clubs and you have none. Put 45 points on the trick, or five blanks? Tested on 256 simulated deals, your side won the trick every time and feeding came out 0.9 levels a hand better on average.</p>
+<h1 data-pz-title="Toughest decisions 2: what would you play?">Toughest decisions 2: partner's throw stands, so pile your points on it</h1>
+<p class="sub" data-pz-lede>Your partner threw five clubs and you have none. Put 45 points on the trick, or five blanks? Tested on 256 simulated deals, your side won the trick every time and feeding came out 0.9 levels a hand better on average.</p>
 <style>
   .pz-state { list-style: none; margin: 12px 0; padding: 12px 14px; border: 1px solid #3a4150; border-radius: 14px; background: #1b2029; }
   .pz-state li { margin: 0; padding: 4px 0; }
@@ -264,7 +264,17 @@
     var verdict = root.querySelector("[data-pz-verdict]");
     var rows = reveal.querySelectorAll("tbody tr");
     var buttons = [];
+    var titles = document.querySelectorAll("[data-pz-title]");
+    var lede = document.querySelector("[data-pz-lede]");
+    var full = [];
+    Array.prototype.forEach.call(titles, function (el, i) {
+      full[i] = el.textContent;
+      el.textContent = el.getAttribute("data-pz-title");
+    });
+    if (lede) lede.hidden = true;
     var show = function (letter) {
+      Array.prototype.forEach.call(titles, function (el, i) { el.textContent = full[i]; });
+      if (lede) lede.hidden = false;
       buttons.forEach(function (b) {
         var l = b.getAttribute("data-opt");
         b.setAttribute("aria-pressed", l === letter ? "true" : "false");

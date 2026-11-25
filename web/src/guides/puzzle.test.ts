@@ -99,6 +99,48 @@ describe("a puzzle page with its script", () => {
   });
 });
 
+/** The text a reader can see: everything outside scripts, styles and elements with the hidden attribute. */
+function visibleText(node: Node): string {
+  if (node instanceof HTMLElement && (node.hidden || node.tagName === "SCRIPT" || node.tagName === "STYLE")) return "";
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
+  return [...node.childNodes].map(visibleText).join(" ");
+}
+
+describe("a puzzle page before the pick", () => {
+  it("shows a neutral title and hides the lede, the verdict and the answer, on every page in both languages", () => {
+    for (const lang of ["en", "zh"] as const) {
+      for (const slug of PUZZLES) {
+        const html = page(lang, slug);
+        const where = `${lang}/${slug}`;
+        const title = /<h1[^>]*>([^<]*)<\/h1>/.exec(html)![1];
+        const lede = /<p class="sub" data-pz-lede>([^<]*)<\/p>/.exec(html)![1];
+        window.localStorage.clear();
+        open(html);
+        expect($("[data-pz-verdict]").textContent, where).toBe("");
+        const seen = visibleText(document.body);
+        expect(seen, where).not.toContain(lede);
+        expect(seen, where).not.toContain(title);
+        const leak = /favour|模拟结果支持|The answer|答案：/.exec(seen);
+        expect(leak && seen.slice(leak.index - 120, leak.index + 40), where).toBeNull();
+        expect($("h1").textContent, where).toMatch(lang === "en" ? /^Toughest decisions \d: what would you \w+\?$/ : /^难题精选 \d：.+？$/);
+        option("A").click();
+        const after = visibleText(document.body);
+        expect(after, where).toContain(lede);
+        expect($("h1").textContent, where).toBe(title);
+        expect(after, where).toMatch(/favour|模拟结果支持/);
+      }
+    }
+  });
+
+  it("keeps the full title and lede in the static HTML and the <title>", () => {
+    const html = page("en", "tough-feed-partners-throw");
+    expect(html).toContain("<title>Toughest decisions 2: partner's throw stands, so pile your points on it | Sheng Ji guides</title>");
+    expect(html).toMatch(/<h1 data-pz-title="Toughest decisions 2: what would you play\?">Toughest decisions 2: partner's throw stands/);
+    expect(html).toMatch(/<p class="sub" data-pz-lede>[^<]+<\/p>/);
+    expect(html.replace(/<script>[\s\S]*?<\/script>/g, "")).not.toMatch(/data-pz-lede[^>]*hidden/);
+  });
+});
+
 describe("the puzzle hub", () => {
   it("counts solved puzzles from storage and starts at the first one not tried", () => {
     open(page("en", "toughest-decisions"));
@@ -131,7 +173,7 @@ describe("the puzzle pages without JavaScript", () => {
         const html = page(lang, slug);
         const where = `${lang}/${slug}`;
         expect(html, where).toContain('<div class="pz-reveal" data-pz-reveal>');
-        expect(html, where).not.toMatch(/data-pz-reveal[^>]*hidden/);
+        expect(html.replace(/<script>[\s\S]*?<\/script>/g, ""), where).not.toMatch(/data-pz-(reveal|lede)[^>]*hidden/);
         expect(html, where).not.toContain("<button");
         expect(html.indexOf("<table>"), where).toBeGreaterThan(html.indexOf("data-pz-reveal"));
         expect(html.match(/<li data-pz-opt="[A-D]"><strong>[A-D]\.<\/strong>/g)!.length, where).toBeGreaterThanOrEqual(2);

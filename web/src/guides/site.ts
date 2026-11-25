@@ -8,7 +8,7 @@ import { APP_STORE_URL, appStoreUrl } from "../appStore.ts";
 import { SITE_ORIGIN } from "../siteOrigin.ts";
 import { CALCULATOR_SLUG, calculatorHtml } from "./calculator.ts";
 import { esc, resetIds, type Lang } from "./cards.ts";
-import { PUZZLE_CSS, PUZZLE_HUB, favouredOptions, puzzleBody, puzzleHubHtml, puzzleScript } from "./puzzle.ts";
+import { PUZZLE_CSS, PUZZLE_HUB, favouredOptions, neutralTitle, puzzleBody, puzzleHubHtml, puzzleScript } from "./puzzle.ts";
 import { GuideError, parseFrontMatter, plain, render, type FrontMatter, type Heading } from "./markdown.ts";
 
 export interface Source {
@@ -199,11 +199,11 @@ function chrome(lang: Lang, otherPath: string): string {
 </header>`;
 }
 
-function crumbs(lang: Lang, here?: string): string {
+function crumbs(lang: Lang, here?: string, hereAttrs = ""): string {
   const t = T[lang];
   const items = [`<li><a href="/">${t.home}</a></li>`,
     here ? `<li><a href="${guidePath(lang)}">${t.hub}</a></li>` : `<li>${t.hub}</li>`];
-  if (here) items.push(`<li>${esc(here)}</li>`);
+  if (here) items.push(`<li${hereAttrs}>${esc(here)}</li>`);
   return `<nav aria-label="${lang === "en" ? "Breadcrumb" : "导航"}"><ol class="crumbs">${items.join("")}</ol></nav>`;
 }
 
@@ -295,6 +295,11 @@ export function guidePage(guide: Guide, byKey: Map<string, Guide>): string {
   const puzzleAt = puzzles.indexOf(guide);
   const puzzleTools = `<style>${PUZZLE_CSS}</style>\n`;
   let body = guide.html;
+  // a puzzle's title and lede give the answer away, so its script swaps them
+  // for a neutral title until a pick (puzzle.ts); the static HTML keeps both
+  const neutral = puzzleAt >= 0 ? esc(neutralTitle(meta, guide.headings)) : "";
+  const titleAttrs = neutral ? ` data-pz-title="${neutral}"` : "";
+  const ledeAttrs = neutral ? " data-pz-lede" : "";
   let pageCta = `${cta(lang, meta.slug)}\n`;
   if (puzzleAt >= 0) {
     body = `${puzzleTools}${puzzleBody({
@@ -317,10 +322,10 @@ export function guidePage(guide: Guide, byKey: Map<string, Guide>): string {
 <body>
 <main>
 ${chrome(lang, guidePath(other, meta.slug))}
-${crumbs(lang, title)}
+${crumbs(lang, title, titleAttrs)}
 <article>
-<h1>${esc(title)}</h1>
-<p class="sub">${esc(description)}</p>
+<h1${titleAttrs}>${esc(title)}</h1>
+<p class="sub"${ledeAttrs}>${esc(description)}</p>
 ${meta.slug === CALCULATOR_SLUG ? `${calculatorHtml(lang)}\n` : ""}${body}
 </article>
 ${pageCta}<h2>${t.related}</h2>

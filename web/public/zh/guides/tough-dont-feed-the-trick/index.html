@@ -163,10 +163,10 @@
   <a class="lang" href="/guides/tough-dont-feed-the-trick" hreflang="en" lang="en">English</a>
   <a class="play" href="/">开始游戏</a>
 </header>
-<nav aria-label="导航"><ol class="crumbs"><li><a href="/">首页</a></li><li><a href="/zh/guides">攻略</a></li><li>难题精选 3：最后一家还管得上，就别送分</li></ol></nav>
+<nav aria-label="导航"><ol class="crumbs"><li><a href="/">首页</a></li><li><a href="/zh/guides">攻略</a></li><li data-pz-title="难题精选 3：你出什么？">难题精选 3：最后一家还管得上，就别送分</li></ol></nav>
 <article>
-<h1>难题精选 3：最后一家还管得上，就别送分</h1>
-<p class="sub">对家的 ♠10 暂时最大，你黑桃已绝。垫 ♥10，还是毙？数一下就知道：比 ♠10 大的黑桃只剩一张。模拟 256 局检验。</p>
+<h1 data-pz-title="难题精选 3：你出什么？">难题精选 3：最后一家还管得上，就别送分</h1>
+<p class="sub" data-pz-lede>对家的 ♠10 暂时最大，你黑桃已绝。垫 ♥10，还是毙？数一下就知道：比 ♠10 大的黑桃只剩一张。模拟 256 局检验。</p>
 <style>
   .pz-state { list-style: none; margin: 12px 0; padding: 12px 14px; border: 1px solid #3a4150; border-radius: 14px; background: #1b2029; }
   .pz-state li { margin: 0; padding: 4px 0; }
@@ -267,7 +267,17 @@
     var verdict = root.querySelector("[data-pz-verdict]");
     var rows = reveal.querySelectorAll("tbody tr");
     var buttons = [];
+    var titles = document.querySelectorAll("[data-pz-title]");
+    var lede = document.querySelector("[data-pz-lede]");
+    var full = [];
+    Array.prototype.forEach.call(titles, function (el, i) {
+      full[i] = el.textContent;
+      el.textContent = el.getAttribute("data-pz-title");
+    });
+    if (lede) lede.hidden = true;
     var show = function (letter) {
+      Array.prototype.forEach.call(titles, function (el, i) { el.textContent = full[i]; });
+      if (lede) lede.hidden = false;
       buttons.forEach(function (b) {
         var l = b.getAttribute("data-opt");
         b.setAttribute("aria-pressed", l === letter ? "true" : "false");

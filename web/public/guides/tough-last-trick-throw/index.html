@@ -163,10 +163,10 @@
   <a class="lang" href="/zh/guides/tough-last-trick-throw" hreflang="zh-Hans" lang="zh-Hans">中文</a>
   <a class="play" href="/">Play now</a>
 </header>
-<nav aria-label="Breadcrumb"><ol class="crumbs"><li><a href="/">Home</a></li><li><a href="/guides">Guides</a></li><li>Toughest decisions 5: last six cards, three diamond pairs, throw them all</li></ol></nav>
+<nav aria-label="Breadcrumb"><ol class="crumbs"><li><a href="/">Home</a></li><li><a href="/guides">Guides</a></li><li data-pz-title="Toughest decisions 5: what would you lead?">Toughest decisions 5: last six cards, three diamond pairs, throw them all</li></ol></nav>
 <article>
-<h1>Toughest decisions 5: last six cards, three diamond pairs, throw them all</h1>
-<p class="sub">You're an attacker on lead with ♦3♦3 ♦6♦6 ♦8♦8 and 20 points. Lead one diamond, a pair, or all six? Count the diamonds: only ♦J♦J beats your pairs. Tested on 256 simulated deals.</p>
+<h1 data-pz-title="Toughest decisions 5: what would you lead?">Toughest decisions 5: last six cards, three diamond pairs, throw them all</h1>
+<p class="sub" data-pz-lede>You're an attacker on lead with ♦3♦3 ♦6♦6 ♦8♦8 and 20 points. Lead one diamond, a pair, or all six? Count the diamonds: only ♦J♦J beats your pairs. Tested on 256 simulated deals.</p>
 <style>
   .pz-state { list-style: none; margin: 12px 0; padding: 12px 14px; border: 1px solid #3a4150; border-radius: 14px; background: #1b2029; }
   .pz-state li { margin: 0; padding: 4px 0; }
@@ -265,7 +265,17 @@
     var verdict = root.querySelector("[data-pz-verdict]");
     var rows = reveal.querySelectorAll("tbody tr");
     var buttons = [];
+    var titles = document.querySelectorAll("[data-pz-title]");
+    var lede = document.querySelector("[data-pz-lede]");
+    var full = [];
+    Array.prototype.forEach.call(titles, function (el, i) {
+      full[i] = el.textContent;
+      el.textContent = el.getAttribute("data-pz-title");
+    });
+    if (lede) lede.hidden = true;
     var show = function (letter) {
+      Array.prototype.forEach.call(titles, function (el, i) { el.textContent = full[i]; });
+      if (lede) lede.hidden = false;
       buttons.forEach(function (b) {
         var l = b.getAttribute("data-opt");
         b.setAttribute("aria-pressed", l === letter ? "true" : "false");

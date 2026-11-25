@@ -179,7 +179,7 @@ def test_the_decision_reads_no_hidden_card(model):
 def test_a_model_error_plays_the_heuristic_and_is_recorded(model, monkeypatch):
     bot = sf.SearchFreeBot(HeuristicBot(), model)
     rnd, seat = next(iter(_states(31, every=1)))
-    monkeypatch.setattr(sf, "propose", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(model, "trunk_states", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     assert sorted(bot.decide_play(rnd, seat)) == sorted(HeuristicBot().decide_play(rnd, seat))
     rec = bot.last_decision_record
     assert rec["schema"] == sf.FALLBACK_SCHEMA and rec["error_class"] == "RuntimeError" and bot.search_free_fallbacks == 1
@@ -255,3 +255,44 @@ def test_candidate_shard_restores_pre_play_inputs_across_hidden_deals(tmp_path, 
                 for field, served in zip(tok, live):
                     np.testing.assert_array_equal(field, served)
             np.testing.assert_array_equal(model.score(inp, states, batch), model.score(inp, states, expected))
+
+
+@pytest.mark.parametrize("level", ["standard", "beginner"])
+def test_single_action_skips_the_trunk_and_preserves_the_next_draw(package, monkeypatch, level):
+    from shengji.train import relaxed_play as rp
+
+    build = rp.build_casual if level == "standard" else rp.build_beginner
+    path, digest = package
+    fast = build(HeuristicBot(), path, seed=31, sha256=digest)
+    reference = build(HeuristicBot(), path, seed=31, sha256=digest)
+    player = reference.player
+    trunk = player.model.trunk_states
+    calls = []
+
+    def count(inp):
+        calls.append(1)
+        return trunk(inp)
+
+    def always_encode(rnd, seat, anchor, refusals):
+        inp = bn.decision_inputs(rnd, seat, refusals)
+        states = trunk(inp)
+        prop = sf.propose(rnd, seat, anchor, states["card_logits"], candidates=player.candidates, cap=player.cap)
+        if len(prop["actions"]) == 1:
+            return prop, None, None
+        tokens = [sf.candidate_token(rnd, seat, action) for action in prop["actions"]]
+        return prop, *player.model.score(inp, states, tokens)
+
+    monkeypatch.setattr(player, "_scored_proposal", always_encode)
+    monkeypatch.setattr(fast.player.model, "trunk_states", count)
+    forced = branching = 0
+    for rnd, seat in _states(31, every=1):
+        single = len(enumerate_legal(rnd, seat, cap=fast.player.cap).actions) == 1
+        before = len(calls)
+        assert fast.decide_play(rnd, seat) == reference.decide_play(rnd, seat)
+        assert fast.last_decision_record["schema"] == rp.RECORD_SCHEMA
+        assert fast.rng.getstate() == reference.rng.getstate()
+        assert fast.player._ledger.refusals == reference.player._ledger.refusals
+        assert len(calls) - before == int(not single)
+        forced += single
+        branching += not single
+    assert forced and branching

@@ -219,7 +219,7 @@ class HeuristicBot:
             trumps = suit_cards(hand, TRUMP, o)
             if len(trumps) < len(lead):
                 return None
-            play = self._trump_shape_match(trumps, lead_dec, o)
+            play = self._trump_shape_match(trumps, lead_dec, o, inc_top if inc_suit == TRUMP else None)
             if play is not None:
                 won, _ = beats(play, lead, inc_suit, inc_top, o)
                 if won:
@@ -253,8 +253,8 @@ class HeuristicBot:
         return None
 
     def _trump_shape_match(self, trumps: list[str], lead_dec,
-                           o: Ordering) -> list[str] | None:
-        """Cheapest all-trump set matching a throw's shape (runs + singles)."""
+                           o: Ordering, incumbent_trump_top: int | None = None) -> list[str] | None:
+        """Fill the throw shape with trumps, reserving a winning single when required."""
         runs = sorted((c.pair_len for c in lead_dec.components if c.pair_len),
                       reverse=True)
         n_singles = sum(1 for c in lead_dec.components if not c.pair_len)
@@ -281,6 +281,12 @@ class HeuristicBot:
             c = self._lowest(pool, o, avoid_points=True)
             picked.append(c)
             pool.remove(c)
+        if not runs and incumbent_trump_top is not None and all(o.level(c) <= incumbent_trump_top for c in picked):
+            # With an all-single lead, one higher trump suffices. Keep the cheapest fillers.
+            winning = [c for c in pool if o.level(c) > incumbent_trump_top]
+            if not winning:
+                return None
+            picked[-1] = min(winning, key=o.level)
         return picked
 
     def _forced_follow(self, hand: list[str], lead: list[str], o: Ordering,

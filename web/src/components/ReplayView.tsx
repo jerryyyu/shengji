@@ -6,6 +6,7 @@ import { buildReplay, frameOfTrick, stepTrick } from "../replay/reducer";
 import type { Replay, ReplayFrame, RoundReplayDoc } from "../replay/reducer";
 import { navigate } from "../replay/route";
 import Card, { SUIT_SYMBOL, shortLabel } from "./Card";
+import { displayName } from "../i18n";
 import Hand from "./Hand";
 import type { HandRects } from "./Hand";
 import TrickArea from "./TrickArea";
@@ -62,7 +63,8 @@ function cards(list: string[]): string {
 function caption(replay: Replay, frame: ReplayFrame): string {
   const { setup } = replay;
   const name = (seat: number | null) =>
-    seat === null ? "?" : seat === setup.seat ? "You" : setup.players[seat]?.name ?? `Seat ${seat + 1}`;
+    seat === null ? "?" : seat === setup.seat ? "You"
+      : setup.players[seat] ? displayName(setup.players[seat].name, setup.players[seat].is_bot) : `Seat ${seat + 1}`;
   if (frame.kind === "deal") {
     if (setup.declarations.length === 0) return "Dealt. Nobody declared; trump was flipped from the kitty.";
     return "Dealt. " + setup.declarations
@@ -145,7 +147,7 @@ export function ReplayBoard({ replay }: { replay: Replay }) {
             <span key={s}
                   className={`replay-seat team${s % 2}${frame.turn === s ? " on-turn" : ""}${s === setup.seat ? " you" : ""}`}>
               {setup.banker === s ? <span className="banker-crown" title="Banker">👑</span> : null}
-              <span className="replay-seat-name">{s === setup.seat ? `${p.name} (you)` : p.name}</span>
+              <span className="replay-seat-name">{s === setup.seat ? `${p.name} (you)` : displayName(p.name, p.is_bot)}</span>
               <span className="card-count">{frame.cardsLeft[s]}</span>
             </span>
           );
@@ -190,8 +192,8 @@ export function ReplayBoard({ replay }: { replay: Replay }) {
             {showAll ? "Hide other hands" : "Show other hands"}
           </button>
           {showAll ? order.slice(1).map((s) => (
-            <div key={s} className="replay-mini-cards" aria-label={`${setup.players[s].name}'s hand`}>
-              <span className="replay-mini-label">{setup.players[s].name}</span>
+            <div key={s} className="replay-mini-cards" aria-label={`${displayName(setup.players[s].name, setup.players[s].is_bot)}'s hand`}>
+              <span className="replay-mini-label">{displayName(setup.players[s].name, setup.players[s].is_bot)}</span>
               {(frame.hands[s] ?? []).map((c) => <Card key={c.id} code={c.code} />)}
             </div>
           )) : null}

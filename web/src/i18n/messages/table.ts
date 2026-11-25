@@ -227,6 +227,17 @@ export const table = defineMessages({
   "table.chatField": { en: "Chat message", zh: "聊天消息" },
   "table.send": { en: "Send", zh: "发送" },
   "table.chatWho": { en: "{name}: ", zh: "{name}：" },
+  // the servers' system lines, worded in English on the wire; the English
+  // here is that wire text, so an English table reads them unchanged
+  "table.sysJoined": { en: "{name} joined", zh: "{name} 加入了" },
+  "table.sysLeft": { en: "{name} left", zh: "{name} 离开了" },
+  "table.sysDisconnected": { en: "{name} disconnected", zh: "{name} 掉线了" },
+  "table.sysReconnected": { en: "{name} reconnected", zh: "{name} 回来了" },
+  "table.sysReconnectedFromBot": {
+    en: "{name} reconnected — taking over from the bot", zh: "{name} 回来了，从机器人手里接回" },
+  "table.sysTookSeat": { en: "{name} took {took}'s seat", zh: "{name} 坐了 {took} 的位置" },
+  "table.sysTookOver": { en: "{name} took over for {took} (offline)", zh: "{name} 替掉线的 {took} 接手" },
+  "table.sysBotPlaying": { en: "bot is playing for {name} (disconnected)", zh: "{name} 掉线，机器人代打" },
   "table.dismissBubble": {
     en: (p) => `Dismiss: ${s(p, "name")}: ${s(p, "text")}`,
     zh: (p) => `关闭：${s(p, "name")}：${s(p, "text")}`,

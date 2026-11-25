@@ -349,6 +349,9 @@ export interface ChatHistory {
   messages: ChatMsg[];
 }
 
+export type SystemEventKind = "joined" | "left" | "disconnected" | "reconnected" | "reconnected_from_bot"
+  | "bot_playing_for" | "took_seat" | "took_over";
+
 export interface ChatMsg {
   type: "chat";
   id: number;
@@ -357,6 +360,16 @@ export interface ChatMsg {
   seat: number | null;
   name: string;
   text: string;
+  /** A system line's kind and participants (server.py system_event); a
+   *  client words the line from these, never from `text`. `actor` is always
+   *  a person. Absent from older servers, whose `text` is shown as sent. */
+  event?: SystemEventKind;
+  actor?: string;
+  /** A seat claim's previous holder: `actor` took `target`'s seat
+   *  ("took_seat") or took over for a dropped `target` ("took_over"). */
+  target?: string;
+  /** Whether `target` was a bot. */
+  target_is_bot?: boolean;
   t: number;
 }
 

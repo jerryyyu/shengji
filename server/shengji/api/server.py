@@ -1318,13 +1318,30 @@ def chat_snapshot(room: Room, viewer: Seat) -> dict:
             "messages": [line for line in room.chat if not _hidden(room, viewer, line)]}
 
 
-def chat_system(room: Room, text: str) -> None:
+def chat_system(room: Room, text: str, event: dict) -> None:
     """Post a system line into the room chat (joins, leaves, seat claims).
 
     Uses seat -1 so clients can style it apart from player messages; kept
     in the same scrollback so late joiners see who arrived before them.
+    ``event`` (``system_event``) names the line's kind and participants, so
+    a client words the line from those fields and never reads names out of
+    ``text``, which stays the English line for clients that predate them.
     """
-    chat_post(room, {"seat": -1, "name": "", "text": text, "t": time.time()})
+    chat_post(room, {"seat": -1, "name": "", "text": text, "t": time.time(), **event})
+
+
+def system_event(kind: str, actor: str, target: str | None = None,
+                 target_is_bot: bool = False) -> dict:
+    """A system line's kind and participants. ``actor`` is always a person:
+    "joined", "left", "disconnected", "reconnected", "reconnected_from_bot"
+    (back from the bot covering them) and "bot_playing_for" (a bot covers
+    them). A seat claim also names ``target``, the seat's previous holder:
+    "took_seat" (``actor`` took ``target``'s seat) or "took_over" (``actor``
+    took over for a dropped ``target``), with whether ``target`` was a bot."""
+    event: dict = {"event": kind, "actor": actor}
+    if target is not None:
+        event.update(target=target, target_is_bot=target_is_bot)
+    return event
 
 
 def enqueue(seat: Seat, payload: dict) -> None:
@@ -2165,7 +2182,8 @@ async def _watchdog_body(room: Room) -> bool:
         if not owner.bot_announced:
             owner.bot_announced = True
             chat_system(room, f"bot is playing for {owner.name} "
-                              f"(disconnected)")
+                              f"(disconnected)",
+                        system_event("bot_playing_for", owner.name))
         await broadcast(room)
         kick_bots(room)
         return True
@@ -3155,16 +3173,20 @@ async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | Non
                 room,
                 f"{name} reconnected"
                 + (" — taking over from the bot"
-                   if me.bot_announced else ""))
+                   if me.bot_announced else ""),
+                system_event("reconnected_from_bot" if me.bot_announced
+                             else "reconnected", name))
             me.bot_announced = False
         elif claimed_from_bot:
             chat_system(
                 room,
                 f"{name} took over for {took_from} (offline)"
                 if took_over_human
-                else f"{name} took {took_from}'s seat")
+                else f"{name} took {took_from}'s seat",
+                system_event("took_over" if took_over_human else "took_seat",
+                             name, took_from, not took_over_human))
         else:
-            chat_system(room, f"{name} joined")
+            chat_system(room, f"{name} joined", system_event("joined", name))
         kick_bots(room)      # remaining bot seats keep playing
         await broadcast(room)
     return room, me, my_gen
@@ -3386,7 +3408,7 @@ async def _ws_session(ws: WebSocket, ip: str) -> None:
                                         "message": "This connection was replaced by a "
                                                    "newer one."})
                         break
-                    chat_system(room, f"{me.name} left")
+                    chat_system(room, f"{me.name} left", system_event("left", me.name))
                     _log_seat(room, "seat_left", me, "leave")
                     if me in room.seats:
                         ratings.seat_left(room, room.seats.index(me))
@@ -3484,7 +3506,8 @@ async def _ws_session(ws: WebSocket, ip: str) -> None:
                 # a socket its own replacement displaced closing is no
                 # disconnect: the seat is still held, by the newer socket
                 if not me.is_bot and me.connected and my_gen == me.gen:
-                    chat_system(room, f"{me.name} disconnected")
+                    chat_system(room, f"{me.name} disconnected",
+                                system_event("disconnected", me.name))
                     closed_at = now()
                     _log_seat(room, "seat_disconnected", me, "socket_closed",
                               close_code=close_code,
@@ -4101,6 +4124,7 @@ def _seat_newcomer(room: Room, seat: int, pj: PendingJoin) -> None:
     old = room.seats[seat]
     at_round_end = room.round.phase == "round_end"
     took = old.name
+    took_bot = old.is_bot
     before = None if old.is_bot else old.user_id
     if old.is_bot:
         me = old
@@ -4137,7 +4161,8 @@ def _seat_newcomer(room: Room, seat: int, pj: PendingJoin) -> None:
     gen = _attach(room, me, pj.conn.ws)
     pj.conn.adopted = (room, me, gen)
     MATCHMAKER.join_seated(pj.uid)
-    chat_system(room, f"{pj.name} took {took}'s seat")
+    chat_system(room, f"{pj.name} took {took}'s seat",
+                system_event("took_seat", pj.name, took, took_bot))
 
 
 def _revert_to_bot(room: Room, seat: int) -> None:

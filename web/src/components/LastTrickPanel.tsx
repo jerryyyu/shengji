@@ -1,6 +1,6 @@
 import type { GameState, LastTrick } from "../protocol";
 import { shortLabel } from "./Card";
-import { useT } from "../i18n";
+import { displayName, useT } from "../i18n";
 
 /** The previous trick, reopened: each play in order with who made it, the
  *  winner and the points it took. It stays until dismissed, so a newcomer can
@@ -9,9 +9,11 @@ export default function LastTrickPanel({ state, trick, onClose }: {
   state: GameState; trick: LastTrick; onClose: () => void;
 }) {
   const t = useT();
-  const nameOf = (seat: number) => seat === state.you
-    ? t("common.you")
-    : state.players.find((p) => p.seat === seat)?.name ?? t("table.seatN", { n: seat });
+  const nameOf = (seat: number) => {
+    if (seat === state.you) return t("common.you");
+    const p = state.players.find((x) => x.seat === seat);
+    return p ? displayName(p.name, p.is_bot) : t("table.seatN", { n: seat });
+  };
   const mine = trick.winner === state.you;
   const sum = trick.points > 0
     ? t(mine ? "table.lastYouWinPts" : "table.lastWinsPts", { name: nameOf(trick.winner), points: trick.points })

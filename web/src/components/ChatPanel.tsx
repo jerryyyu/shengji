@@ -6,6 +6,7 @@ import { usePresence } from "../usePresence";
 import { useBlocks } from "../chatBlocks";
 import { KEYBOARD_COVER_PX, SHORT_VISIBLE_PX, TIGHT_VISIBLE_PX, visibleArea, type VisibleArea } from "../visibleArea";
 import { useT } from "../i18n";
+import { formatSystemLine } from "../messageCopy";
 import type { MessageKey } from "../i18n";
 import "./ChatPanel.css";
 
@@ -71,7 +72,7 @@ export function ChatBody({ messages, you, onSend, open = true }: BodyProps) {
         {shown.map((m, i) =>
           m.seat === -1 ? (            // system line: joins, leaves, seat claims
             <div key={i} className="chat-msg system">
-              {m.text}
+              {formatSystemLine(m)}
             </div>
           ) : (
             <div key={i} className={"chat-msg" + (m.seat === you ? " mine" : "")}>

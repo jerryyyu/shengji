@@ -1,6 +1,6 @@
 import type { GameState, HandCard, RoundResult, StatePlayer } from "./protocol";
 import { shortLabel } from "./components/Card";
-import { t } from "./i18n";
+import { displayName, t } from "./i18n";
 
 /** Words for the table from the viewer's side: teams are "Us" and "Them",
  *  never a colour, so who gained or who attacks never rests on colour. */
@@ -24,7 +24,7 @@ export function attackingTeam(state: GameState): Team | null {
 /** The banker's crown in words, for screen readers: "You, banker" for your
  *  own seat, "Sam, banker" for anyone else. */
 export function bankerText(player: StatePlayer, you: number): string {
-  return t("table.bankerOf", { name: player.seat === you ? t("common.you") : player.name });
+  return t("table.bankerOf", { name: player.seat === you ? t("common.you") : displayName(player.name, player.is_bot) });
 }
 
 /** "You declared" / "Sam declared", for the tag under a declaration. */
@@ -34,7 +34,8 @@ export function declaredBy(seat: number, state: GameState): string {
 }
 
 function seatName(seat: number, state: GameState): string {
-  return state.players.find((p) => p.seat === seat)?.name ?? t("table.seatN", { n: seat });
+  const p = state.players.find((x) => x.seat === seat);
+  return p ? displayName(p.name, p.is_bot) : t("table.seatN", { n: seat });
 }
 
 /** The tag under a declaration as one sentence: "You declared ♥5 pair",
@@ -108,7 +109,7 @@ export function teamMembers(team: Team, state: GameState): string {
   const names = state.players
     .filter((p) => p.team === team)
     .sort((a, b) => Number(b.seat === state.you) - Number(a.seat === state.you) || a.seat - b.seat)
-    .map((p) => (p.seat === state.you ? t("common.you") : p.name));
+    .map((p) => (p.seat === state.you ? t("common.you") : displayName(p.name, p.is_bot)));
   return names.length === 0 ? "" : names.reduce((a, b) => t("table.teamPair", { a, b }));
 }
 

@@ -295,6 +295,43 @@ def test_seat_claim_chat_names_the_bot(client):
             line = _drain(b, "chat")
     assert line["text"] == f"jerry mbp took {botname}'s seat"
     assert line["seat"] == -1
+    # the line's participants, as names: the newcomer, and the bot it replaced
+    assert (line["event"], line["actor"], line["target"], line["target_is_bot"]) == (
+        "took_seat", "jerry mbp", botname, True)
+
+
+def test_system_lines_carry_their_kind_and_actor(client):
+    """Each system line names its kind and its person as fields, so a client
+    words it without reading the name out of the English text."""
+    from shengji.api import server as srv
+
+    def fields(room, kind):
+        line = next(m for m in reversed(room.chat) if m.get("event") == kind)
+        return line["text"], line["actor"], "target" in line
+
+    with client.websocket_connect("/ws") as a:
+        code = _room_with_bots(a)
+        room = srv.rooms[code]
+        with ExitStack() as sockets:
+            first = ExitStack()
+            sockets.callback(first.close)
+            b = first.enter_context(client.websocket_connect("/ws"))
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "bob", "seat": 2})
+            tok = _drain(b, "resume")["token"]
+            _drain(b, "state")
+            first.close()
+            _wait_for(lambda: any(m.get("event") == "disconnected" for m in room.chat))
+            assert fields(room, "disconnected") == ("bob disconnected", "bob", False)
+            back = sockets.enter_context(client.websocket_connect("/ws"))
+            back.send_json({"type": "table_join", "expect": "room", "code": code,
+                            "name": "bob", "token": tok})
+            _drain(back, "state")
+            _wait_for(lambda: any(m.get("event") == "reconnected" for m in room.chat))
+            assert fields(room, "reconnected") == ("bob reconnected", "bob", False)
+            back.send_json({"type": "table_leave"})
+            _drain(back, "left")
+            _wait_for(lambda: any(m.get("event") == "left" for m in room.chat))
+            assert fields(room, "left") == ("bob left", "bob", False)
 
 
 def test_chat_snapshot_rolls_over_after_more_than_fifty_messages(client):
@@ -878,6 +915,9 @@ def test_takeover_of_dropped_human_is_announced_as_such(client, clock):
                              "name": "newbie", "seat": 1})
                 line = _drain(r, "chat")
             assert "took over for amy" in line["text"], line
+            # amy is a person the newcomer took over for
+            assert (line["event"], line["actor"], line["target"], line["target_is_bot"]) == (
+                "took_over", "newbie", "amy", False), line
 
 
 # ---------------------------------------------------------------- ship gate

@@ -29,7 +29,6 @@ export const roundend = defineMessages({
     en: (p) => `${p.first} & ${p.second}`,
     zh: (p) => `${p.first} 和 ${p.second}`,
   },
-  "roundend.bot": { en: "Bot {n}", zh: "机器人 {n}" },
   "roundend.seat": { en: "Seat {n}", zh: "{n} 号座" },
   "roundend.you": { en: "You", zh: "我" },
 

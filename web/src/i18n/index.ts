@@ -52,6 +52,17 @@ export function useT(): typeof t {
   return t;
 }
 
+/** The servers name bot seats "Bot 1".."Bot 3"; a name of that form reads in
+ *  the current language ("机器人 2"). `isBot`, where the caller has the
+ *  seat's flag, keeps a person who typed such a name as typed; any other
+ *  name is shown as it is. */
+const BOT_NAME = /^Bot (\d+)$/;
+
+export function displayName(name: string, isBot?: boolean): string {
+  const bot = isBot === false ? null : BOT_NAME.exec(name);
+  return bot ? t("common.botN", { n: bot[1] }) : name;
+}
+
 export function isZh(): boolean {
   return locale() === "zh-Hans";
 }

@@ -6,6 +6,7 @@ order: 15
 related: [toughest-decisions, pairs-tractors-throws, scoring-and-levels, counting-cards]
 updated: 2026-11-25
 lang: zh
+answer: C
 ---
 
 ## 局面

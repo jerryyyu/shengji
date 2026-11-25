@@ -6,6 +6,7 @@ order: 13
 related: [toughest-decisions, counting-cards, pairs-tractors-throws, scoring-and-levels]
 updated: 2026-11-25
 lang: zh
+answer: A
 ---
 
 ## 局面
@@ -19,8 +20,18 @@ lang: zh
 ```cards
 cards: LJ C9 DJ D10 D8 D7 D3 | H10
 labels: 主牌（7 张） | 红桃（1 张）
-lift: 3 |
-caption: 你的牌。抬起的是我们 AI 出的牌。
+caption: 你的牌。
+```
+
+```cards
+kind: trick
+names: 对家 | 闲家
+plays: S10 | S10
+trump: D
+rank: 9
+winner: 1
+winlabel: 目前最大
+caption: 这一轮到目前为止。你第三个出，最后一家还没出。
 ```
 
 ## 你出什么？

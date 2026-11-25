@@ -8,6 +8,7 @@ import { APP_STORE_URL, appStoreUrl } from "../appStore.ts";
 import { SITE_ORIGIN } from "../siteOrigin.ts";
 import { CALCULATOR_SLUG, calculatorHtml } from "./calculator.ts";
 import { esc, resetIds, type Lang } from "./cards.ts";
+import { PUZZLE_CSS, PUZZLE_HUB, favouredOptions, puzzleBody, puzzleHubHtml, puzzleScript } from "./puzzle.ts";
 import { GuideError, parseFrontMatter, plain, render, type FrontMatter, type Heading } from "./markdown.ts";
 
 export interface Source {
@@ -289,6 +290,21 @@ export function guidePage(guide: Guide, byKey: Map<string, Guide>): string {
       creator: { "@type": "Organization", name: SITE_NAME, url: `${SITE_ORIGIN}/` },
     });
   }
+  const puzzles = [...byKey.values()].filter((g) => g.meta.lang === lang && g.meta.answer !== undefined);
+  const refs = puzzles.map((g) => ({ slug: g.meta.slug, href: guidePath(lang, g.meta.slug), favoured: favouredOptions(g.meta) }));
+  const puzzleAt = puzzles.indexOf(guide);
+  const puzzleTools = `<style>${PUZZLE_CSS}</style>\n`;
+  let body = guide.html;
+  let pageCta = `${cta(lang, meta.slug)}\n`;
+  if (puzzleAt >= 0) {
+    body = `${puzzleTools}${puzzleBody({
+      meta, html: guide.html, headings: guide.headings, cta: pageCta.trimEnd(), hubPath: guidePath(lang, PUZZLE_HUB),
+      nextPath: puzzleAt + 1 < puzzles.length ? refs[puzzleAt + 1].href : null,
+    })}\n<script>${puzzleScript(lang, refs)}</script>`;
+    pageCta = "";
+  } else if (meta.slug === PUZZLE_HUB && refs.length) {
+    body = `${puzzleTools}${puzzleHubHtml(lang, refs[0].href)}\n${guide.html}\n<script>${puzzleScript(lang, refs)}</script>`;
+  }
   const related = meta.related.map((slug) => {
     const g = byKey.get(`${lang}/${slug}`);
     if (!g) throw new GuideError(`${lang}/${meta.slug}: related guide ${slug} does not exist`);
@@ -305,10 +321,9 @@ ${crumbs(lang, title)}
 <article>
 <h1>${esc(title)}</h1>
 <p class="sub">${esc(description)}</p>
-${meta.slug === CALCULATOR_SLUG ? `${calculatorHtml(lang)}\n` : ""}${guide.html}
+${meta.slug === CALCULATOR_SLUG ? `${calculatorHtml(lang)}\n` : ""}${body}
 </article>
-${cta(lang, meta.slug)}
-<h2>${t.related}</h2>
+${pageCta}<h2>${t.related}</h2>
 <ul class="related">
 ${related.join("\n")}
 <li><a href="${t.rules}">${t.rulesText}</a></li>

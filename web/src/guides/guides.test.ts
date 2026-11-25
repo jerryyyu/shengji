@@ -8,6 +8,7 @@ import { DiagramError, renderBlock } from "./cards";
 import { inline, render } from "./markdown";
 import { GUIDE_CSS, GUIDE_DIRS, buildSite, type Source } from "./site";
 import { CALCULATOR_SLUG } from "./calculator";
+import { PUZZLE_HUB } from "./puzzle";
 
 const WEB = new URL("../..", import.meta.url).pathname;
 const CONTENT = join(WEB, "content", "guides");
@@ -148,10 +149,11 @@ describe("each page's metadata", () => {
     }
   });
 
-  it("loads no script or stylesheet from anywhere; only the calculator runs one, inline", () => {
+  it("loads no script or stylesheet from anywhere; only the calculator and the puzzles run one, inline", () => {
+    const scripted = [CALCULATOR_SLUG, PUZZLE_HUB, ...slugs.filter((s) => s.startsWith("tough-"))];
     for (const [p, html] of pages) {
       const scripts = html.match(/<script(?![^>]*application\/ld\+json)[^>]*>/g) ?? [];
-      expect(scripts, p).toEqual(p.includes(`/${CALCULATOR_SLUG}/`) ? ["<script>"] : []);
+      expect(scripts, p).toEqual(scripted.some((s) => p.includes(`/${s}/`)) ? ["<script>"] : []);
       expect(html, p).not.toMatch(/<link[^>]+stylesheet/);
     }
   });

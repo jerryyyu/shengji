@@ -17,6 +17,8 @@ export interface FrontMatter {
   updated: string;
   lang: Lang;
   schema?: string;
+  /** A puzzle's favoured option letters, e.g. "A" or "B C D" (puzzle.ts). */
+  answer?: string;
 }
 
 export class GuideError extends Error {}
@@ -45,7 +47,7 @@ export function parseFrontMatter(src: string, where: string): { meta: FrontMatte
   return {
     meta: {
       title: raw.title, description: raw.description, slug: raw.slug, order, related,
-      updated: raw.updated, lang: raw.lang, schema: raw.schema,
+      updated: raw.updated, lang: raw.lang, schema: raw.schema, answer: raw.answer,
     },
     body: src.slice(m[0].length),
   };

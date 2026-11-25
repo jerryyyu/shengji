@@ -6,6 +6,7 @@ order: 14
 related: [toughest-decisions, scoring-and-levels, burying-the-kitty, counting-cards]
 updated: 2026-11-25
 lang: en
+answer: B C D
 ---
 
 ## The situation
@@ -22,6 +23,17 @@ cards: BJ BJ S2 | SK SJ S10 S9 S8 S7 S5 S4 | CK
 labels: Trumps (3) | Spades (8) | Clubs (1)
 lift: 0 1 | |
 caption: Your 12 cards. The raised pair wins this trick for sure.
+```
+
+```cards
+kind: trick
+names: Attacker | Partner | Attacker
+plays: H5 H5 | H4 HQ | H7 H7
+trump: NT
+rank: 2
+winner: 3
+winlabel: winning so far
+caption: The trick so far, with 10 points in it. You play last.
 ```
 
 ## What would you play?

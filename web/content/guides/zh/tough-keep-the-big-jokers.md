@@ -6,6 +6,7 @@ order: 14
 related: [toughest-decisions, scoring-and-levels, burying-the-kitty, counting-cards]
 updated: 2026-11-25
 lang: zh
+answer: B C D
 ---
 
 ## 局面
@@ -22,6 +23,17 @@ cards: BJ BJ S2 | SK SJ S10 S9 S8 S7 S5 S4 | CK
 labels: 主牌（3 张） | 黑桃（8 张） | 梅花（1 张）
 lift: 0 1 | |
 caption: 你的 12 张牌。抬起的这对稳拿这一轮。
+```
+
+```cards
+kind: trick
+names: 闲家 | 对家 | 闲家
+plays: H5 H5 | H4 HQ | H7 H7
+trump: NT
+rank: 2
+winner: 3
+winlabel: 目前最大
+caption: 这一轮到目前为止，里面有 10 分。你最后出。
 ```
 
 ## 你出什么？

@@ -1,0 +1,284 @@
+/* The drawn characters' poses, on top of companion.css (which moves `cmp-body`,
+   `cmp-eye` and `cmp-shadow` for every companion). A character's parts turn
+   about points of its own drawing, so their origins are in its 400 units.
+   Transform and opacity only. Reduce Motion stills them all. */
+.cmp-char .cmp-head,
+.cmp-char .cmp-torso,
+.cmp-char .cmp-ear-l,
+.cmp-char .cmp-ear-r,
+.cmp-char .cmp-tail,
+.cmp-char .cmp-bell,
+.cmp-char .cmp-arm-l,
+.cmp-char .cmp-arm-r,
+.cmp-char .cmp-foot-l,
+.cmp-char .cmp-foot-r,
+.cmp-char .cmp-flap,
+.cmp-char .cmp-prop { transform-box: view-box; }
+
+/* at the table: the neckwear and the pad take the team's colour */
+.cmp-us { --team: #5b9dff; --team-lo: #2f6fd6; }
+.cmp-them { --team: #ff9d4d; --team-lo: #d96a14; }
+.cmp-us .cmp-team,
+.cmp-them .cmp-team { fill: var(--team); }
+.cmp-us .cmp-team-lo,
+.cmp-them .cmp-team-lo { fill: var(--team-lo); }
+.cmp-us .cmp-team-line,
+.cmp-them .cmp-team-line { stroke: var(--team); }
+
+/* a level gained at round end: the figure grows from its old size (`--cmp-from`, old over new) with a small pop */
+.cmp-grow { transform-origin: 50% 100%; animation: cmp-grow 0.4s ease 1; }
+@keyframes cmp-grow {
+  0% { transform: scale(var(--cmp-from, 0.95)); }
+  65% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+/* hop and cheer are two different moves. hop: one small bounce in place, an
+   idle fidget. cheer: a two-beat jump with a hard squash and stretch, through
+   a burst of confetti, for a won trick or a level gained. */
+.cmp-char.cmp-hop .cmp-body { animation: char-hop 0.5s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
+.cmp-char.cmp-hop .cmp-shadow { animation: char-hop-shadow 0.5s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
+.cmp-char.cmp-cheer .cmp-body { animation: char-cheer 1.2s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
+.cmp-char.cmp-cheer .cmp-shadow { animation: char-cheer-shadow 1.2s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
+.cmp .cmp-confetti { transform-box: fill-box; transform-origin: 50% 100%; }
+.cmp-cheer .cmp-confetti { animation: cmp-burst 0.78s ease-out 1 both; }
+.cmp-cheer .cmp-confetti-b { animation-delay: 0.42s; }
+@keyframes char-hop {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  18% { transform: translateY(0) scale(1.03, 0.96); }
+  50% { transform: translateY(-7%) scale(0.99, 1.02); }
+  82% { transform: translateY(0) scale(1.02, 0.98); }
+}
+@keyframes char-hop-shadow {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.88); opacity: 0.75; }
+}
+@keyframes char-cheer {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  8% { transform: translateY(0) scale(1.09, 0.89); }
+  26% { transform: translateY(-22%) scale(0.94, 1.08); }
+  44% { transform: translateY(0) scale(1.1, 0.88); }
+  62% { transform: translateY(-16%) scale(0.96, 1.06); }
+  80% { transform: translateY(0) scale(1.06, 0.93); }
+}
+@keyframes char-cheer-shadow {
+  0%, 44%, 80%, 100% { transform: scale(1); opacity: 1; }
+  26% { transform: scale(0.62); opacity: 0.45; }
+  62% { transform: scale(0.72); opacity: 0.55; }
+}
+@keyframes cmp-burst {
+  0% { opacity: 0; transform: translateY(16%) scale(0.2); }
+  24% { opacity: 1; transform: translateY(0) scale(1); }
+  70% { opacity: 1; transform: translateY(3%) scale(1.06); }
+  100% { opacity: 0; transform: translateY(12%) scale(1.1); }
+}
+
+/* every character: a blink while idle, a breath while asleep */
+.cmp-char.cmp-idle .cmp-eye { animation: cmp-idle-blink 4.8s ease-in-out infinite; }
+.cmp-char.cmp-sleep .cmp-body { animation: cmp-breathe 3.6s ease-in-out infinite; }
+@keyframes cmp-idle-blink {
+  0%, 93%, 100% { transform: scaleY(1); }
+  96% { transform: scaleY(0.08); }
+}
+@keyframes cmp-breathe {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.012, 0.982); }
+}
+
+/* The Tractor's rider */
+.cmp .cmp-rider, .cmp .cmp-hat, .cmp .cmp-wave { transform-box: view-box; }
+.cmp .cmp-rider { transform-origin: 158px 178px; }
+.cmp .cmp-hat { transform-origin: 158px 140px; }
+.cmp .cmp-wave { transform-origin: 118px 166px; }
+.cmp-tractor.cmp-idle .cmp-rider { animation: rider-sway 2.6s ease-in-out infinite; }
+.cmp-tractor.cmp-hop .cmp-rider { animation: rider-bounce 0.6s ease-out 1; }
+.cmp-tractor.cmp-cheer .cmp-rider { animation: rider-bounce 0.6s ease-out 2; }
+.cmp-tractor.cmp-cheer .cmp-wave { animation: rider-wave 0.4s ease-in-out 3; }
+/* the hat tip: a rev, a wave, the hat lifted off and set back */
+.cmp-tractor.cmp-react .cmp-body { animation: tractor-rev 1.3s ease-in-out 1; }
+.cmp-tractor.cmp-react .cmp-hat { animation: rider-tip 1.3s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
+.cmp-tractor.cmp-react .cmp-wave { animation: rider-wave 0.65s ease-in-out 2; }
+.cmp-tractor.cmp-react .cmp-puff { animation: cmp-puff 1.3s ease-out 1; animation-delay: -0.9s; }
+.cmp-tractor.cmp-react .cmp-eye { animation: cmp-blink 1.3s ease-in-out 1; }
+@keyframes rider-sway {
+  0%, 100% { transform: translate(0, 0) rotate(-2deg); }
+  50% { transform: translate(0, 1.5px) rotate(2deg); }
+}
+@keyframes rider-bounce {
+  0%, 100% { transform: translate(0, 0); }
+  40% { transform: translate(0, -5px) rotate(-6deg); }
+  70% { transform: translate(0, 3px); }
+}
+@keyframes rider-wave {
+  0%, 100% { transform: rotate(8deg); }
+  50% { transform: rotate(-16deg); }
+}
+@keyframes rider-tip {
+  0%, 100% { transform: translate(0, 0) rotate(0); }
+  30%, 70% { transform: translate(2px, -12px) rotate(-14deg); }
+}
+@keyframes tractor-rev {
+  0%, 100% { transform: translate(0, 0) scale(1, 1); }
+  12%, 36% { transform: translate(-0.6%, 0) scale(1.01, 0.985); }
+  24%, 48% { transform: translate(0.6%, 0) scale(0.995, 1.01); }
+  70% { transform: translate(0, -2%) scale(1, 1); }
+}
+
+/* a head that nods back and forth through a cheer */
+@keyframes char-cheer-head {
+  0%, 100% { transform: rotate(0); }
+  15%, 45% { transform: rotate(-5deg); }
+  30%, 60% { transform: rotate(3deg); }
+}
+
+/* The Sparrow */
+.cmp-sparrow .cmp-head { transform-origin: 228px 226px; }
+.cmp-sparrow .cmp-torso { transform-origin: 196px 352px; }
+.cmp-sparrow .cmp-arm-l { transform-origin: 178px 162px; }
+.cmp-sparrow .cmp-tail { transform-origin: 100px 270px; }
+/* idle: a bird's quick head tilts, a tail flick */
+.cmp-sparrow.cmp-idle .cmp-head { animation: sparrow-tilt 4.2s ease-in-out infinite; }
+.cmp-sparrow.cmp-idle .cmp-tail { animation: sparrow-flick 3.4s ease-in-out infinite; }
+.cmp-sparrow.cmp-hop .cmp-arm-l { animation: sparrow-flap 0.3s ease-in-out 2; }
+.cmp-sparrow.cmp-cheer .cmp-arm-l { animation: sparrow-flap 0.3s ease-in-out 4; }
+.cmp-sparrow.cmp-cheer .cmp-head { animation: char-cheer-head 1.2s ease-in-out 1; }
+.cmp-sparrow.cmp-cheer .cmp-tail { animation: sparrow-flick 0.6s ease-in-out 2; animation-delay: -0.4s; }
+@keyframes sparrow-tilt {
+  0%, 38%, 100% { transform: rotate(0); }
+  42%, 62% { transform: rotate(-9deg); }
+  66%, 84% { transform: rotate(5deg); }
+  88% { transform: rotate(0); }
+}
+@keyframes sparrow-flick {
+  0%, 76%, 100% { transform: rotate(0); }
+  82%, 94% { transform: rotate(14deg); }
+  88% { transform: rotate(-4deg); }
+}
+@keyframes sparrow-flap {
+  0%, 100% { transform: rotate(0); }
+  50% { transform: rotate(-40deg); }
+}
+/* the peck: two quick pecks at the felt, tail in the air */
+.cmp-sparrow.cmp-react .cmp-body { animation: sparrow-peck 1.2s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
+.cmp-sparrow.cmp-react .cmp-head { animation: sparrow-peck-head 1.2s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
+.cmp-sparrow.cmp-react .cmp-tail { animation: sparrow-peck-tail 1.2s ease-in-out 1; }
+@keyframes sparrow-peck {
+  0%, 36%, 74%, 100% { transform: rotate(0); }
+  20%, 56% { transform: rotate(16deg); }
+}
+@keyframes sparrow-peck-head {
+  0%, 36%, 74%, 100% { transform: translate(0, 0) rotate(0); }
+  20%, 56% { transform: translate(8px, 14px) rotate(22deg); }
+}
+@keyframes sparrow-peck-tail {
+  0%, 36%, 74%, 100% { transform: rotate(0); }
+  20%, 56% { transform: rotate(-14deg); }
+}
+
+/* The Chick */
+.cmp-chick .cmp-head { transform-origin: 190px 352px; }
+.cmp-chick .cmp-arm-l { transform-origin: 98px 226px; }
+.cmp-chick .cmp-arm-r { transform-origin: 282px 226px; }
+.cmp-chick.cmp-idle .cmp-head { animation: chick-rock 3.2s ease-in-out infinite; }
+.cmp-chick.cmp-idle .cmp-arm-l { animation: chick-flap-l 4.6s ease-in-out infinite; }
+.cmp-chick.cmp-idle .cmp-arm-r { animation: chick-flap-r 4.6s ease-in-out infinite; }
+.cmp-chick.cmp-cheer .cmp-arm-l { animation: chick-up-l 1.2s ease-in-out 1; }
+.cmp-chick.cmp-cheer .cmp-arm-r { animation: chick-up-r 1.2s ease-in-out 1; }
+@keyframes chick-rock {
+  0%, 100% { transform: rotate(-2deg); }
+  50% { transform: rotate(2deg); }
+}
+@keyframes chick-flap-l {
+  0%, 84%, 100% { transform: rotate(0); }
+  88%, 96% { transform: rotate(30deg); }
+  92% { transform: rotate(6deg); }
+}
+@keyframes chick-flap-r {
+  0%, 84%, 100% { transform: rotate(0); }
+  88%, 96% { transform: rotate(-30deg); }
+  92% { transform: rotate(-6deg); }
+}
+@keyframes chick-up-l {
+  0%, 100% { transform: rotate(0); }
+  20%, 70% { transform: rotate(118deg); }
+  44% { transform: rotate(84deg); }
+}
+@keyframes chick-up-r {
+  0%, 100% { transform: rotate(0); }
+  20%, 70% { transform: rotate(-118deg); }
+  44% { transform: rotate(-84deg); }
+}
+/* the flutter: both wings beat and it lifts off the felt */
+.cmp-chick.cmp-react .cmp-body { animation: chick-lift 1.3s ease-in-out 1; }
+.cmp-chick.cmp-react .cmp-shadow { animation: char-cheer-shadow 1.3s ease-in-out 1; }
+.cmp-chick.cmp-react .cmp-arm-l { animation: chick-beat-l 0.16s linear 7; animation-delay: 0.1s; }
+.cmp-chick.cmp-react .cmp-arm-r { animation: chick-beat-r 0.16s linear 7; animation-delay: 0.1s; }
+@keyframes chick-lift {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  10% { transform: translateY(0) scale(1.06, 0.92); }
+  35%, 70% { transform: translateY(-18%) scale(0.98, 1.03); }
+  52% { transform: translateY(-14%) scale(1, 1); }
+  90% { transform: translateY(0) scale(1.05, 0.94); }
+}
+@keyframes chick-beat-l {
+  0%, 100% { transform: rotate(40deg); }
+  50% { transform: rotate(104deg); }
+}
+@keyframes chick-beat-r {
+  0%, 100% { transform: rotate(-40deg); }
+  50% { transform: rotate(-104deg); }
+}
+
+/* The Bun */
+.cmp-bun .cmp-head { transform-origin: 190px 282px; }
+.cmp-bun .cmp-arm-l { transform-origin: 100px 236px; }
+.cmp-bun .cmp-arm-r { transform-origin: 280px 236px; }
+/* idle: the bun breathes like rising dough; a wisp of steam now and then */
+.cmp-bun.cmp-idle .cmp-head { animation: bun-rise 3s ease-in-out infinite; }
+.cmp-bun.cmp-idle .cmp-puff { animation: cmp-puff 6s ease-out infinite; }
+.cmp-bun.cmp-idle .cmp-puff2 { animation-delay: 0.25s; }
+.cmp-bun.cmp-idle .cmp-puff3 { animation-delay: 0.5s; }
+.cmp-bun.cmp-hop .cmp-head { animation: bun-hop 0.5s ease-out 1; }
+.cmp-bun.cmp-cheer .cmp-head { animation: bun-cheer 1.2s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
+.cmp-bun.cmp-cheer .cmp-arm-l { animation: chick-up-l 1.2s ease-in-out 1; }
+.cmp-bun.cmp-cheer .cmp-arm-r { animation: chick-up-r 1.2s ease-in-out 1; }
+@keyframes bun-rise {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.025, 1.035); }
+}
+@keyframes bun-hop {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(0, -12px); }
+}
+@keyframes bun-cheer {
+  0%, 44%, 80%, 100% { transform: translate(0, 0); }
+  26% { transform: translate(0, -30px); }
+  62% { transform: translate(0, -22px); }
+}
+/* the steam puff: the bun swells and three puffs of steam rise */
+.cmp-bun.cmp-react .cmp-body { animation: bun-pop-body 1.3s ease-in-out 1; }
+.cmp-bun.cmp-react .cmp-head { animation: bun-swell 1.3s ease-in-out 1; }
+.cmp-bun.cmp-react .cmp-puff { animation: bun-steam 1.3s ease-out 1 both; }
+.cmp-bun.cmp-react .cmp-puff2 { animation-delay: 0.12s; }
+.cmp-bun.cmp-react .cmp-puff3 { animation-delay: 0.24s; }
+@keyframes bun-pop-body {
+  0%, 100% { transform: scale(1, 1); }
+  20% { transform: scale(1.03, 0.97); }
+  34% { transform: scale(0.99, 1.02); }
+}
+@keyframes bun-swell {
+  0%, 100% { transform: scale(1, 1); }
+  22%, 60% { transform: scale(1.05, 0.95); }
+  34% { transform: scale(1.02, 1.05); }
+}
+@keyframes bun-steam {
+  0%, 22% { opacity: 0; transform: translate(0, 10%) scale(0.4); }
+  40% { opacity: 0.95; transform: translate(0, -40%) scale(1.2); }
+  100% { opacity: 0; transform: translate(8%, -220%) scale(1.9); }
+}
+
+/* a pose's own rule outranks a plain part selector, so the still is forced */
+@media (prefers-reduced-motion: reduce) {
+  .cmp * { animation: none !important; }
+  .cmp-grow { animation: none; }
+}

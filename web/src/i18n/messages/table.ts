@@ -84,6 +84,7 @@ export const table = defineMessages({
   "table.chooseLead": { en: "Choose the cards to lead", zh: "选好要出的牌", hant: "選好要出的牌" },
   "table.yourTurn": { en: "Your turn", zh: "该你了", hant: "該你了" },
   "table.yourTurnTag": { en: "your turn", zh: "该你了", hant: "該你了" },
+  "table.companionYou": { en: "You", zh: "你", hant: "你" },
   "table.clear": { en: "Clear", zh: "重选", hant: "重選" },
   "table.lastTrick": { en: "Last trick", zh: "上一轮", hant: "上一輪" },
   "table.followSuit": {

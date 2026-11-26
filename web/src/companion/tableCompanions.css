@@ -1,0 +1,30 @@
+/* The companions by their players' nameplates. They sit under everything
+   else on the felt and take no taps. */
+.table-companions { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+
+/* A figure's hop, cheer and fidget are Web Animations of this box (`MOVES`
+   in TableCompanions.tsx) round a still drawing. It is its own layer from
+   the start, so a move repaints nothing as it starts or ends; a jump and its
+   confetti may leave the box, so nothing clips it. */
+.tc-move { display: block; line-height: 0; transform-origin: 50% 100%; will-change: transform; }
+
+/* By each player: a figure is placed by the transform of its walk box
+   (TableCompanions.tsx `Walker`), so every walk is the compositor's. */
+.tc-seat { position: absolute; left: 0; top: 0; }
+.tc-walk { position: absolute; left: 0; top: 0; display: block; line-height: 0; will-change: transform; }
+.tc-face { display: block; line-height: 0; transform-origin: 50% 100%; will-change: transform; }
+/* your own companion's tag, over its head and never mirrored */
+.tc-you {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #14171e;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 15px;
+  white-space: nowrap;
+}

@@ -1,37 +1,49 @@
 // A companion look travels as "<companion>/<colour>" (the server's
 // `accounts.LOOKS`, `DEFAULT_COMPANION`, `DEFAULT_COLOUR`, `LOOK_UNLOCKS`,
-// mirrored here by hand and held to them by server/tests/test_look.py). A
+// mirrored here by hand and held to them by server/tests/test_look.py;
+// each companion's colours are its palette's keys, in order). A
 // seat with no look, or one this client cannot draw, shows the default; a
 // bot shows an initial instead.
 import { TRACTOR_COLOURS } from "./palette";
 import type { TractorColourId } from "./palette";
+import { BUN_COLOURS, CHICK_COLOURS, SPARROW_COLOURS } from "./storePalette";
+import type { BunColourId, ChickColourId, SparrowColourId } from "./storePalette";
 
 export const DEFAULT_COMPANION = "tractor";
 export const DEFAULT_COLOUR = "red";
 export const DEFAULT_LOOK = `${DEFAULT_COMPANION}/${DEFAULT_COLOUR}`;
 
-export type CompanionKind = "tractor";
-export type Colour = TractorColourId;
+export type CompanionKind = "tractor" | "bun" | "chick" | "sparrow";
+export type Colour = TractorColourId | BunColourId | ChickColourId | SparrowColourId;
 
-/** Every companion this client draws, each with its colours in Collection order. */
+/** Every companion this client draws, in Collection order, each with its
+ *  colours in Collection order. */
 export const COMPANIONS: Record<CompanionKind, readonly Colour[]> = {
   tractor: Object.keys(TRACTOR_COLOURS) as Colour[],
+  bun: Object.keys(BUN_COLOURS) as Colour[],
+  chick: Object.keys(CHICK_COLOURS) as Colour[],
+  sparrow: Object.keys(SPARROW_COLOURS) as Colour[],
 };
 
-export type UnlockCount = "rounds" | "ranked_wins";
+export const COMPANION_KINDS = Object.keys(COMPANIONS) as CompanionKind[];
+
+export const isKind = (raw: unknown): raw is CompanionKind =>
+  typeof raw === "string" && Object.prototype.hasOwnProperty.call(COMPANIONS, raw);
+
+export type UnlockCount = "rounds" | "ranked_wins" | "ranked_games";
 
 /** What unlocks a look; a look not listed is free from the start. */
 export const LOOK_UNLOCKS: Record<string, { count: UnlockCount; of: number }> = {
-  "tractor/yellow": { count: "rounds", of: 10 },
-  "tractor/orange": { count: "rounds", of: 25 },
-  "tractor/jade": { count: "rounds", of: 50 },
-  "tractor/porcelain": { count: "rounds", of: 100 },
-  "tractor/ink": { count: "ranked_wins", of: 1 },
+  "tractor/yellow": { count: "ranked_games", of: 10 },
+  "tractor/orange": { count: "ranked_games", of: 25 },
+  "tractor/jade": { count: "ranked_games", of: 50 },
+  "tractor/porcelain": { count: "ranked_games", of: 100 },
+  "tractor/ink": { count: "ranked_games", of: 1000 },
 };
 
 /** Where your own screen draws companions at the table (the server's
  *  `accounts.COMPANION_MODES`); the first is the default. */
-export const COMPANION_MODES = ["team", "individual", "off"] as const;
+export const COMPANION_MODES = ["individual", "team", "off"] as const;
 export type CompanionMode = (typeof COMPANION_MODES)[number];
 
 export interface Look {

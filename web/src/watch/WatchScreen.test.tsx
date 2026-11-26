@@ -121,6 +121,8 @@ describe("the watch screen", () => {
     // another table's round end reads nothing of the watcher's account, and draws no portrait
     expect(urls.filter((u) => u.startsWith("/api/me"))).toEqual([]);
     expect(document.querySelector(".portrait")).toBeNull();
+    // nor any companion on the felt
+    expect(document.querySelector(".table-companions, .cmp")).toBeNull();
     const labels = [...card.querySelectorAll(".round-end-actions button:not(.round-end-view-btn)")].map((b) => b.textContent);
     expect(labels).toEqual(["Take a seat", "Leave"]);
     await act(async () => { (card.querySelectorAll(".round-end-actions button:not(.round-end-view-btn)")[0] as HTMLButtonElement).click(); });

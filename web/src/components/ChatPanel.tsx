@@ -6,20 +6,16 @@ import { usePresence } from "../usePresence";
 import { useBlocks } from "../chatBlocks";
 import { KEYBOARD_COVER_PX, SHORT_VISIBLE_PX, TIGHT_VISIBLE_PX, visibleArea, type VisibleArea } from "../visibleArea";
 import { useT } from "../i18n";
-import { formatSystemLine } from "../messageCopy";
-import type { MessageKey } from "../i18n";
+import { formatChatLine, formatSystemLine } from "../messageCopy";
+import { QUICK_PHRASE_IDS, QUICK_PHRASE_KEY } from "../quickPhrases";
 import "./ChatPanel.css";
-
-/** The chat sheet's quick phrases, above the field: a tap sends one as an
- *  ordinary line, through the same validated, rate-limited path. They stay
- *  one row, which scrolls sideways when the chat is narrower than all five. */
-const QUICK_PHRASES: readonly MessageKey[] = ["table.quickHi", "table.quickGg", "table.quickNice", "table.quickMore", "table.quickBrb"];
 
 interface ChatProps {
   messages: ChatMsg[];
   you: number;
-  /** Where a line goes: room chat unless a waiting table sends its own. */
-  onSend?: (text: string) => void;
+  /** Where a line goes: room chat unless a waiting table sends its own.
+   *  `phrase`: the quick phrase `text` words in this player's language. */
+  onSend?: (text: string, phrase?: string) => void;
 }
 
 interface BodyProps extends ChatProps {
@@ -55,9 +51,9 @@ export function ChatBody({ messages, you, onSend, open = true }: BodyProps) {
     if (open) endRef.current?.scrollIntoView({ block: "end" });
   }, [open, messages.length]);
 
-  const say = (text: string) => {
-    if (onSend) onSend(text);
-    else conn.send({ type: "table_chat", text });
+  const say = (text: string, phrase?: string) => {
+    if (onSend) onSend(text, phrase);
+    else conn.send(phrase === undefined ? { type: "table_chat", text } : { type: "table_chat", text, phrase });
   };
   const send = () => {
     const text = draft.trim();
@@ -77,19 +73,23 @@ export function ChatBody({ messages, you, onSend, open = true }: BodyProps) {
           ) : (
             <div key={i} className={"chat-msg" + (m.seat === you ? " mine" : "")}>
               <span className="chat-name">{m.name}</span>
-              <span className="chat-text">{m.text}</span>
+              <span className="chat-text">{formatChatLine(m)}</span>
             </div>
           )
         )}
         <div ref={endRef} />
       </div>
+      {/* The quick phrases, above the field: a tap sends the phrase's id
+          with this player's wording, through the same validated,
+          rate-limited path as a typed line. They stay one row, which
+          scrolls sideways when the chat is narrower than all of them. */}
       {typing && touchFirst() ? null : (
         <div className="chat-quick" role="group" aria-label={t("table.quickPhrases")}>
-          {QUICK_PHRASES.map((key) => {
-            const phrase = t(key);
+          {QUICK_PHRASE_IDS.map((id) => {
+            const words = t(QUICK_PHRASE_KEY[id]);
             return (
-              <button key={key} type="button" className="chat-quick-btn" onClick={() => say(phrase)}>
-                {phrase}
+              <button key={id} type="button" className="chat-quick-btn" onClick={() => say(words, id)}>
+                {words}
               </button>
             );
           })}

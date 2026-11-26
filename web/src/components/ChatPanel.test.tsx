@@ -103,21 +103,21 @@ it("scales and fades in and out, and does neither under Reduce Motion", () => {
   }
 });
 
-it("shows the quick phrases first, then the field, and a tap sends one as a plain line", () => {
+it("shows the quick phrases first, then the field, and a tap sends one with its id", () => {
   const quick = host.querySelector(".chat-quick")!;
   expect(quick.getAttribute("aria-label")).toBe("Quick phrases");
   expect([...quick.querySelectorAll("button")].map((b) => b.textContent))
-    .toEqual(["Hi!", "GG", "Nice!", "One more?", "Brb"]);
+    .toEqual(["Hi!", "GG", "Nice!", "One more?", "Brb", "Thanks!", "Sorry!", "Good luck!"]);
   // the row sits before the composer
   expect(quick.compareDocumentPosition(host.querySelector(".chat-input")!) & Node.DOCUMENT_POSITION_FOLLOWING)
     .toBeTruthy();
   act(() => quick.querySelectorAll<HTMLButtonElement>("button")[1].click());
-  expect(send).toHaveBeenCalledExactlyOnceWith({ type: "table_chat", text: "GG" });
+  expect(send).toHaveBeenCalledExactlyOnceWith({ type: "table_chat", text: "GG", phrase: "gg" });
   // a waiting table's sheet sends through its own path
   const table = vi.fn();
   act(() => root.render(<ChatPanel messages={[]} you={0} open onClose={() => {}} onSend={table} />));
   act(() => host.querySelector<HTMLButtonElement>(".chat-quick button")!.click());
-  expect(table).toHaveBeenCalledExactlyOnceWith("Hi!");
+  expect(table).toHaveBeenCalledExactlyOnceWith("Hi!", "hi");
   expect(send).toHaveBeenCalledTimes(1);
 });
 
@@ -254,4 +254,16 @@ it("lays the tight panel out as one row on the keyboard, with no log or phrases"
   const own = readFileSync(`${import.meta.dirname}/ChatPanel.css`, "utf8");
   expect(own).toMatch(/\.chat-panel\.chat-short\.chat-tight \{[^}]*bottom: calc\(var\(--chat-kb, 0px\) \+ 2px\)[^}]*flex-direction: row/);
   expect(own).toMatch(/\.chat-panel\.chat-tight \.chat-log,\s*\.chat-panel\.chat-tight \.chat-quick,[^{]*\{ display: none; \}/);
+});
+
+it("words a known phrase in this viewer's language and shows any other line as sent", () => {
+  const line = (id: number, text: string, phrase?: string) =>
+    ({ type: "chat" as const, id, room: "TEST", t: 0, seat: 1, name: "Peer", text, ...(phrase ? { phrase } : {}) });
+  act(() => root.render(<ChatPanel messages={[
+    line(1, "好牌！", "nice"),          // a Chinese sender's phrase
+    line(2, "漂亮！"),                  // an old client's phrase: text only
+    line(3, "Hola", "hola"),           // an id this build does not know
+    line(4, "gg"),                     // typed, even when it matches a phrase
+  ]} you={0} open onClose={() => {}} />));
+  expect([...host.querySelectorAll(".chat-text")].map((e) => e.textContent)).toEqual(["Nice!", "漂亮！", "Hola", "gg"]);
 });

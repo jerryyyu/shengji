@@ -2,6 +2,7 @@ import type { ChatMsg, StatePlayer, SystemEventKind } from "./protocol";
 import { SUIT_SYMBOL } from "./components/Card";
 import { displayName, t } from "./i18n";
 import type { MessageKey } from "./i18n";
+import { QUICK_PHRASE_KEY, isQuickPhrase } from "./quickPhrases";
 
 /** Readable copy for the engine's table messages. The engine words them in
  *  its own notation ("Seat 1 declared H2 (pair)", "... flipped from the
@@ -60,4 +61,11 @@ export function formatSystemLine(m: Pick<ChatMsg, "text" | "event" | "actor" | "
   if (twoPerson && m.target === undefined) return m.text;
   const target = m.target ?? "";
   return t(key, { name: m.actor, took: m.target_is_bot === true ? displayName(target, true) : target });
+}
+
+/** A person's line in the current language: a quick phrase this client
+ *  knows is worded here, from its id; typed text, an id this client does not
+ *  know and a line from an older client show `text` as sent. */
+export function formatChatLine(m: Pick<ChatMsg, "text" | "phrase">): string {
+  return isQuickPhrase(m.phrase) ? t(QUICK_PHRASE_KEY[m.phrase]) : m.text;
 }

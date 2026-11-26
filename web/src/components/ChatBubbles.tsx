@@ -4,6 +4,7 @@ import { conn } from "../ws";
 import { isBlocked, useBlocks } from "../chatBlocks";
 import { seatPos } from "./TrickArea";
 import { useT } from "../i18n";
+import { formatChatLine } from "../messageCopy";
 
 /** How long a chat line stays at its seat. */
 const BUBBLE_MS = 5000;
@@ -68,7 +69,7 @@ function useChatBubbles(open: boolean) {
     // a system line, or one from someone no longer seated, has no seat to sit at
     const seat = msg.seat;
     if (seat === null || seat < 0 || openRef.current || isBlocked(msg.room, seat)) return;
-    const bubble: Bubble = { seat, id: msg.id, name: msg.name, text: msg.text };
+    const bubble: Bubble = { seat, id: msg.id, name: msg.name, text: formatChatLine(msg) };
     setBubbles((list) => [...list.filter((b) => b.seat !== seat), bubble]);
     const old = timers.current.get(seat);
     if (old !== undefined) window.clearTimeout(old);

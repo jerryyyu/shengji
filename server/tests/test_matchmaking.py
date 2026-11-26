@@ -3929,6 +3929,75 @@ def test_ws_table_chat_is_masked_before_anyone_hears_it(wsenv):
         assert _drain(b, "table_chat")["text"] == "** pass the f*ing ball, ****"
 
 
+def test_table_chat_keeps_a_known_quick_phrase_and_drops_any_other():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.join(2)
+        await env.send(2, "table_chat", text="Nice!", phrase="nice")
+        for uid in (1, 2):
+            line = env.conns[uid].last("table_chat")
+            assert (line["text"], line["phrase"]) == ("Nice!", "nice")
+        for bad in ("hello", 7, None, ["gg"], "NICE"):
+            await env.send(2, "table_chat", text="as typed", phrase=bad)
+            line = env.conns[1].last("table_chat")
+            assert line["text"] == "as typed" and "phrase" not in line
+        await env.send(1, "table_chat", text="plain")
+        assert "phrase" not in env.conns[2].last("table_chat")
+    run(go())
+
+
+def test_a_merged_lone_chat_keeps_its_quick_phrase():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.send(1, "table_chat", text="大家好！", phrase="hi")
+        env.clock.advance(1.0)
+        await env.join(3, allow_joiners=False)
+        await env.send(3, "table_chat", text="Good luck!", phrase="luck")
+        env.clock.advance(1.0)
+        await env.join(2)
+        (t,) = env.mm.tables.values()
+        await env.send(3, "table_allow_joiners", on=True)
+        assert env.mm._entry(3).table is t
+        assert [(m["text"], m.get("phrase")) for m in t.chat] == [
+            ("大家好！", "hi"), ("Good luck!", "luck")]
+        history = env.conns[2].last("table_chat_history")
+        assert [m.get("phrase") for m in history["messages"]] == ["hi", "luck"]
+    run(go())
+
+
+def test_ws_a_quick_phrase_carries_from_the_waiting_table_into_the_room(wsenv):
+    srv, store, client, clock = wsenv
+    (u1, h1), (u2, h2) = _user(store, "qp1", "One"), _user(store, "qp2", "Two")
+    with client.websocket_connect("/ws", headers=h1) as a, \
+            client.websocket_connect("/ws", headers=h2) as b:
+        a.send_json({"type": "queue_join", "mode": "casual"})
+        _drain(a, "queue_state")
+        b.send_json({"type": "queue_join", "mode": "casual"})
+        assert _drain(b, "queue_state")["table"]["of"] == 2
+        b.send_json({"type": "table_chat", "text": "One more?", "phrase": "more"})
+        assert _drain(a, "table_chat")["phrase"] == "more"
+        b.send_json({"type": "table_chat", "text": "typed", "phrase": "unknown"})
+        assert "phrase" not in _drain(a, "table_chat")
+        b.send_json({"type": "table_start"})
+        _next_where(a, "queue_state", lambda m: m["table"]["ready"] == 1)
+        a.send_json({"type": "table_start_now"})
+        seen = _until(a, "state")
+        history = next(m for m in seen if m["type"] == "chat_history")
+        assert [(m["text"], m.get("phrase")) for m in history["messages"]] == [
+            ("One more?", "more"), ("typed", None)]
+
+
+def test_the_quick_phrase_ids_match_the_clients():
+    import re
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[2] / "web/src/quickPhrases.ts").read_text()
+    ids = re.search(r"QUICK_PHRASE_IDS = \[([^\]]*)\]", source).group(1)
+    assert set(re.findall(r'"(\w+)"', ids)) == mm.QUICK_PHRASES
+
+
 def test_a_guests_queue_name_is_masked(wsenv):
     srv, store, client, clock = wsenv
     with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:

@@ -2642,7 +2642,8 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
             return
         room.log_event("chat", seat=seat, text=text, bot=False)
         chat_post(room, {"seat": seat, "name": room.seats[seat].name,
-                         "text": text, "t": time.time()}, sender=block_key(room.seats[seat]))
+                         "text": text, "t": time.time(), **matchmaking.quick_phrase(msg)},
+                  sender=block_key(room.seats[seat]))
         return
     elif t == "allow_joiners":
         # The table's opener switches it either way, ranked or casual; a
@@ -3679,7 +3680,8 @@ async def start_matched_room(match_id: str | None, slots: list,
     for line in chat:
         room.chat_seq += 1
         room.chat.append({"seat": line["seat"], "name": line["name"], "text": line["text"],
-                          "t": line["t"], "id": room.chat_seq, "room": room.code})
+                          "t": line["t"], "id": room.chat_seq, "room": room.code,
+                          **matchmaking.quick_phrase(line)})
         # the queue's record of who wrote the line, never the seat's
         # occupant now: a seat changes hands while a table waits
         sender = (chat_senders or {}).get(line.get("id"))

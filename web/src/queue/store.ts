@@ -407,7 +407,7 @@ export class QueueStore {
         if (!this.view.queued || (this.view.frame?.chat_log ?? null) !== msg.table
             || this.view.tableChat.some((m) => m.id === msg.id)) break;
         const line: ChatMsg = { type: "chat", id: msg.id, room: msg.table ?? "", seat: msg.seat, name: msg.name,
-                                text: msg.text, t: msg.t };
+                                text: msg.text, t: msg.t, ...(msg.phrase === undefined ? {} : { phrase: msg.phrase }) };
         this.set({ tableChat: [...this.view.tableChat, line].slice(-100) });
         break;
       }
@@ -697,11 +697,12 @@ export class QueueStore {
     this.send({ type: "table_bot_level", level });
   }
 
-  /** A line to everyone at your waiting table; the server echoes it back. */
-  tableChat(text: string): boolean {
+  /** A line to everyone at your waiting table; the server echoes it back.
+   *  `phrase`: the quick phrase `text` words. */
+  tableChat(text: string, phrase?: string): boolean {
     const line = text.trim();
     if (!line || !this.view.queued) return false;
-    return this.send({ type: "table_chat", text: line });
+    return this.send(phrase === undefined ? { type: "table_chat", text: line } : { type: "table_chat", text: line, phrase });
   }
 
   /** A queue cooldown still runs: Play waits it out. */

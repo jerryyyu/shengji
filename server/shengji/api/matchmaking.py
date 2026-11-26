@@ -227,6 +227,18 @@ CHAT_LIMIT = (30, 60.0)      # table_chat per account per window
 # server.CHAT_KEEP): it becomes the room's scrollback when the table starts.
 CHAT_MAX_LEN = 300
 CHAT_KEEP = 50
+# The chat sheet's quick phrase ids (web/src/quickPhrases.ts). A line keeps
+# its ``phrase`` only when it is one of these, so each client can word it in
+# its own language; ``text`` is the sender's wording, for any other client.
+QUICK_PHRASES = frozenset({"hi", "gg", "nice", "more", "brb", "thanks", "sorry", "luck"})
+
+
+def quick_phrase(msg: dict) -> dict:
+    """``{"phrase": id}`` for a chat message's known quick phrase id, else
+    empty: an unknown or malformed one is dropped and its text kept."""
+    raw = msg.get("phrase")
+    return {"phrase": raw} if isinstance(raw, str) and raw in QUICK_PHRASES else {}
+
 # The queue's two modes: ranked tables rate their rounds, casual ones never;
 # an entry is seated and offered tables of its own mode only.
 MODES = ("ranked", "casual")
@@ -1835,7 +1847,7 @@ class Matchmaker:
         t = e.table
         t.chat_seq += 1
         line = {"id": t.chat_seq, "seat": t.seats.index(uid), "name": self._name(uid),
-                "text": text, "t": self.clock()}
+                "text": text, "t": self.clock(), **quick_phrase(msg)}
         t.chat.append(line)
         del t.chat[:-CHAT_KEEP]
         t.senders[t.chat_seq] = uid

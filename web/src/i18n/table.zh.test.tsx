@@ -146,6 +146,17 @@ describe("the table in zh-Hans", () => {
     expect(host.querySelector(".chat-head span")?.textContent).toBe("聊天");
     expect(buttons()).toContain("发送");
     expect(host.querySelector("input")?.getAttribute("placeholder")).toBe("说点什么…");
+    expect([...host.querySelectorAll(".chat-quick-btn")].map((b) => b.textContent)).toEqual(
+      ["大家好！", "GG", "好牌！", "再来一局？", "马上回来", "谢谢！", "抱歉！", "加油！"]);
+  });
+
+  it("words an English sender's quick phrase in Chinese, and typed lines as sent", () => {
+    Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+    render(<ChatPanel messages={[
+      { type: "chat", id: 1, room: "T", t: 0, seat: 1, name: "Jerry", text: "Nice!", phrase: "nice" },
+      { type: "chat", id: 2, room: "T", t: 0, seat: 1, name: "Jerry", text: "Nice!" },
+    ]} you={0} open onClose={() => {}} />);
+    expect([...host.querySelectorAll(".chat-text")].map((e) => e.textContent)).toEqual(["好牌！", "Nice!"]);
   });
 
   it("words the engine's messages, the follow hint and the round-end lines", () => {

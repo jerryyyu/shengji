@@ -552,6 +552,26 @@ describe("a stuck context is revived", () => {
     expect(started).toEqual([fresh]);
   });
 
+  it("replaces a context the first gesture made when its resume hangs, on a later gesture", async () => {
+    await freshModule();
+    const proto = FakeAudioContext.prototype as unknown as { resume: () => Promise<void> };
+    const resume = proto.resume;
+    proto.resume = () => new Promise<void>(() => {});
+    try {
+      // cold: no prewarm ran, so this gesture creates the context
+      dispatch("touchend");
+      await wait(0);
+      const first = FakeAudioContext.last!;
+      expect(first.state).toBe("suspended");
+
+      await wait(RESUME_WAIT);
+      dispatch("touchend");
+      expect(FakeAudioContext.last).not.toBe(first);
+    } finally {
+      proto.resume = resume;
+    }
+  });
+
   it("detects a running context whose clock froze and replaces it", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "performance"] });
     try {

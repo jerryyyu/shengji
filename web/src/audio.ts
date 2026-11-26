@@ -114,13 +114,13 @@ function addVoice(
 }
 let muted = localStorage.getItem(MUTE_KEY) === "1"; // default: unmuted
 
-function ensureCtx(): AudioContext {
+function ensureCtx(inGesture = false): AudioContext {
   const AC: typeof AudioContext =
     window.AudioContext ??
     (window as unknown as { webkitAudioContext: typeof AudioContext })
       .webkitAudioContext;
   if (!ctx || (ctx.state as string) === "closed") ctx = watch(new AC());
-  if ((ctx.state as string) !== "running") askResume(ctx);
+  if ((ctx.state as string) !== "running") askResume(ctx, inGesture);
   return ctx;
 }
 
@@ -161,7 +161,7 @@ function replaceCtx(inGesture: boolean): void {
   invalidate();
   if (old !== null) void old.close().catch(() => {});
   try {
-    askResume(ensureCtx(), inGesture);
+    ensureCtx(inGesture);
   } catch {
     /* no audio here */
   }
@@ -216,8 +216,8 @@ export function prewarmAudio(): void {
 }
 
 /** Resolve once the context is running, or immediately if it stays blocked. */
-async function ensureRunning(): Promise<AudioContext> {
-  const c = ensureCtx();
+async function ensureRunning(inGesture = false): Promise<AudioContext> {
+  const c = ensureCtx(inGesture);
   if (c.state !== "running") {
     // Await resume(): checking state synchronously right after firing it
     // would drop the first clip after unlock.
@@ -295,8 +295,7 @@ function unlockHandler(): void {
   // gesture's resume is asked, and if it has not landed by a gesture
   // RESUME_MS later, that one replaces the context.
   if (ctx !== null && isStuck(ctx)) replaceCtx(true);
-  else if (ctx !== null && ctx.state !== "running") askResume(ctx, true);
-  void ensureRunning().then((c) => {
+  void ensureRunning(true).then((c) => {
     if (c.state === "running") disarmUnlock();
   });
 }

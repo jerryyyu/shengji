@@ -9,8 +9,8 @@ reads over HTTP, and the players are not told.
 Which tables. A table a stranger could already find: a ranked table, or a
 casual table with Allow joiners on (the queue offers those to strangers),
 with a person still connected, once one of its rounds has finished. With
-none, the latest finished ranked round seen since the process started is a
-rerun, so the way in always leads somewhere.
+none, a rerun: the newest whole round among the last few finished ranked
+rounds seen since the process started, so the way in always leads somewhere.
 
 The guard. Only a round whose ``round_end`` record was written is served,
 and it is checked twice: the round's records must run from its
@@ -126,8 +126,10 @@ class WatchState:
         return len(self.watchers)
 
 
-# The latest finished ranked round, kept after its room closes.
-_rerun: Finished | None = None
+# The latest finished ranked rounds (newest last), kept after their rooms
+# close: a rerun plays the newest whose log holds the whole round, and one
+# that does not is dropped, so an older whole round still plays.
+_reruns: collections.deque = collections.deque(maxlen=KEEP_ROUNDS)
 
 
 def _state(room: Any) -> WatchState:
@@ -158,7 +160,6 @@ def round_started(room: Any, offset: int | None) -> None:
 
 def round_ended(room: Any, written: bool = True) -> None:
     """After a ``round_end`` record: the round in play is the one to watch."""
-    global _rerun
     try:
         st = _state(room)
         game = room.game
@@ -168,7 +169,7 @@ def round_ended(room: Any, written: bool = True) -> None:
         st.last = Finished(path=path, start=offset, round=n, ranked=ratings.ranked(room))
         st.recent.append(st.last)
         if st.last.ranked:
-            _rerun = st.last
+            _reruns.append(st.last)
     except Exception:               # noqa: BLE001 - never raise into a game
         log.exception("spectate round_ended failed")
 
@@ -335,7 +336,7 @@ def _counts() -> tuple[int, int, bool]:
     """(tables anyone may watch, live tables with a finished round, rerun)."""
     rooms = _rooms()
     return (sum(1 for r in rooms if watchable(r)), sum(1 for r in rooms if watchable(r, True)),
-            _rerun is not None)
+            len(_reruns) > 0)
 
 
 def presence_key() -> tuple:
@@ -464,12 +465,15 @@ async def watch(request: Request, mode: str | None = None, skip: str | None = No
             return out
         if out is None:
             room.watch.watchers.pop(token, None)
-    rerun = _rerun
-    if rerun is not None:
+    for rerun in reversed(list(_reruns)):
         doc = await asyncio.to_thread(round_doc, rerun)
         if doc is not None:
             return {"table": RERUN_ID, "watcher": token, "mode": "ranked", "live_round": None,
                     "code": None, "rerun": True, "waiting": False, **doc}
+        try:
+            _reruns.remove(rerun)
+        except ValueError:
+            pass                    # another request dropped it first
     raise HTTPException(status_code=404, detail="Nothing to watch.")
 
 

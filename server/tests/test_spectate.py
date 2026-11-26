@@ -85,7 +85,7 @@ def feed(client, monkeypatch):
     from shengji.api import server as srv, spectate
 
     monkeypatch.setenv(spectate.ENV, "1")
-    monkeypatch.setattr(spectate, "_rerun", None)
+    monkeypatch.setattr(spectate, "_reruns", spectate.collections.deque(maxlen=spectate.KEEP_ROUNDS))
     spectate.LIMITER.reset()
     return srv, spectate, client
 
@@ -313,7 +313,7 @@ def listed(accounts_on, client, monkeypatch):
     from shengji.api import server as srv, spectate
 
     monkeypatch.delenv(spectate.ENV, raising=False)
-    monkeypatch.setattr(spectate, "_rerun", None)
+    monkeypatch.setattr(spectate, "_reruns", spectate.collections.deque(maxlen=spectate.KEEP_ROUNDS))
     spectate.LIMITER.reset()
     store = accounts_on.STORE
     jerry, jerry_h = _account(store, "jerry")
@@ -469,3 +469,18 @@ def test_a_complete_round_passes_the_sequence_check(feed):
     assert spectate.complete_sequence(records) is True
     plays = [r for r in records if r["e"] == "play"]
     assert sum(len(p["cards"]) for p in plays) == 100
+
+
+def test_a_closed_tables_rerun_keeps_its_last_whole_round(feed):
+    srv, spectate, client = feed
+    t = Table(srv, code="RRUN", ranked=True)
+    t.play_round()
+    assert _watch(client).json()["round"] == 1
+    t.play_round()
+    _drop_a_play(spectate._log_path(t.room), 2)
+    srv.rooms.pop("RRUN")                   # the table closes; only the rerun is left
+    doc = _watch(client).json()
+    assert doc["rerun"] is True and doc["round"] == 1
+    assert doc["events"][-1]["e"] == "round_end"
+    assert [f.round for f in spectate._reruns] == [1]     # the broken round was dropped
+    assert spectate.presence() == {"watch": 0, "rerun": True}

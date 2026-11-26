@@ -450,6 +450,7 @@ async def a_duo_partner_leaving_holds_the_seat_again(env: Env) -> None:
     await env.send(3, "table_start")
     await env.send(6, "table_start")
     await env.send(5, "table_start")
+    await env.advance(mm.ROLE_GRACE_SECS)  # 5 owns it since 1 left: past the grace
     await env.send(5, "table_start_now")
 
 

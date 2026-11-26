@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Sheng Ji (Chinese tractor) game engine, AI, and multiplayer server"
 requires-python = ">=3.11"
 dependencies = [
+    "cryptography>=44",  # App Store JWS verification (api/purchases.py); also google-auth's
     "fastapi>=0.110",
     "google-auth>=2.62.0",
     "numpy>=1.26",   # production net inference (see rl/npnet.py) — torch NOT required

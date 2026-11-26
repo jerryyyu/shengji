@@ -1,0 +1,398 @@
+"""App Store purchases (``shengji.api.purchases``): StoreKit 2 signed
+transactions and Server Notifications V2 in Apple's real JWS format, signed
+by a throwaway certificate chain built here that mirrors Apple's (a root, an
+intermediate with Apple's intermediate marker, a leaf with the App Store
+signing marker). No real key is used anywhere."""
+from __future__ import annotations
+
+import base64
+import json
+import time
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+from cryptography.x509.oid import NameOID
+
+from tests.test_accounts import (  # noqa: F401
+    V1_SCHEMA, _claims, _session_cookie, accounts_on, accounts_sqlite, keypair)
+from tests.test_server_ws import client  # noqa: F401
+
+GOAT = "com.jerryyu.shengji.companion.goat"
+PANDA = "com.jerryyu.shengji.companion.panda"
+
+
+def _name(cn: str) -> x509.Name:
+    return x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, cn)])
+
+
+def _cert(subject, issuer, key, issuer_key, *, ca: bool, marker: str | None,
+          start=None, days=3650):
+    start = start or datetime.now(timezone.utc) - timedelta(days=1)
+    b = (x509.CertificateBuilder().subject_name(_name(subject)).issuer_name(_name(issuer))
+         .public_key(key.public_key()).serial_number(x509.random_serial_number())
+         .not_valid_before(start).not_valid_after(start + timedelta(days=days))
+         .add_extension(x509.BasicConstraints(ca=ca, path_length=None), critical=True))
+    if marker:
+        b = b.add_extension(x509.UnrecognizedExtension(x509.ObjectIdentifier(marker), b"\x05\x00"),
+                            critical=False)
+    return b.sign(issuer_key, hashes.SHA384() if ca else hashes.SHA256())
+
+
+class Chain:
+    """A root, an Apple-style intermediate and leaf, and a JWS signer."""
+
+    def __init__(self, leaf_marker="1.2.840.113635.100.6.11.1",
+                 inter_marker="1.2.840.113635.100.6.2.1", leaf_days=3650, leaf_start=None):
+        self.root_key = ec.generate_private_key(ec.SECP384R1())
+        self.inter_key = ec.generate_private_key(ec.SECP384R1())
+        self.leaf_key = ec.generate_private_key(ec.SECP256R1())
+        self.root = _cert("Test Root", "Test Root", self.root_key, self.root_key, ca=True, marker=None)
+        self.inter = _cert("Test WWDR", "Test Root", self.inter_key, self.root_key, ca=True,
+                           marker=inter_marker)
+        self.leaf = _cert("Test StoreKit", "Test WWDR", self.leaf_key, self.inter_key, ca=False,
+                          marker=leaf_marker, start=leaf_start, days=leaf_days)
+
+    def der(self, cert) -> bytes:
+        return cert.public_bytes(serialization.Encoding.DER)
+
+    def sign(self, payload: dict, key=None, chain=None) -> str:
+        chain = chain or [self.leaf, self.inter, self.root]
+        header = {"alg": "ES256", "x5c": [base64.b64encode(self.der(c)).decode() for c in chain]}
+        enc = lambda raw: base64.urlsafe_b64encode(raw).rstrip(b"=").decode()  # noqa: E731
+        signing = f"{enc(json.dumps(header).encode())}.{enc(json.dumps(payload).encode())}"
+        r, s = decode_dss_signature((key or self.leaf_key).sign(signing.encode(), ec.ECDSA(hashes.SHA256())))
+        return f"{signing}.{enc(r.to_bytes(32, 'big') + s.to_bytes(32, 'big'))}"
+
+
+def _txn(**over) -> dict:
+    now = int(time.time() * 1000)
+    base = {"transactionId": "2000000111", "originalTransactionId": "2000000111",
+            "bundleId": "com.jerryyu.shengji", "productId": GOAT, "purchaseDate": now - 5000,
+            "originalPurchaseDate": now - 5000, "quantity": 1, "type": "Non-Consumable",
+            "inAppOwnershipType": "PURCHASED", "signedDate": now, "environment": "Sandbox",
+            "transactionReason": "PURCHASE", "storefront": "USA", "storefrontId": "143441",
+            "price": 3990, "currency": "USD"}
+    base.update(over)
+    return {k: v for k, v in base.items() if v is not None}
+
+
+def _notification(chain: Chain, kind: str, txn: dict, **data) -> dict:
+    body = {"bundleId": "com.jerryyu.shengji", "environment": txn.get("environment", "Sandbox"),
+            "signedTransactionInfo": chain.sign(txn)}
+    body.update(data)
+    return {"signedPayload": chain.sign({
+        "notificationType": kind, "notificationUUID": "7f0c6a1e-0000-4000-8000-000000000001",
+        "data": body, "version": "2.0", "signedDate": int(time.time() * 1000)})}
+
+
+@pytest.fixture
+def chain(monkeypatch):
+    from shengji.api import purchases
+
+    c = Chain()
+    monkeypatch.setattr(purchases, "APPLE_ROOTS", (c.der(c.root),))
+    return c
+
+
+@pytest.fixture
+def shop(accounts_on, keypair, client, monkeypatch, chain):
+    """Account 1 signed in, with the Collection and the store on for it."""
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "1")
+    monkeypatch.setenv("STORE_ENABLED", "1")
+    private_pem, _ = keypair
+    return {"cookie": _session_cookie(accounts_on, client, private_pem)}
+
+
+# ------------------------------------------------------------ the JWS checks
+def test_the_pinned_root_is_apple_root_ca_g3():
+    from shengji.api import purchases
+
+    root = x509.load_der_x509_certificate(purchases.APPLE_ROOTS[0])
+    assert root.fingerprint(hashes.SHA256()).hex() == (
+        "63343abfb89a6a03ebb57e9b3f5fa7be7c4f5c756f3017b3a8c488c3653e9179")
+    assert root.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value == "Apple Root CA - G3"
+
+
+def test_a_well_formed_transaction_verifies(chain):
+    from shengji.api import purchases
+
+    payload = purchases.verify_jws(chain.sign(_txn()))
+    txn = purchases.transaction(payload)
+    assert txn["product_id"] == GOAT and txn["original_transaction_id"] == "2000000111"
+    assert txn["environment"] == "Sandbox" and txn["storefront"] == "USA"
+    assert txn["revoked_at"] is None
+
+
+@pytest.mark.parametrize("break_it", [
+    "other_root", "tampered_payload", "other_key", "short_chain", "alg_none", "no_leaf_marker",
+    "no_inter_marker", "expired_leaf", "garbage", "swapped_chain",
+])
+def test_a_bad_signature_or_chain_is_refused(chain, break_it):
+    from shengji.api import purchases
+
+    if break_it == "other_root":
+        token = Chain().sign(_txn())
+    elif break_it == "tampered_payload":
+        head, _, sig = chain.sign(_txn()).split(".")
+        forged = base64.urlsafe_b64encode(json.dumps(_txn(productId=PANDA)).encode()).rstrip(b"=").decode()
+        token = f"{head}.{forged}.{sig}"
+    elif break_it == "other_key":
+        token = chain.sign(_txn(), key=ec.generate_private_key(ec.SECP256R1()))
+    elif break_it == "short_chain":
+        token = chain.sign(_txn(), chain=[chain.leaf, chain.root])
+    elif break_it == "alg_none":
+        head, payload, sig = chain.sign(_txn()).split(".")
+        header = json.loads(base64.urlsafe_b64decode(head + "=="))
+        header["alg"] = "none"
+        token = ".".join([base64.urlsafe_b64encode(json.dumps(header).encode()).rstrip(b"=").decode(),
+                          payload, sig])
+    elif break_it == "no_leaf_marker":
+        c = Chain(leaf_marker=None)
+        with pytest.raises(purchases.VerificationError):
+            purchases.verify_jws(c.sign(_txn()), roots=(c.der(c.root),))
+        return
+    elif break_it == "no_inter_marker":
+        c = Chain(inter_marker=None)
+        with pytest.raises(purchases.VerificationError):
+            purchases.verify_jws(c.sign(_txn()), roots=(c.der(c.root),))
+        return
+    elif break_it == "expired_leaf":
+        c = Chain(leaf_start=datetime.now(timezone.utc) - timedelta(days=30), leaf_days=10)
+        with pytest.raises(purchases.VerificationError):
+            purchases.verify_jws(c.sign(_txn()), roots=(c.der(c.root),))
+        return
+    elif break_it == "swapped_chain":
+        token = chain.sign(_txn(), chain=[chain.inter, chain.leaf, chain.root])
+    else:
+        token = "not.a.jws"
+    with pytest.raises(purchases.VerificationError) as exc:
+        purchases.verify_jws(token)
+    assert exc.value.code == "bad_signature"
+
+
+@pytest.mark.parametrize("over, code", [
+    ({"bundleId": "com.example.other"}, "wrong_app"),
+    ({"environment": "Xcode"}, "wrong_environment"),
+    ({"productId": "com.jerryyu.shengji.coins"}, "unknown_product"),
+    ({"type": "Consumable"}, "unknown_product"),
+    ({"originalTransactionId": None}, "bad_transaction"),
+])
+def test_a_verified_transaction_of_another_app_or_product_is_refused(chain, over, code):
+    from shengji.api import purchases
+
+    with pytest.raises(purchases.VerificationError) as exc:
+        purchases.transaction(purchases.verify_jws(chain.sign(_txn(**over))))
+    assert exc.value.code == code
+
+
+def test_production_only_refuses_sandbox(chain, monkeypatch):
+    from shengji.api import purchases
+
+    monkeypatch.setenv("STORE_ENVIRONMENTS", "Production")
+    with pytest.raises(purchases.VerificationError):
+        purchases.transaction(purchases.verify_jws(chain.sign(_txn())))
+    assert purchases.transaction(purchases.verify_jws(chain.sign(_txn(environment="Production"))))
+
+
+# ------------------------------------------------------------ /api/store/verify
+def test_a_purchase_unlocks_the_goat_and_shows_in_me(accounts_on, client, shop, chain):
+    me = client.get("/api/me", headers=shop).json()
+    assert me["features"] == {"collection": True, "store": True}
+    assert me["products"] == []
+    goat = {e["id"]: e for e in me["looks"] if e["id"].startswith("goat/")}
+    assert len(goat) == 4 and not any(e["unlocked"] for e in goat.values())
+    assert {e["product"] for e in goat.values()} == {GOAT}
+    assert client.put("/api/me/look", json={"look": "goat/jade"}, headers=shop).status_code == 403
+
+    resp = client.post("/api/store/verify", json={"jws": chain.sign(_txn()), "storefront": "USA"},
+                       headers=shop)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["products"] == [GOAT]
+    assert all(e["unlocked"] for e in body["looks"] if e["id"].startswith("goat/"))
+    assert not any(e["unlocked"] for e in body["looks"] if e["id"].startswith("panda/"))
+    resp = client.put("/api/me/look", json={"look": "goat/jade"}, headers=shop)
+    assert resp.status_code == 200 and resp.json()["look"] == "goat/jade"
+    assert accounts_on.account_look(1) == "goat/jade"
+    with accounts_on.STORE._open() as conn:
+        row = dict(conn.execute("SELECT * FROM entitlements").fetchone())
+    assert (row["user_id"], row["product_id"], row["environment"], row["storefront"]) == (
+        1, GOAT, "Sandbox", "USA")
+    assert row["revoked_at"] is None and row["purchased_at"] > 0
+
+
+def test_the_same_purchase_twice_is_one_entitlement(accounts_on, client, shop, chain):
+    token = chain.sign(_txn())
+    assert client.post("/api/store/verify", json={"jws": token}, headers=shop).status_code == 200
+    # a replay, and a later signing of the same purchase (a restore)
+    assert client.post("/api/store/verify", json={"jws": token}, headers=shop).status_code == 200
+    again = chain.sign(_txn(transactionId="2000000999", transactionReason="PURCHASE"))
+    assert client.post("/api/store/verify", json={"jws": again}, headers=shop).status_code == 200
+    with accounts_on.STORE._open() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM entitlements").fetchone()[0] == 1
+
+
+def test_a_purchase_held_by_another_account_is_refused(accounts_on, client, shop, chain, keypair, monkeypatch):
+    token = chain.sign(_txn())
+    assert client.post("/api/store/verify", json={"jws": token}, headers=shop).status_code == 200
+    private_pem, _ = keypair
+    client.cookies.clear()
+    other = {"cookie": _session_cookie(accounts_on, client, private_pem, sub="222", email="b@example.com")}
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "1,2")
+    resp = client.post("/api/store/verify", json={"jws": token}, headers=other)
+    assert resp.status_code == 409 and resp.json()["detail"] == "claimed"
+    assert client.get("/api/me", headers=other).json()["products"] == []
+
+
+def test_verify_refuses_guests_the_store_off_and_bad_input(accounts_on, client, shop, chain, monkeypatch):
+    token = chain.sign(_txn())
+    client.cookies.clear()
+    assert client.post("/api/store/verify", json={"jws": token}).status_code == 401
+    monkeypatch.setenv("STORE_ENABLED", "0")
+    assert client.post("/api/store/verify", json={"jws": token}, headers=shop).status_code == 404
+    assert client.get("/api/me", headers=shop).json()["features"]["store"] is False
+    monkeypatch.setenv("STORE_ENABLED", "1")
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "")
+    assert client.post("/api/store/verify", json={"jws": token}, headers=shop).status_code == 404
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "1")
+    for bad, code in ((Chain().sign(_txn()), "bad_signature"),
+                      (chain.sign(_txn(bundleId="com.other")), "wrong_app"),
+                      ("x" * 10, "bad_signature")):
+        resp = client.post("/api/store/verify", json={"jws": bad}, headers=shop)
+        assert resp.status_code == 400 and resp.json()["detail"] == code
+    with accounts_on.STORE._open() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM entitlements").fetchone()[0] == 0
+
+
+def test_the_china_storefront_buys_nothing(accounts_on, client, shop, chain):
+    said = client.post("/api/store/verify", json={"jws": chain.sign(_txn()), "storefront": "CHN"},
+                       headers=shop)
+    assert said.status_code == 403
+    signed = client.post("/api/store/verify", json={"jws": chain.sign(_txn(storefront="CHN"))},
+                         headers=shop)
+    assert signed.status_code == 403
+    with accounts_on.STORE._open() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM entitlements").fetchone()[0] == 0
+
+
+def test_a_guest_and_a_store_off_account_see_no_sold_companion(accounts_on, client, shop, monkeypatch):
+    monkeypatch.setenv("STORE_ENABLED", "0")
+    looks = client.get("/api/me", headers=shop).json()["looks"]
+    assert not any(e["id"].startswith(("goat/", "panda/")) for e in looks)
+    assert accounts_on.store_for(None) is False
+
+
+# ------------------------------------------------------------ /api/store/notify
+def test_a_refund_revokes_and_unequips(accounts_on, client, shop, chain):
+    assert client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=shop).status_code == 200
+    assert client.put("/api/me/look", json={"look": "goat/ink"}, headers=shop).status_code == 200
+    refunded = _txn(revocationDate=int(time.time() * 1000), revocationReason=0)
+    resp = client.post("/api/store/notify", json=_notification(chain, "REFUND", refunded))
+    assert resp.status_code == 200
+    me = client.get("/api/me", headers=shop).json()
+    assert me["products"] == [] and me["look"] == "tractor/red"
+    assert accounts_on.account_look(1) == "tractor/red"
+    assert client.put("/api/me/look", json={"look": "goat/ink"}, headers=shop).status_code == 403
+    # the old, unrevoked JWS cannot buy it back
+    resp = client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=shop)
+    assert resp.status_code == 409 and resp.json()["detail"] == "revoked"
+    # a second delivery of the same notification changes nothing
+    assert client.post("/api/store/notify", json=_notification(chain, "REFUND", refunded)).status_code == 200
+    # a reversed refund gives it back
+    assert client.post("/api/store/notify", json=_notification(chain, "REFUND_REVERSED", _txn())).status_code == 200
+    assert client.get("/api/me", headers=shop).json()["products"] == [GOAT]
+
+
+def test_a_revoke_applies_even_with_the_store_off(accounts_on, client, shop, chain, monkeypatch):
+    assert client.post("/api/store/verify", json={"jws": chain.sign(_txn(productId=PANDA))},
+                       headers=shop).status_code == 200
+    monkeypatch.setenv("STORE_ENABLED", "0")
+    revoked = _txn(productId=PANDA, revocationDate=int(time.time() * 1000))
+    assert client.post("/api/store/notify", json=_notification(chain, "REVOKE", revoked)).status_code == 200
+    assert accounts_on.STORE.owned_products(1) == frozenset()
+
+
+def test_a_refund_before_any_claim_blocks_the_claim(accounts_on, client, shop, chain):
+    refunded = _txn(originalTransactionId="77", transactionId="77",
+                    revocationDate=int(time.time() * 1000))
+    assert client.post("/api/store/notify", json=_notification(chain, "REFUND", refunded)).status_code == 200
+    resp = client.post("/api/store/verify",
+                       json={"jws": chain.sign(_txn(originalTransactionId="77", transactionId="77"))},
+                       headers=shop)
+    assert resp.status_code == 409
+
+
+def test_a_notification_that_fails_verification_changes_nothing(accounts_on, client, shop, chain):
+    assert client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=shop).status_code == 200
+    revoked = _txn(revocationDate=int(time.time() * 1000))
+    forged = _notification(Chain(), "REFUND", revoked)
+    assert client.post("/api/store/notify", json=forged).status_code == 400
+    # an outer payload Apple signed carrying an inner transaction it did not
+    outer = chain.sign({"notificationType": "REFUND", "signedDate": int(time.time() * 1000),
+                        "data": {"bundleId": "com.jerryyu.shengji", "environment": "Sandbox",
+                                 "signedTransactionInfo": Chain().sign(revoked)}})
+    assert client.post("/api/store/notify", json={"signedPayload": outer}).status_code == 400
+    wrong_app = _notification(chain, "REFUND", revoked, bundleId="com.other")
+    assert client.post("/api/store/notify", json=wrong_app).status_code == 400
+    assert accounts_on.STORE.owned_products(1) == frozenset({GOAT})
+    # other types are acknowledged and ignored
+    assert client.post("/api/store/notify", json=_notification(chain, "CONSUMPTION_REQUEST", _txn())).status_code == 200
+    assert accounts_on.STORE.owned_products(1) == frozenset({GOAT})
+
+
+# ------------------------------------------------------------ the table
+def test_the_entitlements_migration_snapshots_first(accounts_on, tmp_path):
+    path = tmp_path / "old" / "accounts.sqlite3"
+    path.parent.mkdir()
+    with accounts_sqlite(path) as db:
+        db.executescript(V1_SCHEMA)
+    store = accounts_on.Store(path)
+    assert store.schema_version() == len(accounts_on.SCHEMA) == 12
+    with accounts_sqlite(path) as db:
+        cols = [r[1] for r in db.execute("PRAGMA table_info(entitlements)")]
+    assert cols == ["id", "user_id", "product_id", "original_transaction_id", "transaction_id",
+                    "environment", "storefront", "purchased_at", "verified_at", "revoked_at"]
+    assert store.backup_path(1).exists()
+
+
+def test_a_v11_database_gains_the_table_after_a_verified_backup(accounts_on, tmp_path):
+    path = tmp_path / "v11" / "accounts.sqlite3"
+    path.parent.mkdir()
+    with accounts_sqlite(path) as db:
+        db.executescript(V1_SCHEMA)
+    accounts_on.Store(path).schema_version()
+    with accounts_sqlite(path) as db:
+        db.execute("DROP TABLE entitlements")
+        db.execute("UPDATE schema_version SET version = 11")
+        db.commit()
+    for p in path.parent.glob("*.bak"):
+        p.unlink()
+    store = accounts_on.Store(path)
+    assert store.schema_version() == 12
+    backup = store.backup_path(11)
+    with accounts_sqlite(backup) as db:
+        assert db.execute("SELECT MAX(version) FROM schema_version").fetchone() == (11,)
+        assert db.execute("SELECT name FROM sqlite_master WHERE name = 'entitlements'").fetchone() is None
+
+
+def test_purchases_follow_a_merged_device_account_and_go_with_a_deleted_one(accounts_on):
+    store = accounts_on.STORE
+    a = store.upsert_user(_claims(sub="s1", email="a@example.com", name="A"))
+    b = store.upsert_user(_claims(sub="s2", email="b@example.com", name="B"))
+    txn = {"product_id": GOAT, "original_transaction_id": "9", "transaction_id": "9",
+           "environment": "Sandbox", "storefront": "USA", "purchased_at": 1.0}
+    assert store.claim_entitlement(a["id"], txn) == "granted"
+    assert store.owned_products(a["id"]) == frozenset({GOAT})
+    with store._open() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        store._merge_device(conn, a["id"], b["id"])
+        conn.execute("COMMIT")
+    assert store.owned_products(b["id"]) == frozenset({GOAT})
+    assert store.claim_entitlement(b["id"], txn) == "granted"
+    assert store.delete_user(b["id"])
+    with store._open() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM entitlements").fetchone()[0] == 0

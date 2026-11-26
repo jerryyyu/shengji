@@ -473,3 +473,25 @@ def test_throw_trick_is_located_in_the_current_and_resolved_tricks():
     assert R.throw_trick_index(now, 0, forced) == 0
     assert R.observe_refusal(now).trick_index == 0
     assert R.throw_trick_index(now, 1, forced) is None
+
+
+def test_releading_a_second_copy_does_not_repeat_a_throw_in_model_history():
+    from shengji.ai.belief_numpy import history_tokens
+    from shengji.train.belief_history import TOKEN_FLOAT
+
+    rnd = state()
+    rnd.hands = [["H9", "H9", "HA"], ["H3", "HQ", "C7"],
+                 ["H4", "D8", "C9"], ["H6", "D9", "C8"]]
+    ledger = R.RefusalLedger()
+    rnd.play(0, ["H9", "HA"])
+    first, = ledger.observe(rnd)
+    for seat, card in enumerate(["H3", "H4", "H6"], start=1):
+        rnd.play(seat, [card])
+        ledger.observe(rnd)
+    rnd.play(0, ["H9"])
+    for observer in (ledger, R.RefusalLedger()):
+        refusals = observer.observe(rnd)
+        assert refusals == [first]
+        tokens = history_tokens(rnd, refusals)
+        assert tokens["tok_f"][:, TOKEN_FLOAT.index("failed_throw")].tolist() == [1, 0, 0, 0, 0]
+        assert tokens["tok_att"].sum(axis=1).tolist() == [2, 0, 0, 0, 0]

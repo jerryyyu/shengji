@@ -118,13 +118,17 @@ export function OfflineControls({ local, status, room: roomMsg = null, code = ""
   const hostStart = () => {
     conn.send({ type: "table_start_now" });
   };
+  // a guest's Ready: its tick at the table, never a start
+  const ready = (on: boolean) => {
+    conn.send(on ? { type: "table_start" } : { type: "table_start", on: false });
+  };
 
   // a nearby table's lobby, for its host and for a joiner
   if (roomMsg?.nearby && nbUi && host.phase !== "starting") {
     return (
       <>
         <ModeSwitch value="casual" disabled={false} rankedOff />
-        <nbUi.NearbyRoomPanel room={roomMsg} onHostStart={hostStart} onToggle={toggleNearby} onBots={pickNearbyBots}
+        <nbUi.NearbyRoomPanel room={roomMsg} onHostStart={hostStart} onReady={ready} onToggle={toggleNearby} onBots={pickNearbyBots}
                               onLeave={host.phase !== "off" ? leave : () => nbUi.nearbyJoin.leave()} />
       </>
     );

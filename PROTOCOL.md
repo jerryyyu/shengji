@@ -119,11 +119,12 @@ code both could hold, and a code that names neither is
 matches a refusal to its peek by code as it matches `room_seats` by `room`
 (an older client reads the field as nothing):
 
-`{type: "room_seats", room, table: true, mode, in_game: false, allow_joiners, full, closed, seats: [{seat, team, state, name}]}`
+`{type: "room_seats", room, table: true, mode, in_game: false, allow_joiners, full, closed, seats: [{seat, team, state, name, ready}]}`
 
 - `seats`: all four, in seat order. `state` is `"taken"`, `"open"` or
   `"held"` (a Duo opener's partner seat). A taken seat's `name` is the name
-  the table shows; an open or held seat has `name: null`. A lone entry's seats are where
+  the table shows and `ready` whether that person's Start is in; an open or
+  held seat has `name: null`, `ready: false`. A lone entry's seats are where
   its game would put it: one person at seat 0, a pair (or a Duo opener and
   its held seat) at 0 and 2.
 - `mode`: `"ranked"` or `"casual"`, the mode a code join sits in.
@@ -321,7 +322,7 @@ server's own start of a queue table does not. Plain counts, nothing else.
 
 ## The table frame
 
-`{type: "table", code, phase, mode, you, opener, seats, settings, timers, chat_log}`
+`{type: "table", code, phase, mode, you, opener, seats, settings, timers, your_ready, waiting_for, chat_log}`
 describes the table a socket sits at the same way whether it is a queued
 table (`phase: "open"`: alone or waiting) or a room in play (`phase:
 "playing"`). Before a game it is the table: the web client draws the
@@ -330,19 +331,22 @@ The frames it replaces are still sent, unchanged, for clients from before
 it; a room's client does not read it yet. Design and field mapping:
 `docs/design/TABLE_FRAME.md`.
 
-- `seats`: four, in seat order, each `{seat, team, state, name, you,
+- `seats`: four, in seat order, each `{seat, team, state, name, you, ready,
   reconnecting, since, sit, pair, leader, left}`. `state` is `"taken"`,
   `"open"` (empty; a bot fills it when the game starts), `"held"` (kept for
   a Duo opener's friend) or `"bot"` (a bot plays it in the game; `left`
   when its owner pressed Leave). An open or held seat has `name: null`.
-  `since`, `sit`, `pair` and `leader` are `queue_state.table`'s
-  seat fields (`sit` null alone and in a room);
+  `ready`, `since`, `sit`, `pair` and `leader` are `queue_state.table`'s
+  seat fields (`ready` is null in a room; `sit` null alone and in a room);
   `reconnecting` is a person's seat whose socket is gone.
 - `mode`: `"ranked"` or `"casual"`. `opener`: the opener's seat.
 - `settings`: `{allow_joiners, start_level, bot_level}`; `allow_joiners` is null in a
   room that never takes joiners (a test room).
 - `timers`: `{bots}`: `queue_state.table.timer`'s `{at, name, you}` (alone:
   your entry's own `bots_at`), null when no timer runs and in a room.
+- `your_ready`: whether your Ready is in (null in a room); `waiting_for`:
+  as `queue_state.table` (alone: a Duo partner yet to tap), null in a room.
+  Both are signals: the owner's Start never waits for them.
 - `chat_log`: the key the table's chat frames carry: `table_chat.table`
   (null alone) or, in a room, its code.
 
@@ -371,15 +375,16 @@ Unix seconds from the server clock. Refusals are `error` frames with a `code`.
 |------|--------|--------|
 | `queue_join` | optional `party_id`, optional `mode` (`"ranked"`, the default, or `"casual"`), optional `allow_joiners` (default `true`), optional `start_level` (default `"2"`), optional `bot_level` (`"beginner"`, `"standard"`, the casual default, or `"advanced"`, the only ranked one), optional `duo` (default `false`) | queue alone, or (a Duo's leader only) as the Duo; a Duo's member always queues as the pair. An entry is seated with, offered and starts only tables of its own `mode`: a casual one never meets a ranked one, and its table or bot game is an unrated room. Guests may queue in either mode. Any other `mode` is refused with `bad_mode`; while queued, `queue_join` keeps the entry's mode. `allow_joiners` and `start_level` are your own table's settings (see "Table codes"); a ranked table refuses any level but `"2"` with `ranked_level_fixed` and `bot_level` `"beginner"` or `"standard"` with `ranked_bots_fixed`. `table_join {code}` sits at a queued table instead, in its mode and with its settings. `duo: true` opens your own table with your partner seat held for a friend (see "Duo tables"); a non-boolean is `bad_setting`, and a Duo's member queues as the pair, holding nothing |
 | `table_allow_joiners` | `on: boolean` | your table's Allow joiners, alone or at a waiting table; only the table's opener (its leader, for a pair) may switch it, anyone else is refused with `not_opener`, and the whole table takes it. 20 per account per minute (with `table_move`) |
-| `table_start_level` | `start_level` | your casual table's starting level: the opener only (`not_opener`), never at a ranked table (`ranked_level_fixed`), `bad_start_level` for an unknown level. A real change drops a Start held at the room cap |
-| `table_bot_level` | `level: "beginner" \| "standard" \| "advanced"` | your casual table's Bots (see "Table codes"): the opener only (`not_opener`), never at a ranked table (`ranked_bots_fixed`), `bad_setting` for any other value. A real change drops a Start held at the room cap |
+| `table_start_level` | `start_level` | your casual table's starting level: the opener only (`not_opener`), never at a ranked table (`ranked_level_fixed`), `bad_start_level` for an unknown level. A real change clears every Start at the table |
+| `table_bot_level` | `level: "beginner" \| "standard" \| "advanced"` | your casual table's Bots (see "Table codes"): the opener only (`not_opener`), never at a ranked table (`ranked_bots_fixed`), `bad_setting` for any other value. A real change clears every Start at the table |
 | `table_leave` | — | leave the queue; at a waiting table this frees your seat. A Duo member's leave ends the Duo for the leaver only (see "Duo tables") |
-| `table_start_now` | optional `panel_seq` | the owner's Start at its waiting table (the opener's leader; `not_opener` for anyone else): it starts at once with everyone seated and connected, bots in the empty seats; a joiner whose socket is gone leaves at the start; `partner_unavailable` while the owner's own Duo partner is not connected. Nothing else starts a waiting table but its bots' timer, four people included. With `panel_seq` (see `queue_state`) a tap sent against a panel you no longer see is refused with `panel_changed`; without it, an owner's Start within 5 s of gaining the table is refused the same way |
-| `table_start` | optional `on: boolean`, `panel_seq` | an older page's Start: from the owner it is `table_start_now` (alone, a Duo leader's `table_start_bots`); from a joiner, who has nothing to tap (joining is all it does), it changes nothing and is answered with `queue_state`. `on: false` and `table_unready` change nothing either |
-| `table_move` | `seat`, optional `from` and `who` | move yourself to an empty seat at your waiting table: singles only (`pair_seats_fixed`), until the table starts; `seat_taken` for a seat someone holds, `bad_seat` for anything but 0-3. With `from`, another person's seat, and `who`, that seat's `sit` token as the opener confirmed it, the table's opener (its leader) moves that person instead (`not_opener` for anyone else, `bad_seat` for an empty `from` or your own pair's, `seat_changed` when `who` is missing or no longer that seat's sitting, so a delayed move never lands on whoever sat after): a single to the empty `seat`, a pair as one to the two seats of `seat`'s team (both free, the person at `from` into `seat`), never into a held seat (`seat_taken`). 20 per account per minute |
+| `table_start` | optional `on: boolean`, `panel_seq` | a joiner's Ready at its waiting table (a Duo's member its own tap): a signal, its seat's `ready` until taken back; it never starts the table. From the table's owner (an older page) it is the owner's Start, `table_start_now` (a Duo's leader alone: `table_start_bots`). With `panel_seq` (see `queue_state`) a tap sent against a panel you no longer see is refused with `panel_changed`; without it, the owner's tap within 5 s of gaining the table is refused the same way, so a Ready sent just before is never a Start |
+| `table_start {on: false}` | — | take back your Ready before the table starts (the same who as `table_start`: a Duo's member its own tap, alone too; also `table_unready`); `not_seated` alone outside a Duo; nothing to take back is no change |
+| `table_start_now` | optional `panel_seq` | the owner's Start at its waiting table (the opener's leader; `not_opener` for anyone else): it starts at once with everyone seated and connected, Ready or not, bots in the empty seats; a joiner whose socket is gone leaves at the start; `partner_unavailable` while the owner's own Duo partner is not connected. Nothing else starts a waiting table but its bots' timer, four people and every Ready in included. `panel_seq` and the 5 s grace as `table_start` |
+| `table_move` | `seat`, optional `from` and `who` | move yourself to an empty seat at your waiting table: singles only (`pair_seats_fixed`), before your Start (`already_ready`); `seat_taken` for a seat someone holds, `bad_seat` for anything but 0-3. With `from`, another person's seat, and `who`, that seat's `sit` token as the opener confirmed it, the table's opener (its leader) moves that person instead (`not_opener` for anyone else, `bad_seat` for an empty `from` or your own pair's, `seat_changed` when `who` is missing or no longer that seat's sitting, so a delayed move never lands on whoever sat after): a single to the empty `seat`, a pair as one to the two seats of `seat`'s team (both free, the person at `from` into `seat`), never into a held seat (`seat_taken`); it takes back the moved entry's Start. 20 per account per minute |
 | `table_here` | — | answer the "still here?" prompt (`queue_state.still_here_until`); any other queue message from the table answers it too |
 | `table_chat` | `text` | a chat line to everyone at your table (`not_seated` when you are not queued): your waiting table, or while you wait alone your own table, which only you (and a Duo partner) hear. Validated as room `chat` is: trimmed, at most 300 chars, an empty line ignored; 30 per person per minute (`rate_limited`). Kept in memory only (the last 50), never in a log. Lines sent alone merge into the waiting table you sit at, in time order, and either log is the room's opening scrollback (`chat_history`) when the game starts |
-| `table_start_bots` | optional `panel_seq` | alone in the queue: leave it and start a rated game at once: solo = you + 3 bots; pair (leader only, its partner connected: `partner_unavailable`) = the pair (seats 0+2) vs 2 bots. At a waiting table it is the owner's `table_start_now`, and a joiner's changes nothing |
+| `table_start_bots` | optional `panel_seq` | alone in the queue: leave it and start a rated game at once: solo = you + 3 bots; pair (leader only, its partner connected: `partner_unavailable`; the partner's Ready not needed) = the pair (seats 0+2) vs 2 bots. At a waiting table it is the owner's `table_start_now`, and a joiner's Ready |
 | `queue_wait_players` | — | "Only tables with people" on (leader only for a pair): the entry keeps its wait, place in line and seat, but its own timer never starts a bot game (`bots_at: null`, `wait_players: true`); it still sits at a table and rides a switch-off player's timer there. Leaving and queueing again turns it off |
 | `queue_allow_bots` | — | undo `queue_wait_players` (leader only): the entry's timer is due 60 s from now (a new `bots_at`); the wait itself is kept |
 | `party_leave` | — | leave your Duo; it dissolves and the other member is told. A queued Duo splits, as `table_leave` does (see "Duo tables") |
@@ -396,7 +401,7 @@ not at a waiting table), `start_failed`, `in_queue`,
 joined, see "Open tables"), `no_offer`, `bad_seat`, `seat_taken` (another
 newcomer confirmed that seat first; the offer is re-sent without it, or the
 seat of a `table_move` is held), `table_closed`, `pair_seats_fixed`,
-`seat_changed` (an opener's `table_move` named a sitting that has left that seat; a fresh `queue_state` follows), `panel_changed` (a fresh `queue_state` follows),
+`already_ready`, `seat_changed` (an opener's `table_move` named a sitting that has left that seat; a fresh `queue_state` follows), `panel_changed` (a fresh `queue_state` follows),
 `table_not_found` (no queued table has that `code`), `own_table`,
 `table_full`, `same_device` (a device of yours already sits at that table),
 `not_opener`, `ranked_level_fixed`, `ranked_bots_fixed`, `bad_start_level`, `bad_setting`. A signed-in
@@ -406,11 +411,11 @@ other socket with `account_in_game`.
 
 ### Server → Client
 
-- `queue_state {queued, count, mode?, since?, front?, party_id?, leader?, bots_at?, wait_players?, bots_paused?, table?, offer?, open_tables?, replaced?, panel_seq?, still_here_until?, code?, allow_joiners?, start_level?, bot_level?, opener?, duo?, held_seat?}`:
+- `queue_state {queued, count, mode?, since?, front?, party_id?, leader?, bots_at?, wait_players?, bots_paused?, table?, offer?, open_tables?, replaced?, panel_seq?, still_here_until?, code?, allow_joiners?, start_level?, bot_level?, opener?, duo?, held_seat?, duo_ready?, you_ready?}`:
   your entry, after every change to it or to its table, and on reconnect.
   `mode` is the search's mode (`"ranked"` or `"casual"`). The table
   fields (`table`, `code`, `allow_joiners`, `start_level`, `opener`,
-  `held_seat`) are sent until the table frame's step 3
+  `held_seat`, `you_ready`) are sent until the table frame's step 3
   (`docs/design/TABLE_FRAME.md` "Migration") and unread by the web client,
   which takes them from the table frame that follows. `code`,
   `allow_joiners` and `start_level` are your table's, alone or at a waiting

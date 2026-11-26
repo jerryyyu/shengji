@@ -8,12 +8,12 @@ import type { BotLevel, PartyMsg, TableFrameMsg, TableFrameSeatMsg, WaitingTable
 type QueueStateLike = Record<string, unknown>;
 
 function emptySeat(seat: number, state: "open" | "held"): TableFrameSeatMsg {
-  return { seat, team: (seat % 2) as 0 | 1, state, name: null, you: false, reconnecting: false,
+  return { seat, team: (seat % 2) as 0 | 1, state, name: null, you: false, ready: false, reconnecting: false,
            since: null, sit: null, pair: false, leader: false, left: false };
 }
 
 function takenSeat(seat: number, s: Partial<TableFrameSeatMsg> & { name: string }): TableFrameSeatMsg {
-  return { ...emptySeat(seat, "open"), state: "taken", you: false, reconnecting: false,
+  return { ...emptySeat(seat, "open"), state: "taken", you: false, ready: false, reconnecting: false,
            since: null, sit: null, pair: false, leader: false, ...s };
 }
 
@@ -29,10 +29,11 @@ export function holdsEntry(m: unknown): m is QueueStateLike {
 export function tableFrameFor(qs: QueueStateLike, party: PartyMsg | null = null,
                               extra: Partial<TableFrameMsg> = {}): TableFrameMsg {
   const t = (qs.table ?? null) as WaitingTableMsg | null;
+  const youReady = t ? t.you_ready : qs.you_ready === true;
   const settings = { allow_joiners: qs.allow_joiners !== false, start_level: (qs.start_level as string) ?? "2",
                      bot_level: (qs.bot_level as BotLevel | undefined) ?? (qs.mode === "casual" ? "standard" : "advanced") };
   const base = { type: "table" as const, phase: "open" as const, code: (qs.code as string | undefined) ?? t?.code ?? "",
-                 mode: (qs.mode as "ranked" | "casual" | undefined) ?? "ranked", settings };
+                 mode: (qs.mode as "ranked" | "casual" | undefined) ?? "ranked", settings, your_ready: youReady };
   if (t) {
     const held = t.held_seats ?? (t.held_seat != null ? [t.held_seat] : []);
     const seats = t.seats.map((s, at) => (s ? takenSeat(at, { ...s, sit: s.sit ?? null })
@@ -42,24 +43,27 @@ export function tableFrameFor(qs: QueueStateLike, party: PartyMsg | null = null,
       : t.opener !== undefined && t.opener !== t.you ? t.opener
       : seats.find((s) => s.state === "taken" && !s.you)?.seat ?? (t.you + 1) % 4;
     return { ...base, you: t.you, opener, seats,
-             timers: { bots: t.timer }, chat_log: t.id, ...extra };
+             timers: { bots: t.timer },
+             waiting_for: t.waiting_for, chat_log: t.id, ...extra };
   }
   const leads = qs.leader !== false;
   const partner = qs.party_id ? party?.members.find((m) => !m.you) ?? null : null;
   const you = partner && !leads ? 2 : 0;
+  const duoReady = (qs.duo_ready as number | null | undefined) ?? null;
+  const partnerReady = duoReady !== null && duoReady - (youReady ? 1 : 0) > 0;
   const seats = [0, 1, 2, 3].map((at) => emptySeat(at, "open"));
   seats[you] = takenSeat(you, { name: party?.members.find((m) => m.you)?.name ?? "You", you: true,
-                                pair: !!partner, leader: leads });
+                                ready: youReady, pair: !!partner, leader: leads });
   const across = (you + 2) % 4;
   if (partner) {
-    seats[across] = takenSeat(across, { name: partner.name, pair: true, leader: !leads });
+    seats[across] = takenSeat(across, { name: partner.name, ready: partnerReady, pair: true, leader: !leads });
   } else if (qs.held_seat === across) {
     seats[across] = emptySeat(across, "held");
   }
   const botsAt = (qs.bots_at as number | null | undefined) ?? null;
   return { ...base, you, opener: qs.opener !== false ? you : across, seats,
            timers: { bots: botsAt === null ? null : { at: botsAt, name: seats[leads ? you : across].name ?? "", you: true } },
-           chat_log: null, ...extra };
+           waiting_for: partner && leads && !partnerReady ? [partner.name] : [], chat_log: null, ...extra };
 }
 
 /** A test socket's deliveries as the server sends them: a queue_state that

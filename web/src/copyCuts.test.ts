@@ -50,11 +50,6 @@ const CUT = [
   "Levels restart at",
   "重新打起",
   "满 80 上台",
-  // a joiner's Ready and the ready count; the English "Ready" is a common
-  // word in identifiers, so its zh label holds it
-  "\"准备\"",
-  "of {count} ready",
-  "已准备 {n}",
   "Waiting for {n} players",
 ];
 

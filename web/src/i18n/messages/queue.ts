@@ -22,7 +22,7 @@ export const queue = defineMessages({
   "queue.list.and": { en: " and ", zh: " 和 " },
 
   // status lines and buttons
-  "queue.status.seated": { en: "{n} seated", zh: "{n} 人入座" },
+  "queue.status.ready": { en: "{n} of {count} ready", zh: "已准备 {n}/{count}" },
   "queue.status.waitingStart": { en: "Waiting for {name} to start", zh: "等 {name} 开始" },
   "queue.status.full": { en: "Table is full", zh: "这桌满了" },
   "queue.status.stillHere": { en: "You leave the table in {seconds}.", zh: "{seconds} 后离开牌桌。" },
@@ -31,6 +31,7 @@ export const queue = defineMessages({
   "queue.btn.start": { en: "Start", zh: "开始" },
   "queue.btn.starting": { en: "Starting…", zh: "正在开始…" },
   "queue.btn.startBots": { en: "Start with bots", zh: "机器人补位开始" },
+  "queue.btn.ready": { en: "Ready", zh: "准备" },
   "queue.btn.join": { en: "Join", zh: "加入" },
   "queue.btn.joining": { en: "Joining…", zh: "加入中…" },
   "queue.btn.keepLooking": { en: "Keep looking", zh: "继续找" },
@@ -46,6 +47,7 @@ export const queue = defineMessages({
   "queue.seat.away": { en: "{name} (away)", zh: "{name}（不在）" },
   "queue.seat.reconnecting": { en: "Reconnecting", zh: "重连中" },
   "queue.seat.justJoined": { en: "Just joined", zh: "刚加入" },
+  "queue.seat.ready": { en: "ready", zh: "已准备" },
   "queue.seat.yourTeam": { en: "your team", zh: "我方" },
   "queue.seat.otherTeam": { en: "other team", zh: "对方" },
   "queue.seat.duoPartner": { en: "your Duo partner", zh: "组队搭档" },
@@ -114,7 +116,7 @@ export const queue = defineMessages({
   "queue.say.own": { en: "{name}. Waiting for players.", zh: "{name}，正在等人。" },
   "queue.say.ownNoTimer": { en: "{name}. Waiting for players. No timer.", zh: "{name}，正在等人。不计时。" },
   "queue.say.stillHere": { en: "Tap I’m back to stay at the table.", zh: "点“我回来了”留在牌桌。" },
-  "queue.say.shared": { en: "Table. {name}. {n} seated.", zh: "牌桌。{name}。{n} 人入座。" },
+  "queue.say.shared": { en: "Table. {name}. {n} of {count} ready.", zh: "牌桌。{name}。已准备 {n}/{count}。" },
   "queue.say.offerSoon": { en: " 10 seconds left to join.", zh: "还剩 10 秒可加入。" },
   "queue.say.botsSoon": { en: " Bots fill the empty seats in 10 seconds.", zh: "10 秒后机器人补位。" },
 
@@ -202,4 +204,5 @@ export const queue = defineMessages({
   "queue.err.seatTaken": { en: "That seat was just taken.", zh: "这个位置刚被人坐了。" },
   "queue.err.pickAnother": { en: "Pick another.", zh: "换一个吧。" },
   "queue.err.pairFixed": { en: "A Duo's seats stay together.", zh: "组队的两个座位不能分开。" },
+  "queue.err.alreadyReady": { en: "You tapped Ready, so your seat is set.", zh: "你已点准备，座位定了。" },
 });

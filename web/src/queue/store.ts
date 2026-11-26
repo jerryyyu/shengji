@@ -130,14 +130,18 @@ export interface QueueView {
   tableChat: ChatMsg[];
   /** Queued: a Duo table's opener, or either member of a Duo made there. */
   duo: boolean;
+  /** Queued in a Duo made at a table: how many of you tapped Ready; null
+   *  for anyone else. */
+  duoReady: number | null;
 }
 
 /** What a table's end clears: no search, no table, nothing it showed. */
 const NOT_SEATED: Pick<QueueView, "queued" | "frame" | "pending" | "since" | "waitPlayers" | "front" | "offer"
-  | "openTables" | "botsPaused" | "elsewhere" | "panelSeq" | "stillHereUntil" | "queueMode" | "tableChat" | "duo"> = {
+  | "openTables" | "botsPaused" | "elsewhere" | "panelSeq" | "stillHereUntil" | "queueMode" | "tableChat" | "duo"
+  | "duoReady"> = {
   queued: false, frame: null, pending: null, since: null, waitPlayers: false, front: false, offer: null,
   openTables: 0, botsPaused: false, elsewhere: false, panelSeq: null, stillHereUntil: null, queueMode: null,
-  tableChat: [], duo: false,
+  tableChat: [], duo: false, duoReady: null,
 };
 
 const EMPTY: QueueView = {
@@ -159,9 +163,9 @@ export function movedNote(m: TableMovedMsg): string {
   return t(m.your_team ? "queue.note.movedOurs" : "queue.note.movedTheirs", { name: m.name });
 }
 
-/** Queued as the two members of a Duo made at a table: the leader starts. */
+/** Queued as the two members of a Duo made at a table: the partner taps Ready. */
 export function tableDuo(q: QueueView): boolean {
-  return q.duo && q.partyId !== null;
+  return q.duo && q.partyId !== null && q.duoReady !== null;
 }
 
 /** The other member of a pair, by name. */
@@ -195,6 +199,11 @@ export function namesAt(f: TableFrame | null): string[] {
  *  joiners and may move people. */
 export function isOpener(q: QueueView): boolean {
   return q.frame !== null && q.frame.opener === q.frame.you;
+}
+
+/** Your own Start is in (a Duo member's, alone or at a table). */
+export function yourReady(q: QueueView): boolean {
+  return q.frame?.your_ready === true;
 }
 
 export class QueueStore {
@@ -439,7 +448,7 @@ export class QueueStore {
                      waitPlayers: false, front: !!msg.front, leader: msg.leader !== false,
                      partyId: msg.party_id ?? null, pending: null, frame: null, offer: null,
                      openTables: 0, botsPaused: false, cooldownUntil: null, inGame: null,
-                     panelSeq: msg.panel_seq ?? null, stillHereUntil: null, duo: false });
+                     panelSeq: msg.panel_seq ?? null, stillHereUntil: null, duo: false, duoReady: null });
           break;
         }
         // the table frame follows on this socket: the view changes with it
@@ -540,6 +549,9 @@ export class QueueStore {
         } else if (msg.code === "pair_seats_fixed") {
           this.set({ pending: null });
           this.say(ERROR_ROUTES.pair_seats_fixed.text);
+        } else if (msg.code === "already_ready") {
+          this.set({ pending: null });
+          this.say(ERROR_ROUTES.already_ready.text);
         } else if (msg.code === "bad_seat") {
           this.set({ pending: null });
           this.say(ERROR_ROUTES.bad_seat.text);
@@ -566,9 +578,11 @@ export class QueueStore {
     this.joinSentAt = null;
     const frame = this.frameView(raw);
     const shared = sharedTable(frame);
-    // the owner's Start stays pending while its table is still shared
+    const youReady = frame.your_ready === true;
+    const duoReady = msg.duo_ready ?? null;
+    // a Start alone counts only in a Duo made at your table
     const pending = this.view.pending === "bots" ? "bots"
-      : this.view.pending === "start" && shared ? "start" : null;
+      : this.view.pending === "start" && (shared || duoReady !== null) && !youReady ? "start" : null;
     const offer = msg.offer ? this.offerView(msg.offer) : null;
     if (offer && !this.view.offer) haptic("declare");
     // a table's chat belongs to that table: another table starts empty,
@@ -579,7 +593,7 @@ export class QueueStore {
     this.chatAhead = null;
     this.reseat(frame, {
       queueMode: msg.mode ?? this.view.queueMode ?? "ranked", tableChat,
-      duo: msg.duo === true,
+      duo: msg.duo === true, duoReady,
       queued: true, count: msg.count,
       since: msg.since !== undefined ? this.local(msg.since) : now,
       waitPlayers: msg.wait_players === true,
@@ -722,11 +736,26 @@ export class QueueStore {
                frame: f && !sharedTable(f) ? { ...f, timers: { ...f.timers, bots } } : f });
   }
 
+  /** A joiner's Ready at the waiting table, or a Duo partner's at its own
+   *  table: your tick is in until you take it back. */
+  tableStart(): void {
+    if (!sharedTable(this.view.frame) && !tableDuo(this.view)) return;
+    if (yourReady(this.view) || this.view.pending !== null) return;
+    if (this.send({ type: "table_start", ...this.seq() })) this.set({ pending: "start" });
+  }
+
   /** The owner's Start at a waiting table: it starts at once with
-   *  everyone seated, bots in the empty seats. */
+   *  everyone seated, Ready or not, bots in the empty seats. */
   tableStartNow(): void {
     if (!sharedTable(this.view.frame) || !isOpener(this.view) || this.view.pending !== null) return;
     if (this.send({ type: "table_start_now", ...this.seq() })) this.set({ pending: "start" });
+  }
+
+  /** Take your Ready back while the table waits: Ready shows again. */
+  tableUnready(): void {
+    if (!sharedTable(this.view.frame) && !tableDuo(this.view)) return;
+    if (!yourReady(this.view) || this.view.pending !== null) return;
+    this.send({ type: "table_start", on: false });
   }
 
   /** The opener moves the person at `from`, the sitting `who` the opener
@@ -740,11 +769,11 @@ export class QueueStore {
     this.send({ type: "table_move", seat, from, who });
   }
 
-  /** A single at a shared table moves to an empty seat; the server's
-   *  queue_state shows the new seats. */
+  /** A single at a shared table moves to an empty seat before its Start;
+   *  the server's queue_state shows the new seats. */
   tableMove(seat: number): void {
     const f = this.view.frame;
-    if (!f || !sharedTable(f) || this.view.partyId || this.view.pending !== null) return;
+    if (!f || !sharedTable(f) || f.your_ready || this.view.partyId || this.view.pending !== null) return;
     if (f.seats[seat]?.state === "taken") return;
     this.send({ type: "table_move", seat });
   }

@@ -43,16 +43,18 @@ async function sendOnALostLink(t: NearbyTable, j: Player, msg: Record<string, un
 }
 
 describe("a move sent on a link that is rebuilt applies exactly once", () => {
-  it("a guest's older lobby Start is not sent again: it changes nothing", async () => {
+  it("the lobby's Start", async () => {
     const t = new NearbyTable(4, 1, DELAY);
     await t.open();
     const j = await t.join("Mei");
     const count = counter(t);
     await sendOnALostLink(t, j, { type: "table_start" });
-    expect(count(j.seat!, "table_start")).toBe(0);
-    expect(nearbyLogText()).not.toMatch(/table_start sent again/);
+    expect(count(j.seat!, "table_start")).toBe(1);
+    expect(t.room!.lobbyReady.has(j.seat!)).toBe(true);
+    expect(nearbyLogText()).toMatch(/resume: the unanswered table_start sent again/);
+    // and taking it back
     await sendOnALostLink(t, j, { type: "table_start", on: false });
-    expect(count(j.seat!, "table_start")).toBe(0);
+    expect(t.room!.lobbyReady.has(j.seat!)).toBe(false);
     expect(t.room!.game).toBeNull();
   }, 60_000);
 
@@ -120,26 +122,26 @@ describe("a move the host had is never sent again", () => {
     const j = await t.join("Mei");
     const count = counter(t);
     t.send(j, { type: "table_start" });
-    await t.settle(() => count(j.seat!, "table_start") === 1, 10_000);
+    await t.settle(() => t.room!.lobbyReady.has(j.seat!), 10_000);
     // the link goes before the joiner hears the answer
     t.fake.drop(t.code, t.fake.peersOf(t.code)[0]);
     await t.settle(() => (j.sock as NearbySocket).readyState === NearbySocket.CLOSED, 1000);
     await t.resume(j);
     await t.advance(1);
     expect(count(j.seat!, "table_start")).toBe(1);
-    expect(t.room!.game).toBeNull();
+    expect(t.room!.lobbyReady.has(j.seat!)).toBe(true);
     expect(nearbyLogText()).not.toMatch(/sent again/);
   }, 60_000);
 
-  it("an older Start's take-back on a lost link is not sent again", async () => {
+  it("a Start taken back on a lost link goes again, once", async () => {
     const t = new NearbyTable(4, 1, DELAY);
     await t.open();
     const j = await t.join("Mei");
-    const count = counter(t);
     t.send(j, { type: "table_start" });
-    await t.settle(() => count(j.seat!, "table_start") === 1, 10_000);
+    await t.settle(() => t.room!.lobbyReady.has(j.seat!), 10_000);
+    const count = counter(t);
     await sendOnALostLink(t, j, { type: "table_start", on: false });
     expect(count(j.seat!, "table_start")).toBe(1);
-    expect(t.room!.game).toBeNull();
+    expect(t.room!.lobbyReady.has(j.seat!)).toBe(false);
   }, 60_000);
 });

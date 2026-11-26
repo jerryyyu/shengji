@@ -73,7 +73,7 @@ export const WATCHDOG_POLL = 5.0;
  *  "reconnected" only after it said "disconnected". */
 export const DISCONNECT_NOTICE = 3.0;
 /** matchmaking.py BOT_FILL_SECS: once a nearby table has a second person,
- *  bots take its open seats this long after, unless everyone is ready first. */
+ *  bots take its open seats this long after, unless the host starts first. */
 export const NEARBY_BOT_FILL = 60.0;
 
 type Json = Record<string, unknown>;
@@ -214,6 +214,8 @@ export class LocalRoom {
   lobby: (Seat | null)[] | null = null;
   /** The watchdog timer is pending. */
   watching = false;
+  /** The lobby guests whose Ready is in: a signal (their tick), never a start. */
+  lobbyReady = new Set<number>();
   /** Clock time the lobby's bots fill the open seats; null while the host
    *  sits alone, who waits for people. */
   botsAt: number | null = null;
@@ -540,10 +542,12 @@ export function stateFor(room: LocalRoom, seat: number, now = 0): Json {
   };
 }
 
-/** A nearby lobby's waiting state, for its panel: the seconds until bots
- *  take the open seats, and whether the table is locked to its joiners. */
+/** A nearby lobby's waiting state, for its panel: whose Ready is in, the
+ *  seconds until bots take the open seats, and whether the table is locked
+ *  to its joiners. */
 function nearbyJson(room: LocalRoom, now: number): Json {
   return {
+    ready: [...room.lobbyReady].sort((a, b) => a - b),
     bots_in: room.botsAt === null ? null : Math.max(0, Math.round((room.botsAt - now) * 10) / 10),
     locked: room.joinedOnce,
   };
@@ -1290,14 +1294,15 @@ export class LocalServer {
   private handleLobby(room: LocalRoom, seat: number, msg: Json): void {
     const lobby = room.lobby!;
     const t = msg.type;
-    if (t === "table_start" || t === "table_start_now" || t === "table_start_bots") {
-      // only the host starts, with everyone seated (as an online table's
-      // owner); a guest's table_start is an older page's Start, which
-      // changes nothing: joining is all a guest does
-      if (seat !== room.host) {
-        if (t === "table_start") return;
-        throw new IllegalPlay("Only the host can start.");
-      }
+    if (t === "table_start" && seat !== room.host) {
+      // a guest's Ready, as a joiner's at a shared online table: its tick
+      // only (nothing starts but the host's Start or the bots' ring);
+      // on: false takes it back
+      if (msg.on === false) room.lobbyReady.delete(seat);
+      else room.lobbyReady.add(seat);
+    } else if (t === "table_start" || t === "table_start_now" || t === "table_start_bots") {
+      // the host's Start (its older page's table_start too), Ready or not
+      if (seat !== room.host) throw new IllegalPlay("Only the host can start.");
       if (msg.on === false) return;
       this.startNearby(room);
     } else if (t === "table_start_level") {
@@ -1319,6 +1324,7 @@ export class LocalServer {
       if (lobby[to] !== null) throw new IllegalPlay("That seat is taken.");
       lobby[to] = lobby[from];
       lobby[from] = null;
+      room.lobbyReady.delete(from);
       if (room.host === from) room.host = to;
     }
   }
@@ -1327,6 +1333,7 @@ export class LocalServer {
   startNearby(room: LocalRoom): void {
     if (!room.lobby) return;
     this.setBotsAt(room, null);
+    room.lobbyReady.clear();
     this.handleAction(room, room.host, { type: "start_game" });
     // a joiner whose socket dropped in the lobby is covered after its window
     if (room.seats.some((s) => !s.isBot && !s.connected)) this.watch(room);
@@ -1341,6 +1348,7 @@ export class LocalServer {
       const i = room.lobby.indexOf(seat);
       if (i < 0 || i === room.host) return;
       room.lobby[i] = null;
+      room.lobbyReady.delete(i);
       this.chatSystem(room, `${seat.name} left`, { event: "left", actor: seat.name });
       this.syncBotsTimer(room);
       this.broadcast(room);
@@ -1358,6 +1366,7 @@ export class LocalServer {
     this.chatSystem(room, `${seat.name} left`, { event: "left", actor: seat.name });
     if (room.lobby) {
       room.lobby[idx] = null;
+      room.lobbyReady.delete(idx);
       this.syncBotsTimer(room);
     } else seat.leftByChoice = true;
     this.broadcast(room);
@@ -1635,6 +1644,7 @@ export class LocalConnection {
       if (room.lobby[want] !== null) return false;
       room.lobby[want] = held;
       room.lobby[from] = null;
+      room.lobbyReady.delete(from);
       return false;
     }
     if (!nearbyClaimable(room, this.server.clock.now()).includes(want)) return false;
@@ -1714,6 +1724,7 @@ export class LocalConnection {
       server.endNearbyRoom(room, me);
     } else if (room.lobby) {
       room.lobby[idx] = null;
+      room.lobbyReady.delete(idx);
       server.syncBotsTimer(room);
       server.broadcast(room);
       server.kickBots(room);

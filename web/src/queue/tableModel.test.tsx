@@ -219,10 +219,10 @@ function queued(over: Record<string, unknown> = {}) {
 }
 const coded = (over: Record<string, unknown> = {}) =>
   queued({ mode: "ranked", code: "4N5Z", allow_joiners: true, start_level: "2", opener: true, ...over });
-type Seat = { name: string; you?: boolean; reconnecting?: boolean; since?: number;
+type Seat = { name: string; you?: boolean; ready?: boolean; reconnecting?: boolean; since?: number;
               sit?: string; pair?: boolean; leader?: boolean } | null;
 const seat = (name: string, over: Partial<NonNullable<Seat>> = {}): Seat => ({
-  name, you: false, reconnecting: false, since: nowSecs() - 30, sit: `sit-${name}`, pair: false,
+  name, you: false, ready: false, reconnecting: false, since: nowSecs() - 30, sit: `sit-${name}`, pair: false,
   leader: true, ...over,
 });
 function atTable(seats: Seat[], table: Record<string, unknown> = {}, over: Record<string, unknown> = {}) {
@@ -233,7 +233,11 @@ function atTable(seats: Seat[], table: Record<string, unknown> = {}, over: Recor
     ...over,
     table: {
       id: "t1", code: "4N5Z", opener: 0, you, seats, timer: null,
-      of: taken.length,
+      ready: taken.filter((s) => s.ready).length, of: taken.length,
+      you_ready: !!seats[you]?.ready,
+      // the joiners but you whose Ready is out: never the owner, never one reconnecting
+      waiting_for: seats.flatMap((s, at) => s && at !== ((table.opener as number | undefined) ?? 0)
+        && !s.ready && !s.you && !s.reconnecting ? [s.name] : []),
       ...table,
     },
   });
@@ -244,8 +248,8 @@ const duoParty = (youLead: boolean) => ({
   type: "party", party_id: "d1", code: "4N5Z", table: true, you_lead: youLead, expires_at: nowSecs() + 300,
   members: youLead ? [JERRY, ALICE] : [{ ...JERRY, you: false }, { ...ALICE, you: true }],
 });
-const duoState = (opener: boolean, over: Record<string, unknown> = {}) =>
-  queued({ party_id: "d1", leader: opener, duo: true, held_seat: null,
+const duoState = (opener: boolean, ready: number, youReady: boolean, over: Record<string, unknown> = {}) =>
+  queued({ party_id: "d1", leader: opener, duo: true, held_seat: null, duo_ready: ready, you_ready: youReady,
            code: "4N5Z", opener, allow_joiners: true, ...over });
 const follower = () => ({ type: "party", party_id: "p1", code: "7F2K", you_lead: false, expires_at: nowSecs() + 300,
                           members: [{ name: "Sam", leader: true, you: false }, { name: "Jerry", leader: false, you: true }] });
@@ -268,10 +272,10 @@ const roomSeat = (seat: number, name: string, o: { bot?: boolean; away?: boolean
   controller: o.bot ? "bot" : o.away ? "bot_cover" : "human", reserved_secs: null,
 });
 const roomPeek = (seats: ReturnType<typeof roomSeat>[]) => ({ type: "room_seats", room: "WXYZ", in_game: true, seats });
-const tablePeek = (seats: [string, string | null][], over: Record<string, unknown> = {}) => ({
+const tablePeek = (seats: [string, string | null, boolean?][], over: Record<string, unknown> = {}) => ({
   type: "room_seats", room: "4N5Z", table: true, mode: "casual", in_game: false, allow_joiners: true,
   full: false, closed: false,
-  seats: seats.map(([state, name], seat) => ({ seat, team: seat % 2, state, name })),
+  seats: seats.map(([state, name, ready], seat) => ({ seat, team: seat % 2, state, name, ready: ready ?? false })),
   ...over,
 });
 
@@ -293,10 +297,12 @@ const QUEUES: Fixture[] = [
   { name: "own: Duo, seat held, leave sheet", frames: () => [coded({ count: 1, duo: true, held_seat: 2 })],
     steps: [{ tap: "Leave" }] },
   { name: "own: Duo follower", frames: () => [follower(), queued({ party_id: "p1", leader: false })] },
-  { name: "own: Duo partner, waiting for the leader", frames: () => [duoParty(false), duoState(false)] },
-  { name: "own: Duo leader, Start with bots", frames: () => [duoParty(true), duoState(true)] },
-  { name: "own: Duo leader, casual", frames: () => [duoParty(true), duoState(true, { mode: "casual" })] },
-  { name: "own: Duo leader, leave sheet", frames: () => [duoParty(true), duoState(true)],
+  { name: "own: Duo friend, none ready", frames: () => [duoParty(false), duoState(false, 0, false)] },
+  { name: "own: Duo friend, you ready", frames: () => [duoParty(false), duoState(false, 1, true)] },
+  { name: "own: Duo opener, partner ready", frames: () => [duoParty(true), duoState(true, 1, false)] },
+  { name: "own: Duo opener, partner not ready", frames: () => [duoParty(true), duoState(true, 0, false)] },
+  { name: "own: Duo opener, partner ready, casual", frames: () => [duoParty(true), duoState(true, 1, false, { mode: "casual" })] },
+  { name: "own: Duo opener, leave sheet", frames: () => [duoParty(true), duoState(true, 0, false)],
     steps: [{ tap: "Leave" }] },
   { name: "join: Mei", frames: () => [coded({ offer: offer(), bots_paused: true, bots_at: null, code: null })] },
   { name: "join: Mei, wide", wide: true,
@@ -321,12 +327,12 @@ const QUEUES: Fixture[] = [
     { opener: false, mode: "casual", start_level: "7" })] },
   { name: "shared: Alice reconnecting, the owner may start", frames: () => [atTable(
     [seat("Jerry", { you: true }), seat("Alice", { reconnecting: true }), null, null])] },
-  { name: "shared: the owner's Start with a joiner seated", frames: () => [atTable(
-    [seat("Jerry", { you: true }), seat("Alice"), null, null])] },
-  { name: "shared: three seated", frames: () => [atTable(
+  { name: "shared: Alice ready, the owner's Start, the tick and 1 of 1 ready", frames: () => [atTable(
+    [seat("Jerry", { you: true }), seat("Alice", { ready: true }), null, null])] },
+  { name: "shared: three, no Ready yet", frames: () => [atTable(
     [seat("Jerry", { you: true }), seat("Alice"), seat("Li"), null])] },
-  { name: "shared: a joiner waits for the owner", frames: () => [atTable(
-    [seat("Jerry"), seat("Alice", { you: true }), null, null], { you: 1 },
+  { name: "shared: joiner ready, waiting for the owner", frames: () => [atTable(
+    [seat("Jerry"), seat("Alice", { you: true, ready: true }), null, null], { you: 1 },
     { opener: false })] },
   { name: "shared: no timer, waiting for people", frames: () => [atTable(
     [seat("Jerry", { you: true }), seat("Alice"), null, null], {}, { bots_at: null, wait_players: true })] },
@@ -366,9 +372,9 @@ const QUEUES: Fixture[] = [
   { name: "join code: a full room", link: "/?code=WXYZ", frames: () => [roomPeek([
     roomSeat(0, "Mei"), roomSeat(1, "Alice"), roomSeat(2, "Sam"), roomSeat(3, "Li")])] },
   { name: "join code: a queued table with a held Partner seat", link: "/?code=4N5Z", frames: () => [tablePeek(
-    [["taken", "Mei"], ["held", null], ["held", null], ["open", null]])] },
+    [["taken", "Mei", true], ["held", null], ["held", null], ["open", null]])] },
   { name: "join code: a ranked queued table", link: "/?code=4N5Z", frames: () => [tablePeek(
-    [["taken", "Mei"], ["taken", "Li"], ["open", null], ["open", null]], { mode: "ranked" })] },
+    [["taken", "Mei"], ["taken", "Li", true], ["open", null], ["open", null]], { mode: "ranked" })] },
   { name: "join code: a link mid-peek", link: "/?code=4N5Z", frames: () => [] },
 ];
 
@@ -386,46 +392,75 @@ describe("the model and its dispatcher", () => {
     return taps.filter((tp) => tp.sent.some((m) => (m as { type?: string }).type === type))
       .map((tp) => tp.control);
   };
-
-  it("a Duo's leader's Start with bots is enabled with its partner there; the partner has nothing to tap", async () => {
-    expect(await sends("table_start_bots", () => [duoParty(true), duoState(true)]))
-      .toEqual(['button "60Start with bots"']);
-    expect(await sends("table_start_bots", () => [duoParty(true), duoState(true, { mode: "casual" })]))
-      .toEqual(['button "60Start with bots"']);
-    expect(await sends("table_start", () => [duoParty(false), duoState(false)])).toEqual([]);
-    expect(await sends("table_start_bots", () => [duoParty(false), duoState(false)])).toEqual([]);
-  }, 60_000);
-
-  it("a shared table's owner's Start with bots is enabled with a joiner there; a joiner has nothing to tap", async () => {
-    const owner = (alice: Record<string, unknown>) => () => [atTable(
-      [seat("Jerry", { you: true }), seat("Alice", alice), null, null])];
-    expect(await sends("table_start_now", owner({}))).toEqual(['button "Start with bots"']);
-    expect(await sends("table_start_now", owner({ reconnecting: true }))).toEqual(['button "Start with bots"']);
-    expect(await sends("table_start", owner({}))).toEqual([]);
-    const joiner = () => [atTable(two(), {}, { opener: false })];
-    expect(await sends("table_start", joiner)).toEqual([]);
-    expect(await sends("table_start_now", joiner)).toEqual([]);
-  }, 60_000);
-
-  it("a joiner's panel has no primary button and says it waits for the owner; the owner's says who is seated", async () => {
+  const model = async (qs: Record<string, unknown>, over: Record<string, unknown> = {}, party: unknown = null) => {
     vi.resetModules();
     const { fromQueue } = await import("./tableModel");
     const { tableFrameFor } = await import("./testFrames");
-    const view = (qs: Record<string, unknown>, over: Record<string, unknown> = {}) => ({
-      count: 1, queued: true, since: Date.now(), waitPlayers: false, front: false, leader: true, partyId: null,
-      pending: null, frame: tableFrameFor(qs), offer: null, openTables: 0, botsPaused: false, cooldownUntil: null,
-      cooldownTold: false, elsewhere: false, party: null, note: null, presence: null, panelSeq: 1,
-      stillHereUntil: null, inGame: null, playMode: "ranked", queueMode: "ranked", tableChat: [], duo: false, ...over,
-    });
-    const joiner = fromQueue(view(atTable([seat("Jerry"), seat("Alice", { you: true }), null, null], { you: 1 },
-                                          { opener: false })) as never, { now: Date.now(), picked: null })!;
-    expect(joiner.primary).toBeNull();
-    expect(joiner.status?.text).toBe("Waiting for Jerry to start");
-    expect(joiner.secondary?.label).toBe("Leave");
-    expect(joiner.seats!.every((s) => !s.tick)).toBe(true);
-    const owner = fromQueue(view(atTable(two())) as never, { now: Date.now(), picked: null })!;
-    expect(owner.primary).toMatchObject({ label: "Start with bots", disabled: false, act: { type: "start_now" } });
-    expect(owner.status?.text).toBe("2 seated");
+    const view = {
+      count: 1, queued: true, since: Date.now(), waitPlayers: false, front: false, leader: qs.leader !== false,
+      partyId: (qs.party_id as string | undefined) ?? null, pending: null,
+      frame: tableFrameFor(qs, party as never), offer: null, openTables: 0, botsPaused: false, cooldownUntil: null,
+      cooldownTold: false, elsewhere: false, party, note: null, presence: null, panelSeq: 1,
+      stillHereUntil: null, inGame: null, playMode: "ranked", queueMode: "ranked", tableChat: [], duo: qs.duo === true,
+      duoReady: (qs.duo_ready as number | null | undefined) ?? null, ...over,
+    };
+    return fromQueue(view as never, { now: Date.now(), picked: null })!;
+  };
+
+  it("a Duo's leader's Start with bots is enabled whether or not its partner is Ready; the partner's Ready toggles", async () => {
+    expect(await sends("table_start_bots", () => [duoParty(true), duoState(true, 0, false)]))
+      .toEqual(['button "60Start with bots"']);
+    expect(await sends("table_start_bots", () => [duoParty(true), duoState(true, 1, false)]))
+      .toEqual(['button "60Start with bots"']);
+    expect(await sends("table_start_bots", () => [duoParty(true), duoState(true, 0, false, { mode: "casual" })]))
+      .toEqual(['button "60Start with bots"']);
+    expect(await sends("table_start", () => [duoParty(true), duoState(true, 0, false)])).toEqual([]);
+    expect(await sends("table_start_bots", () => [duoParty(false), duoState(false, 0, false)])).toEqual([]);
+    expect(await sends("table_start", () => [duoParty(false), duoState(false, 0, false)]))
+      .toEqual(['button "60Ready"']);
+    const off = await model(duoState(false, 0, false), {}, duoParty(false));
+    expect(off.primary).toMatchObject({ label: "Ready", pressed: false, act: { type: "start" } });
+    expect(off.status?.text).toBe("Waiting for Jerry to start");
+    expect(off.secondary?.label).toBe("Leave");
+    const on = await model(duoState(false, 1, true), {}, duoParty(false));
+    expect(on.primary).toMatchObject({ label: "Ready", pressed: true, waiting: true, act: { type: "unready" } });
+    const lead = await model(duoState(true, 0, false), {}, duoParty(true));
+    expect(lead.primary).toMatchObject({ label: "Start with bots", disabled: false, act: { type: "start_bots" } });
+  }, 60_000);
+
+  it("a shared table's owner starts with an un-ready joiner there; a joiner taps Ready", async () => {
+    const owner = (alice: Record<string, unknown>) => () => [atTable(
+      [seat("Jerry", { you: true }), seat("Alice", alice), null, null])];
+    expect(await sends("table_start_now", owner({}))).toEqual(['button "Start with bots"']);
+    expect(await sends("table_start_now", owner({ ready: true }))).toEqual(['button "Start with bots"']);
+    expect(await sends("table_start_now", owner({ reconnecting: true }))).toEqual(['button "Start with bots"']);
+    expect(await sends("table_start", owner({}))).toEqual([]);
+    expect(await sends("table_start", () => [atTable(two(), {}, { opener: false })])).toEqual(['button "Ready"']);
+    expect(await sends("table_start_now", () => [atTable(two(), {}, { opener: false })])).toEqual([]);
+  }, 60_000);
+
+  it("the owner's line counts its joiners' Ready; its Start never waits for one", async () => {
+    const un = await model(atTable([seat("Jerry", { you: true }), seat("Alice"), seat("Li"), null]));
+    expect(un.primary).toMatchObject({ label: "Start with bots", disabled: false, act: { type: "start_now" } });
+    expect(un.status?.text).toBe("0 of 2 ready");
+    const one = await model(atTable([seat("Jerry", { you: true }), seat("Alice", { ready: true }), seat("Li"), null]));
+    expect(one.primary).toMatchObject({ label: "Start with bots", disabled: false });
+    expect(one.status?.text).toBe("1 of 2 ready");
+    expect(one.seats!.find((s) => s.at === 1)?.tick).toBe(true);
+    expect(one.seats!.find((s) => s.at === 2)?.tick).toBe(false);
+  }, 60_000);
+
+  it("a joiner's Ready toggles pressed and its act, and its own seat's tick; its line waits for the owner", async () => {
+    const at = (ready: boolean) => atTable([seat("Jerry"), seat("Alice", { you: true, ready }), null, null], { you: 1 },
+                                           { opener: false });
+    const off = await model(at(false));
+    expect(off.primary).toMatchObject({ label: "Ready", pressed: false, act: { type: "start" } });
+    expect(off.status?.text).toBe("Waiting for Jerry to start");
+    expect(off.secondary?.label).toBe("Leave");
+    expect(off.seats!.find((s) => s.at === 1)?.tick).toBe(false);
+    const on = await model(at(true));
+    expect(on.primary).toMatchObject({ label: "Ready", pressed: true, waiting: true, act: { type: "unready" } });
+    expect(on.seats!.find((s) => s.at === 1)?.tick).toBe(true);
   }, 60_000);
 
   it("a table's move needs the sitting token", async () => {

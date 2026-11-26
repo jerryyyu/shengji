@@ -8,22 +8,21 @@ and `room_seats`, and translates each into one `TableModel`. One frame,
 
 ## The frame
 
-`{type: "table", code, phase, mode, you, opener, seats[4], settings, timers, chat_log}`
+`{type: "table", code, phase, mode, you, opener, seats[4], settings, timers, your_ready, waiting_for, chat_log}`
 
-There is no Ready (Jerry 2026-11-26, J1: joining is all a joiner does; only
-the owner starts), so the frame carries no `your_ready`, `waiting_for` or
-`seats[i].ready`, and `queue_state` no `you_ready`, `duo_ready` or table
-`ready`/`you_ready`/`waiting_for`.
+A joiner's Ready (`seats[i].ready`, `your_ready`, `waiting_for`) is a signal
+to the others since 2026-11-26 (Jerry): the owner's Start never waits for
+it, and nothing starts because every Ready is in.
 
 - `phase`: `"open"` | `"playing"`. `mode`: `"ranked"` | `"casual"`.
-- `seats`: four, in seat order, each `{seat, team, state, name, you, reconnecting, since, sit, pair, leader, left}`;
+- `seats`: four, in seat order, each `{seat, team, state, name, you, ready, reconnecting, since, sit, pair, leader, left}`;
   `state` is `taken` | `open` | `held` (kept for a Duo opener's friend) | `bot` (a bot plays it in a game).
 - `settings`: `{allow_joiners, start_level}`. `timers`: `{bots: {at, name, you} | null}`.
 - `chat_log`: the key the table's chat frames carry (`table_chat.table`, or the room code for `chat`).
 
 **Not in it.** The search (`since`, `count`, `front`, `party_id`, `leader`,
 `wait_players`, `bots_paused`, `offer`, `open_tables`, `panel_seq`,
-`still_here_until`, `duo`) stays in `queue_state`: it is the
+`still_here_until`, `duo`, `duo_ready`) stays in `queue_state`: it is the
 entry, not the table. The game (`state`, its `players[].cards_left`, takeover
 countdowns, move timer, `ready` for the next round, `joining`) stays in
 `state`. `resume`, `chat`/`table_chat`, `table_moved`, offers and
@@ -54,16 +53,20 @@ fresh socket always gets it. `queue_state {queued: false}`, `queue_removed`,
 | `opener` | `table.opener`; `opener: true` iff it equals `you` | `opener` (= `host`) |
 | `seats[i].state` | `table.seats[i]` non-null: `taken`; null: `held` if in `held_seats`, else `open` | `players[i].is_bot` or `left`: `bot`; else `taken` |
 | `seats[i].name, you` | `table.seats[i].name, you` | `players[i].name`; `you` = `i == you` |
+| `seats[i].ready` | `table.seats[i].ready` | null (round-end `ready` stays in `state`) |
 | `seats[i].reconnecting` | `table.seats[i].reconnecting` | a person's seat with `connected: false` |
 | `seats[i].since, sit, pair, leader` | `table.seats[i]` same names | null / false |
 | `seats[i].left` | false | `players[i].left` |
 | `settings.allow_joiners` | `allow_joiners` | `allow_joiners`, null where absent (a test room) |
 | `settings.start_level` | `start_level` | `start_level` |
 | `timers.bots` | `table.timer`; alone: `{at: bots_at, ...}` or null | null |
+| `your_ready` | `you_ready` (= `table.you_ready`) | null |
+| `waiting_for` | `table.waiting_for`: the connected joiners but you whose Ready is out (the owner has none); alone: your Duo partner if not ready, for its leader | null |
 | `chat_log` | `table.id`, alone null | `room` |
 
-Derivable, so dropped: `table.of` (count `taken` seats),
-`table.held_seat`/`held_seats` and `queue_state.held_seat` (the `held` seat). Lost: nothing the panel reads.
+Derivable, so dropped: `table.ready`/`of` (count `ready`/`taken` seats),
+`table.held_seat`/`held_seats` and `queue_state.held_seat` (the `held` seat),
+`duo_ready` (ready seats of your pair). Lost: nothing the panel reads.
 Not carried: `table.id` beyond `chat_log`, `experimental_policy` and
 `matched` (stay in `room`/`state`).
 
@@ -80,12 +83,12 @@ Not carried: `table.id` beyond `chat_log`, `experimental_policy` and
    frame alone, with one seat builder for a table alone or shared.
    `queue_state` still carries the search (`since`, `count`, `front`,
    `party_id`, `leader`, `wait_players`, `bots_paused`, `offer`,
-   `open_tables`, `panel_seq`, `still_here_until`, `duo`,
+   `open_tables`, `panel_seq`, `still_here_until`, `duo`, `duo_ready`,
    `mode`, `cooldown_until`, `elsewhere`); its table fields are still sent
    and no longer read. The client's test sockets build the frame from each
    held `queue_state` (`web/src/queue/testFrames.ts`, held to the server's
    pairs in `web/src/queue/fixtures/table_frames.json`). Not yet: a room's
    seats from the `playing` frame, and the offline server's `table`.
 3. **Retire**: drop `queue_state.table` and its table fields (`code`,
-   `allow_joiners`, `start_level`, `opener`, `held_seat`) and
+   `allow_joiners`, `start_level`, `opener`, `held_seat`, `you_ready`) and
    `room`'s seat list once no client in the field reads them.

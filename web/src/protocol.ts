@@ -115,9 +115,9 @@ export interface RoomMsg {
    *  "advanced"). Absent offline. */
   bot_level?: BotLevel;
   /** A nearby table's lobby, hosted on a phone (offline/server/nearby):
-   *  the seconds until bots take the open seats (null
+   *  whose Ready is in (a signal only), the seconds until bots take the open seats (null
    *  while the host is alone), and whether someone has joined. */
-  nearby?: { bots_in: number | null; locked: boolean };
+  nearby?: { ready?: number[]; bots_in: number | null; locked: boolean };
 }
 
 export interface StatePlayer {

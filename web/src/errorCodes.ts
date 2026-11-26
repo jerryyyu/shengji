@@ -47,6 +47,7 @@ const QUEUE_ROUTES = {
   seat_taken: { says: "queue", text: ["queue.err.seatTaken", "queue.err.pickAnother"] },
   table_closed: { says: "queue", text: ["queue.err.closed"] },
   pair_seats_fixed: { says: "queue", text: ["queue.err.pairFixed"] },
+  already_ready: { says: "queue", text: ["queue.err.alreadyReady"] },
   panel_changed: { says: "silent" },
   bad_mode: { says: "toast" },
   table_not_found: { says: "toast" },

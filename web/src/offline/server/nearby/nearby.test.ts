@@ -92,20 +92,24 @@ describe("the nearby lobby", () => {
     expect(fifth.sock.readyState).toBe(NearbySocket.CLOSED);
   });
 
-  it("only the host starts: a guest's older Start changes nothing, and nothing starts when every guest has tapped", async () => {
+  it("a guest's Ready is its tick only: nothing starts when every guest is Ready; the host starts with a guest un-ready", async () => {
     const t = await lobby(3);
-    const nb = (p: Player) => lastRoom(p).nearby as { bots_in: number | null; locked: boolean };
-    expect(nb(t.host)).toMatchObject({ locked: true });
-    expect(nb(t.host)).not.toHaveProperty("ready");
+    const nb = (p: Player) => lastRoom(p).nearby as { ready: number[]; bots_in: number | null; locked: boolean };
+    expect(nb(t.host)).toMatchObject({ ready: [], locked: true });
     expect(nb(t.host).bots_in).toBeGreaterThan(55);
     for (const j of t.joiners) t.send(j, { type: "table_start" });
-    t.send(t.joiners[0], { type: "table_start", on: false });
+    await t.settle(() => nb(t.host).ready.length === 2);
     await t.advance(2);
-    expect(t.room!.game).toBeNull();
+    expect(t.room!.game).toBeNull();                       // every guest Ready: still the host's call
+    t.send(t.joiners[0], { type: "table_start", on: false });
+    await t.settle(() => nb(t.host).ready.length === 1);
+    await t.settle(() => nb(t.joiners[1]).ready.length === 1);
+    expect(nb(t.joiners[1]).ready).toEqual([t.joiners[1].seat]);
     expect(errors(t.joiners[0])).toHaveLength(0);
-    t.send(t.host, { type: "table_start_now" });
+    t.send(t.host, { type: "table_start_now" });           // a guest is not Ready: everyone plays
     await t.settle(() => t.players().every((p) => t.lastState(p) !== undefined));
     expect(t.room!.seats.filter((s) => s.isBot)).toHaveLength(1);
+    expect(t.room!.seats.filter((s) => !s.isBot)).toHaveLength(3);
   });
 
   it("the host's Start does not wait for a guest whose link is down", async () => {
@@ -119,17 +123,26 @@ describe("the nearby lobby", () => {
     expect(t.room!.seats.filter((s) => !s.isBot)).toHaveLength(3);
   });
 
-  it("the host's panel has an enabled Start with bots and the seated count; a guest's waits for the host with Leave", async () => {
+  it("the host's panel has an enabled Start with bots and the guests' ready count; a guest's has its Ready toggle and Leave", async () => {
     const t = await lobby(2);
     const at = { now: Date.now(), botsAt: null };
-    const host = nearbyRoomModel(lastRoom(t.host) as unknown as RoomMsg, at);
-    expect(host.primary).toMatchObject({ label: "Start with bots", disabled: false, act: { type: "nearby_start" } });
-    expect(host.status?.text).toBe("2 seated");
-    expect(host.seats!.every((s) => !s.tick)).toBe(true);
-    const guest = nearbyRoomModel(lastRoom(t.joiners[0]) as unknown as RoomMsg, at);
-    expect(guest.primary).toBeNull();
-    expect(guest.status?.text).toMatch(/^Waiting for .+ to start$/);
-    expect(guest.secondary?.act).toEqual({ type: "offline_leave" });
+    const host = () => nearbyRoomModel(lastRoom(t.host) as unknown as RoomMsg, at);
+    const guest = () => nearbyRoomModel(lastRoom(t.joiners[0]) as unknown as RoomMsg, at);
+    expect(host().primary).toMatchObject({ label: "Start with bots", disabled: false, act: { type: "nearby_start" } });
+    expect(host().status?.text).toBe("0 of 1 ready");
+    expect(guest().primary).toMatchObject({ label: "Ready", disabled: false, pressed: false,
+                                            act: { type: "nearby_ready", on: true } });
+    expect(guest().status?.text).toMatch(/^Waiting for .+ to start$/);
+    expect(guest().secondary?.act).toEqual({ type: "offline_leave" });
+    t.send(t.joiners[0], { type: "table_start" });
+    await t.settle(() => (lastRoom(t.host).nearby as { ready: number[] }).ready.length === 1);
+    await t.settle(() => (lastRoom(t.joiners[0]).nearby as { ready: number[] }).ready.length === 1);
+    expect(host().primary).toMatchObject({ label: "Start with bots", disabled: false });
+    expect(host().status?.text).toBe("1 of 1 ready");
+    expect(host().seats!.find((s) => s.at === t.joiners[0].seat)?.tick).toBe(true);
+    expect(guest().primary).toMatchObject({ label: "Ready", pressed: true, waiting: true,
+                                            act: { type: "nearby_ready", on: false } });
+    expect(t.room!.game).toBeNull();
   });
 
   it("the host alone starts at once; a second person starts the bots' ring", async () => {

@@ -4134,7 +4134,7 @@ class PVSearchBot(PolicyValueBot):
         elif self._exact_follow_eligible(rnd, admitted):
             # The normal PV result is complete before this optional stage starts.
             # Any refusal, budget expiry, or malformed world leaves it untouched.
-            from .pv_exact_follow import rerank_follow
+            from .pv_exact_follow import ExactFollowProgress, rerank_follow
             baseline_winner, baseline_played = winner, list(played)
             soft_deadline = None
             if self.serving_budget_seconds is not None:
@@ -4145,6 +4145,7 @@ class PVSearchBot(PolicyValueBot):
                 clock=time.perf_counter, soft_error=PVSearchBudgetExceeded,
                 final_check=check_budget)
             exact = None
+            progress = ExactFollowProgress()
             solved = self._exact_worlds(worlds)
             with stage:
                 if stage.guard is not None:
@@ -4155,7 +4156,7 @@ class PVSearchBot(PolicyValueBot):
                     max_hand_cards=self.exact_follow_max_cards,
                     solver=self.exact_follow_solver,
                     check_budget=stage.guard,
-                    retain_world_scores=self.exact_follow_points)
+                    retain_world_scores=self.exact_follow_points, progress=progress)
                 stage.raise_if_tripped()
                 changed = exact.winner != baseline_winner
                 if changed:
@@ -4171,6 +4172,8 @@ class PVSearchBot(PolicyValueBot):
                     "exact_follow_applied": False,
                     "exact_follow_abandoned": stage.reason,
                     "exact_follow_error": stage.error,
+                    "exact_follow_aborted_worlds_completed": progress.completed_worlds,
+                    "exact_follow_aborted_worlds_requested": len(solved),
                 }
             else:
                 exact_follow_record = {

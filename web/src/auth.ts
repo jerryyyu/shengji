@@ -334,16 +334,19 @@ export const IOS_APP_CLIENT = "ios-app";
 /** `POST /api/auth/device`: with a token, sign in as the account holding
  *  it; without, make a new account, whose token comes back this once, asking
  *  for `name` (the guest's chosen name) when given; the server keeps it only
- *  when it passes the display-name checks and is free. Status 0 is no
- *  connection. 404 means the server has device accounts off, and 429 too
- *  many attempts: either way the app plays as a guest. */
-export async function deviceAuth(token: string | null, name: string | null = null): Promise<{ status: number; user: AuthUser | null; token: string | null }> {
+ *  when it passes the display-name checks and is free. `lang`, a Chinese
+ *  interface ("zh-Hans", "zh-Hant"), has the server draw a Chinese name
+ *  otherwise. Status 0 is no connection. 404 means the server has device
+ *  accounts off, and 429 too many attempts: either way the app plays as a
+ *  guest. */
+export async function deviceAuth(token: string | null, name: string | null = null,
+                                 lang: string | null = null): Promise<{ status: number; user: AuthUser | null; token: string | null }> {
   const headers: Record<string, string> = { [CLIENT_HEADER]: IOS_APP_CLIENT };
   if (token) headers.Authorization = `Device ${token}`;
   const init: RequestInit = { method: "POST", headers };
-  if (!token && name) {
+  if (!token && (name || lang)) {
     headers["Content-Type"] = "application/json";
-    init.body = JSON.stringify({ name });
+    init.body = JSON.stringify({ ...(name ? { name } : {}), ...(lang ? { lang } : {}) });
   }
   let got: { status: number; body: (Partial<AuthUser> & { user?: AuthUser; token?: string }) | null };
   try {

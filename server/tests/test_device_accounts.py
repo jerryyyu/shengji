@@ -279,6 +279,57 @@ def test_every_generated_name_is_valid_and_filtered(device_on):
         assert not chat_filter.contains(name), name
 
 
+@pytest.mark.parametrize("lang", ["zh-Hans", "zh-Hant"])
+def test_every_chinese_name_is_valid_and_filtered(device_on, lang):
+    from shengji.api import chat_filter, device_names
+
+    names = device_names.all_names(lang)
+    assert len(names) == len(set(names)) == 400
+    for name in names:
+        assert len(name) <= 6 and "的" in name, name
+        assert device_on.validate_display_name(name) == name, name
+        assert not chat_filter.contains(name), name
+
+
+def test_the_chinese_lists_match_the_web_client():
+    """The web guest fill (web/src/randomName.ts ZH_NAMES) and the server
+    draw use the same words, so a name a guest saw reads the same here."""
+    import pathlib
+    import re
+    from shengji.api import device_names
+
+    src = (pathlib.Path(__file__).resolve().parents[2] / "web" / "src" / "randomName.ts").read_text()
+    for lang, moods, words in (("zh-Hans", device_names.ZH_HANS_MOODS, device_names.ZH_HANS_WORDS),
+                               ("zh-Hant", device_names.ZH_HANT_MOODS, device_names.ZH_HANT_WORDS)):
+        block = src[src.index(f'"{lang}": {{'):]
+        lists = re.findall(r"(moods|words): \[([^\]]*)\]", block)[:2]
+        got = {k: tuple(re.findall(r'"([^"]+)"', v)) for k, v in lists}
+        assert got == {"moods": moods, "words": words}, lang
+
+
+def test_a_chinese_interface_gets_a_chinese_name_and_falls_back_to_english(device_on, client, monkeypatch):
+    from shengji.api import device_names
+
+    resp = client.post("/api/auth/device", headers=APP, json={"lang": "zh-Hans"})
+    assert resp.status_code == 200
+    assert resp.json()["user"]["display_name"] in set(device_names.all_names("zh-Hans"))
+    resp = client.post("/api/auth/device", headers=APP, json={"lang": "zh-Hant"})
+    assert resp.json()["user"]["display_name"] in set(device_names.all_names("zh-Hant"))
+    # a chosen name still wins over the language
+    resp = client.post("/api/auth/device", headers=APP, json={"name": "小明", "lang": "zh-Hans"})
+    assert resp.json()["user"]["display_name"] == "小明"
+    # any other language, or none, is English
+    resp = client.post("/api/auth/device", headers=APP, json={"lang": "fr"})
+    assert resp.json()["user"]["display_name"] in set(device_names.all_names())
+    # a spent Chinese pool draws an English name
+    monkeypatch.setattr(device_names, "ZH_HANS_MOODS", ("淡定",))
+    monkeypatch.setattr(device_names, "ZH_HANS_WORDS", ("庄家",))
+    store = device_on.STORE
+    first = store.create_device_user("a" * 43, lang="zh-Hans")["display_name"]
+    second = store.create_device_user("b" * 43, lang="zh-Hans")["display_name"]
+    assert first == "淡定的庄家" and second in set(device_names.all_names())
+
+
 def test_generated_names_are_unique_case_insensitively(device_on, monkeypatch):
     from shengji.api import device_names
 
@@ -406,13 +457,32 @@ def _streamed(chunk: bytes, headers=()):
     return Request({"type": "http", "method": "POST", "headers": list(headers)}, receive), sent
 
 
+@pytest.mark.parametrize("body, wants", [
+    (b'{"lang": "zh-Hans"}', (None, "zh-Hans")),
+    (b'{"name": "Mei", "lang": "zh-Hant"}', ("Mei", "zh-Hant")),
+    (b'{"lang": "fr"}', (None, None)),
+    (b'{"lang": ["zh-Hans"]}', (None, None)),
+    (b'{"lang": {"a": 1}}', (None, None)),
+    (b'["zh-Hans"]', (None, None)),
+])
+def test_only_a_chinese_lang_is_kept(device_on, body, wants):
+    import asyncio
+    from starlette.requests import Request
+
+    async def receive():
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    request = Request({"type": "http", "method": "POST", "headers": []}, receive)
+    assert asyncio.run(device_on._device_wants(request)) == wants
+
+
 def test_a_streamed_body_over_the_cap_stops_at_the_cap(device_on):
     """With no Content-Length, the read stops at the first chunk past the cap."""
     import asyncio
 
     chunk = b"x" * 1000
     request, sent = _streamed(chunk)
-    assert asyncio.run(device_on._wanted_device_name(request)) is None
+    assert asyncio.run(device_on._device_wants(request)) == (None, None)
     assert sent["n"] == device_on.DEVICE_BODY_MAX // len(chunk) + 1
 
 
@@ -420,7 +490,7 @@ def test_a_declared_length_over_the_cap_is_never_read(device_on):
     import asyncio
 
     request, sent = _streamed(b"x", headers=[(b"content-length", b"4097")])
-    assert asyncio.run(device_on._wanted_device_name(request)) is None
+    assert asyncio.run(device_on._device_wants(request)) == (None, None)
     assert sent["n"] == 0
 
 

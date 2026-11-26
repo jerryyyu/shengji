@@ -7,7 +7,7 @@
 // that mark existed has none.
 
 import { useSyncExternalStore } from "react";
-import { NAME_ADJECTIVES, NAME_NOUNS } from "./randomName";
+import { isRandomName } from "./randomName";
 import { telemetry, type SigninFrom } from "./telemetry";
 import { getSavedName, saveName } from "./ws";
 import { t } from "./i18n";
@@ -120,13 +120,6 @@ export const guestName = new GuestNameStore();
 
 export function useGuestName(): GuestNameView {
   return useSyncExternalStore(guestName.subscribe, guestName.getSnapshot, guestName.getSnapshot);
-}
-
-/** Whether `name` is one the random fill (or its dice) could have given. */
-function isRandomName(name: string): boolean {
-  const [adjective, noun, ...rest] = name.split(" ");
-  return rest.length === 0 && (NAME_ADJECTIVES as readonly string[]).includes(adjective)
-    && (NAME_NOUNS as readonly string[]).includes(noun ?? "");
 }
 
 /** The name this guest chose, for a new device account to keep: the one

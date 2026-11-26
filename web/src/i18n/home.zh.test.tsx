@@ -96,6 +96,28 @@ describe("the Play tab in Chinese", () => {
     expect(host.textContent).not.toMatch(/Sheng Ji|Ranked|Casual|Duo|Join|How to play|Playing as a guest/);
   });
 
+  it("a new guest is named in Chinese, a guest with a name keeps it, and the dice draw Chinese names", async () => {
+    localStorage.removeItem("shengji.name");
+    guestName.reset();
+    await render(<><Lobby status="open" /><IdentitySheet /></>);
+    const drawn = guestName.name;
+    expect(drawn).toMatch(/^[\u4e00-\u9fffK]{2,3}的[\u4e00-\u9fffK]{2,3}$/);
+    expect(localStorage.getItem("shengji.name")).toBe(drawn);
+    act(() => host.querySelector<HTMLButtonElement>(".guest-pill")!.click());
+    act(() => host.querySelector<HTMLButtonElement>(".name-reroll")!.click());
+    const field = host.querySelector<HTMLInputElement>("input[autocomplete='nickname']")!;
+    expect(field.value).not.toBe(drawn);
+    expect(field.value).toMatch(/的/);
+    act(() => root.unmount());
+    host.remove();
+    // the saved English name of an earlier visit is never renamed
+    localStorage.setItem("shengji.name", "Cheerful Banker");
+    guestName.reset();
+    await render(<><Lobby status="open" /><IdentitySheet /></>);
+    expect(guestName.name).toBe("Cheerful Banker");
+    expect(host.querySelector(".guest-pill")?.getAttribute("aria-label")).toBe("Cheerful Banker，游客，改昵称");
+  });
+
   it("the guest chip and its name sheet read in zh", async () => {
     await render(<><Lobby status="open" /><IdentitySheet /></>);
     const chip = host.querySelector<HTMLButtonElement>(".guest-pill")!;

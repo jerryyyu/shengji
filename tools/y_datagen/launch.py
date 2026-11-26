@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import plistlib
 from pathlib import Path
 from collections import Counter
 import shutil
@@ -53,6 +54,44 @@ def _census():
                 or exe in ('bash', 'sh', 'zsh') and '--arm' in argv):
             raise Refused(f'competing process {raw_pid}: {argv[:180]}')
 
+def _volume(uuid, *, internal):
+    info = plistlib.loads(subprocess.check_output(
+        ['/usr/sbin/diskutil', 'info', '-plist', uuid], timeout=10))
+    if (info.get('VolumeUUID') != uuid or info.get('Internal') is not internal
+            or not info.get('MountPoint')):
+        raise Refused('expected volume is unavailable or has the wrong storage type')
+    mount = Path(info['MountPoint'])
+    if mount.stat().st_dev != Path(info['DeviceNode']).stat().st_rdev:
+        raise Refused('expected a mounted volume')
+    return mount
+
+
+def _tranche_volumes(spec, out):
+    if 'tranche_volumes' not in spec:
+        return None
+    volumes = spec['tranche_volumes']
+    internal = _volume(volumes['internal_uuid'], internal=True)
+    archive = _volume(volumes['archive_uuid'], internal=False)
+    device = internal.stat().st_dev
+    if (out.is_symlink() or out.parent.stat().st_dev != device
+            or (out.exists() and out.stat().st_dev != device) or archive.stat().st_dev == device):
+        raise Refused('leg output must use the reviewed internal volume')
+    if not (150 <= spec['stop_disk_gib'] <= spec['admit_disk_gib'] - 7):
+        raise Refused('internal admission must cover the floor and a full leg')
+    return internal, device, archive, archive.stat().st_dev
+
+
+def _archive_headroom(volumes):
+    if volumes is None:
+        return True
+    internal, internal_device, archive, archive_device = volumes
+    try:
+        return (internal.stat().st_dev == internal_device and archive.stat().st_dev == archive_device
+                and shutil.disk_usage(archive).free >= 175 * 2**30)
+    except OSError:
+        return False
+
+
 def _admit(spec):
     if socket.gethostname() != spec['host']:
         raise Refused('host mismatch')
@@ -98,6 +137,10 @@ def _admit(spec):
         if sha256(path) != expected:
             raise Refused(f'file drift: {path}')
     _census()
+    volumes = _tranche_volumes(spec, out)
+    if not _archive_headroom(volumes):
+        raise Refused('archive volume missing or below 175 GiB')
+    return volumes
 
 def group_alive(pid):
     try:
@@ -234,7 +277,7 @@ def execute(spec, spec_sha, launcher):
     old = {s: signal.signal(s, stop) for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
     status = 'refused'
     try:
-        _admit(spec)
+        volumes = _admit(spec)
         _release(spec['release'], own_sha, spec_sha)
         if sha256(launcher) != own_sha:
             raise Refused('launcher changed')
@@ -255,7 +298,7 @@ def execute(spec, spec_sha, launcher):
                 status = requested[0]
             elif any(present(p) for p in spec['holds']):
                 status = 'held'
-            elif shutil.disk_usage(out.parent).free < spec['stop_disk_gib'] * 2**30:
+            elif not _archive_headroom(volumes) or shutil.disk_usage(out.parent).free < spec['stop_disk_gib'] * 2**30:
                 status = 'disk'
             elif time.monotonic()-started >= spec['max_seconds']:
                 status = 'time-cap'

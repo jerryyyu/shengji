@@ -461,9 +461,10 @@ other socket with `account_in_game`.
   connected), ranked or casual; `ranked` and `casual` split `tables` by mode;
   `playing`: connected people seated at those tables. Counts only, no names
   or codes.
-  With the watch feed on (`SPECTATE_ENABLED=1`) it also carries `watch` (tables
-  that can be watched) and `rerun` (a finished ranked round can be replayed);
-  an older client ignores both, and without them the line is not a link.
+  To a socket that may watch (`SPECTATE_ENABLED=1` for everyone, or a signed-in
+  account listed in `SPECTATE_ACCOUNTS`) it also carries `watch` (tables that
+  can be watched) and `rerun` (a finished ranked round can be replayed); an
+  older client ignores both, and without them the line is not a link.
 - `table_chat {table, id, seat, name, text, t}`: a line of your table's
   chat, to everyone there, the sender included; `table` is the waiting
   table's id, or null while you wait alone; `id` counts up per table, `seat`
@@ -708,7 +709,10 @@ the front of the queue); once seated, the away player gets `left {reason:
 ## Watching a table
 
 A watcher never opens a room's socket: it reads finished rounds over HTTP
-(`server/shengji/api/spectate.py`), off unless `SPECTATE_ENABLED=1`.
+(`server/shengji/api/spectate.py`). Off unless `SPECTATE_ENABLED=1`, or for a
+signed-in account whose id is in `SPECTATE_ACCOUNTS` (comma-separated account
+ids, a deployment secret); anyone else gets 404 from both endpoints. A listed
+account may watch any live table's last finished round.
 
 - `GET /api/watch?mode=&skip=&w=` picks a table (the `mode` first, then the
   table furthest into its game, never `skip`) and answers with its latest

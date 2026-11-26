@@ -19,9 +19,15 @@ be past that round (``_is_over``). A round in play, an abandoned one or one
 replaced by a new deal has no ``round_end`` and is never served.
 
 Limits. At most ``WATCH_CAP`` watchers per table (a watcher counts until
-``WATCH_TTL`` passes without a poll), and ``LIMITER`` per address. The feed
-is off unless ``SPECTATE_ENABLED=1``: then the presence line says how many
-tables can be watched, and these endpoints answer.
+``WATCH_TTL`` passes without a poll), and ``LIMITER`` per address.
+
+Who may watch. Nobody unless ``SPECTATE_ENABLED=1`` (everyone) or the
+signed-in account's id is in ``SPECTATE_ACCOUNTS`` (comma-separated account
+ids, set as a deployment secret): the presence line carries the watch keys
+only to such a socket, and the endpoints check the session's account before
+reading anything. An account let in by the list alone may also watch any
+live table's last finished round, not only those a stranger could find, so
+a tester has a table to watch while the flag is off for everyone else.
 
 Privacy. The events pass the saved games' allow-list (``PUBLIC_KEYS``: no
 bot reasoning, timing, seeds or chat) and each seat carries only its seat,
@@ -58,8 +64,30 @@ READ_CAP = 4 * 1024 * 1024
 RERUN_ID = "rerun"
 
 
+ACCOUNTS_ENV = "SPECTATE_ACCOUNTS"
+
+
 def enabled() -> bool:
     return os.environ.get(ENV, "") == "1"
+
+
+def allowlist() -> frozenset[int]:
+    out = set()
+    for part in os.environ.get(ACCOUNTS_ENV, "").split(","):
+        part = part.strip()
+        if part.isdigit():
+            out.add(int(part))
+    return frozenset(out)
+
+
+def access(user_id: int | None) -> str | None:
+    """How ``user_id`` may watch: "all" with the feed on for everyone,
+    "listed" for an allowlisted account (any live table), else None."""
+    if enabled():
+        return "all"
+    if user_id is not None and user_id in allowlist():
+        return "listed"
+    return None
 
 
 @dataclass
@@ -218,16 +246,16 @@ def _rooms() -> list[Any]:
     return [r for r in list(server.rooms.values()) if server.rooms.get(r.code) is r]
 
 
-def watchable(room: Any) -> bool:
-    """A table a stranger could find, with a person at it, past its first
-    finished round."""
+def watchable(room: Any, wide: bool = False) -> bool:
+    """A table a stranger could find (``wide``: any live table), with a
+    person at it, past its first finished round."""
     st = getattr(room, "watch", None)
     game = room.game
     if st is None or st.last is None or game is None or room.round is None:
         return False
     if getattr(room, "aborted", False) or getattr(room, "closing", False):
         return False
-    if not (ratings.ranked(room) or room.allow_joiners):
+    if not (wide or ratings.ranked(room) or room.allow_joiners):
         return False
     return any(sd is not None and not sd.is_bot and sd.connected for sd in room.seats)
 
@@ -236,25 +264,43 @@ def _mode(room: Any) -> str:
     return "ranked" if ratings.ranked(room) else "casual"
 
 
-def presence() -> dict | None:
-    """The presence line's watch keys, or None with the feed off."""
-    if not enabled():
-        return None
+def _counts() -> tuple[int, int, bool]:
+    """(tables anyone may watch, live tables with a finished round, rerun)."""
+    rooms = _rooms()
+    return (sum(1 for r in rooms if watchable(r)), sum(1 for r in rooms if watchable(r, True)),
+            _rerun is not None)
+
+
+def presence_key() -> tuple:
+    """What every socket's watch keys are read from; empty with nobody
+    able to watch, so the presence line is then exactly as without the feed."""
+    if not enabled() and not allowlist():
+        return ()
     try:
-        n = sum(1 for r in _rooms() if watchable(r))
+        return _counts()
     except Exception:               # noqa: BLE001 - the line is cosmetic
         log.exception("spectate presence failed")
-        n = 0
-    return {"watch": n, "rerun": _rerun is not None}
+        return (0, 0, False)
 
 
-def pick(mode: str | None, skip: str | None, token: str, now: float) -> Any | None:
+def presence(user_id: int | None = None) -> dict | None:
+    """The presence line's watch keys for this account, or None when it may
+    not watch."""
+    how = access(user_id)
+    if how is None:
+        return None
+    key = presence_key() or (0, 0, False)
+    return {"watch": key[0] if how == "all" else key[1], "rerun": key[2]}
+
+
+def pick(mode: str | None, skip: str | None, token: str, now: float,
+         wide: bool = False) -> Any | None:
     """The table to watch: the asked mode first, then the one furthest
     into its game; never ``skip``, never one at its cap (unless this
     watcher already counts there)."""
     best = None
     for room in _rooms():
-        if not watchable(room) or room.watch.id == skip:
+        if not watchable(room, wide) or room.watch.id == skip:
             continue
         st = room.watch
         if token not in st.watchers and st.live_watchers(now) >= WATCH_CAP:
@@ -293,11 +339,22 @@ async def _serve(room: Any, token: str, after: int | None) -> dict:
 router = APIRouter(prefix="/api")
 
 
-def _admit(request: Request) -> None:
-    if not enabled():
+async def _admit(request: Request) -> bool:
+    """Refuse a reader who may not watch, before anything is read; True for
+    an allowlisted account (it may watch any live table)."""
+    how = "all" if enabled() else None
+    if how is None and allowlist():
+        try:
+            user = await accounts.STORE.run(accounts.STORE.session_user,
+                                            request.cookies.get(accounts.COOKIE))
+        except Exception:           # noqa: BLE001 - no account store reads as signed out
+            user = None
+        how = access(user["id"] if user else None)
+    if how is None:
         raise HTTPException(status_code=404, detail="Not found.")
     if not LIMITER.allow(accounts.client_ip(request)):
         raise HTTPException(status_code=429, detail="Too many requests; try again in a minute.")
+    return how == "listed"
 
 
 def _token(w: str | None) -> str:
@@ -311,9 +368,9 @@ async def watch(request: Request, mode: str | None = None, skip: str | None = No
                 w: str | None = None) -> dict:
     """Pick a table and send its latest finished round; with no table, the
     rerun; with neither, 404."""
-    _admit(request)
+    wide = await _admit(request)
     token, now = _token(w), time.time()
-    room = pick(mode if mode in ("ranked", "casual") else None, skip, token, now)
+    room = pick(mode if mode in ("ranked", "casual") else None, skip, token, now, wide)
     if room is not None:
         for other in _rooms():
             st = getattr(other, "watch", None)
@@ -338,11 +395,11 @@ async def follow(table: str, request: Request, after: int | None = None,
     """The table a watcher is at: its newer finished round, or ``waiting``
     while the round after ``after`` is in play. 404 once it cannot be
     watched (closed, emptied, Allow joiners off) or is at its cap."""
-    _admit(request)
+    wide = await _admit(request)
     token, now = _token(w), time.time()
     room = next((r for r in _rooms() if getattr(r, "watch", None) is not None
                  and r.watch.id == table), None)
-    if room is None or not watchable(room):
+    if room is None or not watchable(room, wide):
         raise HTTPException(status_code=404, detail="Not found.")
     st = room.watch
     if token not in st.watchers and st.live_watchers(now) >= WATCH_CAP:

@@ -297,3 +297,85 @@ def test_the_feed_is_rate_limited_per_address(feed):
     for _ in range(spectate.LIMITER.limit):
         assert _watch(client).status_code == 200
     assert _watch(client).status_code == 429
+
+
+# ------------------------------------------------------- the account allowlist
+from tests.test_accounts import _claims, accounts_on, keypair  # noqa: E402,F401
+
+
+def _account(store, sub):
+    user = store.upsert_user(_claims(sub=sub, email=f"{sub}@example.com"))
+    return user["id"], {"cookie": f"sj_session={store.create_session(user['id'])}"}
+
+
+@pytest.fixture()
+def listed(accounts_on, client, monkeypatch):
+    from shengji.api import server as srv, spectate
+
+    monkeypatch.delenv(spectate.ENV, raising=False)
+    monkeypatch.setattr(spectate, "_rerun", None)
+    spectate.LIMITER.reset()
+    store = accounts_on.STORE
+    jerry, jerry_h = _account(store, "jerry")
+    other, other_h = _account(store, "other")
+    monkeypatch.setenv(spectate.ACCOUNTS_ENV, f" {jerry} ,not-an-id")
+    return srv, spectate, client, (jerry, jerry_h), (other, other_h)
+
+
+def test_an_allowlisted_account_watches_while_the_flag_is_off(listed):
+    srv, spectate, client, (jerry, jerry_h), _other = listed
+    t = Table(srv, ranked=True)
+    t.play_round()
+    t.deal()
+    doc = client.get("/api/watch", headers=jerry_h)
+    assert doc.status_code == 200 and doc.json()["round"] == 1
+    tid = doc.json()["table"]
+    assert client.get(f"/api/watch/{tid}", params={"after": 1}, headers=jerry_h).json()["waiting"]
+
+
+def test_another_account_and_a_guest_are_refused_by_the_endpoints(listed):
+    srv, spectate, client, _jerry, (_other, other_h) = listed
+    t = Table(srv, ranked=True)
+    t.play_round()
+    t.deal()
+    tid = t.room.watch.id
+    for headers in (other_h, {}, {"cookie": "sj_session=forged"}):
+        assert client.get("/api/watch", headers=headers).status_code == 404
+        assert client.get(f"/api/watch/{tid}", headers=headers).status_code == 404
+    assert t.room.watch.watchers == {}
+
+
+def test_only_the_allowlisted_account_hears_the_watch_keys(listed):
+    srv, spectate, client, (jerry, _h), (other, _o) = listed
+    t = Table(srv, ranked=True)
+    t.play_round()
+    assert spectate.presence(jerry) == {"watch": 1, "rerun": True}
+    assert spectate.presence(other) is None
+    assert spectate.presence(None) is None
+    assert srv.MATCHMAKER.presence_payload(jerry)["watch"] == 1
+    for uid in (other, None):
+        assert "watch" not in srv.MATCHMAKER.presence_payload(uid)
+        assert "rerun" not in srv.MATCHMAKER.presence_payload(uid)
+
+
+def test_an_allowlisted_account_may_watch_any_live_table(listed):
+    srv, spectate, client, (jerry, jerry_h), _other = listed
+    t = Table(srv, code="PRIV", allow_joiners=False)
+    t.play_round()
+    t.deal()
+    assert spectate.presence(jerry) == {"watch": 1, "rerun": False}
+    doc = client.get("/api/watch", headers=jerry_h).json()
+    assert doc["table"] == t.room.watch.id and doc["code"] is None
+    assert "PRIV" not in json.dumps(doc)
+
+
+def test_with_no_flag_and_no_list_the_presence_line_is_unchanged(client, monkeypatch):
+    from shengji.api import server as srv, spectate
+
+    monkeypatch.delenv(spectate.ENV, raising=False)
+    monkeypatch.delenv(spectate.ACCOUNTS_ENV, raising=False)
+    t = Table(srv, ranked=True)
+    t.play_round()
+    assert spectate.presence_key() == ()
+    assert spectate.presence(41) is None
+    assert "watch" not in srv.MATCHMAKER.presence_payload(41)

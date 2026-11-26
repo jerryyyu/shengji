@@ -597,7 +597,8 @@ class Matchmaker:
                  join_table: JoinTable | None = None,
                  join_pair: JoinPair | None = None,
                  presence: Callable[[], tuple[int, int, int, int]] | None = None,
-                 watch: Callable[[], dict | None] | None = None,
+                 watch: Callable[[int | None], dict | None] | None = None,
+                 watch_key: Callable[[], tuple] | None = None,
                  autorun: bool = True) -> None:
         self.clock = clock
         self.rating_of = rating_of or _store_rating
@@ -620,9 +621,11 @@ class Matchmaker:
         # casual tables) for the presence line; by default read off
         # ``open_tables`` (seats neither bot nor open count as people).
         self.presence = presence or self._presence_from_open_tables
-        # The watch keys (``spectate.presence``: tables that can be watched,
-        # whether a rerun exists), or None to send none.
-        self.watch = watch or (lambda: None)
+        # The watch keys one account may hear (``spectate.presence``: tables
+        # that can be watched, whether a rerun exists), or None to send none;
+        # and what they are read from, so a change of it is sent again.
+        self.watch = watch or (lambda uid: None)
+        self.watch_key = watch_key or (lambda: ())
         self.autorun = autorun
         self._task: asyncio.Task | None = None
         self.reset()
@@ -661,7 +664,7 @@ class Matchmaker:
         self.chat_limiter = accounts.RateLimiter(*CHAT_LIMIT)
         self._seq = count(1)
         self._panel = count(1)
-        self._presence_sent: tuple = (0, 0, 0, 0, 0, None, None)
+        self._presence_sent: tuple = (0, 0, 0, 0, 0)
         self._presence_sent_at = -math.inf
         self._last_tick = -math.inf
 
@@ -789,9 +792,10 @@ class Matchmaker:
         return len(tables), sum(1 for t in tables for st in t["seats"]
                                 if not st.get("bot") and not st.get("open")), ranked, len(tables) - ranked
 
-    def presence_payload(self) -> dict:
+    def presence_payload(self, user_id: int | None = None) -> dict:
         """Counts only: no names, codes or ids reach an idle Play tab.
-        ``tables`` is every open table; ``ranked`` and ``casual`` split it."""
+        ``tables`` is every open table; ``ranked`` and ``casual`` split it.
+        The watch keys are added only for an account that may watch."""
         try:
             tables, playing, ranked, casual = self.presence()
         except Exception:      # noqa: BLE001 - the line is cosmetic; the queue goes on
@@ -800,7 +804,7 @@ class Matchmaker:
         out = {"type": "presence", "tables": tables, "playing": playing,
                "waiting": self.count(), "ranked": ranked, "casual": casual}
         try:
-            out.update(self.watch() or {})
+            out.update(self.watch(user_id) or {})
         except Exception:      # noqa: BLE001 - the line is cosmetic
             log.exception("watch count failed")
         return out
@@ -812,13 +816,17 @@ class Matchmaker:
         if now - self._presence_sent_at < COUNT_DEBOUNCE:
             return
         p = self.presence_payload()
-        key = (p["tables"], p["playing"], p["waiting"], p["ranked"], p["casual"],
-               p.get("watch"), p.get("rerun"))
+        try:
+            watched = tuple(self.watch_key())
+        except Exception:      # noqa: BLE001 - the line is cosmetic
+            log.exception("watch count failed")
+            watched = ()
+        key = (p["tables"], p["playing"], p["waiting"], p["ranked"], p["casual"], *watched)
         if key == self._presence_sent:
             return
         self._presence_sent, self._presence_sent_at = key, now
         for c in list(self.lobby):
-            c.push(p)
+            c.push(self.presence_payload(c.user_id) if watched else p)
 
     def _entry(self, uid: int) -> Entry | None:
         eid = self.entry_of.get(uid)
@@ -1122,7 +1130,7 @@ class Matchmaker:
     def _push_presence(self, conn: Conn) -> None:
         """A socket arriving in the lobby hears the counts at once, unless
         they are all zero (the line then reads as nobody playing)."""
-        p = self.presence_payload()
+        p = self.presence_payload(conn.user_id)
         if p["tables"] or p["playing"] or p["waiting"] or p.get("watch") or p.get("rerun"):
             conn.push(p)
 

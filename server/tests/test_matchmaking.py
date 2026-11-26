@@ -3326,6 +3326,29 @@ def test_presence_counts_open_tables_their_people_and_the_queue_debounced_and_wi
     run(go())
 
 
+def test_presence_carries_the_watch_keys_only_to_a_socket_that_may_watch():
+    async def go():
+        env = Env()
+        tables = Tables(env)
+        counts = {"n": 1}
+        env.mm.watch = lambda uid: {"watch": counts["n"], "rerun": True} if uid == 7 else None
+        env.mm.watch_key = lambda: (counts["n"], True)
+        listed, other = env.player(7), env.player(8)
+        assert listed.last("presence") == {"type": "presence", "tables": 0, "playing": 0, "waiting": 0,
+                                           "ranked": 0, "casual": 0, "watch": 1, "rerun": True}
+        assert other.of("presence") == []          # all zero for it: nothing to say
+        tables.add("OPEN", [50, "bot", 51, "bot"])
+        await env.mm.pump()
+        assert listed.last("presence")["watch"] == 1
+        assert "watch" not in other.last("presence") and "rerun" not in other.last("presence")
+        counts["n"] = 2                            # only the watch count changed: sent again
+        env.clock.advance(mm.COUNT_DEBOUNCE)
+        await env.mm.pump()
+        assert listed.last("presence")["watch"] == 2
+        assert "watch" not in other.last("presence")
+    run(go())
+
+
 def test_ws_presence_counts_a_solo_ranked_game_and_its_connected_player(wsenv, monkeypatch):
     srv, store, client, clock = wsenv
     monkeypatch.setattr(srv, "BOT_DELAY", 0.0)

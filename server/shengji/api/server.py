@@ -4273,7 +4273,8 @@ MATCHMAKER = matchmaking.Matchmaker(start_room=start_matched_room,
                                     join_table=join_open_table,
                                     join_pair=join_pair_open_table,
                                     presence=presence_counts,
-                                    watch=spectate.presence)
+                                    watch=spectate.presence,
+                                    watch_key=spectate.presence_key)
 
 
 def _attach(room: Room, seat: Seat, ws: WebSocket) -> int:

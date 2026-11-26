@@ -975,7 +975,7 @@ describe("the tablet table's trick cross", () => {
 
   it("sizes the hand and the trick from the tablet block alone", () => {
     const outside = css.replace(tablet, "");
-    for (const token of ["--hcw", "--hcw-full", "--tcw", "--tcw-side", "--tag-room", "--cross-room", "--you-rest"]) {
+    for (const token of ["--hcw", "--hcw-full", "--tcw", "--tcw-side", "--tag-room", "--cross-room", "--you-rest", "--size-rest", "--row-free", "--cross-fit"]) {
       expect(outside.includes(`${token}:`), token).toBe(false);
     }
     expect(outside).not.toMatch(/var\(--(hcw|tcw)\b/);
@@ -1001,6 +1001,47 @@ describe("the tablet table's trick cross", () => {
       expect(g.pitch33).toBeGreaterThanOrEqual(g.pitch33Full - 0.01);
     });
   }
+
+  // One row above the hand (your name, the hint, your controls) frees the
+  // height your name's own row took; the cards are sized as before it, so
+  // that height goes to the cross alone.
+  for (const [name, vp] of SIZES) {
+    it(`keeps the cards' size and gives the cross the height the one row frees: ${name}`, () => {
+      const L = (expr: string) => evalLength(expr, vp, root);
+      const u = L("var(--u)");
+      // sized as the name above the controls was: 74u and a row besides the hand
+      expect(L("var(--size-rest)")).toBeCloseTo(L("calc(74 * var(--u) + var(--row-h) + 12px + var(--safe-b))"), 6);
+      expect(L("var(--you-rest)")).toBeCloseTo(L("var(--size-rest)") - 38 * u, 6);
+      // the card reads the sizing height; the cross is drawn in the height as laid out
+      expect(root["--tcw"]).toContain("var(--cross-fit)");
+      expect(root["--cross-room"]).toContain("var(--size-rest)");
+      expect(L("var(--cross-avail)") - L("var(--cross-fit)")).toBeCloseTo(38 * u, 6);
+      const area = rule(tablet, ".trick-area");
+      const tall = evalLength(area.height, vp, root);
+      expect(tall).toBeLessThanOrEqual(L("var(--cross-avail)") + 0.01);
+      expect(tall).toBeGreaterThanOrEqual(2.8 * L("var(--tcw)") + L("var(--tag-room)") - 0.01);
+    });
+  }
+
+  it("lays your name, the hint and your controls in one row above the hand", () => {
+    const area = rule(tablet, ".you-area");
+    expect(area.display).toBe("grid");
+    expect(area["grid-template-columns"]).toBe("max-content minmax(0, 1fr) max-content");
+    expect(area.width).toBe("fit-content");
+    expect(rule(tablet, ".you-tagline")["grid-area"]).toBe("1 / 1");
+    expect(rule(tablet, ".action-bar")["grid-area"]).toBe("1 / 3");
+    const line = rule(tablet, ".hand-line, .hand-line.help");
+    expect(line["grid-area"]).toBe("1 / 2");
+    // in the row's flow: the hint showing takes the middle cell, never a control's
+    expect(line.position).toBe("static");
+    expect(line["max-width"]).toBe("100%");
+    expect(rule(tablet, ".hand")["grid-area"]).toBe("2 / 1 / 3 / -1");
+  });
+
+  it("stands the joining pill in your row, its bottom level with the row's", () => {
+    // the row's bottom: the area's padding, the hand's card and padding, the gap
+    expect(rule(tablet, ".away-pill").bottom).toBe("calc(var(--you-rest) - var(--row-h) + var(--hcw) * 1.4)");
+  });
 
   it("draws the iPad 11\" app's trick cards at about three quarters of its hand's", () => {
     const g = at(IPADS["iPad 11\" 1180x820"]);

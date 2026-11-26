@@ -987,3 +987,77 @@ def test_scratch_matches_warm_medium_layout_and_refuses_stock_resume(data, tmp_p
     parity = measure_parity(out / "best.pt", package, str(data), 12, root_heads=True)
     assert parity["rows"] == 12 and parity["parity"] == "OK"
     assert set(parity["max_abs_diff"]) == {"belief", "value", "reply", "outcome", "policy"}
+
+
+@pytest.mark.parametrize("device", [
+    "cpu",
+    pytest.param("mps", marks=mps),
+])
+def test_polish_restores_exact_epoch_and_winner(cpu_root, tmp_path, monkeypatch, device):
+    base = cpu_root[0]
+    cache, source = base / "cache", base / "train/best.pt"
+    stopped, uninterrupted = tmp_path / "stopped", tmp_path / "whole"
+    argv = ["polish", "--ckpt", str(source), "--cache", str(cache), "--epochs", "4",
+            "--batch", "32", "--threads", "1", "--device", device, "--epoch-checkpoint"]
+
+    evaluate = ur.polish_eval
+    call = 0
+
+    def selection_fixture(*args, **kwargs):
+        nonlocal call
+        scores = evaluate(*args, **kwargs)
+        # The winner is earlier than the resume boundary.
+        scores["leaf_value_end"] += -100.0 if call == 1 else 0.0
+        call += 1
+        return scores
+
+    monkeypatch.setattr(ur, "polish_eval", selection_fixture)
+    assert ur.main([*argv, "--out", str(uninterrupted)]) == 0
+    call = 0
+
+    def interrupt(*args, **kwargs):
+        if call == 3:
+            raise InterruptedError("fixture interruption before calibration")
+        return selection_fixture(*args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(ur, "polish_eval", interrupt)
+        with pytest.raises(InterruptedError, match="fixture interruption"):
+            ur.main([*argv, "--out", str(stopped)])
+
+    checkpoint = stopped / ur.POLISH_CHECKPOINT
+    epoch_two = torch.load(checkpoint, weights_only=True)
+    assert epoch_two["epoch"] == 2 and epoch_two["best"]["epoch"] == 1
+    assert _tensors_on_cpu(epoch_two)
+    assert not (stopped / "best.pt").exists()
+
+    before = (stopped / "status.log").read_bytes()
+    with pytest.raises(ur.UnifiedReadoutError, match="settings differ"):
+        ur.main([*argv, "--out", str(stopped), "--seed", "2"])
+    extra_marker = cache / "DONE.unexpected"
+    extra_marker.write_text("{}")
+    try:
+        with pytest.raises(ur.UnifiedReadoutError, match="cache files or settings differ"):
+            ur.main([*argv, "--out", str(stopped)])
+    finally:
+        extra_marker.unlink()
+    assert before == (stopped / "status.log").read_bytes()
+
+    assert ur.main([*argv, "--out", str(stopped)]) == 0
+    continued = torch.load(checkpoint, weights_only=True)
+    reference = torch.load(uninterrupted / ur.POLISH_CHECKPOINT, weights_only=True)
+    assert continued["epoch"] == reference["epoch"] == 4
+    assert continued["best"] == reference["best"]
+    assert continued["numpy_rng"] == reference["numpy_rng"]
+    for key in ("model", "selected", "optimizer", "torch_rng"):
+        torch.testing.assert_close(continued[key], reference[key], rtol=0, atol=0)
+    if device == "mps":
+        assert torch.equal(continued["mps_rng"], reference["mps_rng"])
+    assert _digest(stopped / "best.pt") == _digest(uninterrupted / "best.pt")
+    lines = (stopped / "status.log").read_text().splitlines()
+    assert sum(" POLISH START " in line for line in lines) == 1
+    assert sum(" POLISH EPOCH " in line for line in lines) == 4
+    assert any(" POLISH RESUME completed_epochs=2" in line for line in lines)
+    assert " POLISH DONE best_epoch=1 " in lines[-1]
+    with pytest.raises(ur.UnifiedReadoutError, match="already completed"):
+        ur.main([*argv, "--out", str(stopped)])

@@ -643,6 +643,14 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
     sample = json.loads((cache / "DONE.0").read_text())["sample"]
     assert sample["rows"] == 344 and sample["chunks"] == 2
     monkeypatch.setattr(rt4m_cache, "RT4_SAMPLE", sample)
+    root = directory / "reserved"
+    post_root = directory / "post-recovery" if killed else None
+    if post_root:
+        post_root.mkdir()
+        old_polish = root / "A/polish"
+        old_polish.mkdir()
+        (old_polish / "status.log").write_text("partial legacy run")
+        cache_options.update(post_root=post_root, epoch_checkpoint=True)
     if interrupt:
         import sz2_polish_arm
         original_link = sz2_polish_arm.os.link
@@ -682,17 +690,21 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
         assert log_path.read_bytes() == saved_log
     else:
         assert rt4m_cache.polish(directory / "reserved", cache_root, recipe, **cache_options) == 0
-    assert (directory / "reserved/A/polish/selected.pt").is_file()
+    assert ((post_root or root) / "A/polish/selected.pt").is_file()
     import rt4m_export
 
-    root = directory / "reserved"
-    assert rt4m_export.export(root, recipe, directory / "data/x", 132) == 0
-    exported = root / "A/export"
+    assert rt4m_export.export(root, recipe, directory / "data/x", 132, post_root=post_root) == 0
+    exported = (post_root or root) / "A/export"
+    if post_root:
+        assert not (root / "A/export").exists()
+        assert (old_polish / "status.log").read_text() == "partial legacy run"
+        assert sorted(p.name for p in old_polish.iterdir()) == ["status.log"]
     parity = json.loads((exported / "parity.json").read_text())
     assert set(parity["max_abs_diff"]) == {"belief", "outcome", "policy", "value", "reply"}
     monkeypatch.setattr(rt4m_joint, "RECIPE", recipe)
     monkeypatch.setattr(rt4m_export, "PARITY_ROWS", 132)
-    monkeypatch.setattr(sys, "argv", ["rt4m_export.py", "--root", str(root), "--duel-words"])
+    monkeypatch.setattr(sys, "argv", ["rt4m_export.py", "--root", str(root), "--duel-words",
+                                     *(["--post-root", str(post_root)] if post_root else [])])
     capsys.readouterr()
     assert rt4m_export.main() == 0
     assert json.loads(capsys.readouterr().out) == [
@@ -706,8 +718,14 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
             (dict(parity, max_abs_diff={"belief": 0, "value": 0, "reply": 0}), "parity errors")]:
         (exported / "parity.json").write_text(json.dumps(altered))
         with pytest.raises(ValueError, match=error):
-            rt4m_export.duel_words(root, recipe, 132)
+            rt4m_export.duel_words(root, recipe, 132, post_root=post_root)
     (exported / "parity.json").write_text(json.dumps(parity))
+    if post_root:
+        log_path = post_root / "A/polish/status.log"
+        text = log_path.read_text()
+        log_path.write_text(text.replace(" ckpt=", " ckpt=wrong"))
+        with pytest.raises(ValueError, match="different joint checkpoint"):
+            rt4m_export.duel_words(root, recipe, 132, post_root=post_root)
     bad_cache = directory / "unreserved"
     status_path = out / "status.log"
     status_path.write_text(status[:status.rfind("sha256=")] + "sha256=" + "0" * 64 + "\n")

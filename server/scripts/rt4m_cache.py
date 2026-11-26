@@ -35,12 +35,23 @@ def partition(root, output, worker, recipe_path, *, encode_rounds=CACHE_DEFAULT_
                            sample_rows=RT4_SAMPLE["cap_rows"])
 
 
+def _polish_output(root, cache_root, post_root):
+    if post_root is None:
+        return root
+    post = rt4m_joint.post_output_root(root, post_root)
+    cache_root = cache_root.resolve()
+    if post.is_relative_to(cache_root) or cache_root.is_relative_to(post):
+        raise ValueError("polish output and cache must use separate roots")
+    return post
+
+
 def polish(root, output, recipe_path, *, encode_rounds=CACHE_DEFAULT_ENCODE_ROUNDS, finish_selection=False,
-           device="cpu"):
+           device="cpu", epoch_checkpoint=False, post_root=None):
     checkpoint, cache, recipe = inputs(root, output, recipe_path, encode_rounds)
-    return polish_checkpoint(checkpoint, cache, recipe, root / "A/polish", epochs=8, lr=1e-3,
+    post = _polish_output(root, output, post_root)
+    return polish_checkpoint(checkpoint, cache, recipe, post / "A/polish", epochs=8, lr=1e-3,
                              expected_sample=RT4_SAMPLE, expected_encode_rounds=encode_rounds,
-                             finish_selection=finish_selection, device=device)
+                             finish_selection=finish_selection, device=device, epoch_checkpoint=epoch_checkpoint)
 
 
 def check_cache_storage(root, cache_root, volume_uuid, cache_gib, internal_gib):
@@ -85,6 +96,10 @@ def main():
     parser.add_argument("--min-internal-free-gib", type=int)
     parser.add_argument("--polish-device", choices=("cpu", "mps"),
                         help="device for readout polish or selection recovery (default: cpu)")
+    parser.add_argument("--post-root", type=Path,
+                        help="separate output root for polish or selection recovery")
+    parser.add_argument("--epoch-checkpoint", action="store_true",
+                        help="save and resume completed polish epochs on the same cache and device")
     stage = parser.add_mutually_exclusive_group(required=True)
     stage.add_argument("--worker", type=int, choices=range(WORKERS))
     stage.add_argument("--polish", action="store_true")
@@ -93,14 +108,18 @@ def main():
     args = parser.parse_args()
     if args.worker is not None and args.polish_device is not None:
         parser.error("--polish-device applies only to polish or selection recovery")
+    if args.worker is not None and (args.epoch_checkpoint or args.post_root is not None):
+        parser.error("--epoch-checkpoint and --post-root apply only to polish or selection recovery")
     try:
         root, cache_root = args.root.resolve(), args.cache_root.resolve()
-        check_cache_storage(root, args.cache_root, args.cache_volume_uuid, args.min_cache_free_gib,
+        post = _polish_output(root, cache_root, args.post_root)
+        check_cache_storage(post, args.cache_root, args.cache_volume_uuid, args.min_cache_free_gib,
                             args.min_internal_free_gib)
         if args.polish or args.finish_selection:
             return polish(root, cache_root, rt4m_joint.RECIPE,
                           encode_rounds=args.encode_rounds_per_batch, finish_selection=args.finish_selection,
-                          device=args.polish_device or "cpu")
+                          device=args.polish_device or "cpu", epoch_checkpoint=args.epoch_checkpoint,
+                          post_root=post if args.post_root is not None else None)
         return partition(root, cache_root, args.worker, rt4m_joint.RECIPE,
                          encode_rounds=args.encode_rounds_per_batch)
     except (OSError, ValueError) as exc:

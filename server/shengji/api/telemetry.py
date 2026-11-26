@@ -117,7 +117,7 @@ NOTICE_CODES = frozenset({
     "report_not_stored", "resume_unavailable", "room_full", "room_not_found",
     "same_device", "seat_changed", "seat_reserved", "seat_taken",
     "seat_unavailable", "signed_in_only", "stale_connection", "start_failed",
-    "table_closed", "pair_seats_fixed", "already_ready",
+    "table_closed", "pair_seats_fixed",
     "panel_changed", "account_in_game",
     "illegal_play", "follow_hint", "lead_hint", "disconnected", "reconnecting",
     "reconnected", "error_other",

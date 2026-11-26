@@ -49,12 +49,12 @@ four people or fewer:
   older page's ``table_start`` from the owner), bots taking the empty
   seats. A Start held at the room cap is judged again when it is
   dispatched (``Table.forced_by``). The owner is the opener's
-  leader and has no Ready of its own; everyone else at the table is a
-  joiner, a Duo opener's partner too, and taps Ready (``table_start``;
-  each member of a Duo for itself; ``table_unready`` takes it back). A
-  Ready is a signal to the others (``_unready``): the owner's Start takes
-  everyone seated and connected, Ready or not, and nothing starts because
-  every Ready is in. A joiner whose socket is gone leaves at the start.
+  leader; everyone else at the table is a joiner, a Duo opener's partner
+  too, and has nothing to tap: its Join is all it does. The owner's Start
+  takes everyone seated and connected; a joiner whose socket is gone
+  leaves at the start. An older page's Ready from a joiner
+  (``table_start``, ``queue_start_bots`` at a table, ``table_unready``)
+  changes nothing and is answered with the state.
 
 A full table does not start by itself: it waits for its owner's Start
 like any other. The timer and the owner's Start do not wait for a member
@@ -64,10 +64,11 @@ starts with bots at its own ``bots_at``, or at once on ``queue_start_bots``.
 
 Away and idle: a closed socket keeps its entry ``AWAY_SECS`` alone,
 ``WAIT_AWAY_SECS`` alone with its switch on (nothing starts without it), and
-``TABLE_AWAY_SECS`` at a waiting table. A seated entry that has not tapped
-Ready and sent nothing for ``TABLE_IDLE_SECS`` leaves; at a table with no
-timer it is asked "still here?" first (``still_here_until``) and leaves
-``STILL_HERE_SECS`` later unless any message (``table_here``) answers.
+``TABLE_AWAY_SECS`` at a waiting table. A table's owner that has sent
+nothing for ``TABLE_IDLE_SECS`` leaves (a joiner's Join is its consent, so
+a joiner never idles out); at a table with no timer it is asked "still
+here?" first (``still_here_until``) and leaves ``STILL_HERE_SECS`` later
+unless any message (``table_here``) answers.
 
 Every queued entry holds a table code from the room code space
 (``entry_codes``): alone it names the entry's own table. A waiting table
@@ -88,8 +89,8 @@ move or a code join by anyone but the first single by the opener's code),
 and a holding entry opens its own table only. That first code joiner takes
 the held seat and the two become one paired entry over a table ``Party``
 (no code of its own), which is seated, matched and rated as any pair. Its
-leader is the owner and its partner a joiner: the partner taps Ready
-(``Entry.taps``), and the leader's Start with bots waits for it. A Duo table that starts with
+leader is the owner and its partner a joiner, whose Join is all it does;
+the leader's Start with bots needs its partner connected. A Duo table that starts with
 its seat still held tells the room that seat (``friend_seat``), whose
 code's next seatless join takes it. A Leave before the game splits it (``_split``): the other member
 keeps the table and its code; a partner's leave holds its seat again, an
@@ -378,10 +379,6 @@ class Entry:
     # sits there. Such an entry opens its own table and never sits at
     # another's, so its code stays the table's.
     hold: bool = False
-    # A table Duo's Ready is each member's own: the members who tapped it.
-    # The pair is ready (``Table.ready``) once both have; alone, the taps
-    # wait for the table the pair sits at. An owner never taps.
-    taps: set[int] = field(default_factory=set)
 
     @property
     def size(self) -> int:
@@ -408,7 +405,6 @@ class Table:
     seq: int
     seats: list[int | None] = field(default_factory=lambda: [None] * 4)
     entries: list[Entry] = field(default_factory=list)   # arrival order
-    ready: set[str] = field(default_factory=set)          # entry ids that tapped Ready
     seated_at: dict[int, float] = field(default_factory=dict)
     # An opaque token per sitting, fresh each time someone sits down: an
     # opener's move names it, so a move never lands on whoever sat after.
@@ -824,8 +820,8 @@ class Matchmaker:
 
     def table_payload(self, t: Table, uid: int) -> dict:
         """The waiting table as ``uid`` sees it: the four seats in seat order
-        (``null`` for an empty one), whose Ready is in, the timer's owner,
-        and the joiners whose Ready is out (``_unready``)."""
+        (``null`` for an empty one), the timer's owner and how many people
+        sit there (``of``)."""
         mine = self._entry(uid)
         by_user = {u: e for e in t.entries for u in e.members}
         seats: list[dict | None] = []
@@ -835,7 +831,7 @@ class Matchmaker:
                 continue
             e = by_user[u]
             seats.append({"name": self._name(u), "you": u == uid,
-                          "ready": self._tapped(t, e, u), "reconnecting": self._live(u) is None,
+                          "reconnecting": self._live(u) is None,
                           "since": t.seated_at.get(u), "sit": t.sit_ids.get(u), "pair": e.size == 2,
                           "leader": e.leader == u})
         timer = t.timer()
@@ -848,10 +844,7 @@ class Matchmaker:
             "timer": (None if timer is None else
                       {"at": timer[0], "name": self._name(timer[1].leader),
                        "you": uid in timer[1].members}),
-            "ready": sum(1 for e in t.entries for u in e.members if self._tapped(t, e, u)),
             "of": t.humans,
-            "you_ready": mine is not None and self._tapped(t, mine, uid),
-            "waiting_for": [self._name(u) for u in self._unready(t) if u != uid],
         }
 
     def table_frame(self, t: Table, uid: int) -> dict:
@@ -863,16 +856,15 @@ class Matchmaker:
         seats = []
         for s, u in enumerate(t.seats):
             seat = {"seat": s, "team": s % 2, "state": "held" if s in held else "open",
-                    "name": None, "you": False, "ready": False, "reconnecting": False,
+                    "name": None, "you": False, "reconnecting": False,
                     "since": None, "sit": None, "pair": False, "leader": False, "left": False}
             if u is not None:
                 e = by_user[u]
                 seat.update(state="taken", name=self._name(u), you=u == uid,
-                            ready=self._tapped(t, e, u), reconnecting=self._live(u) is None,
+                            reconnecting=self._live(u) is None,
                             since=t.seated_at.get(u), sit=t.sit_ids.get(u),
                             pair=e.size == 2, leader=e.leader == u)
             seats.append(seat)
-        mine = by_user.get(uid)
         timer = t.timer()
         return {
             "type": "table", "code": t.code, "phase": "open", "mode": t.mode,
@@ -883,26 +875,8 @@ class Matchmaker:
             "timers": {"bots": (None if timer is None else
                                 {"at": timer[0], "name": self._name(timer[1].leader),
                                  "you": uid in timer[1].members})},
-            "your_ready": mine is not None and self._tapped(t, mine, uid),
-            "waiting_for": [self._name(u) for u in self._unready(t) if u != uid],
             "chat_log": self._chat_id(t),
         }
-
-    def _tapped(self, t: Table, e: Entry, u: int) -> bool:
-        """Whether ``u``'s Ready is in: its own tap in a Duo, else
-        its entry's (never while its table is its own)."""
-        if e.size == 2:
-            return u in e.taps
-        return e.id in t.ready
-
-    def _unready(self, t: Table) -> list[int]:
-        """The joiners whose Ready is out, shown to the others as
-        ``waiting_for`` (a signal; the owner's Start does not wait for it):
-        everyone seated at ``t`` but the owner (its first entry's leader)
-        who is connected and has not tapped Ready, in arrival order."""
-        owner = t.entries[0].leader if t.entries else None
-        return [u for e in t.entries for u in e.members
-                if u != owner and self._available(u) and not self._tapped(t, e, u)]
 
     @staticmethod
     def _owns(e: Entry, uid: int) -> bool:
@@ -937,8 +911,6 @@ class Matchmaker:
                 "open_tables": len(e.open_codes), "mode": e.mode,
                 "duo": e.hold or e.size == 2,
                 "held_seat": t.held_for(e) if e.hold else t.held_seat(),
-                "duo_ready": len(e.taps) if e.size == 2 else None,
-                "you_ready": self._tapped(t, e, uid),
                 # your table's code and settings, alone or at a waiting table
                 "code": t.code, "allow_joiners": t.allow_joiners,
                 "start_level": t.start_level, "bot_level": t.bot_level,
@@ -952,40 +924,33 @@ class Matchmaker:
     def _panel_seq(self, e: Entry) -> int:
         """The entry's panel sequence number, advanced when what its panel
         shows changes kind or target (own table, an offer of one room, a
-        waiting table), and on a Duo's own table when the partner taps or
-        takes back Ready, since the leader's Start with bots waits for it;
+        waiting table), and when the entry's role there changes;
         re-renders of the same panel keep it."""
         t = self._table(e)
         role = (e.table is not None and bool(e.table.entries) and e.table.entries[0] is e, e.leader)
         if role != e.role:
-            # gaining the table, or a new leader, turns a Ready into a Start:
-            # an untagged tap from before must not land as one
+            # gaining the table, or a new leader, turns the entry's tap into
+            # a Start: an untagged one sent before must not land as one
             if e.role and ((role[0] and not e.role[0]) or role[1] != e.role[1]):
                 e.role_at = self.clock()
             e.role = role
         key: tuple = (("table", t.id, role) if t is not None
                       else ("offer", e.offer.code) if e.offer is not None
-                      else ("own", self._partner_ready(e), role))
+                      else ("own", role))
         if key != e.panel_key:
             e.panel_key, e.panel_seq = key, next(self._panel)
         return e.panel_seq
 
-    @staticmethod
-    def _partner_ready(e: Entry) -> bool:
-        """A pair whose partner (the member who is not its leader) has
-        tapped Ready."""
-        return e.size == 2 and set(e.members) - {e.leader} <= e.taps
-
     def _check_panel(self, e: Entry, msg: dict, role_dependent: bool = False) -> None:
         """Refuse a tap sent against a panel the entry no longer shows. A
         message without ``panel_seq`` (an older client) is not checked,
-        except a role-dependent one (Ready from a joiner, Start from an
-        owner) that an owner sends within ROLE_GRACE_SECS of gaining the
-        table or a new leader."""
+        except a Start (``role_dependent``: an older joiner's Ready has the
+        same message) that an owner sends within ROLE_GRACE_SECS of gaining
+        the table or a new leader."""
         sent = msg.get("panel_seq")
         if sent is None or isinstance(sent, bool) or not isinstance(sent, int):
             self._panel_seq(e)                # refreshes the role
-            # only an owner's tap is a Start; a joiner's is a Ready either way
+            # only an owner's tap is a Start; a joiner's changes nothing
             if (role_dependent and e.role and e.role[0] and e.role_at
                     and self.clock() - e.role_at < ROLE_GRACE_SECS):
                 self._send_state(e)
@@ -1044,14 +1009,12 @@ class Matchmaker:
         e.table = None
         owned = bool(t.entries) and t.entries[0] is e
         t.entries = [o for o in t.entries if o is not e]
-        t.ready.discard(e.id)
         t.forced_by = None
         if owned and t.entries:
-            # the next arrival owns the table now: its leader has no Ready,
-            # and a Duo partner's own Ready stays
+            # the next arrival owns the table now: as a joiner it never
+            # idled, so its idle clock starts at the handover
             heir = t.entries[0]
-            t.ready.discard(heir.id)
-            heir.taps.discard(heir.leader)
+            heir.active_at, heir.prompted = self.clock(), False
         for s, u in enumerate(t.seats):
             if u in e.members:
                 t.seats[s] = None
@@ -1069,7 +1032,7 @@ class Matchmaker:
             for o in left:
                 self._adopt_code(o, t.code)
                 self._own_table(o, like=t)
-            t.entries, t.ready = [], set()
+            t.entries = []
         for o in left:
             self._send_state(o)
 
@@ -1305,22 +1268,22 @@ class Matchmaker:
                     self._check_panel(e, msg, role_dependent=True)
                     await self._table_start_now(queue_id)
                 elif t == "table_start" or (t == "queue_start_bots" and self._table(e) is not None):
-                    # a joiner's Start with bots at a table is its Ready; an
-                    # owner's table_start is its Start
+                    # an owner's table_start is its Start; a joiner's (an
+                    # older page's Ready) changes nothing
                     if e is not None:
                         self._check_panel(e, msg, role_dependent=True)
                     await self._table_start(queue_id)
                 elif t == "table_unready":
                     self._table_unready(queue_id)
                 elif t == "queue_start_bots":
-                    # alone it is the owner's Start; sent a moment ago from a
-                    # table, it may have been a joiner's Ready
+                    # alone it is the leader's Start; sent a moment ago from a
+                    # table, it may have been a joiner's tap
                     if e is not None:
                         self._check_panel(e, msg, role_dependent=True)
                     await self._start_bots(queue_id)
                 elif t == "table_start_now":
                     if e is not None:
-                        self._check_panel(e, msg)
+                        self._check_panel(e, msg, role_dependent=True)
                     await self._table_start_now(queue_id)
                 elif t == "table_move":
                     if not self.move_limiter.allow(str(queue_id), now):
@@ -1477,7 +1440,6 @@ class Matchmaker:
         host.member_ratings[uid] = rating
         host.hold, host.party_id = False, p.id
         self.entry_of[uid] = host.id
-        t.ready.discard(host.id)       # the owner has no Ready; the partner taps its own
         self._qlog("join", host, mode=host.mode, by_code=True, duo=True)
         t.seats[held] = uid
         t.seated_at[uid] = now
@@ -1503,9 +1465,7 @@ class Matchmaker:
                 t.seats[s] = None
         t.seated_at.pop(uid, None)
         t.sit_ids.pop(uid, None)
-        t.ready.discard(e.id)
         e.members = [stay]
-        e.taps.clear()
         e.member_ratings.pop(uid, None)
         if self.entry_of.get(uid) == e.id:
             del self.entry_of[uid]
@@ -1603,10 +1563,7 @@ class Matchmaker:
             if bots not in BOT_LEVELS:
                 raise QueueError("bad_setting", "Bots is Beginner, Standard or Advanced.")
             if bots != t.bot_level and t.waiting:
-                t.ready.clear()         # a Ready agreed to the other bots
-                t.forced_by = None
-                for o in t.entries:
-                    o.taps.clear()
+                t.forced_by = None      # a held Start was given for the other bots
             t.bot_level = bots
         else:
             o = self._opener(e)
@@ -1618,10 +1575,7 @@ class Matchmaker:
             if level not in RANKS:
                 raise QueueError("bad_start_level", "Unknown starting level.")
             if level != t.start_level and t.waiting:
-                t.ready.clear()         # a Ready agreed to the old level
-                t.forced_by = None
-                for o in t.entries:
-                    o.taps.clear()
+                t.forced_by = None      # a held Start was given for the old level
             t.start_level = level
         self._send_table(t)
         if kind == "allow":
@@ -1658,52 +1612,29 @@ class Matchmaker:
         self._send_table(e.table)
 
     async def _table_start(self, uid: int) -> None:
-        """A joiner's Ready at its table. ``table_unready`` takes it back,
-        and so do a change of the starting level and an opener's move of
-        the entry; a newcomer does not. The owner has no Ready: an older
-        page's Start from it is the owner's Start, with the same
-        checks (``_table_start_now`` at a waiting table, ``_start_bots`` for
-        a Duo at its own table)."""
+        """An older page's Start: from the owner it is the owner's Start,
+        with the same checks (``_table_start_now`` at a waiting table,
+        ``_start_bots`` for a Duo at its own table). A joiner has nothing
+        to tap, so its older Ready changes nothing and gets the state."""
         e = self._entry(uid)
         t = self._table(e)
         if e is not None and self._owns(e, uid) and t is not None:
             await self._table_start_now(uid)
             return
-        if e is not None and self._owns(e, uid) and e.size == 2:
+        if e is not None and e.leader == uid and e.size == 2 and t is None:
             await self._start_bots(uid)
             return
-        if e is not None and e.size == 2:
-            # each member's own Ready; alone it waits for the pair's table
-            if uid not in e.taps:
-                e.taps.add(uid)
-                if t is not None and set(e.members) <= e.taps:
-                    t.ready.add(e.id)
-                self._send_table(e.table)
-            await self._start_due()
-            return
-        if e is None or t is None:
+        if e is None:
             raise QueueError("not_seated", "You are not at a waiting table.")
-        if e.id not in t.ready:
-            t.ready.add(e.id)
-            self._send_table(t)
-        await self._start_due()
+        self._send_state(e)
 
     def _table_unready(self, uid: int) -> None:
-        """Take back your Ready before the table starts: a Duo's member
-        its own tap, alone or at a table; a single its entry's."""
+        """An older page's take-back of a Ready: there is no Ready, so it
+        changes nothing and gets the state."""
         e = self._entry(uid)
-        t = self._table(e)
-        if e is not None and e.size == 2:
-            if uid in e.taps:
-                e.taps.discard(uid)
-                e.table.ready.discard(e.id)
-                self._send_table(e.table)
-            return
-        if e is None or t is None:
+        if e is None:
             raise QueueError("not_seated", "You are not at a waiting table.")
-        if e.id in t.ready:
-            t.ready.discard(e.id)
-            self._send_table(t)
+        self._send_state(e)
 
     async def _table_start_now(self, uid: int) -> None:
         """The owner's Start: the waiting table starts at once with everyone
@@ -1723,8 +1654,8 @@ class Matchmaker:
         await self._start_due()
 
     def _table_move(self, uid: int, msg: dict) -> None:
-        """A single at a waiting table moves itself to an empty seat, until
-        it taps Ready; a pair's seats never move by its own hand. With
+        """A single at a waiting table moves itself to an empty seat; a
+        pair's seats never move by its own hand. With
         ``from`` (another person's seat) the opener's leader moves that
         person instead (``_move_other``). Everyone at the table sees the new
         seats, and the others are told who moved and to which team."""
@@ -1741,8 +1672,6 @@ class Matchmaker:
             return
         if e.size != 1 or e.hold:
             raise QueueError("pair_seats_fixed", "A Duo's seats stay together.")
-        if e.id in t.ready:
-            raise QueueError("already_ready", "You tapped Ready, so your seat is set.")
         old = t.seats.index(uid)
         if seat == old:
             self._send_state(e)
@@ -1793,8 +1722,6 @@ class Matchmaker:
             t.seats[a] = None
         for a, b in moves.items():
             t.seats[b] = people[a]
-        t.ready.discard(o.id)
-        o.taps.clear()
         t.forced_by = None
         self._send_table(t)
         self._tell_moved(t, o, who, seat, by=e.leader, team_changed=src % 2 != seat % 2)
@@ -1963,8 +1890,6 @@ class Matchmaker:
             t.sit_ids[u] = secrets.token_hex(6)
         t.entries.append(e)
         e.table, e.active_at, e.prompted = t, now, False
-        if e.size == 2 and set(e.members) <= e.taps:
-            t.ready.add(e.id)          # both tapped Ready while alone
         # A waiting table outranks an open table: the offer goes, and a
         # paused bot wait runs again as the table's timer.
         e.offer, e.open_codes = None, []
@@ -2502,13 +2427,11 @@ class Matchmaker:
             return None
         t = host.table
         held = set(t.held_seats())
-        by_user = {u: e for e in t.entries for u in e.members}
         seats = []
         for i, u in enumerate(t.seats):
             state = "taken" if u is not None else "held" if i in held else "open"
             seats.append({"seat": i, "team": i % 2, "state": state,
-                          "name": self._name(u) if u is not None else None,
-                          "ready": u is not None and self._tapped(t, by_user[u], u)})
+                          "name": self._name(u) if u is not None else None})
         free = any(s["state"] == "open" for s in seats)
         return {"type": "room_seats", "room": code, "table": True, "mode": t.mode,
                 "in_game": False, "allow_joiners": t.allow_joiners,
@@ -2639,14 +2562,15 @@ class Matchmaker:
                 self._send(u, payload)
 
     def _drop_idle(self, now: float) -> None:
-        """A seated entry that has not tapped Ready and sent nothing for
-        ``TABLE_IDLE_SECS`` leaves, with no cooldown. At a table with no
+        """A table's owner that has sent nothing for ``TABLE_IDLE_SECS``
+        leaves, with no cooldown; a joiner's Join is its consent, so it
+        never idles out. At a table with no
         timer it is asked "still here?" first and leaves ``STILL_HERE_SECS``
         later unless a member sends anything. A reconnecting one is left to
         ``_drop_away``."""
         for e in list(self.entries.values()):
             t = self._table(e)
-            if (t is None or e.id in t.ready or now - e.active_at < TABLE_IDLE_SECS
+            if (t is None or t.entries[0] is not e or now - e.active_at < TABLE_IDLE_SECS
                     or not self._entry_available(e)):
                 continue
             if t.timer() is None and now - e.active_at < TABLE_IDLE_SECS + STILL_HERE_SECS:

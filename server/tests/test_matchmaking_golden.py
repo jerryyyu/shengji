@@ -180,17 +180,10 @@ class Env:
         m._send_party(p)
 
     async def start_full(self) -> None:
-        """Every full table starts as any table does: its joiners tap
-        Ready, then its owner taps Start."""
+        """Every full table starts as any table does: on its owner's Start."""
         for t in sorted(self.mm.tables.values(), key=lambda t: t.seq):
-            if t.humans != 4:
-                continue
-            owner = t.entries[0].leader
-            for e in list(t.entries):
-                for u in e.members:
-                    if u != owner:
-                        await self.send(u, "table_start")
-            await self.send(owner, "table_start_now")
+            if t.humans == 4:
+                await self.send(t.entries[0].leader, "table_start_now")
 
     def code(self, uid: int) -> str:
         state = self.conns[uid].last("queue_state")
@@ -449,7 +442,8 @@ async def a_duo_partner_leaving_holds_the_seat_again(env: Env) -> None:
     await env.join(6, code=code)
     await env.send(3, "table_start")
     await env.send(6, "table_start")
-    await env.send(5, "table_start")
+    await env.send(5, "table_start")       # 5 owns it since 1 left: refused in the grace
+    await env.advance(mm.ROLE_GRACE_SECS)
     await env.send(5, "table_start_now")
 
 

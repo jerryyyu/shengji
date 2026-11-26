@@ -246,6 +246,7 @@ describe("entitlements and writes stay with their session and their order", () =
       return new Promise<Response>((res) => held.push({ url, body, reply: (status) => res(apply(status)) }));
     }) as unknown as typeof fetch;
     authState.current = { status: "in", clientId: "cid", user: { ...base } };
+    forgetPrivateSession();          // each test is its own session: an earlier test's held writes settle
   });
   afterEach(() => updated.mockReset());
 
@@ -397,6 +398,58 @@ describe("entitlements and writes stay with their session and their order", () =
     expect(await settled(first)).toBe("settled");
     // the old session's waiting choice was never sent
     expect(puts().map((h) => h.body)).toEqual([{ companions: "individual" }, { companions: "team" }]);
+  });
+
+  it("an unlock read for an older tap never saves over a newer choice", async () => {
+    await draw(<CollectionPage />);
+    await flush();
+    server = { ...server, rounds_played: 10 };       // the client still shows 9
+    holdGets = true;
+    await act(async () => { swatch("Imperial yellow").click(); });   // locked here: reads first
+    const unlockRead = gets()[gets().length - 1];
+    holdGets = false;
+    await act(async () => { swatch("Paddy green").click(); });        // a newer choice, saved at once
+    await flush();
+    expect(server.look).toBe("tractor/green");
+    await act(async () => { unlockRead.reply(); });
+    await flush();
+    expect(server.look).toBe("tractor/green");
+    expect(authState.current.user?.look).toBe("tractor/green");
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([u, i]) =>
+      u === "/api/me/look" && String((i as RequestInit).body).includes("yellow"))).toHaveLength(0);
+  });
+
+  it("re-tapping the equipped colour also overtakes an older tap's unlock read", async () => {
+    await draw(<CollectionPage />);
+    await flush();
+    server = { ...server, rounds_played: 10 };
+    holdGets = true;
+    await act(async () => { swatch("Imperial yellow").click(); });
+    const unlockRead = gets()[gets().length - 1];
+    await act(async () => { swatch("Icon red").click(); });           // the equipped one
+    await act(async () => { unlockRead.reply(); });
+    await flush();
+    expect(server.look).toBe("tractor/red");
+    expect(authState.current.user?.look).toBe("tractor/red");
+  });
+
+  it("signing out settles a queued write with no further Collection call", async () => {
+    await draw(<CollectionPage />);
+    await flush();
+    holdPuts = true;
+    const { writeMode } = await import("./writes");
+    let first: Promise<void> = Promise.resolve();
+    let second: Promise<void> = Promise.resolve();
+    await act(async () => { first = writeMode("individual"); });
+    await act(async () => { second = writeMode("off"); });
+    act(() => { forgetPrivateSession(); });                          // the session ends; nothing else is called
+    const settled = (p: Promise<unknown>) => Promise.race([p.then(() => "settled", () => "settled"),
+      new Promise((r) => setTimeout(() => r("pending"), 20))]);
+    expect(await settled(second)).toBe("settled");
+    await act(async () => { puts()[0].reply(); });
+    await flush();
+    expect(await settled(first)).toBe("settled");
+    expect(puts().map((h) => h.body)).toEqual([{ companions: "individual" }]);
   });
 
   it("a save that lands after a switch to another account changes nothing", async () => {

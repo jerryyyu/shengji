@@ -8,7 +8,7 @@ import type { LookEntry } from "../companion/look";
 import { TRACTOR_COLOURS } from "../companion/palette";
 import { lookAccount, markLooksSeen } from "../companion/seen";
 import { setCompanionMode, useCompanionMode } from "../companion/mode";
-import { equip, refreshAccount } from "../companion/writes";
+import { equip, intend, refreshAccount } from "../companion/writes";
 import { Segmented } from "../home/HomeShell";
 import LargeTitlePage from "../home/LargeTitlePage";
 import { WIDE } from "../home/route";
@@ -83,7 +83,12 @@ export default function CollectionPage() {
   const pick = (entry: LookEntry) => {
     setShown(entry.id);
     setPose("hop");
-    if (!user || entry.id === equipped) return;
+    if (!user) return;
+    // a tap on the colour worn changes nothing, but it is the latest choice
+    if (entry.id === equipped) {
+      intend("look");
+      return;
+    }
     // a failure puts the confirmed colour back on the account, and with it here
     equip(entry.id, entry.unlocked).catch((err: unknown) => {
       showToast(err instanceof Error ? err.message : String(err));

@@ -10,7 +10,7 @@
 // session's answers never touch another's.
 import { auth, fetchMe, putLook } from "../auth";
 import type { AuthUser } from "../auth";
-import { viewerScope } from "../home/session";
+import { onSessionChange, viewerScope } from "../home/session";
 import { lookCatalogue } from "./look";
 import type { CompanionMode } from "./look";
 
@@ -18,6 +18,9 @@ type Field = "look" | "companions";
 type Value = string;
 
 interface FieldState {
+  /** The latest tap's token, taken before anything is read or sent; a tap
+   *  on the colour already worn counts too. */
+  intent: number;
   /** The latest choice's generation (0: none this session). */
   gen: number;
   /** The server's value, and the generation of the choice it confirmed. */
@@ -38,7 +41,7 @@ function fields(): Record<Field, FieldState> {
   const scope = scopeNow();
   if (session?.scope !== scope) {
     if (session) settleSession(session.fields);
-    const fresh = (): FieldState => ({ gen: 0, confirmed: null, sending: null, waiting: null });
+    const fresh = (): FieldState => ({ intent: 0, gen: 0, confirmed: null, sending: null, waiting: null });
     session = { scope, fields: { look: fresh(), companions: fresh() }, reads: 0, applied: 0 };
   }
   return session.fields;
@@ -55,6 +58,19 @@ function settleSession(old: Record<Field, FieldState>): void {
 }
 
 const busy = (st: FieldState) => st.sending !== null || st.waiting !== null;
+
+// A session that ends settles its queue at once, whether or not the
+// Collection is open to call in again.
+onSessionChange(() => {
+  if (!session) return;
+  settleSession(session.fields);
+  session = null;
+});
+
+/** A tap on `field`: the token a deferred step checks before it acts. */
+export function intend(field: Field): number {
+  return ++fields()[field].intent;
+}
 
 const valueOf = (user: AuthUser, field: Field): Value =>
   field === "look" ? user.look ?? "" : user.companions ?? "team";
@@ -141,9 +157,10 @@ function send(field: Field, gen: number, value: Value, scope: string, settle: Se
 /** Choose `value` for `field`: shown at once, then stored. Resolves true when
  *  this choice reached the server, false when a later choice or another
  *  session overtook it; rejects when it failed and is still the latest. */
-function choose(field: Field, value: Value): Promise<boolean> {
+function choose(field: Field, value: Value, token: number = intend(field)): Promise<boolean> {
   if (!signedInUser()) return Promise.resolve(false);
   const f = fields();
+  if (f[field].intent !== token) return Promise.resolve(false);
   const scope = scopeNow();
   if (f[field].confirmed === null) {
     const now = signedInUser();
@@ -164,17 +181,21 @@ function choose(field: Field, value: Value): Promise<boolean> {
 }
 
 /** Equip `look`. A colour this client still shows locked is read again
- *  first, so one earned since the page opened is equipped at once. Resolves
- *  false when it was not equipped (still locked, or overtaken). */
+ *  first, so one earned since the page opened is equipped at once; the read
+ *  equips only if no later tap came meanwhile. Resolves false when it was
+ *  not equipped (still locked, or overtaken). */
 export async function equip(look: string, unlockedHere: boolean): Promise<boolean> {
+  const token = intend("look");
+  const scope = scopeNow();
   if (!unlockedHere) {
     const fresh = await refreshAccount();
-    if (!fresh) return false;
+    // a later tap (or another session) overtook this one while it read
+    if (!fresh || scopeNow() !== scope || fields().look.intent !== token) return false;
     const entry = lookCatalogue({ rounds: fresh.rounds_played ?? 0, ranked_wins: fresh.ranked_wins ?? 0 },
                                 fresh.look ?? "", fresh.looks).find((e) => e.id === look);
     if (!entry?.unlocked) return false;
   }
-  return choose("look", look);
+  return choose("look", look, token);
 }
 
 /** Show `mode` at once, then store it (`choose`). */

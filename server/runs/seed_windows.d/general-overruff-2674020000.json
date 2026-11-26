@@ -1,0 +1,14 @@
+{
+  "name": "general-overruff-2674020000",
+  "purpose": "screen",
+  "seed0": 2674020000,
+  "clusters": 3920,
+  "span": [
+    2674020000,
+    2674023920
+  ],
+  "created_at": "2026-11-26T01:20:14-05:00",
+  "host": "mini",
+  "git_head": "114fca0e6553a5c8f12a05f944b8e9b7b5487df7",
+  "note": "Generalized overruff screen against release 55, r2 seat swaps. Owning PR #1875."
+}

@@ -68,11 +68,6 @@ from ..engine.legal import IllegalPlay, validate_lead
 from ..engine.round import Round
 from .memory import iter_known
 
-#: how far back a posted notice's throw can lie (``NOTICE_PLAYS`` = 8 plays:
-#: the rest of trick T, all of T+1 and the first play of T+2)
-_LOOKBACK_TRICKS = 3
-
-
 @dataclass(frozen=True)
 class Refusal:
     """One failed throw, as public information."""
@@ -92,15 +87,18 @@ def _lead_matches(trick, seat: int, forced) -> bool:
 
 
 def throw_trick_index(rnd: Round, seat: int, forced) -> int | None:
-    """The most recent trick led by ``seat`` with exactly ``forced``: the
-    current trick, else the last `_LOOKBACK_TRICKS` resolved ones."""
-    if _lead_matches(rnd.trick, seat, forced):
-        return len(rnd.history)
-    for index in range(len(rnd.history) - 1,
-                       max(-1, len(rnd.history) - 1 - _LOOKBACK_TRICKS), -1):
-        if _lead_matches(rnd.history[index], seat, forced):
-            return index
-    return None
+    """Locate the posted throw by the number of committed plays since its notice."""
+    age = rnd.NOTICE_PLAYS - rnd._notice_plays_left
+    if not 0 <= age < rnd.NOTICE_PLAYS:
+        return None
+    # The engine sets the notice on the lead and ages it once per later commit.
+    # Matching cards alone is ambiguous when the winner leads the second copy.
+    committed = 4 * len(rnd.history) + (len(rnd.trick.plays) if rnd.trick else 0)
+    index, position = divmod(committed - 1 - age, 4)
+    if index < 0 or position != 0:
+        return None
+    trick = rnd.trick if index == len(rnd.history) else rnd.history[index]
+    return index if _lead_matches(trick, seat, forced) else None
 
 
 def observe_refusal(rnd: Round) -> Refusal | None:

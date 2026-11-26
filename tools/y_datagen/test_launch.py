@@ -24,7 +24,7 @@ def test_release_requires_both_pins(tmp_path):
         launch._release(release, 'abc', 'bad')
 
 
-@pytest.mark.parametrize('mode', ['success', 'failure', 'hold', 'timeout', 'exit-race'])
+@pytest.mark.parametrize('mode', ['success', 'failure', 'hold', 'timeout', 'exit-race', 'archive-floor'])
 def test_terminal_and_owned_lock_cleanup(tmp_path, monkeypatch, mode):
     source = tmp_path / 'src'
     source.mkdir()
@@ -48,6 +48,8 @@ def test_terminal_and_owned_lock_cleanup(tmp_path, monkeypatch, mode):
         code += 'time.sleep(20)'
     monkeypatch.setattr(launch, '_admit', lambda spec: None)
     monkeypatch.setattr(launch, 'command', lambda spec: [sys.executable, '-c', code])
+    if mode == 'archive-floor':
+        monkeypatch.setattr(launch, '_archive_headroom', lambda volumes: False)
     if mode == 'exit-race':
         real_killpg = launch.os.killpg
         def raced_kill(pid, sig):
@@ -61,8 +63,8 @@ def test_terminal_and_owned_lock_cleanup(tmp_path, monkeypatch, mode):
     assert rc == (0 if mode == 'success' else 1)
     assert not lock.exists()
     terminal = json.loads(Path(str(out)+'.terminal.0.json').read_text())
-    assert terminal['status'] == {'success':'completed','failure':'failed','hold':'held','timeout':'time-cap','exit-race':'time-cap'}[mode]
-    if mode not in ('timeout', 'exit-race'):
+    assert terminal['status'] == {'success':'completed','failure':'failed','hold':'held','timeout':'time-cap','exit-race':'time-cap','archive-floor':'disk'}[mode]
+    if mode not in ('timeout', 'exit-race', 'archive-floor'):
         assert (out/'partial').read_text() == 'kept'
 
 
@@ -162,4 +164,30 @@ def test_split_tail_requires_an_explicit_boolean(tmp_path, monkeypatch):
         assert ('--split-tail-mirrors' in launch.command(spec)) == value
     spec['split_tail_mirrors'] = 'false'
     with pytest.raises(launch.Refused, match='split_tail_mirrors'):
+        launch._admit(spec)
+
+
+def test_tranche_requires_internal_output_and_archive_reserve(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    spec = admission_spec(tmp_path, monkeypatch)
+    spec.update(tranche_volumes=dict(internal_uuid='internal', archive_uuid='archive'),
+                stop_disk_gib=150, admit_disk_gib=157)
+    archive = tmp_path/'archive'
+    archive.mkdir()
+    device = tmp_path.stat().st_dev
+    real_stat = Path.stat
+    monkeypatch.setattr(Path, 'stat', lambda path, **kw: SimpleNamespace(st_dev=device + 1)
+                        if path == archive else real_stat(path, **kw))
+    monkeypatch.setattr(launch, '_volume', lambda uuid, *, internal: tmp_path if internal else archive)
+    free = {tmp_path: 157, archive: 175}
+    monkeypatch.setattr(launch.shutil, 'disk_usage', lambda path: SimpleNamespace(free=free[path]*2**30))
+    volumes = launch._admit(spec)
+    free[archive] -= 1
+    assert not launch._archive_headroom(volumes)
+    with pytest.raises(launch.Refused, match='175 GiB'):
+        launch._admit(spec)
+    free[archive] += 1
+    spec['admit_disk_gib'] -= 1
+    with pytest.raises(launch.Refused, match='full leg'):
         launch._admit(spec)

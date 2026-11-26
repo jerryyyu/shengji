@@ -17,14 +17,20 @@ type TrickJson = { leader: number; plays: { seat: number; cards: string[] }[] } 
 export interface SeatMemory {
   /** Completed tricks, oldest first, from the frames' last tricks. */
   history: PublicTrick[];
+  /** The ordinal (`tricks_done`) of the last trick recorded; 0 for none. */
+  lastOrdinal: number;
+  /** The last trick's plays, for a server that sends no `tricks_done`. */
   lastTrickKey: string;
   /** The cards this seat buried, as the banker. */
   buried: Card[];
   handSize: number;
+  /** The latest frame's phase and `tricks_done`; "" and null before any. */
+  phase: string;
+  tricksDone: number | null;
 }
 
 export function freshMemory(): SeatMemory {
-  return { history: [], lastTrickKey: "", buried: [], handSize: 0 };
+  return { history: [], lastOrdinal: 0, lastTrickKey: "", buried: [], handSize: 0, phase: "", tricksDone: null };
 }
 
 const copyTrick = (t: NonNullable<TrickJson>): PublicTrick => ({
@@ -32,19 +38,38 @@ const copyTrick = (t: NonNullable<TrickJson>): PublicTrick => ({
   plays: t.plays.map((p) => ({ seat: p.seat, cards: [...p.cards] })),
 });
 
-/** Folds a state frame into the seat's memory: a new round clears it, and a
- *  last trick it has not seen joins the history. */
+/** Folds a state frame into the seat's memory. A round boundary clears it: a
+ *  deal after any other phase, a deal with fewer cards than the last frame,
+ *  or `tricks_done` going down. A last trick joins the history once: by its
+ *  ordinal (`tricks_done`), so two tricks with the same cards stay two, or
+ *  by its plays from a server that sends no count. Only the play and the
+ *  round's end carry this round's tricks; a deal's leftover last trick is
+ *  the previous round's. */
 export function remember(mem: SeatMemory, f: Frame): void {
   const hand = (f.hand as FrameCard[] | undefined) ?? [];
-  if (f.phase === "deal" && hand.length < mem.handSize) Object.assign(mem, freshMemory());
+  const phase = String(f.phase ?? "");
+  const done = typeof f.tricks_done === "number" ? f.tricks_done : null;
+  const boundary = (phase === "deal" && mem.phase !== "" && mem.phase !== "deal")
+    || (phase === "deal" && hand.length < mem.handSize)
+    || (done !== null && mem.tricksDone !== null && done < mem.tricksDone);
+  if (boundary) Object.assign(mem, freshMemory());
   mem.handSize = hand.length;
+  mem.phase = phase;
+  if (done !== null) mem.tricksDone = done;
+  if (phase !== "play" && phase !== "round_end") return;
   const last = f.last_trick as TrickJson;
-  if (last) {
-    const key = JSON.stringify(last.plays);
-    if (key !== mem.lastTrickKey) {
-      mem.lastTrickKey = key;
+  if (!last) return;
+  if (done !== null) {
+    if (done > mem.lastOrdinal) {
+      mem.lastOrdinal = done;
       mem.history.push(copyTrick(last));
     }
+    return;
+  }
+  const key = JSON.stringify(last.plays);
+  if (key !== mem.lastTrickKey) {
+    mem.lastTrickKey = key;
+    mem.history.push(copyTrick(last));
   }
 }
 

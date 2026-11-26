@@ -19,6 +19,15 @@ function memoryFor(room: string): SeatMemory {
   return seen.mem;
 }
 
+// how the bot's chunk is fetched; a test may hold it to answer late
+const loadChunk = () => import("../hintPick");
+let loadHint: typeof loadChunk = loadChunk;
+
+/** Replaces the chunk's loader, or restores it with null; for tests. */
+export function setHintLoader(fn: typeof loadChunk | null): void {
+  loadHint = fn ?? loadChunk;
+}
+
 /** Forgets the round memory; for tests. */
 export function forgetHintMemory(): void {
   seen = null;
@@ -99,11 +108,15 @@ export function useFirstGameHint(input: FirstGameHintInput): { hinted: Set<numbe
     // the clock starts only on a turn that opens with nothing chosen
     if (live.current.selectedCount > 0) return;
     const key = decisionKey;
-    const idle = () => tapped.current !== key && keyRef.current === key
+    // this arming's lifetime: it ends when the turn moves on, the coach is
+    // switched off, the first game ends or the table unmounts, and a bot that
+    // answers after that chooses nothing
+    let alive = true;
+    const idle = () => alive && tapped.current !== key && keyRef.current === key
       && live.current.selectedCount === 0 && !live.current.pending;
     const timer = window.setTimeout(() => {
       if (!idle()) return;
-      void import("../hintPick").then(({ pickHint }) => {
+      void loadHint().then(({ pickHint }) => {
         if (!idle()) return;
         const now = live.current.state;
         const ids = pickHint(now as unknown as Frame, memoryFor(now.room));
@@ -113,7 +126,10 @@ export function useFirstGameHint(input: FirstGameHintInput): { hinted: Set<numbe
         telemetry.tap("hint_preselect");
       }).catch(() => { /* no hint this turn: the chunk did not load */ });
     }, PRESELECT_MS);
-    return () => window.clearTimeout(timer);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
   }, [armed, decisionKey]);
 
   const touched = useCallback(() => { tapped.current = keyRef.current; }, []);

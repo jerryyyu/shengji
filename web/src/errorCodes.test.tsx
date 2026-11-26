@@ -174,7 +174,7 @@ describe("error routes, as a player sees them", () => {
 
   it.each([
     ["pair_seats_fixed", "A Duo's seats stay together."],
-    ["already_ready", "You tapped Start, so your seat is set."],
+    ["already_ready", "You tapped Ready, so your seat is set."],
     ["seat_taken", "That seat was just taken.Pick another."],
     ["table_closed", "That table is no longer open."],
     ["no_offer", "That table is no longer open."],

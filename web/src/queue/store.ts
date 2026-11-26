@@ -130,7 +130,7 @@ export interface QueueView {
   tableChat: ChatMsg[];
   /** Queued: a Duo table's opener, or either member of a Duo made there. */
   duo: boolean;
-  /** Queued in a Duo made at a table: how many of you tapped Start; null
+  /** Queued in a Duo made at a table: how many of you tapped Ready; null
    *  for anyone else. */
   duoReady: number | null;
 }
@@ -163,7 +163,7 @@ export function movedNote(m: TableMovedMsg): string {
   return t(m.your_team ? "queue.note.movedOurs" : "queue.note.movedTheirs", { name: m.name });
 }
 
-/** Queued as the two members of a Duo made at a table: each taps Start. */
+/** Queued as the two members of a Duo made at a table: the partner taps Ready. */
 export function tableDuo(q: QueueView): boolean {
   return q.duo && q.partyId !== null && q.duoReady !== null;
 }
@@ -736,22 +736,22 @@ export class QueueStore {
                frame: f && !sharedTable(f) ? { ...f, timers: { ...f.timers, bots } } : f });
   }
 
-  /** Start at the waiting table, or as a member of a Duo made at your own
-   *  table: your tick is in for good. */
+  /** A joiner's Ready at the waiting table, or a Duo partner's at its own
+   *  table: your tick is in until you take it back. */
   tableStart(): void {
     if (!sharedTable(this.view.frame) && !tableDuo(this.view)) return;
     if (yourReady(this.view) || this.view.pending !== null) return;
     if (this.send({ type: "table_start", ...this.seq() })) this.set({ pending: "start" });
   }
 
-  /** The opener's Start now at a waiting table: it starts at once with
-   *  bots. The server refuses it before `start_now_at`. */
+  /** The owner's Start at a waiting table: it starts at once with bots.
+   *  The server refuses it while a connected joiner's Ready is out. */
   tableStartNow(): void {
     if (!sharedTable(this.view.frame) || !isOpener(this.view) || this.view.pending !== null) return;
     if (this.send({ type: "table_start_now", ...this.seq() })) this.set({ pending: "start" });
   }
 
-  /** Take your Start back while the table waits: Start shows again. */
+  /** Take your Ready back while the table waits: Ready shows again. */
   tableUnready(): void {
     if (!sharedTable(this.view.frame) && !tableDuo(this.view)) return;
     if (!yourReady(this.view) || this.view.pending !== null) return;
@@ -842,7 +842,6 @@ export class QueueStore {
       seats: f.seats.map((s) => ({ ...s, since: s.since !== null ? this.local(s.since) : null })),
       timers: {
         bots: f.timers.bots ? { ...f.timers.bots, at: this.local(f.timers.bots.at) } : null,
-        start_now_at: f.timers.start_now_at !== null ? this.local(f.timers.start_now_at) : null,
       },
     };
   }

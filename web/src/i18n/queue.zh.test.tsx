@@ -59,7 +59,7 @@ const shared = () => ({
   ...own(),
   table: { id: "t1", code: "4N5Z", opener: 0, you: 0, timer: null, ready: 1, of: 2, you_ready: false,
            seats: [seat("Jerry", { you: true, leader: true }), seat("Alice", { ready: true }), null, null],
-           waiting_for: ["Jerry"] },
+           waiting_for: [] },
 });
 
 describe("the table panel in zh-Hans", () => {
@@ -91,13 +91,18 @@ describe("the table panel in zh-Hans", () => {
     expect(options).toEqual(expect.arrayContaining(["标准", "高级"]));
   });
 
-  it("draws a shared table's ready line, title and Start", () => {
+  it("draws a shared table's ready line, title, the owner's Start and a joiner's Ready", () => {
     draw(<TablePanel q={view(shared())} guarded={false} />);
     expect(host.querySelector(".tp-title")?.textContent).toBe("我和 Alice");
-    expect(host.querySelector(".tp-line")?.textContent).toBe("已准备 1/2");
-    expect(buttons()).toContain("开始");
+    expect(host.querySelector(".tp-line")?.textContent).toBe("已准备 1/1");
+    expect(buttons()).toContain("机器人补位开始");
     expect(labels()).toEqual(expect.arrayContaining(["Alice，已准备，对方。换座", "空位，对方。换到这里"]));
     expect(host.querySelectorAll(".tp-line, .tp-led, .tp-hint")).toHaveLength(1);
+    const joiner = { ...shared(), opener: false,
+                     table: { ...shared().table, you: 1, you_ready: false,
+                              seats: [seat("Jerry", { leader: true }), seat("Alice", { you: true }), null, null] } };
+    draw(<TablePanel q={view(joiner)} guarded={false} />);
+    expect(buttons()).toContain("准备");
   });
 
   it("announces your own table in zh", () => {

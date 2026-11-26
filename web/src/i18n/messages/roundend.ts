@@ -135,7 +135,6 @@ export const roundend = defineMessages({
   "roundend.srvRankedBots": { en: "Ranked bots match your rating.", zh: "排位机器人按你的积分匹配。" },
   "roundend.srvAllowSetting": { en: "Allow joiners is on or off.", zh: "允许中途加入只能开或关。" },
   "roundend.srvBotsSetting": { en: "Bots is Beginner, Standard or Advanced.", zh: "机器人只能选入门、标准或高级。" },
-  "roundend.srvTooSoon": { en: "Start now opens 30 seconds after the last person sits.", zh: "最后一人坐下 30 秒后才能马上开始。" },
   "roundend.srvRoomFull": { en: "Room is full — every seat is taken by a human.", zh: "牌桌满了，每个座位都是真人。" },
   "roundend.srvChooseSeat": { en: "Every seat is taken, but a player is offline — pick their seat to take over.", zh: "座位都满了，但有玩家掉线，选他的座位来接替。" },
   "roundend.srvSeatTaken": { en: "That seat was just taken — pick another.", zh: "这个座位刚被占了，换一个吧。" },

@@ -12,8 +12,8 @@ import type { OfferView, QueueView, TableFrame } from "./store";
 import type { BotLevel } from "./messages";
 import { telemetry, type TapId } from "../telemetry";
 import {
-  JUST_JOINED_MS, OFFER_SECS, duoStartLabel, joinTitle, labelList, moveTargets, ownBotsAt, ownTitle, panelKind,
-  seatLabel, sharedStatusLine, sharedTitle, shortName, startLabel, stillHereLine, teamWord,
+  JUST_JOINED_MS, OFFER_SECS, joinTitle, joinerLabel, labelList, moveTargets, ownBotsAt, ownTitle, panelKind,
+  ownerName, seatLabel, sharedStatusLine, sharedTitle, shortName, startLabel, stillHereLine, teamWord,
 } from "./tableText";
 import type { PanelKind } from "./tableText";
 
@@ -98,7 +98,6 @@ export interface TableButton {
   disabled: boolean;
   act?: PanelAction;
   ring?: Ring | null;
-  searching?: boolean;
   /** Your Start is in, and a tap takes it back. */
   waiting?: boolean;
   /** Drawn as `aria-busy`: the press is on its way. */
@@ -303,28 +302,29 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
     const youReady = yourReady(q);
     const ring = botsRing(ownBotsAt(q), now);
     if (tableDuo(q) && partner) {
-      // the pair's own table: both tap Start, then it searches as one, and
-      // its leader may start with bots as a single does
-      if (q.leader && youReady && (q.duoReady ?? 0) >= 2) {
+      // the pair's own table: the leader owns it and starts with bots once
+      // the partner, its joiner, taps Ready
+      if (q.leader) {
+        const waiting = (f.waiting_for ?? []).length > 0;
         return {
           ...base, ...extra, kind,
-          title: ownTitle(q, partner), status: { text: t("queue.status.ready", { n: 2, count: 2 }) },
-          seats, you: f.you,
-          primary: { label: t(q.pending === "bots" ? "queue.btn.starting" : "queue.btn.startBots"),
-                     disabled: q.pending !== null, act: { type: "start_bots" },
-                     ring: q.pending === "bots" ? null : ring },
+          title: ownTitle(q, partner), seats, you: f.you,
+          primary: waiting
+            ? { label: t("queue.btn.waitingFor", { name: shortName(partner) }), disabled: true,
+                act: { type: "start_bots" }, ring, waiting: true }
+            : { label: t(q.pending === "bots" ? "queue.btn.starting" : "queue.btn.startBots"),
+                disabled: q.pending !== null, act: { type: "start_bots" },
+                ring: q.pending === "bots" ? null : ring },
           secondary: leaveBtn,
         };
       }
       return {
         ...base, ...extra, kind,
-        title: ownTitle(q, partner), status: { text: t("queue.status.ready", { n: q.duoReady ?? 0, count: 2 }) },
-        seats, you: f.you,
-        primary: { label: q.pending === "start" ? t("queue.btn.starting") : duoStartLabel(q, partner),
+        title: ownTitle(q, partner), seats, you: f.you,
+        primary: { label: joinerLabel(youReady || q.pending === "start", partner),
                    disabled: q.pending !== null,
                    act: youReady ? { type: "unready" } : { type: "start" },
-                   ring: q.pending === "start" ? null : ring,
-                   searching: youReady && (q.duoReady ?? 0) >= 2, waiting: youReady },
+                   ring: q.pending === "start" ? null : ring, waiting: youReady },
         secondary: leaveBtn,
       };
     }
@@ -351,21 +351,23 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
       };
     }
     const ring = q.pending === "start" ? null : botsRing(f.timers.bots?.at ?? null, now);
-    // the opener's Start now, 30 s after the latest arrival; everyone
-    // else's button stays Start
-    const startAt = f.timers.start_now_at;
-    const startNow = opener && startAt !== null && now >= startAt;
     const youReady = f.your_ready === true;
+    // the owner's Start with bots waits for every connected joiner's
+    // Ready; everyone else taps Ready
+    const owns = opener && q.leader;
+    const waiting = f.waiting_for ?? [];
     return {
       ...base, kind, rows, chat: { messages: q.tableChat, you: f.you },
       title: sharedTitle(f), status: { text: sharedStatusLine(f) },
       seats, you: f.you, led,
-      primary: startNow
-        ? { label: t(q.pending === "start" ? "queue.btn.starting" : "queue.btn.startNow"), disabled: q.pending !== null,
-            act: { type: "start_now" }, ring }
-        : { label: q.pending === "start" ? t("queue.btn.starting") : startLabel(f),
-            disabled: q.pending !== null || (youReady && (f.waiting_for ?? []).length === 0),
-            act: youReady ? { type: "unready" } : { type: "start" }, ring, waiting: youReady },
+      primary: owns
+        ? waiting.length > 0
+          ? { label: startLabel(waiting), disabled: true, act: { type: "start_now" }, ring, waiting: true }
+          : { label: t(q.pending === "start" ? "queue.btn.starting" : "queue.btn.startBots"),
+              disabled: q.pending !== null, act: { type: "start_now" }, ring }
+        : { label: joinerLabel(youReady || q.pending === "start", ownerName(f)),
+            disabled: q.pending !== null, act: youReady ? { type: "unready" } : { type: "start" },
+            ring, waiting: youReady },
       secondary: leaveBtn,
     };
   }

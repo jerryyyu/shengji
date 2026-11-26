@@ -43,7 +43,7 @@ export function tableFrameFor(qs: QueueStateLike, party: PartyMsg | null = null,
       : t.opener !== undefined && t.opener !== t.you ? t.opener
       : seats.find((s) => s.state === "taken" && !s.you)?.seat ?? (t.you + 1) % 4;
     return { ...base, you: t.you, opener, seats,
-             timers: { bots: t.timer, start_now_at: t.start_now_at ?? null },
+             timers: { bots: t.timer },
              waiting_for: t.waiting_for, chat_log: t.id, ...extra };
   }
   const leads = qs.leader !== false;
@@ -62,9 +62,8 @@ export function tableFrameFor(qs: QueueStateLike, party: PartyMsg | null = null,
   }
   const botsAt = (qs.bots_at as number | null | undefined) ?? null;
   return { ...base, you, opener: qs.opener !== false ? you : across, seats,
-           timers: { bots: botsAt === null ? null : { at: botsAt, name: seats[leads ? you : across].name ?? "", you: true },
-                     start_now_at: null },
-           waiting_for: partner && !partnerReady ? [partner.name] : [], chat_log: null, ...extra };
+           timers: { bots: botsAt === null ? null : { at: botsAt, name: seats[leads ? you : across].name ?? "", you: true } },
+           waiting_for: partner && leads && !partnerReady ? [partner.name] : [], chat_log: null, ...extra };
 }
 
 /** A test socket's deliveries as the server sends them: a queue_state that

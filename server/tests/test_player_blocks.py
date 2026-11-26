@@ -315,8 +315,9 @@ def test_a_line_keeps_its_writer_across_a_seat_change_into_the_room(monkeypatch,
         assert t.seats[2] == 4
         await env.send(4, "table_chat", text="said by four")
         srv = _real_room_start(monkeypatch, env)
-        for uid in (1, 3, 4):
+        for uid in (3, 4):
             await env.send(uid, "table_start")
+        await env.send(1, "table_start_now")
         mine = _snapshot_texts(srv, 1)
         hidden = "said by two" if blocked == 2 else "said by four"
         shown = "said by four" if blocked == 2 else "said by two"
@@ -340,6 +341,7 @@ def test_a_duo_starting_alone_with_bots_keeps_each_lines_writer(monkeypatch, blo
         await env.send(3, "table_chat", text="leader line")
         blocks_on.set_block(3, 4, True)
         srv = _real_room_start(monkeypatch, env)
+        await env.send(4, "table_start")
         await env.send(3, "queue_start_bots")
         assert _snapshot_texts(srv, 3) == ["leader line"]
         assert _snapshot_texts(srv, 4) == ["partner line", "leader line"]

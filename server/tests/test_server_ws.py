@@ -3457,14 +3457,14 @@ def test_ws_a_duo_table_seats_its_code_joiner_in_the_held_seat_and_starts_a_rate
         assert _drain(b, "party")["table"] is True
         b.send_json({"type": "table_allow_joiners", "on": False})
         assert _drain(b, "error")["code"] == "not_opener"
-        # each Duo player taps Start; the pair is ready once both have
+        # the partner and the stranger tap Ready; the Duo's leader owns the table
         b.send_json({"type": "table_start"})
         seen = _next_where(a, "queue_state", lambda m: m["table"]["ready"] == 1)["table"]
         assert seen["seats"][2]["ready"] and not seen["you_ready"]
         c.send_json({"type": "table_start"})
         _next_where(a, "queue_state", lambda m: m["table"]["ready"] == 2)
-        assert srv.MATCHMAKER.tables                       # the pair is not ready yet
-        a.send_json({"type": "table_start"})
+        assert srv.MATCHMAKER.tables                       # Ready never starts it
+        a.send_json({"type": "table_start_now"})
         started = [_drain(ws, "match_started") for ws in (a, b, c)]
         assert len({s["room"] for s in started}) == 1 and all(s["rated"] for s in started)
         assert started[0]["room"] == code                  # the invite link leads here
@@ -3517,8 +3517,10 @@ def test_ws_a_duo_split_at_a_strangers_table_stays_seated_and_the_room_promises_
         assert mine["table"]["you"] == at_cy["table"]["you"]
         d.send_json({"type": "queue_join"})
         _next_where(d, "queue_state", lambda m: m.get("table"))
-        for ws in (a, c, d):
+        for ws in (a, d):
             ws.send_json({"type": "table_start"})
+        _next_where(c, "queue_state", lambda m: m.get("table") and m["table"]["ready"] == 2)
+        c.send_json({"type": "table_start_now"})          # Cy owns the table
         started = _drain(a, "match_started")
         assert started["room"] == cy_code                  # the opener's code is the room's
         _drain(a, "state")

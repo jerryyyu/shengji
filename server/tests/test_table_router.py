@@ -246,7 +246,7 @@ GUESTS = {"Ann": DEVICE_A, "Bo": DEVICE_B, "Cy": DEVICE_C}
 
 def _run_queue(env, case: dict, msg: dict) -> dict:
     """Guests on their own devices: ``queued`` search Casual (the first
-    two meet at a table), ``ready`` tap Start, then ``actor`` sends
+    two meet at a table), ``ready`` tap Ready, then ``actor`` sends
     ``msg``; returns every socket's frames afterwards."""
     srv, _, client, _ = env
     _reset(srv)
@@ -286,16 +286,19 @@ def _run_queue(env, case: dict, msg: dict) -> dict:
 
 
 QUEUE_CASES = {
-    "a Start taken back": dict(actor="Ann", queued=("Ann", "Bo"), ready=("Ann",),
+    "a Ready taken back": dict(actor="Bo", queued=("Ann", "Bo"), ready=("Bo",),
                                old={"type": "table_unready"},
                                new={"type": "table_start", "on": False}),
-    "a Start taken back with nothing to take back": dict(
+    "a Ready taken back with nothing to take back": dict(
         actor="Cy", old={"type": "table_unready"}, new={"type": "table_start", "on": False}),
     "Play bots alone": dict(actor="Ann", queued=("Ann",), old={"type": "queue_start_bots"},
                             new={"type": "table_start_bots"}),
-    "Play bots at a table": dict(actor="Ann", queued=("Ann", "Bo"),
+    "Play bots at a table": dict(actor="Bo", queued=("Ann", "Bo"),
                                  old={"type": "queue_start_bots"},
                                  new={"type": "table_start_bots"}),
+    "the owner's Play bots at a table": dict(actor="Ann", queued=("Ann", "Bo"), ready=("Bo",),
+                                             old={"type": "queue_start_bots"},
+                                             new={"type": "table_start_bots"}),
     "Play bots against a changed panel": dict(
         actor="Ann", queued=("Ann",), old={"type": "queue_start_bots", "panel_seq": 999},
         new={"type": "table_start_bots", "panel_seq": 999}),
@@ -317,9 +320,10 @@ QUEUE_CASES = {
 
 
 QUEUE_SEES = {
-    "a Start taken back": '"ready": 0',
-    "a Start taken back with nothing to take back": '"not_seated"',
+    "a Ready taken back": '"ready": 0',
+    "a Ready taken back with nothing to take back": '"not_seated"',
     "Play bots alone": '"match_started"', "Play bots at a table": '"ready": 1',
+    "the owner's Play bots at a table": '"match_started"',
     "Play bots against a changed panel": '"panel_changed"',
     "a Leave alone": '"queued": false', "a Leave at a table": '"queued": false',
     "a Join by a table's code": '"table_chat_history"',

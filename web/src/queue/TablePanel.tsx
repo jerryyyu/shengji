@@ -178,7 +178,7 @@ function PanelView({ m, guarded, sheet, act }: {
         <div className="tp-acts">
           {m.primary ? (
             <button ref={primaryRef} type="button"
-                    className={`tp-primary${m.primary.searching ? " searching" : ""}${m.primary.waiting ? " waiting" : ""}`}
+                    className={`tp-primary${m.primary.waiting ? " waiting" : ""}`}
                     disabled={m.primary.disabled || guarded} aria-busy={m.primary.busy || undefined}
                     onClick={press(m.primary)}>
               {ringOf(m.primary.ring)}

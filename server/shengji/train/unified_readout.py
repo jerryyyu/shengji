@@ -33,10 +33,13 @@ caller, and the run's status log says so.
 from __future__ import annotations
 
 import argparse
+import errno
+import hashlib
 import json
 import math
 import os
 import sys
+import tempfile
 import time
 import traceback
 from pathlib import Path
@@ -44,7 +47,6 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from ..ai.unified_readout_numpy import leaf_scalars  # noqa: F401
 from . import belief_seq as bs
 from . import unified_seq as us
 from .belief_eval import _block_slice, known_counts, masked_softmax, mean_ll
@@ -73,6 +75,21 @@ def card_points() -> np.ndarray:
     out = np.zeros(N_CARDS, np.float32)
     for code, i in CARD_INDEX.items():
         out[i] = points(code)
+    return out
+
+
+def leaf_scalars(n_delta, n_trick, points, winner, nxt) -> np.ndarray:
+    """``(L, 12)``: plays since the decision / 4, plays in the current trick / 4, the trick is
+    complete, its points / 50, its winner so far (one-hot, actor's frame), the seat to act next
+    (one-hot; the winner when the trick is complete).  A complete trick is the one just finished."""
+    n = len(n_delta)
+    out = np.zeros((n, N_SCALARS), np.float32)
+    out[:, 0] = np.asarray(n_delta, np.float32) / 4.0
+    out[:, 1] = np.asarray(n_trick, np.float32) / 4.0
+    out[:, 2] = np.asarray(n_trick) == 4
+    out[:, 3] = np.asarray(points, np.float32) / 50.0
+    out[np.arange(n), 4 + np.asarray(winner, np.int64)] = 1.0
+    out[np.arange(n), 8 + np.asarray(nxt, np.int64)] = 1.0
     return out
 
 
@@ -236,13 +253,110 @@ def losses(model, tb) -> dict:
     rl = torch.log_softmax(out["leaf_reply"].masked_fill(~tb["leaf_reply_hand"], -1e9), -1)
     t = tb["leaf_reply"]
     r_ce = -((t / t.sum(-1, keepdim=True).clamp_min(1.0)) * rl).sum(-1) * has
-    return {"belief_sum": -(y * logp).sum(), "belief_n": y.sum(), "q_sum": q_ce.sum(), "p_sum": p_ce.sum(),
-            "rows": torch.tensor(float(len(q_ce))), "v_sum": v_ce.sum(), "leaves": torch.tensor(float(len(v_ce))),
-            "v0_sum": (v_ce * (tb["leaf_k"] == 0)).sum(), "ve_sum": (v_ce * tb["leaf_scalars"][:, 2]).sum(),
-            "ends": tb["leaf_scalars"][:, 2].sum(), "r_sum": r_ce.sum(), "replies": has.float().sum(), "out": out}
+    res = {"belief_sum": -(y * logp).sum(), "belief_n": y.sum(), "q_sum": q_ce.sum(), "p_sum": p_ce.sum(),
+           "rows": torch.tensor(float(len(q_ce))), "v_sum": v_ce.sum(), "leaves": torch.tensor(float(len(v_ce))),
+           "v0_sum": (v_ce * (tb["leaf_k"] == 0)).sum(), "ve_sum": (v_ce * tb["leaf_scalars"][:, 2]).sum(),
+           "ends": tb["leaf_scalars"][:, 2].sum(), "r_sum": r_ce.sum(), "replies": has.float().sum(), "out": out}
+    if "row_w" in tb:
+        # each row's (and leaf's) loss times its corpus weight; the counts stay unweighted
+        w = tb["row_w"].float()
+        wl = w[tb["leaf_row"]]
+        res.update({"belief_sum_w": -(w[:, 0, None, None] * y * logp).sum(), "q_sum_w": (w[:, 1] * q_ce).sum(),
+                    "p_sum_w": (w[:, 2] * p_ce).sum(), "v_sum_w": (wl[:, 3] * v_ce).sum(),
+                    "r_sum_w": (wl[:, 4] * r_ce).sum()})
+    return res
 
 
 SUM_KEYS = ("belief_sum", "belief_n", "q_sum", "p_sum", "rows", "v_sum", "leaves", "v0_sum", "ve_sum", "ends", "r_sum", "replies")
+
+
+def objective(L, args):
+    """The training loss: the five head means (corpus-weighted sums over unweighted counts when the
+    batch carries ``row_w``), times the head weights."""
+    m = means([L[k + "_w"] if k + "_w" in L else L[k] for k in SUM_KEYS])
+    return (args.belief_weight * m["belief"] + args.q_weight * m["q"] + args.policy_weight * m["policy"]
+            + args.value_weight * m["leaf_value"] + args.reply_weight * m["reply"])
+
+
+def _backward_batch(model, b, device, args):
+    """Accumulate one logical batch's gradient before the caller clips and steps."""
+    limit = getattr(args, "microbatch_rounds", None)
+    rounds = len(b["banker"])
+    totals = dict(belief_n=float(b["Y"].sum(dtype=np.float64)), rows=len(b["rr"]),
+                  leaves=len(b["leaf_row"]), replies=int(b["leaf_has_reply"].sum()))
+    stats = np.zeros(len(SUM_KEYS))
+    round_fields = {"tok_int", "tok_f", "tok_cards", "tok_att", "card_feat", "banker"}
+    leaf_rounds = b["rr"][b["leaf_row"]]
+    for start in range(0, rounds, limit):
+        end = min(rounds, start + limit)
+        rows = np.flatnonzero((b["rr"] >= start) & (b["rr"] < end))
+        leaves = np.flatnonzero((leaf_rounds >= start) & (leaf_rounds < end))
+        micro = {}
+        for key, value in b.items():
+            if key in round_fields:
+                micro[key] = value[start:end]
+            elif key.startswith("leaf_"):
+                micro[key] = value[leaves]
+            else:
+                micro[key] = value[rows]
+        micro["rr"] -= start
+        micro["leaf_row"] = np.searchsorted(rows, micro["leaf_row"])
+        loss = losses(model, us.to_device(micro, device))
+        objective({**loss, **totals}, args).backward()
+        stats += [float(loss[k].detach()) for k in SUM_KEYS]
+        del loss
+    return stats
+
+
+#: the heads a corpus weight names, in the column order of ``row_w``
+CORPUS_HEADS = ("belief", "q", "policy", "value", "reply")
+
+
+def parse_corpus_weights(items: Sequence[str]) -> list[tuple[str, list[float]]]:
+    """``PREFIX=head:w[,head:w...]`` items: rows of every data dir whose path starts with PREFIX weigh
+    their loss on each named head by ``w`` (unnamed heads 1)."""
+    spec = []
+    for item in items:
+        prefix, sep, rest = item.partition("=")
+        if not sep or not prefix or not rest:
+            raise UnifiedReadoutError(f"--corpus-weight {item!r}: expected PREFIX=head:w[,head:w...]")
+        w = dict.fromkeys(CORPUS_HEADS, 1.0)
+        for kv in rest.split(","):
+            k, sep, v = kv.partition(":")
+            if k not in w or not sep:
+                raise UnifiedReadoutError(f"--corpus-weight {item!r}: unknown head {k!r} (heads {CORPUS_HEADS})")
+            x = float(v)
+            if not (math.isfinite(x) and x >= 0):
+                raise UnifiedReadoutError(f"--corpus-weight {item!r}: weight {v!r} is not a finite number >= 0")
+            w[k] = x
+        spec.append((prefix.rstrip("/"), [w[h] for h in CORPUS_HEADS]))
+    return spec
+
+
+def weight_entries(entries, spec):
+    """Tag every entry with its corpus weights (all ones where no prefix matches); refuses a dir that
+    two prefixes match and a prefix that matches no dir.  No spec leaves the entries untouched."""
+    if not spec:
+        return entries
+    unused = {p for p, _ in spec}
+    for e in entries:
+        hits = [(p, w) for p, w in spec if str(e["dir"]).rstrip("/").startswith(p)]
+        if len(hits) > 1:
+            raise UnifiedReadoutError(f"{e['dir']}: matched by more than one --corpus-weight prefix")
+        e["corpus_w"] = list(hits[0][1]) if hits else [1.0] * len(CORPUS_HEADS)
+        unused -= {p for p, _ in hits}
+    if unused:
+        raise UnifiedReadoutError(f"--corpus-weight prefixes match no data dir: {sorted(unused)}")
+    return entries
+
+
+def weight_summary(entries) -> dict[str, int]:
+    """Rows per distinct weight vector (for the status line)."""
+    out: dict[str, int] = {}
+    for e in entries:
+        k = ",".join(f"{h}:{w:g}" for h, w in zip(CORPUS_HEADS, e.get("corpus_w", [1.0] * len(CORPUS_HEADS))))
+        out[k] = out.get(k, 0) + int(e["rows"])
+    return out
 
 
 def means(s) -> dict[str, float]:
@@ -312,6 +426,10 @@ def _run_identity(args) -> dict:
             "head_warmup_buffers", "weight_decay", "belief_weight", "q_weight", "policy_weight", "value_weight",
             "reply_weight", "seed", "buffer_chunks", "rounds_per_batch", "max_train_rows", "calib_rows",
             "exclude_seed_window")
+    if getattr(args, "microbatch_rounds", None) is not None:
+        keys += ("microbatch_rounds",)
+    if getattr(args, "corpus_weight", None):
+        keys += ("corpus_weight",)
     run = {k: getattr(args, k) for k in keys}
     if getattr(args, "device", "cpu") != "cpu":
         run["device"] = args.device          # absent means cpu: a CPU run keeps the identity it always had
@@ -336,6 +454,18 @@ def train(args) -> int:
 
 
 def _train(args, out: Path, status: str) -> int:
+    if getattr(args, "microbatch_rounds", None) is not None and args.microbatch_rounds < 1:
+        raise UnifiedReadoutError("--microbatch-rounds must be positive")
+    calib_rounds = min(getattr(args, "microbatch_rounds", None) or 32, 32)
+    report_buffer = getattr(args, "report_buffer", None)
+    pause_at_report = getattr(args, "pause_at_report", False)
+    expect_resume_buffer = getattr(args, "expect_resume_buffer", None)
+    capture_capacity = getattr(args, "capacity_stats", False)
+    ck = out / "checkpoint.pt"
+    if expect_resume_buffer is not None and (expect_resume_buffer < 0 or not ck.is_file()):
+        raise UnifiedReadoutError("--expect-resume-buffer requires a nonnegative cursor and an existing checkpoint")
+    if pause_at_report and report_buffer is None:
+        raise UnifiedReadoutError("--pause-at-report requires --report-buffer")
     import torch
     torch.set_num_threads(args.threads)
     torch.manual_seed(args.seed)
@@ -346,6 +476,7 @@ def _train(args, out: Path, status: str) -> int:
                                args.max_train_rows, args.seed)
     if not entries:
         raise UnifiedReadoutError("no train chunks")
+    weight_entries(entries, parse_corpus_weights(args.corpus_weight))
     if args.scratch_arch:
         # a trunk of another size, from random weights: no package can warm it
         if args.init or args.init_ckpt or args.init_readout_ckpt:
@@ -394,9 +525,10 @@ def _train(args, out: Path, status: str) -> int:
         g["lr"] = g["base_lr"]
     opt = torch.optim.AdamW(groups, weight_decay=args.weight_decay)
     n_buffers = math.ceil(len(stream.entries) / args.buffer_chunks)
-    report_buffer = getattr(args, "report_buffer", None)
     if report_buffer is not None and not 0 < report_buffer < n_buffers:
         raise UnifiedReadoutError("--report-buffer must be an interior buffer boundary")
+    if expect_resume_buffer is not None and expect_resume_buffer >= n_buffers:
+        raise UnifiedReadoutError("--expect-resume-buffer must be within the selected epoch")
     total = args.epochs * n_buffers
 
     def lr_scale(step):
@@ -412,34 +544,49 @@ def _train(args, out: Path, status: str) -> int:
             opt.param_groups[1]["lr"] = 0.0
         for k, v in leaf_batch(b).items():
             b["leaf_" + k] = v
-        L = losses(model, us.to_device(b, device))
-        m = means([L[k] for k in SUM_KEYS])
-        opt.zero_grad()
-        (args.belief_weight * m["belief"] + args.q_weight * m["q"] + args.policy_weight * m["policy"]
-         + args.value_weight * m["leaf_value"] + args.reply_weight * m["reply"]).backward()
+        if getattr(args, "microbatch_rounds", None) is None:
+            loss = losses(model, us.to_device(b, device))
+            opt.zero_grad()
+            objective(loss, args).backward()
+        else:
+            opt.zero_grad()
+            stats = _backward_batch(model, b, device, args)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         opt.step()
-        return np.asarray([float(L[k].detach()) for k in SUM_KEYS])
+        if getattr(args, "microbatch_rounds", None) is None:
+            return np.asarray([float(loss[k].detach()) for k in SUM_KEYS])
+        return stats
 
-    ck = out / "checkpoint.pt"
     state = {"epoch": 0, "buffer": 0, "history": [], "best": float("inf")}
-    if ck.exists():
-        saved = torch.load(ck, weights_only=False, map_location="cpu")
+    recovery_digest = getattr(args, "recover_checkpoint_sha256", None)
+    if ck.exists() or expect_resume_buffer is not None or recovery_digest is not None:
+        with ck.open("rb") as checkpoint_file:
+            if recovery_digest is not None:
+                if hashlib.file_digest(checkpoint_file, "sha256").hexdigest() != recovery_digest:
+                    raise UnifiedReadoutError("resume: checkpoint SHA256 mismatch")
+                checkpoint_file.seek(0)
+            saved = torch.load(checkpoint_file, weights_only=False, map_location="cpu")
         was = (saved.get("run") or {}).get("device", "cpu")
         if was != args.device:
             raise UnifiedReadoutError(f"resume: the checkpoint was trained with --device {was}, not --device {args.device}")
         if saved.get("run") != _run_identity(args):
             raise UnifiedReadoutError("resume: the run's settings differ from the checkpoint's")
+        state = saved["state"]
+        if recovery_digest is not None and (state["epoch"] != 0 or not 0 < state["buffer"] < n_buffers):
+            raise UnifiedReadoutError("resume: recovery requires an interior first-epoch checkpoint")
+        if expect_resume_buffer is not None and (state["epoch"] != 0 or state["buffer"] != expect_resume_buffer):
+            raise UnifiedReadoutError(f"resume: expected epoch 0 buffer {expect_resume_buffer}, "
+                                      f"found epoch {state['epoch']} buffer {state['buffer']}")
         model.load_state_dict(saved["model"])
         opt.load_state_dict(saved["opt"])
-        state = saved["state"]
         _status(status, f"RESUME epoch {state['epoch']} buffer {state['buffer']}"
                         + ("" if device.type == "cpu" else f" device={args.device}"))
     else:
-        state["init_calib"] = evaluate(model, calib, device=device)
+        state["init_calib"] = evaluate(model, calib, rounds_per_batch=calib_rounds, device=device)
         _status(status, f"{LANE} START params={sum(p.numel() for p in model.parameters())} "
                         f"readout_params={sum(p.numel() for p in model.readout.parameters())} rows={stream.rows} "
                         f"chunks={len(entries)} buffers={n_buffers} init={init['sha256']}"
+                        + (f" corpus_weights={json.dumps(weight_summary(entries))}" if args.corpus_weight else "")
                         + ("" if device.type == "cpu" else f" device={args.device}"))
         (out / "run.json").write_text(json.dumps(_run_identity(args), indent=1))
         _status(status, f"INIT calib {json.dumps(state['init_calib'])}")
@@ -459,24 +606,78 @@ def _train(args, out: Path, status: str) -> int:
         torch.save({"schema": CKPT_SCHEMA, "model": weights(), "config": model.config, "epoch": epoch,
                     "calib": cm, "init_calib": state.get("init_calib"), "run": _run_identity(args)}, out / "best.pt")
 
+    def write_report(epoch, buffer, sums, *, steps=None):
+        totals = dict(zip(SUM_KEYS, sums))
+        report = {"epoch": epoch + 1, "completed_buffers": buffer, "rows": int(totals["rows"]),
+                  "leaves": int(totals["leaves"]), "train": means(sums)}
+        if steps is not None:
+            report["steps"] = steps
+        path = out / f"epoch-{epoch + 1}-buffer-{buffer}.json"
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(report, allow_nan=False) + "\n")
+        os.replace(tmp, path)
+
+    def stopped():
+        _status(status, f"STOPPED at epoch {state['epoch'] + 1} buffer {state['buffer']}/{n_buffers} "
+                        "(STOP file or --max-seconds); checkpoint saved")
+        return 3
+
+    def capacity_sample(epoch, rows, steps, train_start, tensor_bytes, driver_bytes):
+        train_seconds = time.monotonic() - train_start
+        sample = dict(epoch=epoch + 1, rows=rows, steps=steps, train_seconds=train_seconds,
+                      rows_per_second=rows / train_seconds, max_batch_rounds=max_batch_rounds)
+        if device.type == "mps":
+            sample.update(post_step_max_tensor_bytes=tensor_bytes, post_step_max_driver_bytes=driver_bytes)
+        return sample
+
+    def pause(capacity=None):
+        if capacity is not None:
+            write_report(0, report_buffer, state["epoch_sums"], steps=capacity["steps"])
+        elif not capture_capacity or not (out / f"epoch-1-buffer-{report_buffer}.json").is_file():
+            write_report(0, report_buffer, state["epoch_sums"])
+        if (out / "STOP").exists():
+            return stopped()
+        if capacity is not None:
+            _status(status, f"CAPACITY {json.dumps(capacity, allow_nan=False)}")
+        _status(status, f"{LANE} PAUSED at epoch 1 buffer {report_buffer}/{n_buffers} "
+                        "(report boundary); checkpoint saved")
+        return 7
+
+    if pause_at_report:
+        if state["epoch"] or state["buffer"] > report_buffer:
+            raise UnifiedReadoutError("resume: the checkpoint is past the requested report boundary")
+        if state["buffer"] == report_buffer:
+            return pause()
+
     last_save = time.time()
     while state["epoch"] < args.epochs:
         epoch, t0, sums, cur, steps = state["epoch"], time.time(), np.zeros(len(SUM_KEYS)), state["buffer"], 0
-        if report_buffer is not None and cur:
-            sums[:] = state["epoch_sums"]
+        if cur:
+            if "epoch_sums" in state:
+                sums[:] = state["epoch_sums"]
+            elif report_buffer is not None:
+                raise UnifiedReadoutError("resume: checkpoint lacks the sums for the requested buffer report")
+            else:
+                state["train_start_buffer"] = cur
+                _status(status, f"epoch {epoch + 1} train metrics start at buffer {cur}: checkpoint lacks earlier sums")
+        if capture_capacity:
+            train_start = time.monotonic()
+            trained_rows = tensor_bytes = driver_bytes = max_batch_rounds = 0
         for gi, b in stream.batches(args.seed, epoch, state["buffer"]):
             if gi != cur:
+                if pause_at_report and gi > report_buffer:
+                    raise UnifiedReadoutError("the stream skipped the requested report boundary")
                 state["buffer"] = cur = gi
-                if report_buffer is not None:
-                    state["epoch_sums"] = sums.tolist()
-                    if gi == report_buffer:
-                        totals = dict(zip(SUM_KEYS, sums))
-                        report = {"epoch": epoch + 1, "completed_buffers": gi, "rows": int(totals["rows"]),
-                                  "leaves": int(totals["leaves"]), "train": means(sums)}
-                        path = out / f"epoch-{epoch + 1}-buffer-{gi}.json"
-                        tmp = path.with_suffix(".tmp")
-                        tmp.write_text(json.dumps(report, allow_nan=False) + "\n")
-                        os.replace(tmp, path)
+                state["epoch_sums"] = sums.tolist()
+                if gi == report_buffer:
+                    if pause_at_report:
+                        capacity = (
+                            capacity_sample(epoch, trained_rows, steps, train_start, tensor_bytes, driver_bytes)
+                            if capture_capacity and steps else None
+                        )
+                        save()
+                        return pause(capacity)
+                    write_report(epoch, gi, sums)
                 if time.time() - last_save > args.save_every:
                     save()
                     last_save = time.time()
@@ -484,16 +685,33 @@ def _train(args, out: Path, status: str) -> int:
                                     f" ({time.time() - t0:.0f}s)")
                 if (out / "STOP").exists() or (args.max_seconds and time.time() - started > args.max_seconds):
                     save()
-                    _status(status, f"STOPPED at epoch {epoch + 1} buffer {gi}/{n_buffers} (STOP file or --max-seconds); checkpoint saved")
-                    return 3
-            sums += step_on(b, epoch * n_buffers + gi)
+                    return stopped()
+            batch_sums = step_on(b, epoch * n_buffers + gi)
+            sums += batch_sums
+            if capture_capacity:
+                max_batch_rounds = max(max_batch_rounds, len(b["tok_int"]))
+                trained_rows += int(batch_sums[SUM_KEYS.index("rows")])
+                if device.type == "mps":
+                    tensor_bytes = max(tensor_bytes, torch.mps.current_allocated_memory())
+                    driver_bytes = max(driver_bytes, torch.mps.driver_allocated_memory())
             steps += 1
             if args.max_steps and steps >= args.max_steps:
                 break
-        cm = evaluate(model, calib, device=device)
+        if pause_at_report:
+            raise UnifiedReadoutError("training ended before the requested report boundary")
+        if capture_capacity:
+            capacity = capacity_sample(epoch, trained_rows, steps, train_start, tensor_bytes, driver_bytes)
+            _status(status, f"CAPACITY {json.dumps(capacity, allow_nan=False)}")
+        cm = evaluate(model, calib, rounds_per_batch=calib_rounds, device=device)
         state["history"].append({"epoch": epoch + 1, "train": means(sums), "calib": cm, "seconds": time.time() - t0})
+        coverage = ""
+        if "train_start_buffer" in state:
+            start_buffer = state.pop("train_start_buffer")
+            state["history"][-1]["train_start_buffer"] = start_buffer
+            coverage = f" train_start_buffer={start_buffer}"
+        state.pop("epoch_sums", None)
         _status(status, f"EPOCH {epoch + 1} train {json.dumps({k: round(v, 5) for k, v in means(sums).items()})} "
-                        f"calib {json.dumps(cm)} steps={steps} ({time.time() - t0:.0f}s)")
+                        f"calib {json.dumps(cm)} steps={steps} ({time.time() - t0:.0f}s){coverage}")
         state["epoch"] += 1
         state["buffer"] = 0
         score = cm["belief_ll"] + cm["leaf_value_end"]
@@ -537,7 +755,11 @@ def export(args) -> int:
 BODY_PREFIXES = ("stem.", "ln.", "up.", "down.", "out_ln.", "value.", "reply.")
 
 
-def cache_arrays(model, part, *, rounds_per_batch: int = 32, device="cpu") -> dict[str, np.ndarray]:
+CACHE_DEFAULT_ENCODE_ROUNDS = 32
+
+
+def cache_arrays(model, part, *, rounds_per_batch: int = CACHE_DEFAULT_ENCODE_ROUNDS,
+                 device="cpu") -> dict[str, np.ndarray]:
     """One part's rows as the polish reads them: the frozen per-decision projections (float16) and
     every leaf (row index, planes, scalars, outcome target, reply)."""
     import torch
@@ -545,6 +767,9 @@ def cache_arrays(model, part, *, rounds_per_batch: int = 32, device="cpu") -> di
     dp, dc = model.config["readout"]["dp"], model.config["readout"]["dc"]
     out = {"S": np.zeros((n, N_CARDS, dp), np.float16), "c": np.zeros((n, dc), np.float16)}
     leaves = {k: [] for k in ("row", "planes", "scalars", "target", "reply", "reply_hand", "has_reply")}
+    leaf_offsets = []
+    if "row_w" in part:
+        leaves["w"] = []                                 # (L, 2): the value and reply corpus weights
     with torch.no_grad():
         for rids, rows in bs.round_batches(part, rounds_per_batch, None):
             b = make_batch(part, rids, rows)
@@ -560,90 +785,182 @@ def cache_arrays(model, part, *, rounds_per_batch: int = 32, device="cpu") -> di
             leaves["reply"].append(b["leaf_reply"].astype(np.uint8))
             leaves["reply_hand"].append(b["leaf_reply_hand"])
             leaves["has_reply"].append(b["leaf_has_reply"])
-    out.update({"leaf_" + k: np.concatenate(v) for k, v in leaves.items()})
+            if rounds_per_batch != CACHE_DEFAULT_ENCODE_ROUNDS:
+                leaf_offsets.append(b["leaf_k"])
+            if "w" in leaves:
+                leaves["w"].append(b["row_w"][b["leaf_row"]][:, [CORPUS_HEADS.index("value"), CORPUS_HEADS.index("reply")]]
+                                   .astype(np.float32))
+    order = None
+    if leaf_offsets:
+        # Preserve the logical batch's leaf order so encode sizing keeps polish minibatches fixed.
+        leaf_rows = np.concatenate(leaves["row"])
+        round_ids = part["row_round"]
+        logical_batch = np.searchsorted(np.unique(round_ids), round_ids[leaf_rows]) // CACHE_DEFAULT_ENCODE_ROUNDS
+        order = np.lexsort((leaf_rows, np.concatenate(leaf_offsets), logical_batch))
+    for key, pieces in leaves.items():
+        values = np.concatenate(pieces)
+        out[f"leaf_{key}"] = values if order is None else values[order]
     return out
 
 
 CACHE_DEVICE = "cache_device.json"
-MARKER_WAIT_S = 2.0
 
 
 def _cache_has_output(out: Path) -> bool:
     return any(out.glob("calib-*.npz")) or any(out.glob("train-*.npz")) or any(out.glob("DONE.*"))
 
 
-def _publish_marker(out: Path, marker: Path, device: str) -> None:
-    """Create ``marker`` holding ``{"device": device}`` unless a worker already did, so that no reader ever sees
-    it partly written: the bytes go to a private file, are synced, then hard-linked to the final name, which
-    either appears whole or fails because it exists.  Storage without hard links is refused, with no marker
-    made."""
-    tmp = out / f"{CACHE_DEVICE}.{os.getpid()}.tmp"
-    try:
-        with open(tmp, "w") as fh:
-            fh.write(json.dumps({"device": device}))
-            fh.flush()
-            os.fsync(fh.fileno())
+MARKER_WAIT_S = 2.0
+
+
+def _cache_marker(out: Path, name: str, payload: dict) -> dict:
+    """Atomically bind a cache producer setting before any worker writes shards."""
+    marker = out / name
+    if not marker.exists():
+        fd, tmp_name = tempfile.mkstemp(dir=out, prefix=f"{name}.", suffix=".tmp")
+        tmp = Path(tmp_name)
         try:
-            os.link(tmp, marker)
-        except FileExistsError:                      # another worker bound the directory first
-            pass
-        except OSError as e:
-            raise UnifiedReadoutError(f"cache {out}: its storage does not support hard links ({e}), so "
-                                      f"{CACHE_DEVICE} cannot be published atomically; use local storage") from e
-    finally:
-        tmp.unlink(missing_ok=True)
-
-
-def _read_marker(out: Path, marker: Path) -> str:
-    """The device in a published marker.  Markers are published whole, so a marker that stays unreadable for
-    ``MARKER_WAIT_S`` was left by something else (an interrupted older publisher, a copy) and is refused."""
+            with os.fdopen(fd, "w") as stream:
+                json.dump(payload, stream)
+                stream.flush()
+                os.fsync(stream.fileno())
+            try:
+                os.link(tmp, marker)
+            except FileExistsError:
+                pass
+            except OSError as exc:
+                if os.name == "nt":
+                    try:
+                        os.rename(tmp, marker)
+                    except FileExistsError:
+                        pass
+                elif exc.errno in (errno.ENOTSUP, errno.EOPNOTSUPP):
+                    import fcntl
+                    # The lock serializes the existence check and rename on volumes without hard links.
+                    with (out / f"{name}.lock").open("ab") as lock:
+                        fcntl.flock(lock, fcntl.LOCK_EX)
+                        if not marker.exists():
+                            os.replace(tmp, marker)
+                else:
+                    raise
+        finally:
+            tmp.unlink(missing_ok=True)
     deadline = time.monotonic() + MARKER_WAIT_S
     while True:
         text = marker.read_text()
         try:
-            was = json.loads(text)
-            if isinstance(was, dict) and isinstance(was.get("device"), str):
-                return was["device"]
+            record = json.loads(text)
+            if isinstance(record, dict) and (name != CACHE_DEVICE or isinstance(record.get("device"), str)):
+                return record
         except ValueError:
             pass
         if time.monotonic() >= deadline:
-            raise UnifiedReadoutError(f"cache {out}: {CACHE_DEVICE} is unreadable ({text[:40]!r}); once no "
-                                      f"worker is running, remove it if the shards' device is known, else "
-                                      f"start a fresh cache")
+            raise UnifiedReadoutError(f"cache {out}: {name} is unreadable ({text[:40]!r})")
         time.sleep(0.05)
 
 
-def bind_cache_device(out: Path, device: str) -> None:
-    """Bind the cache directory ``out`` to the device that produces its shards, before any shard is made or kept.
 
-    ``OUT/cache_device.json`` names the producer's device.  It is published once, atomically, by the first worker;
-    every later worker (and every resume) must name the same device.  A directory that holds shards and still no
-    such file once the shards are seen was written before devices existed, by the CPU: it binds to ``cpu``, so a
-    CPU run keeps its shards and any other device refuses.  Workers publish the file before their first shard, so
-    a marker that appears between the two looks is the producer's and decides.  Shard files are never read or
-    rewritten here."""
+def bind_cache_device(out: Path, device: str) -> None:
+    """A cache without a device record uses the legacy CPU producer."""
     marker = out / CACHE_DEVICE
-    if not marker.exists():
-        if _cache_has_output(out) and not marker.exists() and device != "cpu":
-            raise UnifiedReadoutError(f"cache {out}: its shards carry no device and so are CPU output; "
-                                      f"--device {device} would mix producers")
-        _publish_marker(out, marker, device)
-    was = _read_marker(out, marker)
+    if device != "cpu" and not marker.exists() and _cache_has_output(out) and not marker.exists():
+        raise UnifiedReadoutError(f"cache {out}: its shards carry no device and so are CPU output; "
+                                  f"--device {device} would mix producers")
+    was = _cache_marker(out, CACHE_DEVICE, {"device": device}).get("device")
     if was != device:
         raise UnifiedReadoutError(f"cache {out}: its shards were made with --device {was}, not --device {device}")
+
+
+CACHE_ENCODE = "cache_encode.json"
+
+
+def bind_cache_encode_rounds(out: Path, rounds: int, *, sample=None) -> None:
+    """Bind the encoder and optional sampled shard layout before any worker writes."""
+    marker = out / CACHE_ENCODE
+    if not marker.exists() and _cache_has_output(out) and not marker.exists():
+        if rounds != CACHE_DEFAULT_ENCODE_ROUNDS:
+            raise UnifiedReadoutError(f"cache {out}: existing shards have the default encode batch size")
+        if sample is not None:
+            raise UnifiedReadoutError(f"cache {out}: existing shards have no sampled selection binding")
+        for receipt in out.glob("DONE.*"):
+            try:
+                record = json.loads(receipt.read_text())
+            except (OSError, ValueError):
+                continue
+            if isinstance(record, dict) and "sample" in record:
+                raise UnifiedReadoutError(f"cache {out}: existing shards come from an unbound sampled cache")
+    expected = {"rounds_per_batch": rounds}
+    if sample is not None:
+        expected["sample"] = sample
+    record = _cache_marker(out, CACHE_ENCODE, expected)
+    if record.get("rounds_per_batch") != rounds:
+        raise UnifiedReadoutError(f"cache {out}: shards use --encode-rounds-per-batch "
+                                  f"{record.get('rounds_per_batch')}, not {rounds}")
+    if record.get("sample") != sample:
+        raise UnifiedReadoutError(f"cache {out}: sampled selection or worker layout differs")
+
+
+def sample_entries(entries, cap, seed):
+    """Visit chunks in seeded random order, keep those that fit, and return them in input order."""
+    if cap is None or sum(int(e["rows"]) for e in entries) <= cap:
+        return entries
+    keep, total = np.zeros(len(entries), bool), 0
+    for i in np.random.default_rng([int(seed), 0x5A3C]).permutation(len(entries)):
+        rows = int(entries[i]["rows"])
+        if total + rows <= cap:
+            keep[i], total = True, total + rows
+    return [entry for entry, kept in zip(entries, keep) if kept]
+
+
+def _cache_sample_binding(args, receipt, entries):
+    manifests = [
+        (path, us.sha256_file(Path(path) / "manifest.json"), us.sha256_file(Path(path) / "hist/manifest.json"))
+        for path in args.data
+    ]
+    selected = hashlib.sha256()
+    for entry in entries:
+        selected.update(bytes.fromhex(entry["sha256"]))
+        selected.update(bytes.fromhex(entry["hist_sha256"]))
+    inputs = dict(manifests=manifests, selection_sha256=selected.hexdigest(), store_map=args.store_map,
+                  calib_rows=args.calib_rows, exclude_seed_windows=args.exclude_seed_window,
+                  corpus_weight=args.corpus_weight, checkpoint_sha256=us.sha256_file(args.ckpt))
+    inputs_sha256 = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
+    return dict(receipt=receipt, inputs_sha256=inputs_sha256, workers=args.workers,
+                group_chunks=args.group_chunks, max_groups=args.max_groups)
 
 
 def cache(args) -> int:
     """Write the polish cache of a checkpoint: ``OUT/calib-0000.npz`` (the trainer's calibration rows) and
     ``OUT/train-NNNN.npz`` (consecutive groups of ``--group-chunks`` train chunks; ``--worker I --workers N``
-    takes every N-th group).  A shard that exists is kept when the directory's producer device
-    (``bind_cache_device``) is this run's; a run on another device refuses before it writes anything."""
+    takes every N-th group). Existing shards are reused when the cache producer's device, encode batch
+    size, and optional sampled selection match this run."""
     import torch
+    if args.encode_rounds_per_batch <= 0:
+        raise UnifiedReadoutError("--encode-rounds-per-batch must be positive")
+    cap = getattr(args, "sample_train_rows", None)
+    if cap is not None and cap <= 0:
+        raise UnifiedReadoutError("--sample-train-rows must be positive")
+
+    def train_entries():
+        return weight_entries(us.entries_for(args.data, "train", exclude_seed_windows=args.exclude_seed_window),
+                              parse_corpus_weights(args.corpus_weight))
+
+    receipt = binding = entries = None
+    if cap is not None:
+        available = train_entries()
+        entries = sample_entries(available, cap, args.seed)
+        if not entries:
+            raise UnifiedReadoutError("--sample-train-rows fits no training chunks")
+        receipt = dict(cap_rows=cap, seed=args.seed, chunks=len(entries),
+                       rows=sum(int(e["rows"]) for e in entries), of_chunks=len(available),
+                       of_rows=sum(int(e["rows"]) for e in available))
+        binding = _cache_sample_binding(args, receipt, entries)
     torch.set_num_threads(args.threads)
     device = _device(args.device)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     bind_cache_device(out, args.device)
+    bind_cache_encode_rounds(out, args.encode_rounds_per_batch, sample=binding)
     model, _ = load_checkpoint(args.ckpt)
     if device.type != "cpu":
         model.to(device)
@@ -652,12 +969,13 @@ def cache(args) -> int:
 
     def write(name, part):
         tmp = out / (name + ".tmp.npz")
-        np.savez(tmp, **cache_arrays(model, part, device=device))
+        np.savez(tmp, **cache_arrays(model, part, rounds_per_batch=args.encode_rounds_per_batch, device=device))
         os.replace(tmp, out / (name + ".npz"))
     if args.worker == 0 and not (out / "calib-0000.npz").exists():
         write("calib-0000", us.load_calib(args.data, verified, index, max_rows=args.calib_rows, seed=args.seed,
                                           exclude_seed_windows=args.exclude_seed_window))
-    entries = us.entries_for(args.data, "train", exclude_seed_windows=args.exclude_seed_window)
+    if entries is None:
+        entries = train_entries()
     groups = [entries[i:i + args.group_chunks] for i in range(0, len(entries), args.group_chunks)]
     if args.max_groups:
         groups = groups[:args.max_groups]
@@ -670,7 +988,12 @@ def cache(args) -> int:
         if parts:
             write(name, bs.concat_parts(parts))
         print(f"[cache] {name} of {len(groups)}", flush=True)
-    (out / f"DONE.{args.worker}").write_text(json.dumps({"groups": len(groups), "chunks": len(entries)}))
+    done = {"groups": len(groups), "chunks": len(entries)}
+    if receipt is not None:
+        done["sample"] = receipt
+    if args.corpus_weight:
+        done["corpus_weight"] = list(args.corpus_weight)
+    (out / f"DONE.{args.worker}").write_text(json.dumps(done))
     return 0
 
 
@@ -694,6 +1017,18 @@ def polish_losses(readout, t):
     rl = torch.log_softmax(r.masked_fill(~hand, -1e9), -1)
     r_ce = -((reply / reply.sum(-1, keepdim=True).clamp_min(1.0)) * rl).sum(-1) * has
     return v_ce, r_ce, scalars[:, 2] > 0, has
+
+
+def polish_objective(v, r, has, reply_weight, leaf_w=None):
+    """Mean outcome CE + reply_weight x reply CE per leaf with a reply; ``leaf_w`` (L, 2) weighs each
+    leaf's two losses by its corpus (the counts stay unweighted)."""
+    import torch
+    if leaf_w is not None:
+        lw = torch.from_numpy(np.asarray(leaf_w, np.float32))
+        if v.device.type != "cpu":
+            lw = lw.to(v.device)
+        v, r = v * lw[:, 0], r * lw[:, 1]
+    return v.mean() + reply_weight * r.sum() / has.float().sum().clamp_min(1.0)
 
 
 def polish_eval(readout, z, batch: int = 16384, device="cpu") -> dict[str, float]:
@@ -732,6 +1067,10 @@ def polish(args) -> int:
     done = sorted(cache_dir.glob("DONE.*"))
     if not shards or not done:
         raise UnifiedReadoutError("the cache is incomplete")
+    weighted = {"leaf_w" in np.load(f).files for f in shards}
+    if len(weighted) != 1:
+        raise UnifiedReadoutError("the cache mixes shards with and without corpus weights")
+    weighted = weighted.pop()
     calib = dict(np.load(cache_dir / "calib-0000.npz"))
     readout.train()
     opt = torch.optim.AdamW(body, lr=args.lr, weight_decay=args.weight_decay)
@@ -739,7 +1078,7 @@ def polish(args) -> int:
     init = polish_eval(readout, calib, device=device)
     best = {"score": init["leaf_value_end"], "epoch": 0, "calib": init}
     _status(status, f"POLISH START shards={len(shards)} epochs={args.epochs} body_params={sum(p.numel() for p in body)} "
-                    f"ckpt={us.sha256_file(args.ckpt)} init calib {json.dumps(init)}"
+                    f"ckpt={us.sha256_file(args.ckpt)} corpus_weighted={weighted} init calib {json.dumps(init)}"
                     + ("" if device.type == "cpu" else f" device={args.device}"))
     rng = np.random.default_rng(args.seed)
     step_i, t0 = 0, time.time()
@@ -754,8 +1093,9 @@ def polish(args) -> int:
             z = {k: z[k] for k in z.files}
             order = rng.permutation(len(z["leaf_row"]))
             for i in range(0, len(order), args.batch):
-                v, r, end, has = polish_losses(readout, _polish_tensors(z, np.sort(order[i:i + args.batch]), device))
-                loss = v.mean() + args.reply_weight * r.sum() / has.float().sum().clamp_min(1.0)
+                pick = np.sort(order[i:i + args.batch])
+                v, r, end, has = polish_losses(readout, _polish_tensors(z, pick, device))
+                loss = polish_objective(v, r, has, args.reply_weight, z["leaf_w"][pick] if weighted else None)
                 opt.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(body, 1.0)
@@ -922,13 +1262,24 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--threads", type=int, default=12)
     t.add_argument("--loader-threads", type=int, default=3)
     t.add_argument("--buffer-chunks", type=int, default=24)
+    t.add_argument("--microbatch-rounds", type=int, help="maximum rounds per backward pass within a logical batch")
     t.add_argument("--rounds-per-batch", type=int, default=16)
     t.add_argument("--max-train-rows", type=int, default=None)
+    t.add_argument("--capacity-stats", action="store_true",
+                   help="report throughput and post-step MPS allocations for each completed training leg")
     t.add_argument("--max-steps", type=int, default=None)
     t.add_argument("--calib-rows", type=int, default=180000)
     t.add_argument("--report-buffer", type=int, help="write cumulative epoch losses at this interior buffer boundary")
+    t.add_argument("--pause-at-report", action="store_true",
+                   help="checkpoint and exit 7 at the first epoch's report boundary; omit to continue")
+    t.add_argument("--expect-resume-buffer", type=int,
+                   help="require a matching first-epoch checkpoint at this buffer before training")
+    t.add_argument("--recover-checkpoint-sha256", help="require these exact checkpoint bytes at an interior first-epoch buffer")
     t.add_argument("--save-every", type=float, default=600.0)
     t.add_argument("--exclude-seed-window", type=bs.seed_window, action="append", default=[])
+    t.add_argument("--corpus-weight", action="append", default=[],
+                   help="PREFIX=head:w[,head:w...]: loss weights of the rows of data dirs under PREFIX "
+                        f"(heads {','.join(CORPUS_HEADS)}; default 1)")
     t.add_argument("--device", choices=("cpu", "mps"), default="cpu", help="where the model runs; batches are built on the CPU")
     c = sub.add_parser("cache")
     c.add_argument("--ckpt", required=True)
@@ -939,10 +1290,16 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--calib-rows", type=int, default=180000)
     c.add_argument("--seed", type=int, default=1)
     c.add_argument("--group-chunks", type=int, default=24)
+    c.add_argument("--encode-rounds-per-batch", type=int, default=CACHE_DEFAULT_ENCODE_ROUNDS,
+                   help="maximum rounds per trunk forward for cache training and calibration shards")
     c.add_argument("--max-groups", type=int, default=None, help="only the first groups (smoke)")
+    c.add_argument("--sample-train-rows", type=int,
+                   help="cache a seeded sample of whole train chunks within this manifest row cap")
     c.add_argument("--worker", type=int, default=0)
     c.add_argument("--workers", type=int, default=1)
     c.add_argument("--threads", type=int, default=8)
+    c.add_argument("--corpus-weight", action="append", default=[],
+                   help="as train's: stores each leaf's value and reply weights in the cache (the polish uses them)")
     c.add_argument("--device", choices=("cpu", "mps"), default="cpu")
     p = sub.add_parser("polish")
     p.add_argument("--ckpt", required=True)

@@ -10,6 +10,7 @@ from __future__ import annotations
 import errno
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -102,19 +103,25 @@ def make_data(root: Path) -> Path:
     return extract_dir(store, root / "x", calib=0.5, task_clusters=1)
 
 
-def run_fixture(data: Path, root: Path, device: str | None = None) -> dict:
+def run_fixture(data: Path, root: Path, device: str | None = None, weighted: bool = False,
+                cache_device: str | None = "same") -> dict:
     """``train`` (2 epochs), ``cache`` and ``polish`` (2 epochs) on ``data``; returns the losses and a digest
-    of every checkpoint tensor.  ``device=None`` passes no ``--device`` flag."""
-    flag = [] if device is None else ["--device", device]
+    of every checkpoint tensor.  ``device=None`` passes no ``--device`` flag; ``weighted`` passes a
+    ``--corpus-weight`` on the data dir to train and cache, so the cache carries leaf weights;
+    ``cache_device`` runs the cache on another device than train and polish (the lanes cache on the CPU)."""
+    dflag = [] if device is None else ["--device", device]
+    wflag = ["--corpus-weight", f"{data}=policy:2,reply:2"] if weighted else []
+    flag = dflag + wflag
+    cflag = flag if cache_device == "same" else ([] if cache_device is None else ["--device", cache_device]) + wflag
     out, cache, pout = root / "train", root / "cache", root / "polish"
     rc = ur.main(["train", "--data", str(data), "--out", str(out), "--scratch-arch", SCRATCH, "--epochs", "2",
                   "--threads", "1", "--loader-threads", "1", "--rounds-per-batch", "1", "--buffer-chunks", "1",
                   "--save-every", "0", "--calib-rows", "100000"] + flag)
     assert rc == 0, (out / "status.log").read_text()
     assert ur.main(["cache", "--ckpt", str(out / "best.pt"), "--data", str(data), "--out", str(cache),
-                    "--threads", "1", "--group-chunks", "1", "--calib-rows", "100000"] + flag) == 0
+                    "--threads", "1", "--group-chunks", "1", "--calib-rows", "100000"] + cflag) == 0
     assert ur.main(["polish", "--ckpt", str(out / "best.pt"), "--cache", str(cache), "--out", str(pout),
-                    "--epochs", "2", "--batch", "32", "--lr", "3e-4", "--threads", "1"] + flag) == 0
+                    "--epochs", "2", "--batch", "32", "--lr", "3e-4", "--threads", "1"] + dflag) == 0
     ck = torch.load(out / "checkpoint.pt", weights_only=False, map_location="cpu")
     pol = torch.load(pout / "best.pt", weights_only=False, map_location="cpu")
     hist = ck["state"]["history"]
@@ -198,24 +205,88 @@ def test_the_cpu_path_gives_the_reference_losses(cpu_default):
     _close(cpu_default["polish"], CPU_REFERENCE["polish"], CPU_REL_TOL["polish"])
 
 
-def test_polish_exports_input_weights_when_pass_zero_wins(cpu_root, tmp_path):
-    root, _ = cpu_root
-    source = root / "train" / "best.pt"
-    polished = tmp_path / "polished"
-    assert ur.main(["polish", "--ckpt", str(source), "--cache", str(root / "cache"),
-                    "--out", str(polished), "--epochs", "1", "--batch", "32", "--lr", "3e-4", "--threads", "1"]) == 0
-    _, saved = ur.load_checkpoint(polished / "best.pt")
-    assert saved["calib"]["polish_epoch"] == 0
-    for checkpoint, package in ((source, "input.npz"), (polished / "best.pt", "selected.npz")):
-        assert ur.main(["export", "--ckpt", str(checkpoint), "--out", str(tmp_path / package), "--temperature", "1"]) == 0
-    with np.load(tmp_path / "input.npz") as expected, np.load(tmp_path / "selected.npz") as selected:
-        assert expected.files == selected.files
-        for key in expected.files:
-            if key != "metadata":
-                np.testing.assert_array_equal(selected[key], expected[key], err_msg=key)
-
-
 mps = pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS is not available")
+
+
+@pytest.mark.parametrize("device", ["cpu", pytest.param("mps", marks=mps)])
+def test_capacity_sample_counts_actual_training_work(data, tmp_path, device):
+    args = ["train", "--data", str(data), "--out", str(tmp_path), "--device", device,
+            "--scratch-arch", SCRATCH, "--threads", "1", "--loader-threads", "1",
+            "--rounds-per-batch", "1", "--epochs", "1", "--capacity-stats"]
+    assert ur.main(args) == 0
+    status = (tmp_path / "status.log").read_text().splitlines()
+    sample, = [json.loads(line.split(" CAPACITY ")[1]) for line in status if " CAPACITY " in line]
+    assert sample["steps"] > 1 and sample["rows"] > 0 and sample["train_seconds"] > 0
+    assert sample["rows_per_second"] == pytest.approx(sample["rows"] / sample["train_seconds"])
+    assert " UTR DONE " in status[-1]
+    assert "capacity_stats" not in json.loads((tmp_path / "run.json").read_text())
+    if device == "mps":
+        assert sample["post_step_max_driver_bytes"] >= sample["post_step_max_tensor_bytes"] > 0
+    else:
+        assert "post_step_max_driver_bytes" not in sample
+
+
+@pytest.mark.parametrize("device", ["cpu", pytest.param("mps", marks=mps)])
+def test_split_capacity_reads_real_pause_and_resume(data, tmp_path, device, monkeypatch):
+    args = ["train", "--data", str(data), "--device", device, "--scratch-arch", SCRATCH,
+            "--threads", "1", "--loader-threads", "1", "--rounds-per-batch", "1",
+            "--epochs", "1", "--buffer-chunks", "1", "--report-buffer", "1", "--capacity-stats"]
+    out = tmp_path / "smoke"
+    assert ur.main([*args, "--out", str(out), "--pause-at-report"]) == 7
+    prefix = json.loads((out / "epoch-1-buffer-1.json").read_text())
+
+    wrong = tmp_path / "wrong"
+    assert ur.main([*args, "--out", str(wrong), "--expect-resume-buffer", "1"]) == 1
+    status = (wrong / "status.log").read_text()
+    assert "existing checkpoint" in status and " UTR START " not in status
+    shutil.copyfile(out / "checkpoint.pt", wrong / "checkpoint.pt")
+    assert ur.main([*args, "--out", str(wrong), "--expect-resume-buffer", "0"]) == 1
+    status = (wrong / "status.log").read_text()
+    assert "expected epoch 0 buffer 0, found epoch 0 buffer 1" in status
+    assert " UTR START " not in status and " CAPACITY " not in status and " RESUME " not in status
+
+    assert ur.main([*args, "--out", str(out), "--expect-resume-buffer", "1"]) == 0
+    status_path = out / "status.log"
+    status = status_path.read_text()
+    first, second = (json.loads(line.split(" CAPACITY ", 1)[1])
+                     for line in status.splitlines() if " CAPACITY " in line)
+    assert prefix["completed_buffers"] == 1 and prefix["epoch"] == 1
+    assert prefix["rows"] == first["rows"] > 0 and prefix["steps"] == first["steps"] > 0
+    assert second["rows"] > 0 and second["steps"] > 0
+    identity = json.loads((out / "run.json").read_text())
+    assert "capacity_stats" not in identity and "expect_resume_buffer" not in identity
+    if device == "cpu":
+        assert "post_step_max_driver_bytes" not in first and "post_step_max_driver_bytes" not in second
+        return
+
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
+    from sz3_joint_recipe import smoke_result
+    result = smoke_result(out)
+    with pytest.raises(ValueError, match="full training batch"):
+        smoke_result(out, required_batch_rounds=16)
+    capacity = result["capacity"]
+    assert capacity["steps"] == first["steps"] + second["steps"]
+    assert capacity["rows"] == first["rows"] + second["rows"]
+    assert capacity["train_seconds"] == first["train_seconds"] + second["train_seconds"]
+    assert capacity["rows_per_second"] == pytest.approx(capacity["rows"] / capacity["train_seconds"])
+    for field in ("post_step_max_tensor_bytes", "post_step_max_driver_bytes"):
+        assert capacity[field] == max(first[field], second[field]) > 0
+    assert result["calibration"]["policy"] >= 0
+
+    status_path.write_text(status.replace("RESUME epoch 0 buffer 1", "RESUME epoch 0 buffer 0"))
+    with pytest.raises(ValueError, match="wrong buffer"):
+        smoke_result(out)
+    status_path.write_text("\n".join(status.splitlines()[:-1]))
+    with pytest.raises(ValueError, match="successful trainer terminal"):
+        smoke_result(out)
+    status_path.write_text(status.replace(f" steps={second['steps']} ", f" steps={second['steps'] + 1} "))
+    with pytest.raises(ValueError, match="optimizer progress"):
+        smoke_result(out)
+    status_path.write_text(status)
+    prefix["steps"] += 1
+    (out / "epoch-1-buffer-1.json").write_text(json.dumps(prefix))
+    with pytest.raises(ValueError, match="prefix report"):
+        smoke_result(out)
 
 
 @mps
@@ -252,6 +323,25 @@ def test_mps_on_a_host_without_it_refuses(data, tmp_path, monkeypatch):
     out = tmp_path / "run"
     assert ur.main(["train", "--data", str(data), "--out", str(out), "--scratch-arch", SCRATCH, "--device", "mps"]) == 1
     assert "MPS is not available" in (out / "status.log").read_text()
+
+
+@pytest.fixture(scope="module")
+def cpu_weighted(data, tmp_path_factory):
+    return run_fixture(data, tmp_path_factory.mktemp("cpu-weighted"), weighted=True)
+
+
+def test_a_weighted_cpu_run_is_bit_identical_with_and_without_the_cpu_flag(data, cpu_weighted, tmp_path):
+    assert run_fixture(data, tmp_path, "cpu", weighted=True) == cpu_weighted
+    assert all("leaf_w" in np.load(p).files for p in sorted((tmp_path / "cache").glob("train-*.npz")))
+
+
+@mps
+def test_an_mps_corpus_weighted_run_tracks_the_cpu_run(data, cpu_weighted, tmp_path):
+    """The lanes' device plan: train and polish on MPS with --corpus-weight (the batch's row weights and the
+    cache's leaf weights reach the device), the cache on the CPU."""
+    got = run_fixture(data, tmp_path, "mps", weighted=True, cache_device="cpu")
+    _close(got["train"], cpu_weighted["train"], MPS_REL_TOL["train"])
+    _close(got["polish"], cpu_weighted["polish"], MPS_REL_TOL["polish"])
 
 
 def _cache_copy(cpu_root, tmp_path) -> Path:
@@ -313,60 +403,6 @@ def test_the_first_producer_binds_a_cache_for_every_worker(tmp_path):
     assert sorted(p.name for p in cache.iterdir()) == [ur.CACHE_DEVICE]
 
 
-@pytest.mark.parametrize("device", ["mps", "cpu"])
-def test_a_marker_published_after_the_first_look_is_read_before_the_output_is_classified(tmp_path, monkeypatch,
-                                                                                        device):
-    cache = tmp_path / "cache"
-    cache.mkdir()
-    real = ur._cache_has_output
-
-    def worker_b_publishes(out):                     # B binds mps and finishes between A's two looks
-        (out / ur.CACHE_DEVICE).write_text(json.dumps({"device": "mps"}))
-        (out / "DONE.1").write_text("{}")
-        return real(out)
-    monkeypatch.setattr(ur, "_cache_has_output", worker_b_publishes)
-    if device == "mps":
-        ur.bind_cache_device(cache, "mps")
-    else:
-        with pytest.raises(ur.UnifiedReadoutError, match="--device mps, not --device cpu"):
-            ur.bind_cache_device(cache, "cpu")
-    assert json.loads((cache / ur.CACHE_DEVICE).read_text()) == {"device": "mps"}
-
-
-@pytest.mark.parametrize("text", ["", "{\"dev", "[]"], ids=["empty", "torn", "not-an-object"])
-def test_an_unreadable_marker_refuses_clearly_after_a_bounded_wait(tmp_path, monkeypatch, text):
-    cache = tmp_path / "cache"
-    cache.mkdir()
-    (cache / ur.CACHE_DEVICE).write_text(text)       # what an interrupted non-atomic publisher left behind
-    monkeypatch.setattr(ur, "MARKER_WAIT_S", 0.2)
-    t0 = time.monotonic()
-    with pytest.raises(ur.UnifiedReadoutError, match="unreadable"):
-        ur.bind_cache_device(cache, "mps")
-    assert time.monotonic() - t0 < 2.0
-    assert (cache / ur.CACHE_DEVICE).read_text() == text
-
-
-def test_a_publisher_killed_before_its_link_leaves_a_cache_that_resumes(tmp_path):
-    cache = tmp_path / "cache"
-    cache.mkdir()
-    (cache / f"{ur.CACHE_DEVICE}.99999.tmp").write_text("{\"dev")   # killed while writing its private copy
-    ur.bind_cache_device(cache, "mps")
-    assert json.loads((cache / ur.CACHE_DEVICE).read_text()) == {"device": "mps"}
-    ur.bind_cache_device(cache, "mps")
-
-
-def test_storage_without_hard_links_is_refused_before_a_marker_exists(tmp_path, monkeypatch):
-    cache = tmp_path / "cache"
-    cache.mkdir()
-
-    def no_links(src, dst):
-        raise OSError(errno.ENOTSUP, "Operation not supported")
-    monkeypatch.setattr(ur.os, "link", no_links)
-    with pytest.raises(ur.UnifiedReadoutError, match="hard links"):
-        ur.bind_cache_device(cache, "mps")
-    assert list(cache.iterdir()) == []
-
-
 def test_an_mps_cache_refuses_a_cpu_worker_through_main(data, cpu_root, tmp_path):
     cache = tmp_path / "cache"
     cache.mkdir()
@@ -374,6 +410,164 @@ def test_an_mps_cache_refuses_a_cpu_worker_through_main(data, cpu_root, tmp_path
     with pytest.raises(ur.UnifiedReadoutError, match="--device mps"):
         ur.main(_cache_argv(data, cpu_root, cache, "--worker", "1", "--workers", "2"))
     assert sorted(p.name for p in cache.iterdir()) == [ur.CACHE_DEVICE]
+
+
+@pytest.mark.parametrize("rounds", ["0", "-1"])
+def test_cache_refuses_nonpositive_encode_batches(data, cpu_root, tmp_path, rounds):
+    cache = tmp_path / "cache"
+    with pytest.raises(ur.UnifiedReadoutError, match="--encode-rounds-per-batch must be positive"):
+        ur.main(_cache_argv(data, cpu_root, cache, "--encode-rounds-per-batch", rounds))
+    assert not cache.exists()
+
+
+def test_cache_refuses_mixed_encode_batches(data, cpu_root, tmp_path):
+    cache = _cache_copy(cpu_root, tmp_path)
+    before = _shard_bytes(cache)
+    custom = ["--encode-rounds-per-batch", "4"]
+    with pytest.raises(ur.UnifiedReadoutError, match="use --encode-rounds-per-batch 32"):
+        ur.main(_cache_argv(data, cpu_root, cache, *custom))
+    (cache / ur.CACHE_ENCODE).unlink()
+    with pytest.raises(ur.UnifiedReadoutError, match="existing shards have the default encode batch size"):
+        ur.main(_cache_argv(data, cpu_root, cache, *custom))
+    assert _shard_bytes(cache) == before
+    assert not (cache / ur.CACHE_ENCODE).exists()
+
+
+def test_sampled_cache_keeps_historical_chunk_selection():
+    entries = [{"index": index, "rows": rows} for index, rows in enumerate([3, 9, 1, 8, 4, 3])]
+    chosen = ur.sample_entries(entries, 7, 7)
+    assert [entry["index"] for entry in chosen] == [0, 2, 5]
+    assert ur.sample_entries(entries, None, 7) is entries
+    assert ur.sample_entries(entries, 28, 7) is entries
+
+
+def test_sampled_cache_workers_resume_and_feed_the_real_polisher(cpu_root, tmp_path):
+    clusters = [synthetic_cluster(seed) for seed in range(1000, 1008)]
+    data = extract_dir(write_store(tmp_path / "store", clusters), tmp_path / "data",
+                       calib=0.25, task_clusters=1)
+    entries = ur.us.entries_for([str(data)], "train")
+    chosen = sorted(np.random.default_rng([7, 0x5A3C]).permutation(len(entries))[:3])
+    cap = sum(entries[index]["rows"] for index in chosen)
+    full, sampled, polish = (tmp_path / name for name in ("full", "sampled", "polish"))
+    weights = ["--corpus-weight", f"{data}=policy:2,reply:2"]
+    base = ["--seed", "7", *weights]
+    assert ur.main(_cache_argv(data, cpu_root, full, *base)) == 0
+    assert json.loads((full / ur.CACHE_ENCODE).read_text()) == {"rounds_per_batch": ur.CACHE_DEFAULT_ENCODE_ROUNDS}
+    assert "sample" not in json.loads((full / "DONE.0").read_text())
+    full_shards = _shard_bytes(full)
+    sample = ["--sample-train-rows", str(cap)]
+    with pytest.raises(ur.UnifiedReadoutError, match="sampled selection"):
+        ur.main(_cache_argv(data, cpu_root, full, *base, *sample))
+    (full / ur.CACHE_ENCODE).unlink()
+    with pytest.raises(ur.UnifiedReadoutError, match="no sampled selection binding"):
+        ur.main(_cache_argv(data, cpu_root, full, *base, *sample))
+    assert _shard_bytes(full) == full_shards
+    assert not (full / ur.CACHE_ENCODE).exists()
+    with pytest.raises(ur.UnifiedReadoutError, match="fits no training chunks"):
+        ur.main(_cache_argv(data, cpu_root, sampled, *base, "--sample-train-rows", "1"))
+    assert not sampled.exists()
+
+    def work(worker, *extra):
+        return ur.main(_cache_argv(data, cpu_root, sampled, *base, "--workers", "2", "--worker", str(worker), *extra))
+
+    assert work(1, *sample) == 0
+    partial = _shard_bytes(sampled)
+    assert set(partial) == {"train-0001.npz"}
+    for options in ([], ["--sample-train-rows", str(cap + 1)],
+                    [*sample, "--seed", "8"], [*sample, "--group-chunks", "2"], [*sample, "--workers", "3"]):
+        with pytest.raises(ur.UnifiedReadoutError, match="sampled selection or worker layout differs"):
+            work(0, *options)
+        assert _shard_bytes(sampled) == partial
+
+    assert work(0, *sample) == 0
+    assert work(1, *sample) == 0
+    finished = _shard_bytes(sampled)
+    assert finished["train-0001.npz"] == partial["train-0001.npz"]
+    assert finished["calib-0000.npz"][1] == full_shards["calib-0000.npz"][1]
+    for group, original in enumerate(chosen):
+        assert finished[f"train-{group:04d}.npz"][1] == full_shards[f"train-{original:04d}.npz"][1]
+    witness = dict(cap_rows=cap, seed=7, chunks=3, rows=cap, of_chunks=len(entries),
+                   of_rows=sum(entry["rows"] for entry in entries))
+    first, second = (json.loads((sampled / f"DONE.{worker}").read_text()) for worker in range(2))
+    assert first == second == {"groups": 3, "chunks": 3, "sample": witness, "corpus_weight": weights[1:]}
+
+    ckpt = cpu_root[0] / "train/best.pt"
+    assert ur.main(["polish", "--ckpt", str(ckpt), "--cache", str(sampled), "--out", str(polish),
+                    "--epochs", "1", "--threads", "1", "--batch", "32"]) == 0
+    assert " POLISH DONE " in (polish / "status.log").read_text().splitlines()[-1]
+
+
+@pytest.mark.parametrize("arm", ["M", "RT4-M-A"])
+def test_medium_cache_bounds_encode_rounds_for_calibration_and_training(cpu_root, tmp_path, monkeypatch, arm):
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
+    from sz2_cache_arm import cache_partition
+
+    clusters = [synthetic_cluster(s) for s in range(1000, 1012)]
+    data = extract_dir(write_store(tmp_path / "store", clusters), tmp_path / "data",
+                       calib=0.5, task_clusters=1)
+    joint = tmp_path / "joint"
+    train = joint / "M" / "train"
+    train.mkdir(parents=True)
+    checkpoint = train / "best.pt"
+    shutil.copyfile(cpu_root[0] / "train" / "best.pt", checkpoint)
+    sha = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+    (joint / "launcher.status").write_text("LANE DONE sz2-joint-v1 t joint arms complete rc=0\n")
+    (train / "status.log").write_text(f"t UTR DONE best={checkpoint} sha256={sha}\n")
+    weights = [f"{data}=policy:2,reply:2"]
+    recipe = tmp_path / "recipe.json"
+    recipe.write_text(json.dumps({"seed": 1, "data": [str(data)], "store_map": [],
+                                  "exclude_seed_window": [], "corpus_weight": weights}))
+    recipe_sha = hashlib.sha256(recipe.read_bytes()).hexdigest()
+    output = tmp_path / "cache"
+    if arm == "RT4-M-A":
+        import rt4m_cache
+        monkeypatch.setattr(rt4m_cache.rt4m_joint, "RECIPE_SHA256", recipe_sha)
+        monkeypatch.setattr(rt4m_cache.rt4m_joint, "completed_inputs",
+                            lambda root, source: (checkpoint, sha, json.loads(source.read_text())))
+
+        def produce():
+            return rt4m_cache.partition(joint, output, 0, recipe, encode_rounds=4)
+    else:
+        def produce():
+            return cache_partition(joint, "M", 0, output, recipe, recipe_sha)
+
+    legacy = output / ("A" if arm == "RT4-M-A" else "M") / f"{sha}-{recipe_sha}"
+    baseline_args = _cache_argv(data, cpu_root, legacy, "--group-chunks", "24", "--corpus-weight", weights[0])
+
+    batches = []
+    forward = ur.us.trunk_forward
+
+    def count_rounds(model, batch):
+        batches.append(len(batch["tok_int"]))
+        return forward(model, batch)
+
+    monkeypatch.setattr(ur.us, "trunk_forward", count_rounds)
+    assert ur.main(baseline_args) == 0
+    assert len(batches) == 2 and min(batches) > 4
+    full = batches.copy()
+    before = _shard_bytes(legacy)
+    batches.clear()
+
+    assert produce() == 0
+    cache = legacy.with_name(f"{legacy.name}-encode4")
+    expected = [min(4, total - start) for total in full for start in range(0, total, 4)]
+    assert batches == expected
+    assert _shard_bytes(legacy) == before
+    assert set(_shard_bytes(cache)) == set(before)
+    for name in before:
+        with np.load(legacy / name) as want, np.load(cache / name) as got:
+            assert got.files == want.files
+            for key in want.files:
+                if key in ("S", "c"):
+                    np.testing.assert_allclose(got[key], want[key], rtol=1e-3, atol=5e-4)
+                else:
+                    np.testing.assert_array_equal(got[key], want[key])
+
+    batches.clear()
+    assert produce() == 0
+    assert not batches
+    with pytest.raises(ur.UnifiedReadoutError, match="use --encode-rounds-per-batch 4"):
+        ur.main(_cache_argv(data, cpu_root, cache))
 
 
 BENCH = Path(__file__).resolve().parents[1] / "scripts" / "bench_unified_readout_device.py"
@@ -431,14 +625,19 @@ def test_the_polish_bench_wall_interval_covers_the_load_it_reports(cpu_root, mon
     assert out["recipe"] == bench.POLISH_RECIPE
 
 
-def test_buffer_report_matches_the_full_prefix_after_resume(tmp_path):
+@pytest.mark.parametrize("device", ["cpu", pytest.param("mps", marks=mps)])
+def test_buffer_report_matches_the_full_prefix_after_resume(tmp_path, device):
     clusters = [synthetic_cluster(s) for s in range(1000, 1012)]
     data = extract_dir(write_store(tmp_path / "store", clusters), tmp_path / "data",
                        calib=0.25, task_clusters=1)
     common = ["train", "--data", str(data), "--scratch-arch", SCRATCH, "--threads", "1",
               "--loader-threads", "1", "--rounds-per-batch", "1", "--buffer-chunks", "1",
-              "--report-buffer", "2", "--save-every", "999999"]
+              "--epochs", "2", "--save-every", "999999", "--device", device]
     baseline, split = tmp_path / "baseline", tmp_path / "split"
+    invalid = tmp_path / "invalid"
+    assert ur.main(common + ["--out", str(invalid), "--pause-at-report"]) == 1
+    assert "--pause-at-report requires --report-buffer" in (invalid / "status.log").read_text()
+    common.extend(["--report-buffer", "2"])
     assert ur.main(common + ["--out", str(baseline)]) == 0
     split.mkdir()
     stop = split / "STOP"
@@ -447,16 +646,81 @@ def test_buffer_report_matches_the_full_prefix_after_resume(tmp_path):
     report = "epoch-1-buffer-2.json"
     assert not (split / report).exists()
     stop.unlink()
-    assert ur.main(common + ["--out", str(split)]) == 0
+    resume = common + ["--out", str(split)]
+    pause = resume + ["--pause-at-report"]
+    assert ur.main(pause) == 7
     actual = json.loads((split / report).read_text())
     assert actual["epoch"] == 1 and actual["completed_buffers"] == 2
     assert actual["rows"] > 0 and actual["leaves"] > 0
     assert actual["train"]["leaf_value"] > 0 and actual["train"]["policy"] > 0
-    assert actual == json.loads((baseline / report).read_text())
+    checkpoint = split / "checkpoint.pt"
+    saved = torch.load(checkpoint, weights_only=False)
+    assert (saved["state"]["epoch"], saved["state"]["buffer"]) == (0, 2)
+    assert not (split / "epoch-2-buffer-2.json").exists()
+    assert not (split / "best.pt").exists()
+    assert "UTR PAUSED at epoch 1 buffer 2/" in (split / "status.log").read_text()
+
+    checkpoint_bytes = checkpoint.read_bytes()
+    (split / report).unlink()
+    stop.touch()
+    assert ur.main(pause) == 3
+    stop.unlink()
+    assert ur.main(pause) == 7
+    assert checkpoint.read_bytes() == checkpoint_bytes
+    assert json.loads((split / report).read_text()) == actual
+    assert ur.main(resume) == 0
+
+    # MPS reductions vary in their last bits between runs with the same recipe.
+    loss_tol = 0 if device == "cpu" else MPS_REL_TOL["train"]
+    for name in ("epoch-1-buffer-2.json", "epoch-2-buffer-2.json"):
+        got = json.loads((split / name).read_text())
+        want = json.loads((baseline / name).read_text())
+        _close(got.pop("train"), want.pop("train"), loss_tol)
+        assert got == want
+    expected = torch.load(baseline / "checkpoint.pt", weights_only=False)
+    finished = torch.load(checkpoint, weights_only=False)
+    assert finished["run"] == expected["run"]
+    assert finished["state"]["epoch"] == expected["state"]["epoch"] == 2
+    assert finished["opt"]["param_groups"] == expected["opt"]["param_groups"]
+    steps = {key: row["step"].item() for key, row in finished["opt"]["state"].items()}
+    assert steps == {key: row["step"].item() for key, row in expected["opt"]["state"].items()}
+    if device == "cpu":
+        for key in ("model", "opt"):
+            torch.testing.assert_close(finished[key], expected[key], rtol=0, atol=0)
 
 
-def test_size_stop_rule_consumes_warm_trainer_reports(cpu_root, data, tmp_path):
-    # Equal weights with distinct checkpoint bytes give an exact zero-delta control.
+def test_timed_resume_preserves_epoch_training_metrics_without_a_report(data, tmp_path):
+    args = ["train", "--data", str(data), "--scratch-arch", SCRATCH, "--threads", "1",
+            "--loader-threads", "1", "--rounds-per-batch", "1", "--buffer-chunks", "1", "--epochs", "1"]
+    full, split, legacy = (tmp_path / name for name in ("full", "split", "legacy"))
+    assert ur.main(args + ["--out", str(full)]) == 0
+    assert ur.main(args + ["--out", str(split), "--max-seconds", "0.0001"]) == 3
+    saved = torch.load(split / "checkpoint.pt", weights_only=False)
+    assert saved["state"]["buffer"] == 1
+    saved["state"].pop("epoch_sums", None)
+    legacy.mkdir()
+    torch.save(saved, legacy / "checkpoint.pt")
+    recover = args + ["--out", str(split), "--recover-checkpoint-sha256"]
+    assert ur.main(recover + ["0" * 64]) == 1
+    assert "checkpoint SHA256 mismatch" in (split / "status.log").read_text().splitlines()[-1]
+    digest = hashlib.sha256((split / "checkpoint.pt").read_bytes()).hexdigest()
+    assert ur.main(recover + [digest]) == 0
+    baseline = torch.load(full / "checkpoint.pt", weights_only=False)
+    resumed = torch.load(split / "checkpoint.pt", weights_only=False)
+    assert resumed["state"]["history"][0]["train"] == baseline["state"]["history"][0]["train"]
+    torch.testing.assert_close(resumed["opt"], baseline["opt"], rtol=0, atol=0)
+    torch.testing.assert_close(resumed["model"], baseline["model"], rtol=0, atol=0)
+    assert ur.main(args + ["--out", str(legacy)]) == 0
+    old = torch.load(legacy / "checkpoint.pt", weights_only=False)
+    assert old["state"]["history"][0]["train_start_buffer"] == 1
+    torch.testing.assert_close(old["model"], baseline["model"], rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("medium_device", ["cpu", "mps"])
+def test_size_stop_rule_consumes_warm_trainer_reports(cpu_root, data, tmp_path, medium_device):
+    if medium_device == "mps" and not torch.backends.mps.is_available():
+        pytest.skip("MPS unavailable")
+    # The same weights in distinct checkpoints isolate device and reporting differences.
     original = cpu_root[0] / "train" / "best.pt"
     saved = torch.load(original, weights_only=False, map_location="cpu")
     saved["fixture_arm"] = "medium"
@@ -468,7 +732,9 @@ def test_size_stop_rule_consumes_warm_trainer_reports(cpu_root, data, tmp_path):
         out = tmp_path / arm
         assert ur.main(["train", "--data", str(data), "--out", str(out), "--init-readout-ckpt", str(init),
                         "--threads", "1", "--loader-threads", "1", "--rounds-per-batch", "1",
-                        "--buffer-chunks", "1", "--report-buffer", "1"]) == 0
+                        "--buffer-chunks", "1", "--report-buffer", "1",
+                        "--device", "cpu" if arm == "small" else medium_device,
+                        "--corpus-weight", f"{data}=policy:2,reply:2"]) == 0
         gate.extend([f"--{arm}", str(out), f"--{arm}-init-sha", hashlib.sha256(init.read_bytes()).hexdigest()])
 
     def decision(expected_rc, expected_text):
@@ -487,7 +753,9 @@ def test_size_stop_rule_consumes_warm_trainer_reports(cpu_root, data, tmp_path):
         decision(0, "CONTINUE")
     settings = tmp_path / "medium" / "run.json"
     original_settings = settings.read_text()
-    settings.write_text(json.dumps({**json.loads(original_settings), "seed": 9}))
+    recipe = json.loads(original_settings)
+    assert recipe["corpus_weight"] == [f"{data}=policy:2,reply:2"]
+    settings.write_text(json.dumps({**recipe, "corpus_weight": [f"{data}=policy:1,reply:2"]}))
     decision(2, "training settings")
     settings.write_text(original_settings)
     report["rows"] += 1
@@ -497,6 +765,99 @@ def test_size_stop_rule_consumes_warm_trainer_reports(cpu_root, data, tmp_path):
     decision(2, "INVALID")
     gate[-1] = "0" * 64
     decision(2, "expected warm start")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX volume without hard links")
+def test_cache_marker_resume_after_interrupted_publication(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    def no_links(*args):
+        raise OSError(errno.ENOTSUP, "volume without hard links")
+
+    def interrupt(*args):
+        raise InterruptedError("fixture interruption before rename")
+
+    monkeypatch.setattr(os, "link", no_links)
+    with monkeypatch.context() as fault:
+        fault.setattr(os, "replace", interrupt)
+        with pytest.raises(InterruptedError):
+            ur.bind_cache_device(tmp_path, "cpu")
+    assert not (tmp_path / ur.CACHE_DEVICE).exists()
+
+    barrier = Barrier(2, timeout=10)
+
+    def simultaneous(*args):
+        barrier.wait()
+        no_links()
+
+    monkeypatch.setattr(os, "link", simultaneous)
+    with ThreadPoolExecutor(2) as pool:
+        winners = list(pool.map(lambda device: ur._cache_marker(tmp_path, ur.CACHE_DEVICE, {"device": device}),
+                                ("cpu", "mps")))
+    assert winners[0] == winners[1] == json.loads((tmp_path / ur.CACHE_DEVICE).read_text())
+    other = "cpu" if winners[0]["device"] == "mps" else "mps"
+    with pytest.raises(ur.UnifiedReadoutError, match="shards were made with"):
+        ur.bind_cache_device(tmp_path, other)
+
+
+def test_polish_exports_input_weights_when_pass_zero_wins(cpu_root, tmp_path):
+    root, _ = cpu_root
+    source = root / "train" / "best.pt"
+    polished = tmp_path / "polished"
+    assert ur.main(["polish", "--ckpt", str(source), "--cache", str(root / "cache"),
+                    "--out", str(polished), "--epochs", "1", "--batch", "32", "--lr", "3e-4", "--threads", "1"]) == 0
+    _, saved = ur.load_checkpoint(polished / "best.pt")
+    assert saved["calib"]["polish_epoch"] == 0
+    for checkpoint, package in ((source, "input.npz"), (polished / "best.pt", "selected.npz")):
+        assert ur.main(["export", "--ckpt", str(checkpoint), "--out", str(tmp_path / package), "--temperature", "1"]) == 0
+    with np.load(tmp_path / "input.npz") as expected, np.load(tmp_path / "selected.npz") as selected:
+        assert expected.files == selected.files
+        for key in expected.files:
+            if key != "metadata":
+                np.testing.assert_array_equal(selected[key], expected[key], err_msg=key)
+
+
+@pytest.mark.parametrize("device", ["mps", "cpu"])
+def test_a_marker_published_after_the_first_look_is_read_before_the_output_is_classified(tmp_path, monkeypatch,
+                                                                                        device):
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    real = ur._cache_has_output
+
+    def worker_b_publishes(out):                     # B binds mps and finishes between A's two looks
+        (out / ur.CACHE_DEVICE).write_text(json.dumps({"device": "mps"}))
+        (out / "DONE.1").write_text("{}")
+        return real(out)
+    monkeypatch.setattr(ur, "_cache_has_output", worker_b_publishes)
+    if device == "mps":
+        ur.bind_cache_device(cache, "mps")
+    else:
+        with pytest.raises(ur.UnifiedReadoutError, match="--device mps, not --device cpu"):
+            ur.bind_cache_device(cache, "cpu")
+    assert json.loads((cache / ur.CACHE_DEVICE).read_text()) == {"device": "mps"}
+
+
+@pytest.mark.parametrize("text", ["", "{\"dev", "[]"], ids=["empty", "torn", "not-an-object"])
+def test_an_unreadable_marker_refuses_clearly_after_a_bounded_wait(tmp_path, monkeypatch, text):
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / ur.CACHE_DEVICE).write_text(text)       # what an interrupted non-atomic publisher left behind
+    monkeypatch.setattr(ur, "MARKER_WAIT_S", 0.2)
+    t0 = time.monotonic()
+    with pytest.raises(ur.UnifiedReadoutError, match="unreadable"):
+        ur.bind_cache_device(cache, "mps")
+    assert time.monotonic() - t0 < 2.0
+    assert (cache / ur.CACHE_DEVICE).read_text() == text
+
+
+def test_a_publisher_killed_before_its_link_leaves_a_cache_that_resumes(tmp_path):
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / f"{ur.CACHE_DEVICE}.99999.tmp").write_text("{\"dev")   # killed while writing its private copy
+    ur.bind_cache_device(cache, "mps")
+    assert json.loads((cache / ur.CACHE_DEVICE).read_text()) == {"device": "mps"}
+    ur.bind_cache_device(cache, "mps")
 
 
 @pytest.mark.parametrize("same_target", [False, True])

@@ -4,7 +4,11 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { DUR } from "../motion";
 import type { GameState, Notice, StatePlayer } from "../protocol";
 import Hud from "./Hud";
-import { clearToast, currentToast } from "../toast";
+import { clearToast, currentToast, showToast } from "../toast";
+import { applyPlay, newRound } from "../offline/engine/round";
+import { newGame } from "../offline/engine/game";
+import { DeckRng } from "../offline/server/rng";
+import { LocalRoom, Seat, stateFor } from "../offline/server/server";
 
 function makePlayer(overrides: Partial<StatePlayer> = {}): StatePlayer {
   return {
@@ -156,6 +160,74 @@ describe("failed-throw notice and table messages: told once, as the one toast", 
     view.rerender(at({ message: null }));
     view.rerender(at({ message: "No declaration — trump flipped from the kitty: S" }));
     expect(toast()).not.toBeNull();
+    view.unmount();
+  });
+
+  it("takes the failed throw down once another lead is on the table", () => {
+    // Hearts trump at 4. Robin throws ♦6 ♦6 ♦Q ♦Q into a held ♦K ♦K, has to
+    // play ♦6 ♦6, wins the trick anyway and leads ♦Q ♦Q. The engine's notice
+    // outlives that trick, so the frame showing the ♦Q ♦Q lead still carries
+    // "had to play ♦6 ♦6".
+    const rnd = newRound(Array(108).fill("S2"), "4", 0);
+    rnd.phase = "play";
+    rnd.trumpSuit = "H";
+    rnd.hands = [
+      ["DJ", "S6", "S7", "S9"],
+      ["D6", "D6", "DQ", "DQ", "S5", "S8"],
+      ["D5", "C7", "CJ", "C9", "C10"],
+      ["DK", "DK", "D3", "D3", "S2", "S3"],
+    ];
+    rnd.turn = 1;
+    rnd.trick = { leader: 1, plays: [], winner: null, points: 0 } as unknown as typeof rnd.trick;
+    const frame = () => at({
+      players: [0, 1, 2, 3].map((seat) => makePlayer({ seat, name: ["You", "Robin", "Sam", "Kim"][seat] })),
+      trick: rnd.trick ? { leader: rnd.trick.leader, plays: rnd.trick.plays.map((p) => ({ seat: p.seat, cards: [...p.cards] })) } : null,
+      notice: rnd.notice ? { ...rnd.notice } : null,
+    });
+
+    expect(applyPlay(rnd, 1, ["D6", "D6", "DQ", "DQ"])).toEqual(["D6", "D6"]);
+    const view = render(frame());
+    expect(toast()?.text).toBe("Throw failed. Robin threw ♦6 ♦6 ♦Q ♦Q and had to play ♦6 ♦6.");
+    applyPlay(rnd, 2, ["D5", "C7"]);
+    view.rerender(frame());
+    expect(toast()?.text).toContain("had to play ♦6 ♦6");
+    applyPlay(rnd, 3, ["D3", "D3"]);
+    applyPlay(rnd, 0, ["DJ", "S6"]);
+    applyPlay(rnd, 1, ["DQ", "DQ"]);
+    applyPlay(rnd, 2, ["CJ", "C9"]);
+    const next = frame();
+    expect(next.notice?.forced).toEqual(["D6", "D6"]);
+    expect(next.trick?.plays[0].cards).toEqual(["DQ", "DQ"]);
+    view.rerender(next);
+    expect(toast()).toBeNull();
+    // a reconnect into that trick does not tell it either
+    view.unmount();
+    const again = render({ ...next, room: `${next.room}-r` });
+    expect(toast()).toBeNull();
+    again.unmount();
+
+    // that trick resolves; a fresh client mounted from the offline server's
+    // frame sees an empty trick after a ♦Q ♦Q lead, with the notice standing
+    applyPlay(rnd, 3, ["DK", "DK"]);
+    applyPlay(rnd, 0, ["S7", "S9"]);
+    const room = new LocalRoom(`${next.room}-x`, "4", new DeckRng(1));
+    room.seats = ["You", "Robin", "Sam", "Kim"].map((name, s) => new Seat(name, s !== 0, `t${s}`));
+    room.game = { ...newGame({ startLevel: "4" }), banker: 0, round: rnd };
+    const served = stateFor(room, 0) as unknown as GameState;
+    expect(served.phase).toBe("play");
+    expect(served.trick?.plays).toEqual([]);
+    expect(served.last_trick?.plays[0].cards).toEqual(["DQ", "DQ"]);
+    expect(served.notice?.forced).toEqual(["D6", "D6"]);
+    const fresh = render(served);
+    expect(toast()).toBeNull();
+    fresh.unmount();
+  });
+
+  it("leaves a toast that is not the failed throw's alone", () => {
+    const view = render(at({ notice: failedThrow(1, 1), trick: { leader: 1, plays: [{ seat: 1, cards: ["D7", "D7"] }] } }));
+    act(() => { showToast("Kim is back"); });
+    view.rerender(at({ notice: failedThrow(1, 1), trick: { leader: 0, plays: [{ seat: 0, cards: ["S9"] }] } }));
+    expect(toast()?.text).toBe("Kim is back");
     view.unmount();
   });
 

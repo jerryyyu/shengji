@@ -1,0 +1,141 @@
+{
+  "archive": {
+    "deals": 11760,
+    "indexes": {
+      "M17/live": {
+        "controls": 8,
+        "entries": 128147,
+        "groups": 9,
+        "overlaps": 0
+      },
+      "S17": {
+        "controls": 35,
+        "entries": 285043,
+        "groups": 35,
+        "overlaps": 0
+      },
+      "Y": {
+        "controls": 128,
+        "entries": 96300,
+        "groups": 128,
+        "overlaps": 0
+      },
+      "live decks": {
+        "entries": 268,
+        "groups": 1,
+        "overlaps": 0
+      }
+    },
+    "seed0": 2674000000
+  },
+  "candidate": "9e5e25573b9faa3451b1da0a9b87d41e8cbe972a",
+  "checkpoint_roots": [
+    "a09cef7c35793fa12ccadffbb578d110a14b0705778d7e3aaa400268b93ec962",
+    "7f028824f60b9e31cb6eebe20a7d87526b4edb4817ce97c5dde487c4c0841aed"
+  ],
+  "comparison_source": "784f81c5d55f94ae47d982c9c4cde632bad034fe",
+  "control": "3e00a55a7a38e5a135809f601c9b47fb315fa725",
+  "corpus": {
+    "deals": 11760,
+    "distinct_training_seeds": 498100,
+    "extracts": 80,
+    "matching_training_seeds": 0,
+    "rows": 64685508,
+    "seed0": 2674000000
+  },
+  "nodes": {
+    "3e89e86f9b8227a49fc6201463c219af56bd1e99cbe762b115e396e1f1919cf8": {
+      "control": {
+        "hits": 62,
+        "probed": 64,
+        "seed0": 20260905
+      },
+      "exposure_counts": {
+        "fit": 396800,
+        "selection": 49843
+      },
+      "fit_matches": 0,
+      "parents": [
+        "8ecd4feaec480f1e76c1cc0119aed8996472512fa48eaa868415ff3d2318dd01",
+        "a5248cc5ae97e69687910e892b1905613a1735cb47cbdc5e73a76e41d61e3f38"
+      ],
+      "selection_matches": 0
+    },
+    "7f028824f60b9e31cb6eebe20a7d87526b4edb4817ce97c5dde487c4c0841aed": {
+      "control": {
+        "hits": 60,
+        "probed": 64,
+        "seed0": 23260910
+      },
+      "exposure_counts": {
+        "fit": 396800,
+        "selection": 49843
+      },
+      "fit_matches": 0,
+      "parents": [
+        "8ecd4feaec480f1e76c1cc0119aed8996472512fa48eaa868415ff3d2318dd01",
+        "a5248cc5ae97e69687910e892b1905613a1735cb47cbdc5e73a76e41d61e3f38"
+      ],
+      "selection_matches": 0
+    },
+    "8ecd4feaec480f1e76c1cc0119aed8996472512fa48eaa868415ff3d2318dd01": {
+      "control": {
+        "hits": 62,
+        "probed": 64,
+        "seed0": 20260905
+      },
+      "exposure_counts": {
+        "fit": 204800,
+        "selection": 25716
+      },
+      "fit_matches": 0,
+      "parents": [
+        "a5248cc5ae97e69687910e892b1905613a1735cb47cbdc5e73a76e41d61e3f38"
+      ],
+      "selection_matches": 0
+    },
+    "a09cef7c35793fa12ccadffbb578d110a14b0705778d7e3aaa400268b93ec962": {
+      "control": {
+        "hits": 64,
+        "probed": 64,
+        "seed0": 1000200000
+      },
+      "exposure_counts": {
+        "fit": 489248,
+        "selection": 51769
+      },
+      "fit_matches": 0,
+      "parents": [
+        "3e89e86f9b8227a49fc6201463c219af56bd1e99cbe762b115e396e1f1919cf8",
+        "a5248cc5ae97e69687910e892b1905613a1735cb47cbdc5e73a76e41d61e3f38",
+        "8ecd4feaec480f1e76c1cc0119aed8996472512fa48eaa868415ff3d2318dd01"
+      ],
+      "selection_matches": 0
+    },
+    "a5248cc5ae97e69687910e892b1905613a1735cb47cbdc5e73a76e41d61e3f38": {
+      "control": {
+        "hits": 62,
+        "probed": 64,
+        "seed0": 20260905
+      },
+      "exposure_counts": {
+        "fit": 140800,
+        "selection": 17600
+      },
+      "fit_matches": 0,
+      "parents": [],
+      "selection_matches": 0
+    }
+  },
+  "round_plan": "r2",
+  "windows": [
+    {
+      "clusters": 3920,
+      "seed0": 2674000000
+    },
+    {
+      "clusters": 7840,
+      "seed0": 2674003920
+    }
+  ]
+}

@@ -38,9 +38,9 @@ Seating (``seat_waiting``, on every join and every ``tick``):
    which takes the moved entry's Ready back; a seat whose sitting changed
    is refused), and a leaver's seat is simply free again.
 
-A table starts (``tick``, and at once after the event that makes it due):
+A table starts (``tick``, and at once after the event that makes it due),
+four people or fewer:
 
-* when it has four people;
 * at the table's timer: the earliest ``bots_at`` among its entries. An entry
   whose switch is on ("Only tables with people", ``queue_wait_players``)
   has no ``bots_at`` and rides another entry's timer; with every switch on
@@ -56,9 +56,9 @@ A table starts (``tick``, and at once after the event that makes it due):
   (``_unready``); a joiner whose socket is gone does not hold it, and
   leaves at the start.
 
-Four people wait while a member is reconnecting (``TABLE_AWAY_SECS``); the
-timer and the owner's Start do not, and start without an entry whose socket
-is still gone.
+A full table does not start by itself: it waits for its owner's Start
+like any other. The timer and the owner's Start do not wait for a member
+who is reconnecting, and start without an entry whose socket is still gone.
 There is no ready check: the table is the accept. An entry alone in the queue
 starts with bots at its own ``bots_at``, or at once on ``queue_start_bots``.
 
@@ -1991,11 +1991,8 @@ class Matchmaker:
                 return True
             t.forced_by = None         # the consent the Start was given under is gone
         timer = t.timer()
-        if timer is not None and now >= timer[0]:
-            return True
-        if not all(self._entry_available(e) for e in t.entries):
-            return False               # four people: wait for a reconnect
-        return t.humans == 4
+        # four people wait for the owner's Start like any other table
+        return timer is not None and now >= timer[0]
 
     async def _start_due(self) -> None:
         """Start every table that is due and every lone entry whose bot timer

@@ -129,6 +129,18 @@ def run(coro):
     return asyncio.run(coro)
 
 
+async def start_full(env, uid):
+    """The full table ``uid`` sits at starts as any table does: every
+    joiner taps Ready, then its owner taps Start."""
+    t = env.mm._table(env.mm._entry(uid))
+    owner = t.entries[0].leader
+    for e in list(t.entries):
+        for u in e.members:
+            if u != owner:
+                await env.send(u, "table_start")
+    await env.send(owner, "table_start_now")
+
+
 def humans_of(slots):
     return [s.user_id for s in slots if not s.is_bot]
 
@@ -175,7 +187,7 @@ def test_two_singles_form_one_table_on_the_second_ones_arrival_as_partners():
     run(go())
 
 
-def test_a_third_sits_across_and_a_fourth_takes_the_last_seat_and_starts_the_table_at_once():
+def test_a_third_sits_across_and_a_fourth_takes_the_last_seat_and_the_table_waits_for_its_owner():
     async def go():
         env = Env()
         for uid in (1, 2, 3):
@@ -183,12 +195,102 @@ def test_a_third_sits_across_and_a_fourth_takes_the_last_seat_and_starts_the_tab
         (t,) = env.mm.tables.values()
         assert t.seats == [1, 3, 2, None]
         await env.join(4)
-        (table_id, slots), = env.started
-        assert table_id == t.id
-        assert [s.user_id for s in slots] == [1, 3, 2, 4]
-        assert env.mm.tables == {} and env.mm.entries == {}
+        assert t.seats == [1, 3, 2, 4]
+        assert env.started == [] and env.mm.tables == {t.id: t}   # four people do not start it
         for c in env.conns.values():          # no ready check on the way in
             assert c.of("match") == [] and c.of("match_ready") == []
+        mine = env.conns[1].last("queue_state")["table"]
+        assert mine["of"] == 4 and mine["waiting_for"] == ["P2", "P3", "P4"]
+    run(go())
+
+
+async def _full_table(env, wait_players=True):
+    """Four singles at one table, the switch on for each so no bot timer
+    runs: only the owner's (1's) Start can start it."""
+    for uid in (1, 2, 3, 4):
+        await env.join(uid)
+        if wait_players and env.mm._entry(uid) is not None:
+            await env.send(uid, "queue_wait_players")
+    (t,) = env.mm.tables.values()
+    assert t.humans == 4 and env.started == []
+    return t
+
+
+def test_a_full_table_starts_on_its_owners_start_once_all_three_joiners_are_ready():
+    async def go():
+        env = Env()
+        t = await _full_table(env)
+        await env.send(2, "table_start")
+        await env.send(3, "table_start")
+        env.clock.advance(mm.TABLE_IDLE_SECS - 1)
+        await env.mm.pump()
+        assert env.started == []              # every Ready but one: still waiting
+        assert env.conns[1].last("queue_state")["table"]["waiting_for"] == ["P4"]
+        await env.send(1, "table_start_now")  # an un-ready joiner blocks the Start
+        assert env.conns[1].last("error")["code"] == "panel_changed" and env.started == []
+        await env.send(4, "table_start")
+        assert env.started == []              # the last Ready does not start it either
+        await env.send(1, "table_start_now")
+        (table_id, slots), = env.started
+        assert table_id == t.id and [s.user_id for s in slots] == [1, 3, 2, 4]
+        assert env.mm.tables == {} and env.mm.entries == {}
+    run(go())
+
+
+def test_an_older_pages_owner_start_alias_starts_a_full_table_once_its_joiners_are_ready():
+    """A page from before the owner/joiner split taps ``table_start``
+    (no ``panel_seq``) on the owner's seat too: it is the owner's Start,
+    refused while a Ready is out, so an older owner is never stuck."""
+    async def go():
+        env = Env()
+        await _full_table(env)
+        await env.send(1, "table_start")      # the older owner's Start, joiners not ready
+        assert env.started == []
+        assert not env.conns[1].last("queue_state")["table"]["you_ready"]
+        for uid in (2, 3, 4):
+            await env.send(uid, "table_start")  # older joiners' Start is their Ready
+        assert env.started == []
+        await env.send(1, "table_start")
+        (_, slots), = env.started
+        assert sorted(humans_of(slots)) == [1, 2, 3, 4]
+    run(go())
+
+
+def test_a_full_tables_start_from_an_owner_of_under_the_role_grace_is_refused_untagged():
+    """The owner leaves a full table: the next arrival owns it, and its
+    untagged tap within ROLE_GRACE_SECS (sent as a Ready) is refused, not
+    taken as a Start; after the grace it is that owner's Start."""
+    async def go():
+        env = Env()
+        await _full_table(env)
+        for uid in (3, 4):
+            await env.send(uid, "table_start")
+        await env.send(1, "queue_leave")
+        assert env.conns[2].last("queue_state")["opener"] is True
+        await env.send(2, "table_start")
+        assert env.conns[2].last("error")["code"] == "panel_changed" and env.started == []
+        env.clock.advance(mm.ROLE_GRACE_SECS)
+        await env.send(2, "table_start")
+        (_, slots), = env.started
+        assert sorted(humans_of(slots)) == [2, 3, 4]
+    run(go())
+
+
+def test_a_full_tables_owner_start_held_at_the_room_cap_starts_when_there_is_room():
+    async def go():
+        env, full = _full_env()
+        t = await _full_table(env)
+        for uid in (2, 3, 4):
+            await env.send(uid, "table_start")
+        await env.send(1, "table_start_now")
+        env.clock.advance(mm.TICK_INTERVAL)
+        await env.mm.pump()
+        assert env.started == [] and env.mm.tables.get(t.id) is t
+        full["v"] = False
+        env.clock.advance(mm.TICK_INTERVAL)
+        await env.mm.pump()
+        (table_id, slots), = env.started
+        assert table_id == t.id and sorted(humans_of(slots)) == [1, 2, 3, 4]
     run(go())
 
 
@@ -224,6 +326,8 @@ def test_a_duo_sits_across_from_a_table_of_two_singles_and_starts_it():
         await env.join(2)
         await env.pair(3, 4)
         await env.send(3, "queue_join")
+        assert env.started == []
+        await start_full(env, 1)
         (table_id, slots), = env.started
         assert table_id is not None and [s.user_id for s in slots] == [1, 3, 2, 4]
         assert env.mm.tables == {} and env.mm.entries == {}
@@ -251,6 +355,7 @@ def test_two_pairs_fill_a_table_and_start_it():
         await env.send(1, "queue_join")
         await env.pair(3, 4)
         await env.send(3, "queue_join")
+        await start_full(env, 1)
         (_, slots), = env.started
         assert [s.user_id for s in slots] == [1, 3, 2, 4]
     run(go())
@@ -278,6 +383,8 @@ def test_from_five_queued_the_rating_window_decides_who_shares_a_table():
         assert t.seats == [1, 3, 2, None]
         assert env.mm._entry(6).table_id is None
         await env.join(7, 1050)               # inside the window: the last seat
+        assert t.seats == [1, 3, 2, 7]
+        await start_full(env, 1)
         (table_id, slots), = env.started
         assert table_id == t.id and [s.user_id for s in slots] == [1, 3, 2, 7]
     run(go())
@@ -292,6 +399,7 @@ def test_a_second_table_forms_when_the_first_has_no_pair_seats():
         await env.send(4, "queue_join")       # alone: no pair seats at the table
         await env.pair(6, 7, 1000, 1000)
         await env.send(6, "queue_join")       # sits with the other pair
+        await start_full(env, 4)
         tables = list(env.mm.tables.values())
         assert env.started and [s.user_id for s in env.started[0][1]] == [4, 6, 5, 7]
         assert len(tables) == 1 and tables[0].seats == [1, 3, 2, None]
@@ -543,7 +651,7 @@ def test_a_seated_socket_that_closes_holds_its_seat_sixty_seconds_reconnecting()
     run(go())
 
 
-def test_four_people_wait_for_a_reconnecting_one_but_the_timer_does_not():
+def test_at_a_full_table_a_reconnecting_joiner_does_not_hold_the_owners_start_or_the_timer():
     async def go():
         env = Env()
         await env.join(1)
@@ -552,12 +660,29 @@ def test_four_people_wait_for_a_reconnecting_one_but_the_timer_does_not():
             await env.join(uid)
         env.mm.disconnect(env.conns[2])
         await env.join(4)
-        assert env.started == []              # four, but one is reconnecting
+        assert env.started == []              # four, and none starts it alone
+        mine = env.conns[1].last("queue_state")["table"]
+        assert mine["waiting_for"] == ["P3", "P4"]   # the reconnecting one is not waited for
         env.clock.t = env.mm._entry(3).bots_at
         await env.mm.tick()
         (_, slots), = env.started
         assert [s.user_id for s in slots] == [1, 3, None, 4]
         assert env.mm._entry(2) is None
+    run(go())
+
+
+def test_at_a_full_table_the_owners_start_goes_without_a_joiner_who_is_gone():
+    async def go():
+        env = Env()
+        await _full_table(env)
+        for uid in (2, 3):
+            await env.send(uid, "table_start")
+        env.mm.disconnect(env.conns[4])       # not Ready, and reconnecting
+        assert env.conns[1].last("queue_state")["table"]["waiting_for"] == []
+        await env.send(1, "table_start_now")
+        (_, slots), = env.started
+        assert [s.user_id for s in slots] == [1, 3, 2, None]   # a bot takes the seat
+        assert env.mm._entry(4) is None
     run(go())
 
 
@@ -695,6 +820,7 @@ def test_a_failed_table_start_puts_everyone_back_at_the_front():
         env.mm.start_room = boom
         for uid in (1, 2, 3, 4):
             await env.join(uid)
+        await start_full(env, 1)
         assert env.mm.tables == {}
         for uid in (1, 2, 3, 4):
             e = env.mm._entry(uid)
@@ -936,6 +1062,7 @@ def test_concurrent_starts_ticks_and_leaves_seat_everyone_once():
             await env.join(uid)
         for uid in (4, 5):
             await env.join(uid)              # 4 fills the first table; 5 waits
+        await start_full(env, 1)
         await env.join(6)
         assert len(env.started) == 1
 
@@ -963,12 +1090,14 @@ class _FakeWS:
 
 
 async def _four(env):
-    """Four players with sockets join; the fourth fills the table and starts it."""
+    """Four players with sockets join; the fourth fills the table and its
+    owner starts it once the others are Ready."""
     for uid in (1, 2, 3, 4):
         env.player(uid).ws = _FakeWS()
     for uid in (1, 2, 3, 4):
         await env.join(uid)
         env.clock.advance(1)
+    await start_full(env, 1)
 
 
 @pytest.mark.parametrize("fail_at", ["first_attach", "second_attach", "first_broadcast",
@@ -1143,6 +1272,12 @@ def test_ws_four_players_fill_a_waiting_table_and_land_in_a_started_rated_room(w
         c.send_json({"type": "queue_join"})
         assert _drain(c, "queue_state")["table"]["you"] == 1
         d.send_json({"type": "queue_join"})
+        full = _next_where(a, "queue_state", lambda m: m["table"] and m["table"]["of"] == 4)
+        assert full["table"]["waiting_for"] == ["Player1", "Player2", "Player3"]   # four wait
+        for ws in (b, c, d):
+            ws.send_json({"type": "table_start"})
+        _next_where(a, "queue_state", lambda m: m["table"] and m["table"]["waiting_for"] == [])
+        a.send_json({"type": "table_start_now"})
         for ws in socks:
             seen = _until(ws, "match_started")
             assert not {"match", "match_ready"} & {m["type"] for m in seen}
@@ -1493,9 +1628,11 @@ def test_a_waiting_table_outranks_an_open_table():
         # the wait stood still under the offer and runs on as the table's timer
         assert env.mm._entry(1).bots_at == env.clock.t + mm.BOT_FILL_SECS
         # a pair queued now sits across from the two singles, before any
-        # open table, and the full table starts
+        # open table, and the full table starts on its owner's Start
         await env.pair(3, 4)
         await env.send(3, "queue_join", party_id=env.mm._party(3).id)
+        assert t.seats == [1, 3, 2, 4] and env.started == []
+        await start_full(env, 1)
         (table_id, slots), = env.started
         assert table_id == t.id and [s.user_id for s in slots] == [1, 3, 2, 4]
     run(go())
@@ -3469,7 +3606,8 @@ def test_casual_entries_never_share_a_table_with_ranked_ones():
                    for t in env.mm.tables.values()}
         assert by_mode == {"casual": [2, 3], "ranked": [1, 4]}
         await env.join(5, mode="casual")
-        await env.join(6, mode="casual")               # four casual: that table starts
+        await env.join(6, mode="casual")               # four casual: that table fills
+        await start_full(env, 2)
         assert env.modes == ["casual"]
         assert sorted(humans_of(env.started[0][1])) == [2, 3, 5, 6]
         await env.send(4, "table_start")
@@ -4023,10 +4161,11 @@ def test_joining_by_code_takes_the_tables_mode_and_keeps_the_queue_guards():
         await env.send(3, "queue_join", code=code)
         env.player(4)
         await env.send(4, "queue_join", code=code)
-        assert env.started                          # four people: the table started
+        assert env.started == []                    # four people: the table waits for its owner
         env.player(5)
         await env.send(5, "queue_join", code=code)
-        assert env.conns[5].last("error")["code"] == "table_not_found"
+        assert env.conns[5].last("error")["code"] == "table_full"
+        assert env.mm._entry(5) is None
     run(go())
 
 
@@ -4402,6 +4541,8 @@ def test_the_first_code_joiner_takes_the_held_seat_and_the_two_become_one_paired
         # a second code joiner is an ordinary joiner
         env.player(4)
         await env.send(4, "queue_join", code=e.code)
+        assert t.seats == [1, 2, 3, 4] and env.started == []
+        await start_full(env, 1)
         (_, slots), = env.started
         assert [s.user_id for s in slots] == [1, 2, 3, 4]
         # lone, the pair is one entry with no table
@@ -4420,6 +4561,7 @@ def test_a_duo_pair_is_matched_as_a_unit_into_two_seats_together():
         (t,) = env.mm.tables.values()
         assert t.seats == [1, 3, 2, None]
         await env.join(4)
+        await start_full(env, 1)
         (table_id, slots), = env.started
         assert table_id == t.id and [s.user_id for s in slots] == [1, 3, 2, 4]
         # a pair whose waiting table has no two partner seats waits for one
@@ -4469,6 +4611,7 @@ def test_a_partner_leaving_before_the_game_holds_its_seat_again():
         # the held seat is the next code joiner's
         env.player(5)
         await env.send(5, "queue_join", code=e.code)
+        await start_full(env, 1)
         (_, slots), = env.started
         assert [s.user_id for s in slots] == [1, 2, 5, 4]
         # party_leave from the partner ends it the same way, lone
@@ -4862,7 +5005,9 @@ def test_a_table_keeps_its_code_when_its_opener_leaves_and_the_room_starts_on_it
         # the old link still joins that table
         env.player(4)
         await env.send(4, "queue_join", code=code)
-        (match_id, slots), = env.started               # the fourth started the table
+        assert env.started == []                       # full, it waits for its owner
+        await start_full(env, 2)
+        (match_id, slots), = env.started
         assert match_id == t.id and sorted(humans_of(slots)) == [1, 2, 3, 4]
         assert env.rooms[0]["code"] == code
         assert code not in env.mm.entry_codes

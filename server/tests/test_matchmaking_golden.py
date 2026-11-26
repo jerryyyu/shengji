@@ -179,6 +179,19 @@ class Env:
             m.party_of[u] = p.id
         m._send_party(p)
 
+    async def start_full(self) -> None:
+        """Every full table starts as any table does: its joiners tap
+        Ready, then its owner taps Start."""
+        for t in sorted(self.mm.tables.values(), key=lambda t: t.seq):
+            if t.humans != 4:
+                continue
+            owner = t.entries[0].leader
+            for e in list(t.entries):
+                for u in e.members:
+                    if u != owner:
+                        await self.send(u, "table_start")
+            await self.send(owner, "table_start_now")
+
     def code(self, uid: int) -> str:
         state = self.conns[uid].last("queue_state")
         assert state is not None and state.get("code"), (uid, state)
@@ -307,6 +320,8 @@ async def four_singles_fill_by_seat_order_and_start(env: Env) -> None:
     await env.send(2, "table_unready")
     await env.send(3, "table_start")
     await env.join(4, 1000.0)
+    await env.send(1, "table_start_now")   # four people wait for every joiner's Ready
+    await env.start_full()
 
 
 @scenario
@@ -318,6 +333,7 @@ async def a_pair_sits_across_two_singles(env: Env) -> None:
     await env.send(2, "table_chat", text="pair here")
     await env.join(4, 1000.0)
     await env.join(5, 1000.0)
+    await env.start_full()
 
 
 @scenario
@@ -338,6 +354,7 @@ async def pairs_meet_and_a_pair_leaves(env: Env) -> None:
     await env.send(2, "table_start")
     await env.send(5, "table_start")
     await env.send(6, "table_start")
+    await env.send(1, "table_start")       # an older page's owner Start, the joiners Ready
 
 
 @scenario
@@ -351,6 +368,7 @@ async def the_rating_window_seats_by_rating(env: Env) -> None:
     await env.advance(30.0)
     await env.join(8, 1600.0)
     await env.join(9, 1700.0)
+    await env.start_full()
 
 
 @scenario
@@ -491,6 +509,7 @@ async def code_joins_follow_a_table_for_its_whole_life(env: Env) -> None:
     await env.send(4, "queue_join", code=c1)
     await env.send(4, "queue_join", code=env.code(4))
     await env.join(8, code=c1)
+    await env.start_full()
 
 
 @scenario

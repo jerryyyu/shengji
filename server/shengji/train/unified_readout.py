@@ -910,11 +910,10 @@ def _cache_marker(out: Path, name: str, payload: dict) -> dict:
         time.sleep(0.05)
 
 
-
 def bind_cache_device(out: Path, device: str) -> None:
     """A cache without a device record uses the legacy CPU producer."""
     marker = out / CACHE_DEVICE
-    if device != "cpu" and not marker.exists() and _cache_has_output(out) and not marker.exists():
+    if not marker.exists() and _cache_has_output(out) and not marker.exists() and device != "cpu":
         raise UnifiedReadoutError(f"cache {out}: its shards carry no device and so are CPU output; "
                                   f"--device {device} would mix producers")
     was = _cache_marker(out, CACHE_DEVICE, {"device": device}).get("device")

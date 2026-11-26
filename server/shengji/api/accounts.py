@@ -159,8 +159,8 @@ DEFAULT_COLOUR = "red"
 DEFAULT_LOOK = f"{DEFAULT_COMPANION}/{DEFAULT_COLOUR}"
 # What unlocks a look: (count, at least) over ``look_progress``'s counts.
 # A look not listed is free from the start. The Tractor's colours past the
-# three free ones are won by ranked games (Jerry 2026-11-26: "win
-# 10/25/50/100", and Ink black at 1,000, the top), in Collection order.
+# three free ones are won by ranked games, each asking for more than the one
+# before it in Collection order.
 LOOK_UNLOCKS: dict[str, tuple[str, int]] = {
     "tractor/yellow": ("ranked_games", 10),
     "tractor/orange": ("ranked_games", 25),

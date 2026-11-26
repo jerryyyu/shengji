@@ -10,6 +10,11 @@
 // each request at once (only the first unlock gets LATE_MS of grace), a
 // change of context state invalidates every earlier request and cancels every
 // live source, and at most MAX_VOICES source nodes are ever live.
+//
+// A context can also stay stuck: "suspended" with a resume() that never
+// lands, or "running" with a currentTime that no longer advances. The first is
+// replaced on the next gesture, the second as soon as the clock watchdog sees
+// it, and either when the page is shown again.
 
 import type { GameState, Trump } from "./protocol";
 
@@ -26,6 +31,15 @@ const MAX_VOICES = 3;
  *  stopped and disconnected, so a freed slot always means a dead node. */
 const END_GRACE_MS = 500;
 const TICK_S = 0.07;
+/** A resume that has not landed this long after it was asked is stuck. */
+const RESUME_MS = 300;
+/** Clock watchdog: sampled this often while sounds were recently asked for. */
+const WATCH_MS = 2000;
+const WATCH_IDLE_MS = 10000;
+/** Over at least FROZEN_WALL_MS of wall time a running clock that advanced
+ *  less than FROZEN_ADVANCE_MS is frozen. */
+const FROZEN_WALL_MS = 500;
+const FROZEN_ADVANCE_MS = 50;
 
 /** Non-card clips in public/sounds. */
 const VOICE_CLIPS = {
@@ -57,6 +71,12 @@ const live = new Set<() => void>();
 const ranOnce = new WeakSet<AudioContext>();
 /** Ran-once contexts that have left "running" since. */
 const heldAfterRun = new WeakSet<AudioContext>();
+/** When a still-unanswered resume was first asked of a context. Counted only
+ *  once the context has run, or when asked inside a gesture, so a context
+ *  made at idle is not replaced by the tap that would simply unlock it. */
+const resumeAskedAt = new WeakMap<AudioContext, number>();
+/** Contexts whose clock froze while "running". */
+const frozen = new WeakSet<AudioContext>();
 
 function now(): number {
   return performance.now();
@@ -100,10 +120,51 @@ function ensureCtx(): AudioContext {
     (window as unknown as { webkitAudioContext: typeof AudioContext })
       .webkitAudioContext;
   if (!ctx || (ctx.state as string) === "closed") ctx = watch(new AC());
-  if ((ctx.state as string) !== "running") {
-    void ctx.resume().catch(() => {});
-  }
+  if ((ctx.state as string) !== "running") askResume(ctx);
   return ctx;
+}
+
+function askResume(c: AudioContext, inGesture = false): void {
+  if (!resumeAskedAt.has(c) && (inGesture || ranOnce.has(c))) resumeAskedAt.set(c, now());
+  void c.resume().catch(() => {});
+}
+
+function markRunning(c: AudioContext): void {
+  ranOnce.add(c);
+  resumeAskedAt.delete(c);
+}
+
+/** Sounds asked of `c` now are dropped: it has run and is held, or its
+ *  clock froze. */
+function isHeld(c: AudioContext): boolean {
+  return frozen.has(c) || (ranOnce.has(c) && c.state !== "running");
+}
+
+/** Past saving by resume(): interrupted, frozen, or a resume unanswered for
+ *  RESUME_MS. */
+function isStuck(c: AudioContext): boolean {
+  const state = c.state as string;
+  if (state === "running") return frozen.has(c);
+  if (state === "interrupted") return true;
+  const asked = resumeAskedAt.get(c);
+  return asked !== undefined && now() - asked >= RESUME_MS;
+}
+
+/** Closes the current context and makes a fresh one, asked to resume at
+ *  once. Inside a gesture iOS lets it start; in the app (no autoplay
+ *  restriction) it starts anyway. Decoded clips are AudioBuffers and play in
+ *  any context. Every earlier request is invalidated. */
+function replaceCtx(inGesture: boolean): void {
+  const old = ctx;
+  ctx = null;
+  watchSample = null;
+  invalidate();
+  if (old !== null) void old.close().catch(() => {});
+  try {
+    askResume(ensureCtx(), inGesture);
+  } catch {
+    /* no audio here */
+  }
 }
 
 /** iOS WebKit moves a running context to "interrupted" (the keyboard's
@@ -118,13 +179,13 @@ function watch(c: AudioContext): AudioContext {
     if (state === "running") {
       // a recovery, not the first unlock: what was asked for before is stale
       if (heldAfterRun.delete(c)) invalidate();
-      ranOnce.add(c);
+      markRunning(c);
       return;
     }
     if (ranOnce.has(c)) heldAfterRun.add(c);
     invalidate();
     if (state === "closed") return;
-    void c.resume().catch(() => {});
+    askResume(c);
     armUnlock();
   };
   return c;
@@ -176,7 +237,7 @@ async function ensureRunning(): Promise<AudioContext> {
  *  reports the recovery, and a sound kept waiting would play stale. */
 async function runningFor(reqEpoch: number): Promise<AudioContext | null> {
   const c = ensureCtx();
-  if (c.state !== "running" && ranOnce.has(c)) {
+  if (isHeld(c)) {
     armUnlock();
     if (reqEpoch === epoch) invalidate();
     return null;
@@ -196,7 +257,7 @@ async function runningFor(reqEpoch: number): Promise<AudioContext | null> {
     return null;
   }
   if (reqEpoch !== epoch || muted) return null;
-  ranOnce.add(c);
+  markRunning(c);
   return c;
 }
 
@@ -227,17 +288,14 @@ function disarmUnlock(): void {
 }
 
 function unlockHandler(): void {
-  // A context iOS left "interrupted" (after a call, dictation or a trip to
-  // the background) can refuse every later resume. A context made inside a
-  // gesture may start, so the stuck one is replaced here, synchronously, while
-  // the gesture still counts. Decoded clips are AudioBuffers and play in any
-  // context.
-  if (ctx !== null && (ctx.state as string) === "interrupted") {
-    const stuck = ctx;
-    ctx = null;
-    invalidate();
-    void stuck.close().catch(() => {});
-  }
+  // A context iOS left interrupted, suspended with a resume that never
+  // lands, or running with a frozen clock refuses every later resume. A
+  // context made inside a gesture may start, so the stuck one is replaced
+  // here, synchronously, while the gesture still counts. Otherwise this
+  // gesture's resume is asked, and if it has not landed by a gesture
+  // RESUME_MS later, that one replaces the context.
+  if (ctx !== null && isStuck(ctx)) replaceCtx(true);
+  else if (ctx !== null && ctx.state !== "running") askResume(ctx, true);
   void ensureRunning().then((c) => {
     if (c.state === "running") disarmUnlock();
   });
@@ -251,13 +309,64 @@ armUnlock();
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible") {
     invalidate();
+    watchSample = null;
     return;
   }
-  if (ctx !== null && ctx.state !== "running") {
-    void ctx.resume().catch(() => {});
+  onShown();
+});
+window.addEventListener("pageshow", onShown);
+
+/** Shown again: a stuck context is replaced, a suspended one asked to resume. */
+function onShown(): void {
+  watchSample = null;
+  if (ctx === null) return;
+  if (isStuck(ctx)) {
+    replaceCtx(false);
+    armUnlock();
+  } else if (ctx.state !== "running") {
+    askResume(ctx);
     armUnlock();
   }
-});
+}
+
+// Clock watchdog. A context can report "running" while its clock has stopped:
+// nothing it starts is heard, no statechange comes, and the gesture listeners
+// are already detached. While sounds were asked for recently and the page is
+// visible, currentTime is sampled against wall time; a frozen clock replaces
+// the context.
+let lastAskAt = -Infinity;
+let watchTimer: number | null = null;
+let watchSample: { c: AudioContext; audio: number; wall: number } | null = null;
+
+function noteAsk(): void {
+  lastAskAt = now();
+  if (watchTimer === null) watchTimer = window.setInterval(watchClock, WATCH_MS);
+}
+
+function watchClock(): void {
+  const t = now();
+  if (t - lastAskAt > WATCH_IDLE_MS) {
+    if (watchTimer !== null) window.clearInterval(watchTimer);
+    watchTimer = null;
+    watchSample = null;
+    return;
+  }
+  const c = ctx;
+  if (document.visibilityState !== "visible" || c === null || c.state !== "running") {
+    watchSample = null;
+    return;
+  }
+  const prev = watchSample;
+  watchSample = { c, audio: c.currentTime, wall: t };
+  if (prev === null || prev.c !== c) return;
+  const wall = t - prev.wall;
+  const advanced = (c.currentTime - prev.audio) * 1000;
+  if (wall >= FROZEN_WALL_MS && advanced < FROZEN_ADVANCE_MS) {
+    frozen.add(c);
+    replaceCtx(false);
+    armUnlock();
+  }
+}
 
 export function isMuted(): boolean {
   return muted;
@@ -321,7 +430,7 @@ async function playBuffer(buffer: AudioBuffer, reqEpoch: number): Promise<boolea
   const c = await runningFor(reqEpoch);
   if (c === null || live.size >= MAX_VOICES) return false;
   // rechecked after the await: a recovery in between makes the request stale
-  if (reqEpoch !== epoch || ctx !== c || c.state !== "running") return false;
+  if (reqEpoch !== epoch || ctx !== c || isHeld(c) || c.state !== "running") return false;
   await new Promise<void>((resolve) => {
     const src = c.createBufferSource();
     src.buffer = buffer;
@@ -344,6 +453,7 @@ function sleep(ms: number): Promise<void> {
 /** Short synthesized click for plays with no voice line (junk dumps). */
 function playTick(): void {
   if (muted) return;
+  noteAsk();
   void runningFor(epoch).then((c) => {
     if (c === null || live.size >= MAX_VOICES) return;
     const t = c.currentTime;
@@ -363,10 +473,11 @@ function playTick(): void {
 /** Enqueue a sequence of clip names (played in order, never overlapping). */
 export function play(names: string[]): void {
   if (muted || names.length === 0) return;
+  noteAsk();
   // A context that has run and is held now: the request is dropped here, so a
   // recovery landing while its clip loads cannot carry it through.
-  if (ctx !== null && ranOnce.has(ctx) && ctx.state !== "running") {
-    void ctx.resume().catch(() => {});
+  if (ctx !== null && isHeld(ctx)) {
+    askResume(ctx);
     armUnlock();
     return;
   }

@@ -93,6 +93,8 @@ export class CodeStore {
   private timer: number | null = null;
   /** The waiting peek re-reads a panel already showing, on the page's return. */
   private refreshing = false;
+  /** The page came back while the lobby was not ready: look once it is. */
+  private refreshOwed = false;
 
   attach(): void {
     if (this.attached) return;
@@ -112,7 +114,12 @@ export class CodeStore {
    *  ended meanwhile, the panel closes with its one line. */
   refresh(): void {
     const j = this.view;
-    if (!j || j.step !== "panel" || !this.place.ready) return;
+    if (!j || j.step !== "panel") return;
+    if (!this.place.ready) {
+      this.refreshOwed = true;
+      return;
+    }
+    this.refreshOwed = false;
     this.refreshing = true;
     this.set({ ...j, step: "peek" });
     this.sendPeek(j.code);
@@ -131,6 +138,7 @@ export class CodeStore {
       this.timer = null;
     }
     if (next?.step !== "peek") this.refreshing = false;
+    if (next === null) this.refreshOwed = false;
     this.view = next;
     for (const fn of this.listeners) fn();
   }
@@ -220,6 +228,7 @@ export class CodeStore {
       return;
     }
     if (now.step === "peek" && !this.asked && p.ready) this.sendPeek(now.code);
+    if (now.step === "panel" && this.refreshOwed && p.ready) this.refresh();
   }
 
   /** The Play box's Join: peek `raw`; false when it is not a whole code or
@@ -399,6 +408,7 @@ export class CodeStore {
     this.asked = false;
     this.seenSeated = false;
     this.refreshing = false;
+    this.refreshOwed = false;
     this.place = { ready: false, seatedAt: null };
   }
 }

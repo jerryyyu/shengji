@@ -20,7 +20,7 @@ const saved = vi.hoisted(() => ({ room: null as string | null, token: null as st
 
 import { codes, panelShown } from "./codeJoin";
 import { queue } from "./queue/store";
-import { clearToast, currentToast } from "./toast";
+import { clearToast, currentToast, subscribeToast } from "./toast";
 
 const say = (m: unknown) => { for (const fn of [...link.msg]) fn(m); };
 const status = (s: string) => { for (const fn of [...link.status]) fn(s); };
@@ -471,5 +471,46 @@ describe("a panel whose table ends while it shows", () => {
     codes.open("FG3K");
     say(MISS);
     expect(currentToast()?.text).toBe("No table has that code.");
+  });
+});
+
+describe("a return to the page while the socket is down", () => {
+  it("is remembered: one peek once the lobby is ready again, and a closed table's reply is one toast", () => {
+    codes.setPlace(lobby);
+    codes.open("FG3K");
+    say(TABLE);
+    expect(codes.view?.step).toBe("panel");
+    status("closed");
+    codes.setPlace({ ready: false, seatedAt: null });
+    sent.length = 0;
+    window.dispatchEvent(new Event("focus"));
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(sent).toEqual([]);
+    status("open");
+    codes.setPlace(lobby);
+    expect(sent).toEqual([{ type: "table_peek", code: "FG3K" }]);
+    expect(codes.view?.step).toBe("peek");
+    // a second ready place sends nothing more
+    codes.setPlace(lobby);
+    expect(sent).toHaveLength(1);
+    const toasts: string[] = [];
+    const off = subscribeToast(() => { const t = currentToast(); if (t) toasts.push(t.text); });
+    say({ ...TABLE, closed: true });
+    say({ ...TABLE, closed: true });
+    off();
+    expect(codes.view).toBeNull();
+    expect(toasts).toEqual(["That game has ended."]);
+  });
+
+  it("is forgotten once the panel is gone", () => {
+    codes.setPlace(lobby);
+    codes.open("FG3K");
+    say(TABLE);
+    codes.setPlace({ ready: false, seatedAt: null });
+    window.dispatchEvent(new Event("focus"));
+    codes.cancel();
+    sent.length = 0;
+    codes.setPlace(lobby);
+    expect(sent).toEqual([]);
   });
 });

@@ -138,8 +138,8 @@ LOOKS: dict[str, tuple[str, ...]] = {
     "bun": ("plain", "custard", "taro", "peach"),
     "chick": ("yellow", "cream", "cocoa", "ink"),
     "sparrow": ("tree", "java", "snow", "oriole"),
-    "goat": ("newyear", "jade", "ink", "lacquer"),
-    "panda": ("classic", "bamboo", "snow", "lantern"),
+    "lamb": ("newyear", "jade", "ink", "lacquer"),
+    "panda": ("classic", "russet", "ink", "gilded"),
 }
 # The app's bundle id; every App Store product id starts with it.
 STORE_BUNDLE_ID = "com.jerryyu.shengji"
@@ -147,7 +147,7 @@ STORE_BUNDLE_ID = "com.jerryyu.shengji"
 # included. A companion listed here is unlocked only by a verified, unrevoked
 # entitlement to its product (``Store.owned_products``), never by a count.
 COMPANION_PRODUCTS: dict[str, str] = {
-    "goat": f"{STORE_BUNDLE_ID}.companion.goat",
+    "lamb": f"{STORE_BUNDLE_ID}.companion.lamb",
     "panda": f"{STORE_BUNDLE_ID}.companion.panda",
 }
 # The Shop is shown, and purchases are verified, only for an account the

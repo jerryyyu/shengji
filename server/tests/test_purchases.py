@@ -22,7 +22,7 @@ from tests.test_accounts import (  # noqa: F401
 from tests.test_ratings import _rounds_at
 from tests.test_server_ws import _drain, client  # noqa: F401
 
-GOAT = "com.jerryyu.shengji.companion.goat"
+LAMB = "com.jerryyu.shengji.companion.lamb"
 PANDA = "com.jerryyu.shengji.companion.panda"
 
 
@@ -72,7 +72,7 @@ class Chain:
 def _txn(**over) -> dict:
     now = int(time.time() * 1000)
     base = {"transactionId": "2000000111", "originalTransactionId": "2000000111",
-            "bundleId": "com.jerryyu.shengji", "productId": GOAT, "purchaseDate": now - 5000,
+            "bundleId": "com.jerryyu.shengji", "productId": LAMB, "purchaseDate": now - 5000,
             "originalPurchaseDate": now - 5000, "quantity": 1, "type": "Non-Consumable",
             "inAppOwnershipType": "PURCHASED", "signedDate": now, "environment": "Sandbox",
             "transactionReason": "PURCHASE", "storefront": "USA", "storefrontId": "143441",
@@ -123,7 +123,7 @@ def test_a_well_formed_transaction_verifies(chain):
 
     payload = purchases.verify_jws(chain.sign(_txn()))
     txn = purchases.transaction(payload)
-    assert txn["product_id"] == GOAT and txn["original_transaction_id"] == "2000000111"
+    assert txn["product_id"] == LAMB and txn["original_transaction_id"] == "2000000111"
     assert txn["environment"] == "Sandbox" and txn["storefront"] == "USA"
     assert txn["revoked_at"] is None
 
@@ -200,29 +200,29 @@ def test_production_only_refuses_sandbox(chain, monkeypatch):
 
 
 # ------------------------------------------------------------ /api/store/verify
-def test_a_purchase_unlocks_the_goat_and_shows_in_me(accounts_on, client, shop, chain):
+def test_a_purchase_unlocks_the_lamb_and_shows_in_me(accounts_on, client, shop, chain):
     me = client.get("/api/me", headers=shop).json()
     assert me["features"] == {"collection": True, "store": True}
     assert me["products"] == []
-    goat = {e["id"]: e for e in me["looks"] if e["id"].startswith("goat/")}
-    assert len(goat) == 4 and not any(e["unlocked"] for e in goat.values())
-    assert {e["product"] for e in goat.values()} == {GOAT}
-    assert client.put("/api/me/look", json={"look": "goat/jade"}, headers=shop).status_code == 403
+    lamb = {e["id"]: e for e in me["looks"] if e["id"].startswith("lamb/")}
+    assert len(lamb) == 4 and not any(e["unlocked"] for e in lamb.values())
+    assert {e["product"] for e in lamb.values()} == {LAMB}
+    assert client.put("/api/me/look", json={"look": "lamb/jade"}, headers=shop).status_code == 403
 
     resp = client.post("/api/store/verify", json={"jws": chain.sign(_txn()), "storefront": "USA"},
                        headers=shop)
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["products"] == [GOAT]
-    assert all(e["unlocked"] for e in body["looks"] if e["id"].startswith("goat/"))
+    assert body["products"] == [LAMB]
+    assert all(e["unlocked"] for e in body["looks"] if e["id"].startswith("lamb/"))
     assert not any(e["unlocked"] for e in body["looks"] if e["id"].startswith("panda/"))
-    resp = client.put("/api/me/look", json={"look": "goat/jade"}, headers=shop)
-    assert resp.status_code == 200 and resp.json()["look"] == "goat/jade"
-    assert accounts_on.account_look(1) == "goat/jade"
+    resp = client.put("/api/me/look", json={"look": "lamb/jade"}, headers=shop)
+    assert resp.status_code == 200 and resp.json()["look"] == "lamb/jade"
+    assert accounts_on.account_look(1) == "lamb/jade"
     with accounts_on.STORE._open() as conn:
         row = dict(conn.execute("SELECT * FROM entitlements").fetchone())
     assert (row["user_id"], row["product_id"], row["environment"], row["storefront"]) == (
-        1, GOAT, "Sandbox", "USA")
+        1, LAMB, "Sandbox", "USA")
     assert row["revoked_at"] is None and row["purchased_at"] > 0
 
 
@@ -283,21 +283,21 @@ def test_the_china_storefront_buys_nothing(accounts_on, client, shop, chain):
 def test_a_guest_and_a_store_off_account_see_no_sold_companion(accounts_on, client, shop, monkeypatch):
     monkeypatch.setenv("STORE_ENABLED", "0")
     looks = client.get("/api/me", headers=shop).json()["looks"]
-    assert not any(e["id"].startswith(("goat/", "panda/")) for e in looks)
+    assert not any(e["id"].startswith(("lamb/", "panda/")) for e in looks)
     assert accounts_on.store_for(None) is False
 
 
 # ------------------------------------------------------------ /api/store/notify
 def test_a_refund_revokes_and_unequips(accounts_on, client, shop, chain):
     assert client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=shop).status_code == 200
-    assert client.put("/api/me/look", json={"look": "goat/ink"}, headers=shop).status_code == 200
+    assert client.put("/api/me/look", json={"look": "lamb/ink"}, headers=shop).status_code == 200
     refunded = _txn(revocationDate=int(time.time() * 1000), revocationReason=0)
     resp = client.post("/api/store/notify", json=_notification(chain, "REFUND", refunded))
     assert resp.status_code == 200
     me = client.get("/api/me", headers=shop).json()
     assert me["products"] == [] and me["look"] == "tractor/red"
     assert accounts_on.account_look(1) == "tractor/red"
-    assert client.put("/api/me/look", json={"look": "goat/ink"}, headers=shop).status_code == 403
+    assert client.put("/api/me/look", json={"look": "lamb/ink"}, headers=shop).status_code == 403
     # the old, unrevoked JWS cannot buy it back
     resp = client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=shop)
     assert resp.status_code == 409 and resp.json()["detail"] == "revoked"
@@ -305,7 +305,7 @@ def test_a_refund_revokes_and_unequips(accounts_on, client, shop, chain):
     assert client.post("/api/store/notify", json=_notification(chain, "REFUND", refunded)).status_code == 200
     # a reversed refund gives it back
     assert client.post("/api/store/notify", json=_notification(chain, "REFUND_REVERSED", _txn())).status_code == 200
-    assert client.get("/api/me", headers=shop).json()["products"] == [GOAT]
+    assert client.get("/api/me", headers=shop).json()["products"] == [LAMB]
 
 
 def test_a_revoke_applies_even_with_the_store_off(accounts_on, client, shop, chain, monkeypatch):
@@ -339,10 +339,10 @@ def test_a_notification_that_fails_verification_changes_nothing(accounts_on, cli
     assert client.post("/api/store/notify", json={"signedPayload": outer}).status_code == 400
     wrong_app = _notification(chain, "REFUND", revoked, bundleId="com.other")
     assert client.post("/api/store/notify", json=wrong_app).status_code == 400
-    assert accounts_on.STORE.owned_products(1) == frozenset({GOAT})
+    assert accounts_on.STORE.owned_products(1) == frozenset({LAMB})
     # other types are acknowledged and ignored
     assert client.post("/api/store/notify", json=_notification(chain, "CONSUMPTION_REQUEST", _txn())).status_code == 200
-    assert accounts_on.STORE.owned_products(1) == frozenset({GOAT})
+    assert accounts_on.STORE.owned_products(1) == frozenset({LAMB})
 
 
 # ------------------------------------------------------------ the table
@@ -384,15 +384,15 @@ def test_purchases_follow_a_merged_device_account_and_outlive_a_deleted_one(acco
     store = accounts_on.STORE
     a = store.upsert_user(_claims(sub="s1", email="a@example.com", name="A"))
     b = store.upsert_user(_claims(sub="s2", email="b@example.com", name="B"))
-    txn = {"product_id": GOAT, "original_transaction_id": "9", "transaction_id": "9",
+    txn = {"product_id": LAMB, "original_transaction_id": "9", "transaction_id": "9",
            "environment": "Sandbox", "storefront": "USA", "purchased_at": 1.0}
     assert store.claim_entitlement(a["id"], txn) == "granted"
-    assert store.owned_products(a["id"]) == frozenset({GOAT})
+    assert store.owned_products(a["id"]) == frozenset({LAMB})
     with store._open() as conn:
         conn.execute("BEGIN IMMEDIATE")
         store._merge_device(conn, a["id"], b["id"])
         conn.execute("COMMIT")
-    assert store.owned_products(b["id"]) == frozenset({GOAT})
+    assert store.owned_products(b["id"]) == frozenset({LAMB})
     assert store.claim_entitlement(b["id"], txn) == "granted"
     assert store.delete_user(b["id"])
     with store._open() as conn:
@@ -419,7 +419,7 @@ def test_a_refund_reversed_before_any_claim_still_lets_the_buyer_claim(accounts_
     assert client.post("/api/store/notify", json=_notify_at(chain, "REFUND_REVERSED", one, _signed_at(-1000))).status_code == 200
     resp = client.post("/api/store/verify", json={"jws": chain.sign(one)}, headers=shop)
     assert resp.status_code == 200, resp.text
-    assert client.get("/api/me", headers=shop).json()["products"] == [GOAT]
+    assert client.get("/api/me", headers=shop).json()["products"] == [LAMB]
 
 
 def test_a_late_duplicate_refund_after_its_reversal_changes_nothing(accounts_on, client, shop, chain):
@@ -429,10 +429,10 @@ def test_a_late_duplicate_refund_after_its_reversal_changes_nothing(accounts_on,
     assert client.post("/api/store/notify", json=refund).status_code == 200
     assert accounts_on.STORE.owned_products(1) == frozenset()
     assert client.post("/api/store/notify", json=_notify_at(chain, "REFUND_REVERSED", _txn(), _signed_at(-1000))).status_code == 200
-    assert accounts_on.STORE.owned_products(1) == frozenset({GOAT})
+    assert accounts_on.STORE.owned_products(1) == frozenset({LAMB})
     # Apple redelivers the first refund after its reversal: older, so ignored
     assert client.post("/api/store/notify", json=refund).status_code == 200
-    assert client.get("/api/me", headers=shop).json()["products"] == [GOAT]
+    assert client.get("/api/me", headers=shop).json()["products"] == [LAMB]
     # and a reversal delivered before its refund leaves the refund in force
     two = _txn(originalTransactionId="52", transactionId="52", productId=PANDA)
     assert client.post("/api/store/verify", json={"jws": chain.sign(two)}, headers=shop).status_code == 200
@@ -480,7 +480,7 @@ def test_an_unrefunded_purchase_restores_onto_a_new_account_after_deletion(accou
     other = {"cookie": _session_cookie(accounts_on, client, private_pem, sub="444", email="d@example.com")}
     resp = client.post("/api/store/verify", json={"jws": bought}, headers=other)
     assert resp.status_code == 200, resp.text
-    assert client.get("/api/me", headers=other).json()["products"] == [GOAT]
+    assert client.get("/api/me", headers=other).json()["products"] == [LAMB]
 
 
 def test_a_refunded_purchase_of_a_deleted_payer_is_not_released(accounts_on, client, shop, chain, keypair, monkeypatch):
@@ -511,7 +511,7 @@ def test_a_purchase_signed_for_a_merged_device_account_reaches_the_survivor(acco
         conn.execute("COMMIT")
     resp = client.post("/api/store/verify", json={"jws": pending}, headers=shop)
     assert resp.status_code == 200, resp.text
-    assert client.get("/api/me", headers=shop).json()["products"] == [GOAT]
+    assert client.get("/api/me", headers=shop).json()["products"] == [LAMB]
     # the survivor's own token is unchanged and the device's still resolves to it
     assert store.store_token_account(device_token) == 1
 
@@ -532,11 +532,11 @@ def test_a_purchase_for_a_live_payer_is_settled_only_once_the_payer_has_it(accou
 
 def test_sandbox_grants_disappear_when_only_production_is_enabled(accounts_on, client, shop, chain, monkeypatch):
     assert client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=shop).status_code == 200
-    assert client.put("/api/me/look", json={"look": "goat/jade"}, headers=shop).status_code == 200
+    assert client.put("/api/me/look", json={"look": "lamb/jade"}, headers=shop).status_code == 200
     monkeypatch.setenv("STORE_ENVIRONMENTS", "Production")
     me = client.get("/api/me", headers=shop).json()
     assert me["products"] == [] and me["look"] == "tractor/red"
-    assert client.put("/api/me/look", json={"look": "goat/ink"}, headers=shop).status_code == 403
+    assert client.put("/api/me/look", json={"look": "lamb/ink"}, headers=shop).status_code == 403
     # a Production purchase still counts
     prod = _txn(originalTransactionId="75", transactionId="75", productId=PANDA, environment="Production")
     assert client.post("/api/store/verify", json={"jws": chain.sign(prod)}, headers=shop).status_code == 200
@@ -553,7 +553,7 @@ def test_a_reversal_before_any_claim_and_before_its_older_refund_keeps_the_purch
     assert client.post("/api/store/notify", json=older_refund).status_code == 200
     resp = client.post("/api/store/verify", json={"jws": chain.sign(one)}, headers=shop)
     assert resp.status_code == 200, resp.text
-    assert client.get("/api/me", headers=shop).json()["products"] == [GOAT]
+    assert client.get("/api/me", headers=shop).json()["products"] == [LAMB]
 
 
 def test_a_stale_refund_leaves_the_seat_look_alone(accounts_on, client, shop, chain):
@@ -561,21 +561,21 @@ def test_a_stale_refund_leaves_the_seat_look_alone(accounts_on, client, shop, ch
     refund = _notify_at(chain, "REFUND", _txn(revocationDate=_signed_at(-3000)), _signed_at(-3000))
     assert client.post("/api/store/notify", json=refund).status_code == 200
     assert client.post("/api/store/notify", json=_notify_at(chain, "REFUND_REVERSED", _txn(), _signed_at(-1000))).status_code == 200
-    assert client.put("/api/me/look", json={"look": "goat/ink"}, headers=shop).status_code == 200
-    assert accounts_on.account_look(1) == "goat/ink"
+    assert client.put("/api/me/look", json={"look": "lamb/ink"}, headers=shop).status_code == 200
+    assert accounts_on.account_look(1) == "lamb/ink"
     assert client.post("/api/store/notify", json=refund).status_code == 200      # redelivered, older
-    assert accounts_on.account_look(1) == "goat/ink"
-    assert client.get("/api/me", headers=shop).json()["look"] == "goat/ink"
+    assert accounts_on.account_look(1) == "lamb/ink"
+    assert client.get("/api/me", headers=shop).json()["look"] == "lamb/ink"
 
 
 def test_seats_and_leaderboard_rows_show_only_an_owned_look(accounts_on, client, shop, chain, monkeypatch):
     from shengji.api import ratings
 
     assert client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=shop).status_code == 200
-    assert client.put("/api/me/look", json={"look": "goat/jade"}, headers=shop).status_code == 200
+    assert client.put("/api/me/look", json={"look": "lamb/jade"}, headers=shop).status_code == 200
     _rounds_at(accounts_on.STORE, 1, [time.time() - 60])
     board = ratings.leaderboard(accounts_on.STORE, "all", 1)
-    assert board["me"]["look"] == "goat/jade"
+    assert board["me"]["look"] == "lamb/jade"
     monkeypatch.setenv("STORE_ENVIRONMENTS", "Production")
     accounts_on.STORE.seen_looks.clear()
     with client.websocket_connect("/ws", headers=shop) as ws:
@@ -601,7 +601,7 @@ def test_the_account_token_binds_a_purchase_to_its_payer(accounts_on, client, sh
     resp = client.post("/api/store/verify", json={"jws": bought}, headers=other)
     assert resp.status_code == 409 and resp.json()["detail"] == "held_by_other"
     assert client.get("/api/me", headers=other).json()["products"] == []
-    assert accounts_on.STORE.owned_products(1) == frozenset({GOAT})
+    assert accounts_on.STORE.owned_products(1) == frozenset({LAMB})
     assert client.post("/api/store/verify", json={"jws": bought}, headers=shop).status_code == 200
     # a token this server never issued grants nobody, and records nothing (retryable)
     stray = chain.sign(_txn(originalTransactionId="91", transactionId="91", productId=PANDA,
@@ -667,10 +667,30 @@ def test_a_transaction_refused_to_a_device_account_is_delivered_after_it_links(a
     client.cookies.clear()
     resp = client.post("/api/store/verify", json={"jws": pending}, headers=signed_in)
     assert resp.status_code == 200, resp.text
-    assert client.get("/api/me", headers=signed_in).json()["products"] == [GOAT]
+    assert client.get("/api/me", headers=signed_in).json()["products"] == [LAMB]
 
 
 def test_the_shops_sign_in_entry_point_is_a_known_telemetry_source():
     from shengji.api import telemetry
 
     assert "shop" in telemetry.SIGNIN_FROM
+
+
+# ------------------------------------------------------------ the store's ids
+def test_the_store_characters_are_the_lamb_and_the_panda_in_the_arts_colours(accounts_on):
+    a = accounts_on
+    assert a.COMPANION_PRODUCTS == {"lamb": LAMB, "panda": PANDA}
+    assert a.LOOKS["lamb"] == ("newyear", "jade", "ink", "lacquer")
+    assert a.LOOKS["panda"] == ("classic", "russet", "ink", "gilded")
+
+
+def test_an_old_goat_look_or_product_is_refused(accounts_on, client, shop, chain):
+    a = accounts_on
+    # nothing was ever sold as the Goat, so its ids are simply unknown
+    for old in ("goat/newyear", "goat/jade", "panda/bamboo", "panda/snow", "panda/lantern"):
+        assert a.parse_look(old) is None
+        assert a.look_id({"look_companion": old.split("/")[0], "look_colour": old.split("/")[1]}) == a.DEFAULT_LOOK
+        assert client.put("/api/me/look", json={"look": old}, headers=shop).status_code == 400
+    resp = client.post("/api/store/verify", json={"jws": chain.sign(_txn(productId="com.jerryyu.shengji.companion.goat"))},
+                       headers=shop)
+    assert resp.status_code == 400 and resp.json()["detail"] == "unknown_product"

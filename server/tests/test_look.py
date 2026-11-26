@@ -376,7 +376,7 @@ def test_the_free_companions_parse_and_are_unlocked_from_the_start(accounts_on):
         assert look not in a.LOOK_UNLOCKS
     fresh = {e["id"]: e for e in a.look_catalogue({"rounds": 0, "ranked_wins": 0, "ranked_games": 0})}
     assert all(fresh[look]["unlocked"] and fresh[look]["needs"] is None for look in FREE_LOOKS)
-    for bad in ("bun/red", "chick/jade", "sparrow/plain", "bun/", "sparrow", "chick/yellow/x", "lamb/jade"):
+    for bad in ("bun/red", "chick/jade", "sparrow/plain", "bun/", "sparrow", "chick/yellow/x", "goat/jade"):
         assert a.parse_look(bad) is None
 
 
@@ -389,6 +389,6 @@ def test_a_free_companion_equips_and_an_unknown_colour_is_refused(accounts_on, k
         assert resp.status_code == 200 and resp.json()["look"] == look
         assert accounts_on.account_look(1) == look
         assert client.get("/api/me", headers=session).json()["look"] == look
-    for bad in ("bun/red", "sparrow/jade", "chick/", "lamb/newyear"):
+    for bad in ("bun/red", "sparrow/jade", "chick/", "goat/newyear"):
         assert client.put("/api/me/look", json={"look": bad}, headers=session).status_code == 400
     assert accounts_on.account_look(1) == "sparrow/oriole"

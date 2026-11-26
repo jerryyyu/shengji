@@ -2684,9 +2684,22 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     -webkit-touch-callout: default;
   }
 
-  /* in play your slot is your row, so nothing is reserved under the cross */
+  /* In play your slot is your row, so nothing is reserved under the cross.
+     The cross spreads to fill the felt: the top slot starts a small gap under
+     the header, your slot's tag line ends a small gap above the hand, and all
+     the height left over goes between the rows. The side slots stay centred
+     between the two, so on a short phone the cross ends higher, where a side
+     slot's tag line stays a gap above your row; it never ends lower than the
+     evenly spaced cross would. The card size still comes from --cross-avail,
+     so it is the same in every phase. */
   .table-screen.phase-play {
     --row-reserve: 0px;
+    --trick-top: calc(var(--header-bottom) + var(--space-s));
+    --cross-bottom: min(calc(var(--zone-bottom) + var(--gap-v)), max(calc(var(--hand-h) + var(--space-s)),
+      calc(var(--trick-top) - var(--view-h) + 2 * var(--zone-bottom) + 2 * var(--row-h) + 2 * var(--space-s) + var(--tag-s) + var(--trick-ch))));
+    --gap-rows: calc(var(--view-h) - var(--trick-top) - var(--cross-bottom) - 2 * var(--foot));
+    --dy-top: calc(var(--trick-ch) / 2 + var(--tag-s) + var(--gap-rows) / 2);
+    --dy-bottom: calc(var(--trick-ch) / 2 + var(--gap-rows) / 2);
   }
 
   /* The banker's 33 cards fit one row by drawing smaller, as large as the

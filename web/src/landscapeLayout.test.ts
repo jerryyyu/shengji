@@ -382,15 +382,27 @@ describe("phone table geometry", () => {
         expect(play.row.y1).toBeLessThanOrEqual(play.zoneTop + 0.5);
       });
 
-      it("spaces the cross evenly: the header, the slots and the row (or the hand) a gap apart", () => {
-        const playGaps = [play.slots.top.y0 - play.header, play.slots.bottom.y0 - play.slots.top.y1,
-          play.zoneTop - play.slots.bottom.y1];
+      it("while setting up spaces the cross evenly: the header, the slots and the row a gap apart", () => {
         const setupGaps = [setup.slots.top.y0 - setup.header, setup.slots.bottom.y0 - setup.slots.top.y1,
           setup.row.y0 - setup.slots.bottom.y1];
-        for (const gaps of [playGaps, setupGaps]) {
-          for (const x of gaps) expect(Math.abs(x - gaps[0])).toBeLessThanOrEqual(2);
-          expect(gaps[0]).toBeGreaterThanOrEqual(8 - 0.01);
-        }
+        for (const x of setupGaps) expect(Math.abs(x - setupGaps[0])).toBeLessThanOrEqual(2);
+        expect(setupGaps[0]).toBeGreaterThanOrEqual(8 - 0.01);
+      });
+
+      it("in play spreads the rows: the top slot 8pt under the header, your slot at least 8pt above the hand and the side slots 8pt above your row, the rest between", () => {
+        expect(play.slots.top.y0 - play.header).toBeCloseTo(8, 0);
+        const toHand = play.handTop - play.slots.bottom.y1;
+        const sideToRow = Math.min(play.row.y0 - play.slots.left.y1, play.row.y0 - play.slots.right.y1);
+        expect(toHand).toBeGreaterThanOrEqual(8 - 0.01);
+        expect(sideToRow).toBeGreaterThanOrEqual(8 - 0.01);
+        // never tighter than the evenly spaced cross, whose gaps are --gap-v
+        const even = evalLength(tokens["--gap-v"], vp, { ...tokens, ...rule(block, ".table-screen.phase-play") });
+        const between = play.slots.bottom.y0 - play.slots.top.y1;
+        expect(between).toBeGreaterThanOrEqual(even - 0.01);
+        expect(between).toBeGreaterThanOrEqual(play.slots.top.y0 - play.header - 0.01);
+      });
+
+      it("keeps the side slots level with the cross's centre", () => {
         // the side slots sit at the cross's vertical centre, left and right alike
         for (const g of [play, setup]) {
           const mid = (g.slots.top.y0 + g.slots.bottom.y1) / 2;

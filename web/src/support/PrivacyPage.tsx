@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import InfoHead from "./InfoHead";
 import { followInfoLink } from "./route";
 
-export const PRIVACY_UPDATED = "2026-11-25";
+export const PRIVACY_UPDATED = "2026-11-26";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -183,8 +183,17 @@ export default function PrivacyPage() {
             counted, by Apple or Google and whether it made a new account, with no id at all.
           </p>
           <p>
+            When you share an invite link, it carries a random code for your device so we can count
+            how many friends join from your invites. Your device keeps the code and puts the same one
+            on every link it shares. We store only a scrambled version of it, never your name or
+            account, with the events of your invites: a link shared, a link opened, and a friend
+            seated. Because it stays the same, it groups those events across visits, and with the
+            other events of the connection each one came from. Clearing the site’s data gives your
+            device a new code.
+          </p>
+          <p>
             The events hold no name, account id, email, IP address, device key, room code, cards,
-            chat or anything you type, and nothing links them to you. We use them only to improve the
+            chat or anything you type, and nothing links them to who you are. We use them only to improve the
             app. They are kept on our server, apart from the game records, and our server removes
             the days older than 90 days as new events arrive.
             Practice games played offline send nothing.

@@ -586,6 +586,26 @@ describe("an invite link's funnel", () => {
     expect(steps).toEqual([["opened", undefined, "0123456789ab"], ["seated", undefined, "0123456789ab"]]);
   });
 
+  it("is not seated by another table's seat during the link's Join", () => {
+    window.history.replaceState(null, "", "/?code=WXYZ&h=0123456789ab");
+    status("open");
+    codes.setPlace(lobby);
+    say(ROOM);
+    codes.join("Bo");
+    codes.setPlace({ ready: true, seatedAt: "ABCD" });
+    expect(steps).toEqual([["opened", undefined, "0123456789ab"]]);
+  });
+
+  it("is seated by the link's own table during its Join", () => {
+    window.history.replaceState(null, "", "/?code=WXYZ&h=0123456789ab");
+    status("open");
+    codes.setPlace(lobby);
+    say(ROOM);
+    codes.join("Bo");
+    codes.setPlace({ ready: true, seatedAt: "WXYZ" });
+    expect(steps).toEqual([["opened", undefined, "0123456789ab"], ["seated", undefined, "0123456789ab"]]);
+  });
+
   it("carries no token a link did not, or one off its pattern", () => {
     window.history.replaceState(null, "", "/?code=WXYZ&h=FW4X");
     status("open");

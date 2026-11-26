@@ -246,7 +246,9 @@ export class CodeStore {
       return;
     }
     if (p.seatedAt !== null) {
-      if (now.from === "link" && now.step === "joining" && this.landing !== undefined) {
+      // only a seat at the link's own table is the invite's seat
+      if (now.from === "link" && now.step === "joining" && p.seatedAt === now.code
+          && this.landing !== undefined) {
         reportInvite("seated", undefined, this.landing);
         this.landing = undefined;
       }

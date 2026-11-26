@@ -1320,6 +1320,26 @@ def validate_follow(list play, list hand, list lead, ordering):
         <const unsigned char *>PyBytes_AS_STRING(ctx[2])
     cdef int cntp[N_CODES]
     cdef int cnth[N_CODES]
+    cdef int played_id, hand_id, lead_suit
+    cdef unsigned int suits = 0
+    cdef bint holds = False
+    cdef Py_ssize_t j
+    if len(play) == 1 and len(lead) == 1 and code2id is _CODE2ID:
+        if len(hand) > MAX_CARDS:
+            raise ValueError("play too large")
+        played_id = <int>code2id[play[0]]
+        # A singleton has no shape obligation. One scan decides ownership
+        # and which effective suits are available, including off-suit trumps.
+        for j in range(len(hand)):
+            hand_id = <int>code2id[hand[j]]
+            holds |= hand_id == played_id
+            suits |= 1U << efftab[hand_id]
+        if not holds:
+            raise IllegalPlay("You don't hold those cards.")
+        lead_suit = efftab[<int>code2id[lead[0]]]
+        if efftab[played_id] != lead_suit and suits & (1U << lead_suit):
+            raise IllegalPlay("You must follow suit.")
+        return
     _check_in_hand_c(hand, play, cntp, cnth)
     cdef Py_ssize_t np_ = len(play), nl = len(lead), i
     if np_ != nl:

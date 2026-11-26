@@ -118,6 +118,16 @@ class HistoryPrefix:
         self.events = events
 
     @classmethod
+    def empty_native(cls, ordering):
+        """Each simulated bury world supplies its own completed trick."""
+        if type(ordering) is not Ordering or not _reference_builders():
+            return None
+        prefix = cls((), ordering, [[0.0] * N_CARDS for _ in range(4)],
+                     [0.0] * N_CARDS, [0] * N_CARDS, [set() for _ in range(4)], 0)
+        prefix.native = _native_arguments(prefix)
+        return prefix if prefix.native is not None else None
+
+    @classmethod
     def of(cls, rnd, batched=False, native=False):
         """The prefix of ``rnd.history``, or None where the fused builder would
         refuse any state extending it (every leaf then takes the reference).
@@ -927,6 +937,61 @@ def _plain_evaluator(evaluator) -> bool:
             and cls.score_many is CompleteWorldEvaluator.score_many)
 
 
+def score_bury_leaves(evaluator, base, positions, seats):
+    """Score a stock bury batch with the native encoder, or decline before inference."""
+    from ..ai.cwv_numpy_evaluator import NumpyCompleteWorldEvaluator, _STOCK_NUMPY_FORWARDS
+
+    cls = type(evaluator)
+    if (base is not NumpyCompleteWorldEvaluator
+            or _BURY_SCORE_SNAPSHOT is None
+            or base.probabilities is not _STOCK_NUMPY_FORWARDS[0]
+            or base.probabilities_stacked is not _STOCK_NUMPY_FORWARDS[1]
+            or type(positions) not in (list, tuple) or type(seats) not in (list, tuple)
+            or not positions or len(seats) != len(positions)
+            or any(name in vars(evaluator) or getattr(cls, name) is not getattr(base, name)
+                   for name in _BURY_INHERITED_METHODS)
+            or "score_many" in vars(evaluator)
+            or not _BURY_SCORE_SNAPSHOT.intact(*_bury_references(base))):
+        return None
+    n = len(positions)
+    seat = seats[0]
+    if type(seat) is not int or not 0 <= seat < 4:
+        return None
+    for rnd, perspective in zip(positions, seats):
+        if (type(rnd) is not Round or rnd.phase != "play"
+                or type(rnd.banker) is not int or rnd.banker != seat
+                or type(perspective) is not int or perspective != seat
+                or type(rnd.history) is not list or len(rnd.history) != 1
+                or type(rnd.trick) is not Trick or type(rnd.trick.plays) is not list
+                or rnd.trick.plays):
+            return None
+    version = static_version(evaluator.encoder)
+    if version is None:
+        return None
+
+    wall0, cpu0 = time.perf_counter(), time.process_time()
+    prefix = HistoryPrefix.empty_native(positions[0].ordering)
+    if prefix is None:
+        return None
+    stacked = native_arrays(prefix, positions, seats, version)
+    if stacked is None:
+        return None
+    public, world, perspective = stacked
+    if (public.shape != (n, PUBLIC_DIM_BY_VERSION[version])
+            or world.shape != (n, WORLD_RECEIVERS, N_CARDS)
+            or perspective.shape != (n, 2)
+            or not _valid_stacked(*stacked, version)):
+        return None
+
+    values = evaluator.probabilities_stacked(*stacked) @ evaluator.support
+    evaluator.calls += 1
+    evaluator.positions += n
+    evaluator.model_rows += n
+    evaluator.wall_secs += time.perf_counter() - wall0
+    evaluator.cpu_secs += time.process_time() - cpu0
+    return values
+
+
 def encode_leaves(evaluator, positions, root_seat, prefix, batched=True):
     """``(values, rows, pending, fast)`` for `score_leaves`: the terminal values
     filled in ``values``, the model rows in position order with their indices,
@@ -1078,6 +1143,33 @@ def _snapshots():
 
 
 _KERNEL_SNAPSHOT, _FORWARD_SNAPSHOT = _snapshots()
+
+
+_BURY_INHERITED_METHODS = ("score", "probabilities", "probabilities_stacked",
+                           "encoder", "effective_encoding")
+
+
+def _bury_references(base):
+    from ..ai import cwv_static_encoding as static
+
+    return (base.score, base.score_many, base.probabilities, base.probabilities_stacked,
+            getattr(base.encoder, "fget", None), getattr(base.effective_encoding, "fget", None),
+            static.tensors_from_round_static, static._fused_static_tensors,
+            static._widen_v2_static, static._widen_v7_static, static._v2_static_columns,
+            ValueAfterstateTensors.validate, ValueAfterstateTensorsV2.validate)
+
+
+def _bury_snapshot():
+    try:
+        from .pv_native import ReferenceSnapshot
+        from ..ai.cwv_numpy_evaluator import NumpyCompleteWorldEvaluator
+
+        return ReferenceSnapshot(*_bury_references(NumpyCompleteWorldEvaluator))
+    except Exception:
+        return None
+
+
+_BURY_SCORE_SNAPSHOT = _bury_snapshot()
 
 __all__ = ["VERSIONS", "HistoryPrefix", "encode_leaves", "fused_many", "fused_many_batched",
            "fused_many_native", "native_arrays", "prior_rows", "reply_rows", "score_leaves", "static_version"]

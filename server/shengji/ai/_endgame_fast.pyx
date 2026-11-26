@@ -438,6 +438,11 @@ cdef struct LEnt:
     uint8_t pad[3]
 
 
+cdef struct CanonEntry:
+    uint64_t key
+    uint64_t value
+
+
 cdef struct PInfo:
     # compact facts of one (seat, mask) for the trick loop (``_pinfo``)
     int8_t ok
@@ -472,6 +477,10 @@ cdef inline uint64_t _lkey(uint8_t* hands, int turn, int leader, uint8_t* plays,
 
 cdef class FastWorld:
     """One world's exact solver (``endgame_compact.CompactWorldSession``)."""
+    cdef CanonEntry canon_cache[16384]
+    cdef public bint canon_bypass
+    cdef public long canon_hits
+    cdef public long canon_misses
     cdef Tables T
     cdef public long nodes
     cdef public long cache_hits
@@ -547,6 +556,10 @@ cdef class FastWorld:
         memset(self.pinfo, 0, sizeof(self.pinfo))
         memset(self.g_built, 0xff, sizeof(self.g_built))
         memset(self.cgen, 0xff, sizeof(self.cgen))
+        memset(self.canon_cache, 0, sizeof(self.canon_cache))
+        self.canon_bypass = False
+        self.canon_hits = 0
+        self.canon_misses = 0
         self.last_level = -1
         memset(self.hist, 0, sizeof(self.hist))
         memset(self.st, 0, sizeof(self.st))
@@ -1920,9 +1933,23 @@ cdef class FastWorld:
 
     cdef inline uint64_t _ckey0(self, uint8_t* hands, int turn) except? 0:
         """The ``L_CANON`` table key of a trick-start state."""
+        cdef uint64_t raw, result
+        cdef CanonEntry* cached
         cdef uint8_t c[4]
         cdef uint8_t noplays[4]
         cdef uint32_t* oc[4]
+        # Slot counts bind masks to their append-only card identities.
+        raw = (<uint64_t>hands[0] | (<uint64_t>hands[1] << 8)
+               | (<uint64_t>hands[2] << 16) | (<uint64_t>hands[3] << 24)
+               | (<uint64_t>self.n_slots[0] << 32)
+               | (<uint64_t>self.n_slots[1] << 36)
+               | (<uint64_t>self.n_slots[2] << 40)
+               | (<uint64_t>self.n_slots[3] << 44))
+        cached = &self.canon_cache[_mix(raw, 0) & 16383]
+        if not self.canon_bypass and cached.key == raw:
+            self.canon_hits += 1
+            return cached.value | (<uint64_t>turn << 56) | (<uint64_t>turn << 58)
+        self.canon_misses += 1
         oc[0] = self._occ(0, hands[0])
         oc[1] = self._occ(1, hands[1])
         oc[2] = self._occ(2, hands[2])
@@ -1931,7 +1958,10 @@ cdef class FastWorld:
         c[1] = self._canon(hands, 1, oc)
         c[2] = self._canon(hands, 2, oc)
         c[3] = self._canon(hands, 3, oc)
-        return _lkey(c, turn, turn, noplays, 0)
+        result = _lkey(c, turn, turn, noplays, 0)
+        cached.key = raw
+        cached.value = result & <uint64_t>0xffffffff
+        return result
 
     cdef int _sure_lead(self, uint8_t* hands, int turn, int played) except -1:
         """Ordering only: 1 when no other seat can beat the lead ``played``

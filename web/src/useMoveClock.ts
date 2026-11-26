@@ -15,22 +15,41 @@ export const BUZZ_SECS = 5;
  *  figure from the same one read again. */
 export interface MoveClockSample { left: number | null; end: number | null }
 
+/** The deadline each server state's figure counts to, read when the first
+ *  view of that state drew it: a view mounted later over the same state (How
+ *  to play opened over the table, or the table again after it) counts to
+ *  the same deadline, not afresh from the state's now-stale seconds. Keyed
+ *  by the state object and the figure, so each seat's clock keeps its own. */
+const deadlines = new WeakMap<object, Map<number, number>>();
+
+function deadlineFor(seconds: number, stamp: unknown): number {
+  if (typeof stamp !== "object" || stamp === null) return Date.now() + seconds * 1000;
+  let byFigure = deadlines.get(stamp);
+  if (!byFigure) deadlines.set(stamp, byFigure = new Map());
+  let end = byFigure.get(seconds);
+  if (end === undefined) byFigure.set(seconds, end = Date.now() + seconds * 1000);
+  return end;
+}
+
 /** Seconds left on a move timer (yours, or another seat's), ticked locally between server states.
  *  `stamp` is the state the number came with: every state restarts the count
- *  from the server's own figure, so the two never drift apart. It ticks as
+ *  from the server's own figure, so the two never drift apart, and a view
+ *  mounted over a state already drawn keeps that state's deadline. It ticks as
  *  each whole second is reached, when the number shown changes: the ring's
  *  drain is its own animation (MoveClock.tsx), started from `end`. */
 export function useMoveClockSample(seconds: number | null | undefined, stamp: unknown,
                                    buzz = true): MoveClockSample {
-  const [sample, setSample] = useState<MoveClockSample>(() => (
-    seconds === null || seconds === undefined ? { left: null, end: null }
-      : { left: seconds, end: Date.now() + seconds * 1000 }));
+  const [sample, setSample] = useState<MoveClockSample>(() => {
+    if (seconds === null || seconds === undefined) return { left: null, end: null };
+    const end = deadlineFor(seconds, stamp);
+    return { left: Math.max(0, end - Date.now()) / 1000, end };
+  });
   useEffect(() => {
     if (seconds === null || seconds === undefined) {
       setSample((s) => (s.left === null && s.end === null ? s : { left: null, end: null }));
       return;
     }
-    const end = Date.now() + seconds * 1000;
+    const end = deadlineFor(seconds, stamp);
     let id = 0;
     const tick = () => {
       const ms = Math.max(0, end - Date.now());

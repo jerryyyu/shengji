@@ -40,7 +40,7 @@ import { queue, useQueue } from "./queue/store";
 import type { QueueView } from "./queue/store";
 import { queueLeaveContext } from "./queue/tableModel";
 import { firstJoinerText } from "./queue/tableText";
-import { offlineGame } from "./components/offlineGame";
+import { offlineGame, startName } from "./components/offlineGame";
 import { codes, useCodes } from "./codeJoin";
 import { isZh, t, tIn, useLocale } from "./i18n";
 import type { MessageKey } from "./i18n";
@@ -345,16 +345,13 @@ export default function App() {
   const canPractice = status === "open" && !seatedAnywhere;
   const practice = () => {
     if (!guestName.name.trim() && account.status !== "in") guestName.fill(randomName());
-    if (offline) {
-      // the offline table's Start, from How to play: the game stays on this device
-      offlineGame.setBotLevel("beginner");
-      offlineGame.setTable(true);
-      offlineGame.played = true;
-      clearSavedRoom();
-    } else {
-      rounds.noteEntry("queue");
-    }
-    conn.send({ type: "create_room", name: getSavedName(), start: true, bot_level: "beginner" });
+    // Offline the game stays on this device, as the offline table's Start's
+    // does; the table itself is not opened, so the Play tab that shows while
+    // the deal is on its way does not take it for a table already played and
+    // left (OfflinePlay.tsx).
+    if (offline) clearSavedRoom();
+    else rounds.noteEntry("queue");
+    conn.send({ type: "create_room", name: startName(account), start: true, bot_level: "beginner" });
     closeHowto();
   };
   // The tabs' pages keep the tab bars over a game too; the Your table pill

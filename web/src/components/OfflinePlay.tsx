@@ -5,8 +5,8 @@
 // its connection is down and once the page plays offline.
 import { useEffect, useRef, useState } from "react";
 import type { ConnStatus } from "../ws";
-import { clearSavedRoom, conn, getSavedName } from "../ws";
-import { effectiveName, useAuth } from "../auth";
+import { clearSavedRoom, conn } from "../ws";
+import { useAuth } from "../auth";
 import { useOnline } from "../useOnline";
 import { ModeSwitch, PlayRow, PresenceLine } from "../queue/Ranked";
 import { OfflinePanel } from "../queue/TablePanel";
@@ -15,7 +15,7 @@ import type { BotLevel } from "../queue/messages";
 import { useNearbyHostView, useNearbyJoinView, useNearbyUi } from "../nearbyGate";
 import { useToast } from "../toast";
 import { NEARBY_SESSION } from "../offlineMode";
-import { offlineGame, useOfflineBotLevel, useOfflineTable } from "./offlineGame";
+import { offlineGame, startName, useOfflineBotLevel, useOfflineTable } from "./offlineGame";
 import { CodeRow } from "./Lobby";
 import { useT } from "../i18n";
 import "./OfflinePlay.css";
@@ -51,7 +51,6 @@ export function OfflineControls({ local, status, room: roomMsg = null, code = ""
   const error = useToast()?.text ?? null;
   const online = useOnline();
   const account = useAuth();
-  const signedIn = account.status === "in" && account.user ? account.user : null;
   const [sent, setSent] = useState(false);
   useEffect(() => { if (error) setSent(false); }, [error]);
 
@@ -80,7 +79,7 @@ export function OfflineControls({ local, status, room: roomMsg = null, code = ""
     if (cameBack || left.current || !inApp) offlineGame.goOnline();
   }, [local, showTable, online, inApp]);
 
-  const myName = () => (signedIn ? effectiveName(signedIn) : getSavedName()).trim() || "Player";
+  const myName = () => startName(account);
   const leave = () => {
     if (host.phase !== "off") {
       // the host's Leave ends the nearby table for everyone

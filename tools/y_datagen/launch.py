@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import plistlib
+import runpy
 from pathlib import Path
 from collections import Counter
 import shutil
@@ -92,6 +93,39 @@ def _archive_headroom(volumes):
         return False
 
 
+def _check_tranche_reservation(spec):
+    reservation = spec.get('tranche_reservation')
+    if reservation is None:
+        return
+    ledger = Path(reservation['registry'])
+    runtime = Path(spec['seed_registry'])
+    if not ledger.is_file() or not runtime.is_file() or ledger.samefile(runtime):
+        raise Refused('tranche needs separate canonical and runtime registries')
+    api = runpy.run_path(str(Path(spec['source_dir'])/'server/shengji/seeds.py'))
+    name = reservation['name']
+    registry = api['load'](ledger)
+    entry = api['find'](registry, name)
+    if (entry is None or entry['purpose'] != 'trajectory' or entry['clusters'] != 50_000
+            or entry['seed0'] != reservation['seed0']):
+        raise Refused('missing 50,000-deal trajectory reservation')
+    start, end = entry['span']
+    seed = spec['seed']
+    if spec['rounds'] != 10_000 or not start <= seed < end or (seed - start) % 5_000:
+        raise Refused('leg must match one reserved 5,000-deal window')
+    hits = api['overlaps'](registry, seed, 5_000)
+    if len(hits) != 1 or hits[0]['name'] != name:
+        raise Refused('another reservation overlaps the leg')
+    local = api['load'](runtime)
+    local_hits = api['overlaps'](local, seed, 5_000)
+    if spec.get('resume') and len(local_hits) == 1:
+        saved = local_hits[0]
+        if (saved['name'] == spec['run_id'] and saved['purpose'] == 'trajectory'
+                and saved['span'] == [seed, seed + 5_000]):
+            return
+    if local_hits:
+        raise Refused('runtime registry already covers the leg')
+
+
 def _admit(spec):
     if socket.gethostname() != spec['host']:
         raise Refused('host mismatch')
@@ -136,6 +170,7 @@ def _admit(spec):
     for path, expected in spec['files'].items():
         if sha256(path) != expected:
             raise Refused(f'file drift: {path}')
+    _check_tranche_reservation(spec)
     _census()
     volumes = _tranche_volumes(spec, out)
     if not _archive_headroom(volumes):

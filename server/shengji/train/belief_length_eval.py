@@ -7,6 +7,7 @@ import numpy as np
 from ..ai.belief_numpy import load_belief_numpy
 from . import belief_seq as bs
 from .belief_eval import known_counts
+from .belief_length_loss import MarginalLoss
 from .belief_lengths import load_length_checkpoint
 
 
@@ -51,12 +52,13 @@ def decision(part, row):
     return inp
 
 
-def evaluate(extract, head, training, belief, seed, worlds=64):
+def evaluate(extract, head, training, belief, seed, worlds=64, *, ll_max_draws=None, ll_replicates=4):
     entries = bs.extract_entries([extract], "test", exclude_seed_windows=training["exclude_seed_window"])
     exposed = set(training["deals"])
     seen = set()
     stats = {arm: {role: VoidCounts() for role in ("banker", "other_seats", "kitty")}
              for arm in ("plain", "joint")}
+    loss = MarginalLoss(ll_replicates, ll_max_draws) if ll_max_draws is not None else None
     verified = bs._Verified()
     decisions = 0
     for entry in entries:
@@ -75,11 +77,16 @@ def evaluate(extract, head, training, belief, seed, worlds=64):
             side = (suit[:, None] == np.arange(4)).astype(np.int64)
             possible = side.T @ mask > 0
             candidates = possible & (side.T @ inp["K"] == 0)
-            if not candidates.any():
+            score_loss = loss is not None and inp["seat"] != inp["banker"] and copies.any()
+            if not candidates.any() and not score_loss:
                 continue
             streams = np.random.SeedSequence([seed, int(part["deal"][row]), int(part["seed"][row]),
-                                              int(part["decision"][row])]).spawn(2)
+                                              int(part["decision"][row])]).spawn(3)
             q = bs.project_sizes(belief.marginals(inp), copies, sizes, mask)
+            if score_loss:
+                loss.add(inp, q, truth, head, streams[2])
+            if not candidates.any():
+                continue
             baseline = bs.sample_worlds(q, copies, mask, sizes, worlds, np.random.default_rng(streams[0]))
             plain = np.einsum("cs,wcr->wsr", side, baseline)
             joint = head.draw_lengths(inp, mask, worlds, np.random.default_rng(streams[1]))
@@ -93,6 +100,7 @@ def evaluate(extract, head, training, belief, seed, worlds=64):
         raise ValueError("no held-out decisions")
     return {"decisions": decisions, "deals": len(seen), "worlds": worlds, "seed": seed,
             "belief_sha256": belief.package_sha256,
+            "nonbanker_marginal_log_loss": loss.report() if loss is not None else None,
             "arms": {arm: {role: count.report() for role, count in roles.items()}
                      for arm, roles in stats.items()}}
 
@@ -104,10 +112,13 @@ def main(argv=None):
     parser.add_argument("--belief-package", required=True)
     parser.add_argument("--belief-sha256", required=True)
     parser.add_argument("--seed", required=True, type=int)
+    parser.add_argument("--ll-max-draws", type=int, help="enable per-copy log-loss scoring with this trial limit")
+    parser.add_argument("--ll-replicates", type=int, default=4)
     args = parser.parse_args(argv)
     head, training = load_length_checkpoint(args.length_checkpoint)
     belief = load_belief_numpy(args.belief_package, args.belief_sha256)
-    print(json.dumps(evaluate(args.extract, head, training, belief, args.seed), allow_nan=False))
+    print(json.dumps(evaluate(args.extract, head, training, belief, args.seed,
+                              ll_max_draws=args.ll_max_draws, ll_replicates=args.ll_replicates), allow_nan=False))
 
 
 if __name__ == "__main__":

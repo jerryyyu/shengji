@@ -654,3 +654,68 @@ def test_paired_void_counts_bin_edges_and_empty_denominators():
         counts.add(p, actual)
     assert counts.report() == {"candidate_pairs": 4, "true_voids": 2,
                                "missed_voids": 1, "miss_rate": .5, "sampled_void_ece": .375}
+
+
+def test_first_hit_loss_matches_geometric_log_series():
+    from itertools import product
+    from shengji.train.belief_length_loss import first_hit_loss
+
+    truth = np.array([[1, 0, 0, 0]])
+    expected = 0.
+    censored = 0.
+    # Enumerate iid draws at p=1/2, including sequences whose first hit is past the cap.
+    for draws in product((0, 1), repeat=4):
+        worlds = iter(np.eye(4, dtype=int)[[r]] for r in draws)
+        value, missing = first_hit_loss(truth, lambda: next(worlds), np.random.default_rng(2), 4)
+        expected += value / 16
+        censored += missing / 16
+    assert expected == pytest.approx(sum(.5**k / k for k in range(1, 5)))
+    assert censored == 1 / 16
+
+
+def test_first_hit_selects_one_of_two_identical_copies():
+    from shengji.train.belief_length_loss import first_hit_loss
+
+    class Tickets:
+        def __init__(self):
+            self.values = iter((0.25, 0.75))
+
+        def random(self, size):
+            return np.full(size, next(self.values))
+
+    truth = np.array([[0, 2, 0, 0]])
+    split = np.array([[1, 1, 0, 0]])
+    # Both true copies have receiver 1. The first ticket misses, the second hits.
+    assert first_hit_loss(truth, lambda: split, Tickets(), 2) == (2., 0)
+
+
+def test_marginal_loss_compares_projected_baseline_and_withholds_censored_score():
+    from shengji.train.belief_length_loss import MarginalLoss
+
+    inp = {"card_feat": np.zeros((54, 11)), "M": np.zeros((54, 4), bool),
+           "sizes": np.array([1, 1, 0, 0]), "n_c": np.zeros(54, dtype=int)}
+    inp["card_feat"][:, 1] = 1
+    inp["card_feat"][1, 1:3] = [0, 1]
+    inp["M"][:2, :2] = True
+    inp["n_c"][:2] = 1
+    truth = np.zeros((54, 4), dtype=int)
+    truth[0, 0] = truth[1, 1] = 1
+    q = inp["M"].astype(float) / 2
+
+    class Fixed:
+        def draw_lengths(self, inp, mask, batch, rng):
+            table = np.zeros((batch, 5, 4), dtype=int)
+            table[:, 0, 0] = table[:, 1, 1] = 1
+            return table
+
+    loss = MarginalLoss(2, 3)
+    loss.add(inp, q, truth, Fixed(), np.random.SeedSequence(202))
+    report = loss.report()
+    assert report["joint_minus_baseline_nats_per_copy"] == pytest.approx(-np.log(2))
+    assert report["monte_carlo_standard_error"] == 0
+    assert report["unresolved_copy_observations"] == 0
+    loss.add(inp, q, truth[:, [1, 0, 2, 3]], Fixed(), np.random.SeedSequence(203))
+    report = loss.report()
+    assert report["hidden_copies"] == 4 and report["unresolved_copy_observations"] == 4
+    assert report["joint_minus_baseline_nats_per_copy"] is None
+    assert report["monte_carlo_standard_error"] is None

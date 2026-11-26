@@ -427,6 +427,13 @@ def test_paired_void_cli_reads_only_held_out_decisions(package, tmp_path, capsys
         assert joint["candidate_pairs"] == plain["candidate_pairs"] > 0
         assert joint["true_voids"] == plain["true_voids"]
         assert 0 <= joint["sampled_void_ece"] <= 1
+    evaluator.main([*args, "--ll-max-draws", "1", "--ll-replicates", "2"])
+    scored = json.loads(capsys.readouterr().out)
+    assert scored["arms"] == result["arms"]
+    loss = scored["nonbanker_marginal_log_loss"]
+    assert loss["hidden_copies"] > 0 and loss["projected_baseline_nats_per_copy"] > 0
+    assert loss["unresolved_copy_observations"] > 0
+    assert loss["joint_minus_baseline_nats_per_copy"] is None
     files["test"] = files["train"]
     manifests()
     with pytest.raises(ValueError, match="training exposure"):

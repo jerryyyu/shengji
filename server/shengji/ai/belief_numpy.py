@@ -530,31 +530,35 @@ class SuitLengthProposal(BeliefProposal):
         self.draw_lengths = draw_lengths
 
     def _draw_worlds(self) -> np.ndarray:
-        from ..train.belief_seq import sample_worlds
+        return draw_length_worlds(self.inp, self.Q, self.M, self.draw_lengths, self.batch, self.rng)
 
-        inp = self.inp
-        suit = inp["card_feat"][:, 1:6].argmax(axis=1)
-        lengths = np.asarray(self.draw_lengths(inp, self.M, self.batch, self.rng))
-        if (lengths.shape != (self.batch, 5, N_RECV)
-                or not np.issubdtype(lengths.dtype, np.integer)
-                or (lengths < 0).any() or (lengths > N_CARDS * 2).any()):
-            raise BeliefNumpyError("invalid residual suit lengths")
-        lengths = lengths.astype(np.int64, copy=False)
-        copies = inp["n_c"]
-        suit_totals = np.bincount(suit, weights=copies, minlength=5)
-        if ((lengths.sum(axis=1) != inp["sizes"]).any()
-                or (lengths.sum(axis=2) != suit_totals).any()):
-            raise BeliefNumpyError("residual suit lengths disagree with available slots or cards")
-        worlds = np.zeros((self.batch, N_CARDS, N_RECV), dtype=np.int16)
-        for group in range(5):
-            if suit_totals[group] == 0:
-                continue
-            counts = np.where(suit == group, copies, 0)
-            quotas, indices = np.unique(lengths[:, group], axis=0, return_inverse=True)
-            for index, quota in enumerate(quotas):
-                rows = np.flatnonzero(indices == index)
-                worlds[rows] += sample_worlds(self.Q, counts, self.M, quota, len(rows), self.rng)
-        return worlds
+
+def draw_length_worlds(inp, probabilities, mask, draw_lengths, batch, rng):
+    """Fill a joint draw's residual quotas with individual hidden copies."""
+    from ..train.belief_seq import sample_worlds
+
+    suit = inp["card_feat"][:, 1:6].argmax(axis=1)
+    lengths = np.asarray(draw_lengths(inp, mask, batch, rng))
+    if (lengths.shape != (batch, 5, N_RECV)
+            or not np.issubdtype(lengths.dtype, np.integer)
+            or (lengths < 0).any() or (lengths > N_CARDS * 2).any()):
+        raise BeliefNumpyError("invalid residual suit lengths")
+    lengths = lengths.astype(np.int64, copy=False)
+    copies = inp["n_c"]
+    suit_totals = np.bincount(suit, weights=copies, minlength=5)
+    if ((lengths.sum(axis=1) != inp["sizes"]).any()
+            or (lengths.sum(axis=2) != suit_totals).any()):
+        raise BeliefNumpyError("residual suit lengths disagree with available slots or cards")
+    worlds = np.zeros((batch, N_CARDS, N_RECV), dtype=np.int16)
+    for group in range(5):
+        if suit_totals[group] == 0:
+            continue
+        counts = np.where(suit == group, copies, 0)
+        quotas, indices = np.unique(lengths[:, group], axis=0, return_inverse=True)
+        for index, quota in enumerate(quotas):
+            rows = np.flatnonzero(indices == index)
+            worlds[rows] += sample_worlds(probabilities, counts, mask, quota, len(rows), rng)
+    return worlds
 
 
 # ------------------------------------------------------------------ belief log

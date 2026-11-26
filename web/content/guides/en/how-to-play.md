@@ -5,6 +5,7 @@ slug: how-to-play
 order: 1
 related: [declaring-trump, pairs-tractors-throws, scoring-and-levels, counting-cards]
 updated: 2026-11-25
+author: Jerry Yu
 lang: en
 schema: HowTo
 ---

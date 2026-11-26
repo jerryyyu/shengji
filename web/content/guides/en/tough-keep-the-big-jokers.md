@@ -5,6 +5,7 @@ slug: tough-keep-the-big-jokers
 order: 14
 related: [toughest-decisions, scoring-and-levels, burying-the-kitty, counting-cards]
 updated: 2026-11-25
+author: Jerry Yu
 lang: en
 answer: B C D
 ---

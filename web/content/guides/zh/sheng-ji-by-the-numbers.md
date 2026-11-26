@@ -5,6 +5,7 @@ slug: sheng-ji-by-the-numbers
 order: 8
 related: [score-calculator, pairs-tractors-throws, declaring-trump]
 updated: 2026-11-24
+author: Jerry Yu
 lang: zh
 schema: Dataset
 ---

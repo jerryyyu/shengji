@@ -5,6 +5,7 @@ slug: scoring-and-levels
 order: 6
 related: [score-calculator, burying-the-kitty, how-to-play, names-and-variants, toughest-decisions]
 updated: 2026-11-25
+author: Jerry Yu
 lang: en
 ---
 

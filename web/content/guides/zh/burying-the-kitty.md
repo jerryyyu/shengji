@@ -5,6 +5,7 @@ slug: burying-the-kitty
 order: 4
 related: [scoring-and-levels, declaring-trump, how-to-play, sheng-ji-by-the-numbers, tough-bury-short-suits]
 updated: 2026-11-25
+author: Jerry Yu
 lang: zh
 schema: HowTo
 ---

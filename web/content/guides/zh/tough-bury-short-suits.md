@@ -5,6 +5,7 @@ slug: tough-bury-short-suits
 order: 11
 related: [toughest-decisions, burying-the-kitty, counting-cards, scoring-and-levels]
 updated: 2026-11-25
+author: Jerry Yu
 lang: zh
 answer: A
 ---

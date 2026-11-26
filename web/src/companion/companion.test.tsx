@@ -218,21 +218,32 @@ describe("entitlements and writes stay with their session and their order", () =
     name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry",
     rounds_played: 9, ranked_wins: 0, look: "tractor/red", companions: "team", features: { collection: true },
   };
-  let me: AuthUser;
-  let held: { url: string; body: unknown; reply: (r: Reply) => void }[];
+  // the server's copy of the account: a write changes it when it is answered with 200
+  let server: AuthUser;
+  let held: { url: string; body: Record<string, unknown>; reply: (status?: number) => void }[];
   let holdPuts: boolean;
+  let holdGets: boolean;
   beforeEach(() => {
-    me = { ...base };
+    server = { ...base };
     held = [];
     holdPuts = false;
+    holdGets = false;
     updated.mockImplementation((u: AuthUser) => { authState.current = { ...authState.current, user: u }; });
+    const answer = (r: Reply) => ({ status: r.status, json: async () => r.body }) as Response;
     globalThis.fetch = vi.fn((url: string, init?: RequestInit) => {
-      const answer = (r: Reply) => ({ status: r.status, json: async () => r.body }) as Response;
       if (url.includes("/api/leaderboard")) return Promise.resolve(answer({ status: 200, body: { period: "all", players: [], me: null, anchor: { name: "x", rating: 1 }, anchors: {} } }));
-      if (url === "/api/me") return Promise.resolve(answer({ status: 200, body: me }));
-      const body = JSON.parse(String(init?.body ?? "{}"));
-      if (holdPuts) return new Promise<Response>((res) => held.push({ url, body, reply: (r) => res(answer(r)) }));
-      return Promise.resolve(answer({ status: 200, body: { ...me, ...body } }));
+      if (url === "/api/me") {
+        const snapshot = { ...server };
+        if (!holdGets) return Promise.resolve(answer({ status: 200, body: snapshot }));
+        return new Promise<Response>((res) => held.push({ url, body: {}, reply: () => res(answer({ status: 200, body: snapshot })) }));
+      }
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      const apply = (status = 200) => {
+        if (status === 200) server = { ...server, ...body } as AuthUser;
+        return answer({ status, body: status === 200 ? { ...server } : {} });
+      };
+      if (!holdPuts) return Promise.resolve(apply());
+      return new Promise<Response>((res) => held.push({ url, body, reply: (status) => res(apply(status)) }));
     }) as unknown as typeof fetch;
     authState.current = { status: "in", clientId: "cid", user: { ...base } };
   });
@@ -240,29 +251,98 @@ describe("entitlements and writes stay with their session and their order", () =
 
   const swatch = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".coll-swatch")]
     .find((s) => s.getAttribute("aria-label")!.startsWith(name))!;
+  const mode = (t: string) => [...host.querySelectorAll<HTMLButtonElement>(".coll-mode .segmented-btn")].find((b) => b.textContent === t)!;
   const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  const puts = () => held.filter((h) => h.url === "/api/me/look");
+  const gets = () => held.filter((h) => h.url === "/api/me");
+  const shownLook = () => host.querySelector(".coll-swatch.on")?.getAttribute("aria-label");
+  const reload = async () => {
+    holdGets = false;
+    const { refreshAccount } = await import("./writes");
+    await act(async () => { await refreshAccount(); });
+  };
 
   it("a tenth round earned while signed in unlocks yellow without a reload", async () => {
     await draw(<CollectionPage />);
     expect(swatch("Imperial yellow").classList.contains("locked")).toBe(true);
-    // the round ends elsewhere: the server now counts ten
-    me = { ...base, rounds_played: 10 };
+    server = { ...base, rounds_played: 10 };
     await act(async () => { swatch("Imperial yellow").click(); });
     await flush();
     await draw(<CollectionPage />);
     expect(swatch("Imperial yellow").classList.contains("locked")).toBe(false);
-    expect(updated).toHaveBeenCalledWith(expect.objectContaining({ rounds_played: 10 }));
-    // the locked tap rechecked and, now unlocked, equipped it
-    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.some(([u, i]) =>
-      u === "/api/me/look" && JSON.parse(String((i as RequestInit).body)).look === "tractor/yellow")).toBe(true);
+    expect(server.look).toBe("tractor/yellow");
+    expect(authState.current.user?.look).toBe("tractor/yellow");
   });
 
   it("opening the Collection reads the account's counts again", async () => {
-    me = { ...base, rounds_played: 10 };
+    server = { ...base, rounds_played: 10 };
     await draw(<CollectionPage />);
     await flush();
     expect(updated).toHaveBeenCalledWith(expect.objectContaining({ rounds_played: 10 }));
   });
+
+  for (const order of ["the read answers last", "the read answers first"] as const) {
+    it(`a read started before a choice never undoes it (${order})`, async () => {
+      holdGets = true;
+      holdPuts = true;
+      await draw(<CollectionPage />);           // the open's read starts, with red
+      expect(gets()).toHaveLength(1);
+      await act(async () => { swatch("Paddy green").click(); });
+      await draw(<CollectionPage />);
+      const put = puts()[0];
+      if (order === "the read answers last") {
+        await act(async () => { put.reply(); });
+        await flush();
+        await act(async () => { gets()[0].reply(); });
+      } else {
+        await act(async () => { gets()[0].reply(); });
+        await flush();
+        await act(async () => { put.reply(); });
+      }
+      await flush();
+      await draw(<CollectionPage />);
+      expect(authState.current.user?.look).toBe("tractor/green");
+      expect(shownLook()).toBe("Paddy green");
+      await reload();
+      expect(authState.current.user?.look).toBe("tractor/green");
+    });
+  }
+
+  for (const first of [200, 500] as const) {
+    it(`rapid mode changes end at the last choice on the server and the screen (first answer ${first})`, async () => {
+      await draw(<CollectionPage />);
+      await flush();
+      holdPuts = true;
+      await act(async () => { mode("Individual").click(); });
+      await draw(<CollectionPage />);
+      await act(async () => { mode("Off").click(); });
+      await draw(<CollectionPage />);
+      await act(async () => { mode("Team").click(); });
+      await draw(<CollectionPage />);
+      await act(async () => { mode("Off").click(); });
+      // one write on the wire; the latest choice waits for it
+      expect(puts().map((h) => h.body)).toEqual([{ companions: "individual" }]);
+      expect(authState.current.user?.companions).toBe("off");
+      await act(async () => { puts()[0].reply(first); });
+      await flush();
+      expect(authState.current.user?.companions).toBe("off");    // a late answer for an older choice shows nothing
+      expect(puts().map((h) => h.body)).toEqual([{ companions: "individual" }, { companions: "off" }]);
+      await act(async () => { puts()[1].reply(); });
+      await flush();
+      expect(server.companions).toBe("off");
+      expect(authState.current.user?.companions).toBe("off");
+      // a failed change rolls back to the last confirmed choice, not an older one
+      await draw(<CollectionPage />);
+      await act(async () => { mode("Team").click(); });
+      expect(authState.current.user?.companions).toBe("team");
+      await act(async () => { puts()[2].reply(500); });
+      await flush();
+      expect(authState.current.user?.companions).toBe("off");
+      await reload();
+      expect(authState.current.user?.companions).toBe("off");
+      expect(server.companions).toBe("off");
+    });
+  }
 
   it("a save that lands after a switch to another account changes nothing", async () => {
     await draw(<CollectionPage />);
@@ -270,46 +350,24 @@ describe("entitlements and writes stay with their session and their order", () =
     updated.mockClear();
     holdPuts = true;
     await act(async () => { swatch("Paddy green").click(); });
-    expect(held).toHaveLength(1);
-    // account B signs in while A's save is in flight
+    expect(puts()).toHaveLength(1);
+    updated.mockClear();
     act(() => { forgetPrivateSession(); });
     authState.current = { status: "in", clientId: "cid", user: { ...base, name: "Bo", email: "b@x", name_shown: "Bo" } };
-    await act(async () => { held[0].reply({ status: 200, body: { ...base, look: "tractor/green" } }); });
+    await act(async () => { puts()[0].reply(); });
     await flush();
     expect(updated).not.toHaveBeenCalled();
-    // and a failed save from A does not roll B back either
-    holdPuts = true;
-    authState.current = { status: "in", clientId: "cid", user: { ...base } };
+    expect(authState.current.user?.name).toBe("Bo");
+    expect(authState.current.user?.look).toBe("tractor/red");
+    // and B's own choice is sent at once, not queued behind A's
     await draw(<CollectionPage />);
     await flush();
-    updated.mockClear();
     await act(async () => { swatch("Enamel blue").click(); });
+    expect(puts().map((h) => h.body)).toEqual([{ look: "tractor/green" }, { look: "tractor/blue" }]);
     act(() => { forgetPrivateSession(); });
-    await act(async () => { held[1].reply({ status: 500, body: {} }); });
+    updated.mockClear();
+    await act(async () => { puts()[1].reply(500); });
     await flush();
     expect(updated).not.toHaveBeenCalled();
-  });
-
-  it("consecutive mode changes that complete out of order leave the last one", async () => {
-    await draw(<CollectionPage />);
-    await flush();
-    holdPuts = true;
-    const mode = (t: string) => [...host.querySelectorAll<HTMLButtonElement>(".coll-mode .segmented-btn")].find((b) => b.textContent === t)!;
-    await act(async () => { mode("Individual").click(); });
-    await draw(<CollectionPage />);
-    await act(async () => { mode("Off").click(); });
-    expect(held.map((h) => h.body)).toEqual([{ companions: "individual" }, { companions: "off" }]);
-    await act(async () => { held[1].reply({ status: 200, body: { ...base, companions: "off" } }); });
-    await act(async () => { held[0].reply({ status: 200, body: { ...base, companions: "individual" } }); });
-    await flush();
-    expect(authState.current.user?.companions).toBe("off");
-    // an earlier write failing after a later one landed does not roll it back
-    await act(async () => { mode("Team").click(); });
-    await draw(<CollectionPage />);
-    await act(async () => { mode("Individual").click(); });
-    await act(async () => { held[3].reply({ status: 200, body: { ...base, companions: "individual" } }); });
-    await act(async () => { held[2].reply({ status: 500, body: {} }); });
-    await flush();
-    expect(authState.current.user?.companions).toBe("individual");
   });
 });

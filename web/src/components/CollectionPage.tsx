@@ -53,7 +53,6 @@ export default function CollectionPage() {
                               equipped, user?.looks);
   const [shown, setShown] = useState<string>(equipped);
   const [pose, setPose] = useState<Pose>("idle");
-  const [saving, setSaving] = useState(false);
   useEffect(() => setShown(equipped), [equipped]);
   useEffect(() => {
     const who = lookAccount(user);
@@ -84,14 +83,11 @@ export default function CollectionPage() {
   const pick = (entry: LookEntry) => {
     setShown(entry.id);
     setPose("hop");
-    if (!user || entry.id === equipped || saving) return;
-    setSaving(true);
-    equip(entry.id, entry.unlocked)
-      .catch((err: unknown) => {
-        setShown(equipped);
-        showToast(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => setSaving(false));
+    if (!user || entry.id === equipped) return;
+    // a failure puts the confirmed colour back on the account, and with it here
+    equip(entry.id, entry.unlocked).catch((err: unknown) => {
+      showToast(err instanceof Error ? err.message : String(err));
+    });
   };
 
   return (

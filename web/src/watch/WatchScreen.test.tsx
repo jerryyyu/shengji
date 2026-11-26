@@ -138,6 +138,8 @@ describe("the entry", () => {
   });
 });
 
+const GONE = Symbol("404");
+
 describe("caught up", () => {
   type Reply = (url: string) => unknown | Promise<unknown>;
   let reply: Reply;
@@ -146,7 +148,9 @@ describe("caught up", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       urls.push(url);
-      return new Response(JSON.stringify(await reply(url)), { status: 200 });
+      const body = await reply(url);
+      if (body === GONE) return new Response("{}", { status: 404 });
+      return new Response(JSON.stringify(body), { status: 200 });
     }));
   });
   afterEach(() => {
@@ -236,5 +240,28 @@ describe("caught up", () => {
     release!();
     await flush();
     expect(h.querySelector(".watch-round")!.textContent).toContain("Round 8");
+  });
+
+  const actions = () => [...document.querySelectorAll(".round-end .round-end-actions button")].map((b) => b.textContent);
+
+  it("a table that is gone and no replacement leaves no seat offer for it", async () => {
+    reply = (url) => (url.startsWith("/api/watch/") || url.includes("skip=") ? GONE : feed);
+    const h = await screen();
+    await toEnd(h);
+    expect(urls.some((u) => u.includes("skip=abc123"))).toBe(true);
+    expect(actions()).toEqual(["Play", "Leave"]);
+    expect(document.querySelector(".round-end")!.textContent).not.toContain("in play");
+  });
+
+  it("a Next table that finds nothing keeps the table and its seat offer", async () => {
+    reply = (url) => url.includes("skip=") ? GONE
+      : url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined } : feed;
+    const h = await screen();
+    await act(async () => { btn(h, "More")!.click(); });
+    await act(async () => { [...h.querySelectorAll<HTMLButtonElement>("[role=menuitem]")][0].click(); });
+    await flush();
+    await toEnd(h);
+    expect(h.querySelector(".watch-round")!.textContent).toContain("Round 3");
+    expect(actions()).toEqual(["Take a seat", "Leave"]);
   });
 });

@@ -244,7 +244,7 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
       }, Math.max(0, wait));
     };
     const ask = () => {
-      if (next.current) return;
+      if (next.current || table.current !== doc.table) return;
       const r = doc.rerun ? fetchWatch(mode, null, doc.watcher)
         : followWatch(doc.table, doc.round ?? 0, doc.watcher);
       void r.then((res) => {
@@ -255,6 +255,10 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
           const l = load(res.doc);
           if (l && (l.doc.table !== doc.table || l.doc.round !== doc.round)) play(l);
         } else if (res.reason === "none" && !doc.rerun) {
+          // the table is gone: nothing more is asked of it or offered at it,
+          // whether or not another table is found in its place
+          table.current = null;
+          setLive({ round: null, code: null });
           pick(doc.table);
         }
       });

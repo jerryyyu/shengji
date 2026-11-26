@@ -11,6 +11,7 @@ from sz2_joint_segment import FLEET, RECIPE, RECIPE_SHA
 JOINT = FLEET / "codex-sz2-joint-v1/capture"
 WORKERS = 3
 MEDIUM_ENCODE_ROUNDS = 4
+GROUP_CHUNKS = 24
 
 
 def arm_inputs(joint, arm, output, recipe_path, recipe_sha):
@@ -49,15 +50,12 @@ def cache_partition(joint, arm, worker, output, recipe_path, recipe_sha):
                            encode_rounds=MEDIUM_ENCODE_ROUNDS if arm == "M" else None)
 
 
-def write_partition(checkpoint, cache, recipe, worker, *, encode_rounds=None, sample_rows=None):
-    from shengji.train import unified_readout
-
+def partition_args(checkpoint, cache, recipe, worker, *, encode_rounds=None, sample_rows=None):
     if worker not in range(WORKERS):
         raise ValueError("invalid cache partition")
-    cache.mkdir(parents=True, exist_ok=True)
     args = ["cache", "--ckpt", str(checkpoint), "--data", *recipe["data"], "--out", str(cache),
             "--seed", str(recipe["seed"]), "--device", "cpu", "--threads", "8",
-            "--worker", str(worker), "--workers", str(WORKERS), "--group-chunks", "24",
+            "--worker", str(worker), "--workers", str(WORKERS), "--group-chunks", str(GROUP_CHUNKS),
             "--calib-rows", "180000"]
     if encode_rounds is not None:
         args.extend(["--encode-rounds-per-batch", str(encode_rounds)])
@@ -68,6 +66,14 @@ def write_partition(checkpoint, cache, recipe, worker, *, encode_rounds=None, sa
             args.extend(["--" + key.replace("_", "-"), value])
     for start, end in recipe["exclude_seed_window"]:
         args.extend(["--exclude-seed-window", f"{start}:{end}"])
+    return args
+
+
+def write_partition(checkpoint, cache, recipe, worker, *, encode_rounds=None, sample_rows=None):
+    from shengji.train import unified_readout
+
+    args = partition_args(checkpoint, cache, recipe, worker, encode_rounds=encode_rounds, sample_rows=sample_rows)
+    cache.mkdir(parents=True, exist_ok=True)
     with (cache / f"worker-{worker}.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         return unified_readout.main(args)

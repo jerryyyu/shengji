@@ -533,3 +533,30 @@ def test_full_mix_scratch_command_preserves_the_weighted_trainer_identity(segmen
     (directory / "run.json").write_text(json.dumps(dict(expected, lr=recipe["lr"])))
     with pytest.raises(ValueError, match="checkpointed run settings"):
         arm.command(tmp_path, source)
+
+
+def test_serial_and_parallel_cache_legs_compare_actual_weighted_shards(segment, data, cpu_root, tmp_path, monkeypatch):
+    import numpy as np
+    import rt4m_cache_compare as timing
+
+    monkeypatch.setattr(timing.cache_arm, "GROUP_CHUNKS", 1)
+    recipe = dict(seed=1, data=[str(data)] * 6, store_map=[], exclude_seed_window=[],
+                  corpus_weight=[f"{data}=policy:2,reply:2"])
+    checkpoint = cpu_root[0] / "train/best.pt"
+    serial, parallel = tmp_path / "serial", tmp_path / "parallel"
+    for out, workers in ((serial, 1), (parallel, 2)):
+        timing.run_leg(checkpoint, recipe, out, workers)
+    sample = json.loads((serial / "DONE.1").read_text())["sample"]
+    with pytest.raises(ValueError, match="wrong cache selection"):
+        timing.compare(serial, parallel)
+    monkeypatch.setattr(timing, "RT4_SAMPLE", sample)
+    assert timing.compare(serial, parallel)["equal_shards"] == 4
+    with pytest.raises(FileExistsError):
+        timing.run_leg(checkpoint, recipe, serial, 1)
+    shard = parallel / "train-0002.npz"
+    with np.load(shard) as original:
+        changed = dict(original)
+    changed["leaf_w"] = changed["leaf_w"] + 1
+    np.savez(shard, **changed)
+    with pytest.raises(ValueError, match="leaf_w.npy differs"):
+        timing.compare(serial, parallel)

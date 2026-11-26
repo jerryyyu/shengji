@@ -18,6 +18,20 @@ MICROBATCH_SMOKE = "RT4-M-A-micro4-smoke"
 SMOKE_MICROBATCHES = {MICROBATCH_SMOKE: 4, "RT4-M-A-micro8-smoke": 8}
 
 
+def post_output_root(root, post_root):
+    """Keep recovered outputs beside the original capture on its internal volume."""
+    if post_root is None:
+        return root
+    original = root.resolve(strict=True)
+    directory = post_root.resolve(strict=True)
+    if (post_root.is_symlink() or not directory.is_dir() or directory == original
+            or directory.parent != original.parent or directory.stat().st_dev != original.stat().st_dev):
+        raise ValueError("post root must be a separate sibling directory on the joint volume")
+    if any((directory / child).is_symlink() for child in ("A", "A/polish", "A/export")):
+        raise ValueError("linked recovery output")
+    return directory
+
+
 def recipe_inputs(root, recipe_path, *, phase="RT4-M-A"):
     if phase not in ("RT4-M-A", SMOKE, *SMOKE_MICROBATCHES):
         raise ValueError("unknown RT4-M phase")

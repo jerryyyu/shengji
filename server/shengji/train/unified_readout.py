@@ -1093,6 +1093,33 @@ def polish_eval(readout, z, batch: int = 16384, device="cpu") -> dict[str, float
     return {"leaf_value": sums[0] / max(sums[1], 1), "leaf_value_end": sums[2] / max(sums[3], 1), "reply": sums[4] / max(sums[5], 1)}
 
 
+POLISH_CHECKPOINT = "polish-checkpoint.pt"
+
+
+def _polish_cache_identity(shards, calib, done, cache):
+    """Bind local, completed cache files without rereading their training payload."""
+    meta = [*done, *(cache / name for name in (CACHE_DEVICE, CACHE_ENCODE) if (cache / name).exists())]
+    files = {}
+    for path in [*shards, calib, *meta]:
+        if path.is_symlink() or not path.is_file():
+            raise UnifiedReadoutError(f"polish checkpoint requires local, unlinked cache files: {path}")
+        st = path.stat()
+        files[path.name] = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+    return dict(files=files, metadata={path.name: us.sha256_file(path) for path in meta})
+
+
+def _save_polish_checkpoint(path, payload):
+    import torch
+
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            torch.save(payload, stream)
+        os.replace(tmp, path)
+    finally:
+        Path(tmp).unlink(missing_ok=True)
+
+
 def polish(args) -> int:
     """Train the readout's per-leaf body on a cache (the trunk, the other heads and the per-decision
     projections stay the checkpoint's); ``OUT/best.pt`` is the checkpoint with the body of the pass that
@@ -1103,6 +1130,38 @@ def polish(args) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     status = str(out / "status.log")
+    checkpoint = out / POLISH_CHECKPOINT
+    checkpoint_epochs = getattr(args, "epoch_checkpoint", False)
+    if checkpoint_epochs and (out.is_symlink() or checkpoint.is_symlink() or Path(status).is_symlink()):
+        raise UnifiedReadoutError("polish refuses linked output or state")
+    if checkpoint_epochs and Path(status).is_file():
+        lines = Path(status).read_text().splitlines()
+        if lines and " POLISH DONE " in lines[-1]:
+            raise UnifiedReadoutError("polish already completed")
+        if not checkpoint.is_file():
+            raise UnifiedReadoutError("existing polish output has no epoch checkpoint")
+    if checkpoint_epochs and os.path.lexists(out / "selected.pt"):
+        raise UnifiedReadoutError("polish selection already exists")
+
+    cache_dir = Path(args.cache)
+    shards = sorted(cache_dir.glob("train-*.npz"))
+    done = sorted(cache_dir.glob("DONE.*"))
+    if not shards or not done:
+        raise UnifiedReadoutError("the cache is incomplete")
+    calib_path = cache_dir / "calib-0000.npz"
+    polish_args = {k: v for k, v in vars(args).items() if not (k == "device" and v == "cpu")}
+    digest = us.sha256_file(args.ckpt)
+    identity = progress = None
+    if checkpoint_epochs:
+        identity = dict(settings=polish_args, checkpoint_sha256=digest,
+                        torch=str(torch.__version__), numpy=np.__version__,
+                        mps_fallback=os.environ.get("PYTORCH_ENABLE_MPS_FALLBACK"),
+                        cache=_polish_cache_identity(shards, calib_path, done, cache_dir))
+        if checkpoint.is_file():
+            progress = torch.load(checkpoint, weights_only=True, map_location="cpu")
+            if progress.get("identity") != identity:
+                raise UnifiedReadoutError("polish resume: checkpoint, cache files or settings differ")
+
     device = _device(args.device, status)
     model, saved = load_checkpoint(args.ckpt)
     if device.type != "cpu":
@@ -1112,28 +1171,53 @@ def polish(args) -> int:
     frozen = [n for n, p in readout.named_parameters() if not n.startswith(BODY_PREFIXES)]
     if sorted(frozen) != ["card_ln.bias", "card_ln.weight", "card_proj.bias", "card_proj.weight", "ctx.bias", "ctx.weight"]:
         raise UnifiedReadoutError(f"unexpected frozen readout parameters {frozen}")
-    cache_dir = Path(args.cache)
-    shards = sorted(cache_dir.glob("train-*.npz"))
-    done = sorted(cache_dir.glob("DONE.*"))
-    if not shards or not done:
-        raise UnifiedReadoutError("the cache is incomplete")
     weighted = {"leaf_w" in np.load(f).files for f in shards}
     if len(weighted) != 1:
         raise UnifiedReadoutError("the cache mixes shards with and without corpus weights")
     weighted = weighted.pop()
-    calib = dict(np.load(cache_dir / "calib-0000.npz"))
+    calib = dict(np.load(calib_path))
     readout.train()
     opt = torch.optim.AdamW(body, lr=args.lr, weight_decay=args.weight_decay)
     total = args.epochs * len(shards)
-    init = polish_eval(readout, calib, device=device)
-    best = {"score": init["leaf_value_end"], "epoch": 0, "calib": init}
-    _status(status, f"POLISH START shards={len(shards)} epochs={args.epochs} body_params={sum(p.numel() for p in body)} "
-                    f"ckpt={us.sha256_file(args.ckpt)} corpus_weighted={weighted} init calib {json.dumps(init)}"
-                    + ("" if device.type == "cpu" else f" device={args.device}"))
     rng = np.random.default_rng(args.seed)
-    step_i, t0 = 0, time.time()
-    state = saved["model"]
-    for epoch in range(args.epochs):
+    start, state = 0, saved["model"]
+    if progress is not None:
+        start = progress["epoch"]
+        if not 0 <= progress["best"]["epoch"] <= start <= args.epochs:
+            raise UnifiedReadoutError("polish resume: invalid epoch cursor")
+        model.load_state_dict(progress["model"])
+        opt.load_state_dict(progress["optimizer"])
+        rng.bit_generator.state = progress["numpy_rng"]
+        torch.set_rng_state(progress["torch_rng"])
+        if device.type == "mps":
+            torch.mps.set_rng_state(progress["mps_rng"])
+        best, state = progress["best"], progress["selected"]
+        _status(status, f"POLISH RESUME completed_epochs={start}")
+    else:
+        init = polish_eval(readout, calib, device=device)
+        best = {"score": init["leaf_value_end"], "epoch": 0, "calib": init}
+        _status(status, f"POLISH START shards={len(shards)} epochs={args.epochs} body_params={sum(p.numel() for p in body)} "
+                        f"ckpt={digest} corpus_weighted={weighted} init calib {json.dumps(init)}"
+                        + ("" if device.type == "cpu" else f" device={args.device}"))
+
+    def save_progress(epoch):
+        selection = dict(best, score=float(best["score"]),
+                         calib={key: float(value) for key, value in best["calib"].items()})
+        progress = dict(identity=identity, epoch=epoch, model=_on_cpu(model.state_dict()),
+                        optimizer=_on_cpu(opt.state_dict()), numpy_rng=rng.bit_generator.state,
+                        torch_rng=torch.get_rng_state(), best=selection, selected=_on_cpu(state))
+        if device.type == "mps":
+            progress["mps_rng"] = torch.mps.get_rng_state()
+        _save_polish_checkpoint(checkpoint, progress)
+
+    if checkpoint_epochs and progress is None:
+        save_progress(0)
+    del progress
+    step_i, t0 = start * len(shards), time.time()
+    for epoch in range(start, args.epochs):
+        if checkpoint_epochs and (out / "STOP").exists():
+            _status(status, "STOPPED (STOP file)")
+            return 3
         sums = np.zeros(6)
         for si in rng.permutation(len(shards)):
             for g in opt.param_groups:
@@ -1157,17 +1241,27 @@ def polish(args) -> int:
                 return 3
         cm = polish_eval(readout, calib, device=device)
         train = {"leaf_value": sums[0] / max(sums[1], 1), "leaf_value_end": sums[2] / max(sums[3], 1), "reply": sums[4] / max(sums[5], 1)}
-        _status(status, f"POLISH EPOCH {epoch + 1} train {json.dumps({k: round(v, 5) for k, v in train.items()})} "
-                        f"calib {json.dumps({k: round(v, 5) for k, v in cm.items()})} ({time.time() - t0:.0f}s)")
         if cm["leaf_value_end"] < best["score"]:
             best = {"score": cm["leaf_value_end"], "epoch": epoch + 1, "calib": cm}
             state = {k: v.detach().clone() for k, v in model.state_dict().items()}
-    polish_args = {k: v for k, v in vars(args).items() if not (k == "device" and v == "cpu")}
-    torch.save({"schema": CKPT_SCHEMA, "model": state if device.type == "cpu" else _on_cpu(state),
-                "config": model.config, "epoch": saved.get("epoch"),
-                "calib": dict(saved.get("calib") or {}, polish=best["calib"], polish_epoch=best["epoch"]),
-                "init_calib": saved.get("init_calib"), "run": dict(saved.get("run") or {}, polish=polish_args)}, out / "best.pt")
-    _status(status, f"POLISH DONE best_epoch={best['epoch']} calib {json.dumps(best['calib'])} sha256={us.sha256_file(out / 'best.pt')}")
+        if checkpoint_epochs:
+            save_progress(epoch + 1)
+        _status(status, f"POLISH EPOCH {epoch + 1} train {json.dumps({k: round(v, 5) for k, v in train.items()})} "
+                        f"calib {json.dumps({k: round(v, 5) for k, v in cm.items()})} ({time.time() - t0:.0f}s)")
+    if checkpoint_epochs and (out / "STOP").exists():
+        _status(status, "STOPPED (STOP file)")
+        return 3
+    best_calib = {key: float(value) for key, value in best["calib"].items()} if checkpoint_epochs else best["calib"]
+    winner = {"schema": CKPT_SCHEMA, "model": state if device.type == "cpu" else _on_cpu(state),
+              "config": model.config, "epoch": saved.get("epoch"),
+              "calib": dict(saved.get("calib") or {}, polish=best_calib, polish_epoch=best["epoch"]),
+              "init_calib": saved.get("init_calib"), "run": dict(saved.get("run") or {}, polish=polish_args)}
+    best_path = out / "best.pt"
+    if checkpoint_epochs:
+        _save_polish_checkpoint(best_path, winner)
+    else:
+        torch.save(winner, best_path)
+    _status(status, f"POLISH DONE best_epoch={best['epoch']} calib {json.dumps(best['calib'])} sha256={us.sha256_file(best_path)}")
     return 0
 
 
@@ -1364,6 +1458,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--threads", type=int, default=16)
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--device", choices=("cpu", "mps"), default="cpu")
+    p.add_argument("--epoch-checkpoint", action="store_true", default=argparse.SUPPRESS,
+                   help="save completed epochs and resume an interrupted run on the same cache and device")
     m = sub.add_parser("mixpolish")
     m.add_argument("--ckpt", required=True)
     m.add_argument("--mix", required=True, help="sampled-world shards: train-*.npz and calib-*.npz")

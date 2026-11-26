@@ -17,7 +17,7 @@ def polish_arm(joint, arm, cache_root, output, recipe_path, recipe_sha):
 
 
 def polish_checkpoint(checkpoint, cache, recipe, out, *, epochs, lr, expected_sample=None, expected_encode_rounds=None,
-                      finish_selection=False, device="cpu"):
+                      finish_selection=False, device="cpu", epoch_checkpoint=False):
     from shengji.train import unified_readout
 
     with ExitStack() as leases:
@@ -28,6 +28,8 @@ def polish_checkpoint(checkpoint, cache, recipe, out, *, epochs, lr, expected_sa
                 "--out", str(out), "--epochs", str(epochs), "--lr", str(lr),
                 "--weight-decay", "0.01", "--reply-weight", "0.2", "--batch", "4096",
                 "--threads", "16", "--seed", "1", "--device", device]
+        if epoch_checkpoint:
+            argv += ["--epoch-checkpoint"]
         if finish_selection:
             return finish_polish_selection(out, checkpoint, argv, epochs)
         if json.loads((cache / unified_readout.CACHE_DEVICE).read_text()) != {"device": "cpu"}:
@@ -52,7 +54,8 @@ def polish_checkpoint(checkpoint, cache, recipe, out, *, epochs, lr, expected_sa
             with ZipFile(cache / name) as shard:
                 if "leaf_w.npy" not in shard.namelist():
                     raise ValueError(f"missing corpus weights in {name}")
-        out.mkdir(parents=True, exist_ok=False)
+        resume = epoch_checkpoint and (out / unified_readout.POLISH_CHECKPOINT).is_file()
+        out.mkdir(parents=True, exist_ok=resume)
         rc = unified_readout.main(argv)
         if rc:
             return rc

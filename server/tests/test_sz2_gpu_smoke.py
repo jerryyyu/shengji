@@ -507,8 +507,10 @@ def mps_worker_recipe(host):
     return supervisor, directory, log, recipe, SCRATCH
 
 
-@pytest.mark.parametrize("interrupt", [False, True], ids=["clean-stop", "trainer-abort"])
-def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_recipe, monkeypatch, interrupt, capsys):
+@pytest.mark.parametrize("interruption", ["clean-stop", "trainer-abort", "trainer-killed"])
+def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_recipe, monkeypatch, interruption, capsys):
+    interrupt = interruption == "trainer-abort"
+    killed = interruption == "trainer-killed"
     supervisor, directory, log, recipe, scratch = mps_worker_recipe
     settings = json.loads(recipe.read_bytes())
     settings["rounds_per_batch"] = 16
@@ -521,6 +523,17 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
         "trainer.objective = fail_objective\n"
         "raise SystemExit(trainer.main())\n"
     )
+    kill_script = directory / "kill_after_save.py"
+    kill_script.write_text(
+        "import signal\nfrom shengji.train import unified_readout as trainer\n"
+        "status = trainer._status\n"
+        "def kill_after_save(path, message):\n"
+        "    status(path, message)\n"
+        "    if message.startswith('epoch 1 buffer 1/'):\n"
+        "        signal.raise_signal(signal.SIGTERM)\n"
+        "trainer._status = kill_after_save\n"
+        "raise SystemExit(trainer.main())\n"
+    )
     emitter = directory / "server/scripts/rt4m_joint.py"
     emitter.write_text(
         "import json, sys\nfrom pathlib import Path\n"
@@ -531,7 +544,11 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
         "root = Path(sys.argv[sys.argv.index('--root') + 1])\n"
         "digest = sys.argv[-1] if '--recover-checkpoint-sha256' in sys.argv else None\n"
         f"argv = arm.command(root, Path({str(recipe)!r}), recover_checkpoint_sha256=digest)\n"
-        "if '--expect-resume-buffer' not in argv and digest is None: argv.extend(['--max-seconds','0.0001'])\n"
+        "assert argv.count('--max-seconds') == 1 and argv[argv.index('--max-seconds') + 1] == '61200'\n"
+        f"if {killed!r} and digest is None:\n"
+        f"    argv[2:4] = [{str(kill_script)!r}]\n"
+        "    argv.extend(['--save-every', '0'])\n"
+        "elif '--expect-resume-buffer' not in argv and digest is None: argv.extend(['--max-seconds','0.0001'])\n"
         "if (root / 'inject-fault').exists():\n"
         f"    argv[2:4] = [{str(fault_script)!r}]\n"
         "print(json.dumps(argv))\n"
@@ -543,9 +560,13 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
         return subprocess.run([*worker, *extra], env=env, capture_output=True, text=True, timeout=60)
 
     first = run()
-    assert first.returncode == 3, (first.stdout, first.stderr)
     out = directory / "reserved/A/train"
-    assert "STOPPED at epoch 1 buffer 1/" in (out / "status.log").read_text()
+    if killed:
+        assert first.returncode != 0
+        assert " epoch 1 buffer 1/" in (out / "status.log").read_text().splitlines()[-1]
+    else:
+        assert first.returncode == 3, (first.stdout, first.stderr)
+        assert "STOPPED at epoch 1 buffer 1/" in (out / "status.log").read_text()
     actual = json.loads((out / "run.json").read_bytes())
     assert (actual["lr"], actual["head_lr"], actual["readout_lr"]) == (3e-4, 1e-3, 1e-3)
     assert actual["microbatch_rounds"] == 4 and actual["rounds_per_batch"] == 16
@@ -557,6 +578,7 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
         assert run().returncode != 0
         assert " UTR ABORT RuntimeError: fixture fault" in (out / "status.log").read_text().splitlines()[-1]
         fault.unlink()
+    if interrupt or killed:
         assert run().returncode != 0
         assert run("--recover-checkpoint-sha256", "0" * 64).returncode != 0
         digest = hashlib.sha256((out / "checkpoint.pt").read_bytes()).hexdigest()
@@ -564,14 +586,14 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
         (out / "STOP").touch()
         assert run(*recovery).returncode != 0
         (out / "STOP").unlink()
-        assert events(log) == ["stop", "restart"] * 2
+        assert events(log) == ["stop", "restart"] * (2 if interrupt else 1)
     second = run(*recovery)
     assert second.returncode == 0, (second.stdout, second.stderr)
     status = (out / "status.log").read_text()
     assert " RESUME epoch 0 buffer 1 device=mps" in status and " UTR DONE " in status.splitlines()[-1]
     assert (out / "best.pt").is_file()
     assert run().returncode != 0
-    if interrupt:
+    if interrupt or killed:
         assert run(*recovery).returncode != 0
     assert events(log) == ["stop", "restart"] * (3 if interrupt else 2)
 

@@ -31,6 +31,10 @@ def recipe_inputs(root, recipe_path, *, phase="RT4-M-A"):
     scratch_recipe = dict(recipe, **SCRATCH_RATES)
     args = joint_args(scratch_recipe, ["--scratch-arch", ARCHITECTURE[6]], directory, "mps", None, False)
     expected = dict(scratch_recipe, init_readout_ckpt=None, scratch_arch=ARCHITECTURE[6], device="mps")
+    if not smoke:
+        if args.count("--max-seconds") != 1 or args[args.index("--max-seconds") + 1] != "5400":
+            raise ValueError("unexpected joint segment time limit")
+        args[args.index("--max-seconds") + 1] = "61200"
     if smoke:
         args.extend(["--max-train-rows", "120000", "--report-buffer", "1", "--capacity-stats"])
         expected.update(max_train_rows=120000, report_buffer=1)
@@ -63,11 +67,13 @@ def command(root, recipe_path, *, phase="RT4-M-A", recover_checkpoint_sha256=Non
         status = status_path.read_text().splitlines()
         terminal = status[-1] if status else ""
         if recover_checkpoint_sha256 is not None:
-            if not re.fullmatch(r"\S+ UTR ABORT \w+: .*", terminal) or any(" UTR DONE " in line for line in status):
-                raise ValueError("checkpoint recovery requires a terminal trainer ABORT")
+            aborted = re.fullmatch(r"\S+ UTR ABORT \w+: .*", terminal)
+            interrupted = re.match(r"\S+ (?:UTR START |RESUME epoch |epoch \d+ buffer )", terminal)
+            if not (aborted or interrupted) or any(" UTR DONE " in line for line in status):
+                raise ValueError("checkpoint recovery requires an aborted or interrupted trainer")
             with checkpoint.open("rb") as stream:
                 if hashlib.file_digest(stream, "sha256").hexdigest() != recover_checkpoint_sha256:
-                    raise ValueError("aborted checkpoint SHA256 mismatch")
+                    raise ValueError("recovery checkpoint SHA256 mismatch")
             args.extend(["--recover-checkpoint-sha256", recover_checkpoint_sha256])
         else:
             stopped = re.fullmatch(

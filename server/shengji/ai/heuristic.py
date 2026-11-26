@@ -8,9 +8,10 @@ validators (with a safe fallback) so the server can trust bot output.
 from __future__ import annotations
 
 from collections import Counter
+from itertools import combinations
 
 from ..engine.cards import BJ, LJ, TRUMP, Ordering, card_rank, is_joker, points
-from ..engine.combos import decompose, find_tractor_runs, pair_count
+from ..engine.combos import decompose, decompose_matching, find_tractor_runs, pair_count
 from ..engine.legal import IllegalPlay, beats, suit_cards, uniform_suit, validate_follow
 from ..engine.round import Round
 
@@ -207,7 +208,7 @@ class HeuristicBot:
         return winner, suit, top
 
     def _cheapest_winning(self, hand: list[str], lead: list[str], inc_suit: str,
-                          inc_top: int, o: Ordering) -> list[str] | None:
+                          inc_top: int, o: Ordering, opposing: bool = True) -> list[str] | None:
         lead_dec = decompose(lead, o)
         lead_suit = uniform_suit(lead, o)
         assert lead_suit is not None
@@ -219,7 +220,7 @@ class HeuristicBot:
             trumps = suit_cards(hand, TRUMP, o)
             if len(trumps) < len(lead):
                 return None
-            play = self._trump_shape_match(trumps, lead_dec, o)
+            play = self._trump_shape_match(trumps, lead_dec, o, inc_top if opposing and inc_suit == TRUMP else None)
             if play is not None:
                 won, _ = beats(play, lead, inc_suit, inc_top, o)
                 if won:
@@ -253,11 +254,11 @@ class HeuristicBot:
         return None
 
     def _trump_shape_match(self, trumps: list[str], lead_dec,
-                           o: Ordering) -> list[str] | None:
-        """Cheapest all-trump set matching a throw's shape (runs + singles)."""
-        runs = sorted((c.pair_len for c in lead_dec.components if c.pair_len),
-                      reverse=True)
-        n_singles = sum(1 for c in lead_dec.components if not c.pair_len)
+                           o: Ordering, incumbent_trump_top: int | None = None) -> list[str] | None:
+        """Fill the throw shape with trumps, clearing the incumbent when possible."""
+        if incumbent_trump_top is not None:
+            return self._overruff(trumps, lead_dec, incumbent_trump_top, o)
+        runs, n_singles = lead_dec.shape()
         pool = list(trumps)
         picked: list[str] = []
         for k in runs:
@@ -282,6 +283,56 @@ class HeuristicBot:
             picked.append(c)
             pool.remove(c)
         return picked
+
+    @staticmethod
+    def _overruff(trumps: list[str], lead_dec, incumbent: int, o: Ordering) -> list[str] | None:
+        """Cheapest winning top, then fewest points, then lowest cards."""
+        runs, singles = lead_dec.shape()
+        width = 2 * sum(runs) + singles
+        counts = Counter(trumps)
+        levels = {card: o.level(card) for card in counts}
+        def order(card):
+            return levels[card], card
+
+        cheap = sorted(counts, key=lambda card: (points(card), *order(card)))
+        if not any(level > incumbent for level in levels.values()):
+            return None
+
+        if not runs:
+            # For a fixed winning top only one card of that level is required.
+            # The cheapest such card dominates every other choice of anchor.
+            for top in sorted({level for level in levels.values() if level > incumbent}):
+                anchor = next(card for card in cheap if levels[card] == top)
+                fillers = [card for card in cheap if levels[card] <= top
+                           for _ in range(counts[card] - int(card == anchor))]
+                if len(fillers) >= width - 1:
+                    return sorted([anchor, *fillers[:width - 1]], key=order)
+            return None
+
+        # Classify replies by the codes used twice. At most twelve pairs fit
+        # in a hand. Within a class, distinct single fillers cannot affect
+        # the engine's choice of decisive pair or tractor.
+        pairs = sorted((card for card in counts if counts[card] == 2), key=order)
+        best = None
+        best_cost = None
+        for n in range(max(sum(runs), width - len(counts)), min(len(pairs), width // 2) + 1):
+            for doubled in combinations(pairs, n):
+                if all(levels[card] <= incumbent for card in doubled):
+                    continue
+                used = set(doubled)
+                fillers = [card for card in cheap if card not in used][:width - 2 * n]
+                reply = [card for card in doubled for _ in range(2)] + sorted(fillers, key=order)
+                match = decompose_matching(reply, o, (runs, singles))
+                if match is None:
+                    continue
+                top = match.top_level()
+                if top <= incumbent:
+                    continue
+                cost = (top, sum(map(points, reply)),
+                        tuple(sorted((levels[c] for c in reply), reverse=True)), tuple(sorted(reply)))
+                if best_cost is None or cost < best_cost:
+                    best, best_cost = reply, cost
+        return best
 
     def _forced_follow(self, hand: list[str], lead: list[str], o: Ordering,
                        prefer_points: bool,

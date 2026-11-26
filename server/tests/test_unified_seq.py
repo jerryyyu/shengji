@@ -55,11 +55,11 @@ def _nt_setup(deck, banker, declare):
     return base
 
 
-def nt_cluster(seed):
+def nt_cluster(seed, *, plays=None):
     saved = tbl._setup_for
     tbl._setup_for = _nt_setup
     try:
-        return synthetic_cluster(seed)
+        return synthetic_cluster(seed, plays=plays)
     finally:
         tbl._setup_for = saved
 

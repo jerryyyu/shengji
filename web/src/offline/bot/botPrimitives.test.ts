@@ -8,9 +8,12 @@ import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type Card, type EffSuit, type TrumpSuit, Ordering } from "../engine/cards";
+import { type Card, type EffSuit, type TrumpSuit, Ordering, TRUMP, makeDeck } from "../engine/cards";
 import { EngineAssertion, IllegalPlay } from "../engine/legal";
+import { applyPlay, newRound } from "../engine/round";
 import { HeuristicBot } from "./heuristic";
+import { SmartBot } from "./smart";
+import { viewFor } from "./view";
 
 const DIR = process.env.OFFLINE_BOT_FIXTURES ?? fileURLToPath(new URL("../fixtures", import.meta.url));
 
@@ -71,6 +74,36 @@ describe("HeuristicBot policy leaves vs Python", () => {
     }
     expect(prim.forced.length).toBeGreaterThanOrEqual(1000);
     expect(bad.slice(0, 5)).toEqual([]);
+  });
+
+  it("overruffs a throw with the cheapest winning shape and rejects a tie", () => {
+    const o = new Ordering("H", "7");
+    const bot = new HeuristicBot();
+    const win = (hand: Card[], lead: Card[], top: Card) => bot.cheapestWinning(hand, lead, TRUMP, o.level(top), o);
+    expect(win(["H2", "H3", "H9"], ["CA", "CK"], "H8")).toEqual(["H2", "H9"]);
+    expect(win(["H2", "H3", "H8"], ["CA", "CK"], "H8")).toBeNull();
+    expect(win(["H2", "H2", "H8", "H8"], ["CA", "CA", "CK"], "H6")).toEqual(["H8", "H8", "H2"]);
+    expect(win(["H2", "H2", "H3", "H3", "H8", "H8", "H9", "H9"], ["CQ", "CQ", "CK", "CK", "CA"], "H5"))
+      .toEqual(["H8", "H8", "H9", "H9", "H2"]);
+  });
+
+  it.each([["heuristic", HeuristicBot], ["smart", SmartBot]] as const)("settles a two-pair overruff through the %s bot", (_, Bot) => {
+    const lead = ["CA", "CA", "C5", "C5"];
+    const discard = ["D2", "D3", "D4", "D6"];
+    const ruff = ["H2", "H2", "H6", "H6"];
+    const round = newRound(makeDeck(), "7", 0);
+    round.phase = "play";
+    round.turn = 0;
+    round.trumpSuit = "H";
+    round.trick = { leader: 0, plays: [], winner: null, points: 0 };
+    round.hands = [[...lead, "S2", "S3"], [...discard, "S4", "S5"], [...ruff, "S6", "S8"],
+      ["H3", "H3", "H5", "H5", "H8", "H8"]];
+    for (const [seat, cards] of [lead, discard, ruff].entries()) expect(applyPlay(round, seat, cards)).toEqual(cards);
+
+    // The two cheapest pairs match the throw but cannot beat the opposing ruff.
+    expect(applyPlay(round, 3, new Bot().play(viewFor(round, 3)))).toEqual(["H3", "H3", "H8", "H8"]);
+    expect(round.lastTrick?.winner).toBe(3);
+    expect(round.lastTrick?.points).toBe(10);
   });
 
   it("_cheapest_winning", () => {

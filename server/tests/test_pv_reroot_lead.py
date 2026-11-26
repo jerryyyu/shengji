@@ -323,6 +323,12 @@ def test_flag_off_release54_decides_as_main(release50_packages, release53_pair, 
         if REQUIRE_PACKAGE:
             pytest.fail(reason + ": a required package gate must witness identity on this host")
         pytest.skip(reason)
+    if COMPILED:
+        # The compiled engines share the overruff replay under their existing field tolerances.
+        shared = json.loads((S.FIXTURES / "r54_overruff_compiled_decisions.json").read_text())
+        assert shared.keys() <= pins.keys()
+        assert all(S.digest(entry["projection"]) == entry["digest"] for entry in shared.values())
+        pins.update(shared)
     name, bot = served_bot(release50_packages, release53_pair, monkeypatch, env=fly_env(), seed=S.BOT_SEED)
     assert name == bot.policy_name == BURY3_NAME
     assert bot.value_prune_lead is False and "value_prune_lead" not in vars(bot)

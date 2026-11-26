@@ -98,7 +98,11 @@ CPU_REFERENCE = {
 
 
 def make_data(root: Path) -> Path:
-    clusters = [synthetic_cluster(s) for s in (1000, 1001, 1002)] + [nt_cluster(1003)]
+    # The loss reference compares trainer arithmetic on fixed actions, including refused throws.
+    path = Path(__file__).parent / "data/readout_reference_actions.jsonl"
+    plays = {(row["seed"], row["banker"]): row["plays"] for row in map(json.loads, path.read_text().splitlines())}
+    clusters = [(nt_cluster if seed == 1003 else synthetic_cluster)(
+        seed, plays=[plays[seed, banker] for banker in (0, 1)]) for seed in range(1000, 1004)]
     store = write_store(root / "stores" / "corpus", clusters)
     return extract_dir(store, root / "x", calib=0.5, task_clusters=1)
 

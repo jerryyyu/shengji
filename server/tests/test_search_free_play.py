@@ -296,3 +296,152 @@ def test_single_action_skips_the_trunk_and_preserves_the_next_draw(package, monk
         forced += single
         branching += not single
     assert forced and branching
+
+
+@pytest.mark.parametrize("trusted", [False, True])
+@pytest.mark.parametrize("extra, winner", [("H9", 3), ("H8", 2)])
+def test_all_single_throw_overruff_reaches_the_search_free_ballot(trusted, extra, winner):
+    from shengji.engine.cards import Ordering
+    from shengji.engine.round import Round, Trick
+
+    rnd = Round("7", 0, random.Random(11))
+    rnd.phase, rnd.turn, rnd.trump_suit = "play", 0, "H"
+    rnd.ordering = Ordering("H", "7")
+    rnd.trick = Trick(leader=0)
+    rnd.hands = [["CA", "CK", "S2", "S3"], ["D2", "D3", "D4", "D6"],
+                 ["H4", "H8", "S4", "S5"], ["H2", "H3", extra, "S6"]]
+    rnd._trusted_rollout = trusted
+    for seat, action in enumerate((["CA", "CK"], ["D2", "D3"], ["H4", "H8"])):
+        rnd.play(seat, action)
+    anchor = HeuristicBot().decide_play(rnd, 3)
+    assert is_legal(rnd, 3, anchor)
+    proposal = sf.propose(rnd, 3, anchor, np.zeros(54))
+    assert Counter(proposal["actions"][0]) == Counter(anchor)
+    rnd.play(3, proposal["actions"][0])
+    assert rnd.last_trick.winner == winner
+    assert rnd.last_trick.points == 10
+    if winner == 3:
+        assert Counter(anchor) == Counter(["H2", "H9"])
+
+
+@pytest.mark.parametrize("trusted", [False, True])
+@pytest.mark.parametrize("lead, ruff, low, high", [
+    (["CA", "CA", "CK"], ["H6", "H6", "HA"], ["H2", "H2"], ["H8", "H8"]),
+    (["CQ", "CQ", "CK", "CK", "CA"], ["H4", "H4", "H5", "H5", "HA"],
+     ["H2", "H2", "H3", "H3"], ["H8", "H8", "H9", "H9"]),
+])
+def test_mixed_throw_overruff_reaches_ballot_and_wins(trusted, lead, ruff, low, high):
+    from shengji.engine.cards import Ordering
+    from shengji.engine.round import Round, Trick
+
+    rnd = Round("7", 0, random.Random(11))
+    rnd.phase, rnd.turn, rnd.trump_suit = "play", 0, "H"
+    rnd.ordering = Ordering("H", "7")
+    rnd.trick = Trick(leader=0)
+    discard = ["D2", "D3", "D4", "D5", "D6"][:len(lead)]
+    follow_hand = low + high + ["S6"]
+    fillers = len(follow_hand) - len(lead)
+    rnd.hands = [lead + ["S2", "S3", "S4", "S5"][:fillers],
+                 discard + ["S8", "S9", "S10", "SJ"][:fillers],
+                 ruff + ["SQ", "SK", "SA", "D8"][:fillers], follow_hand]
+    rnd._trusted_rollout = trusted
+    for seat, cards in enumerate((lead, discard, ruff)):
+        rnd.play(seat, cards)
+    anchor = HeuristicBot().decide_play(rnd, 3)
+    assert Counter(anchor) == Counter(high + ["H2"])
+    proposal = sf.propose(rnd, 3, anchor, np.zeros(54))
+    assert Counter(proposal["actions"][0]) == Counter(anchor)
+    rnd.play(3, proposal["actions"][0])
+    assert rnd.last_trick.winner == 3
+
+
+@pytest.mark.parametrize("trusted", [False, True])
+@pytest.mark.parametrize("spare,winner", [("H3", 3), ("S3", 2)])
+def test_pair_throw_overruff_avoids_a_lower_filler_pair(trusted, spare, winner):
+    from shengji.engine.cards import Ordering
+    from shengji.engine.round import Round, Trick
+
+    rnd = Round("7", 0, random.Random(11))
+    rnd.phase, rnd.turn, rnd.trump_suit = "play", 0, "H"
+    rnd.ordering = Ordering("H", "7")
+    rnd.trick = Trick(leader=0)
+    lead = ["CA", "CA", "CK", "CQ"]
+    discard = ["D2", "D3", "D4", "D6"]
+    ruff = ["H6", "H6", "HJ", "HA"]
+    rnd.hands = [lead + ["S2"], discard + ["S4"], ruff + ["S5"],
+                 ["H2", "H2", "H8", "H8", spare]]
+    rnd._trusted_rollout = trusted
+    for seat, cards in enumerate((lead, discard, ruff)):
+        rnd.play(seat, cards)
+    anchor = HeuristicBot().decide_play(rnd, 3)
+    assert is_legal(rnd, 3, anchor)
+    proposal = sf.propose(rnd, 3, anchor, np.zeros(54))
+    rnd.play(3, proposal["actions"][0])
+    assert rnd.last_trick.winner == winner
+    if winner == 3:
+        assert Counter(anchor) == Counter(["H8", "H8", "H2", "H3"])
+
+
+def test_overruff_matches_cheapest_engine_winner_for_every_throw_shape():
+    from itertools import combinations, combinations_with_replacement
+    from shengji.engine.cards import Ordering, TRUMP, points
+    from shengji.engine.legal import beats
+
+    o = Ordering("H", "7")
+    bot = HeuristicBot()
+    leads = [
+        ["CA", "CK"], ["CA", "CA", "CK"], ["CA", "CA", "CK", "CJ"],
+        ["CA", "CA", "CJ", "CJ"], ["CA", "CA", "CJ", "CJ", "CK"],
+        ["CA", "CA", "CK", "CK", "CJ", "C9"],
+        ["CA", "CA", "CK", "CK", "C9", "C9"],
+    ]
+    for cards in combinations_with_replacement(["H3", "H4", "H5", "H8", "D7"], 7):
+        if max(Counter(cards).values()) > 2:
+            continue
+        for lead in leads:
+            plays = set(combinations(cards, len(lead)))
+            for incumbent in ("H3", "H5", "H8"):
+                floor = o.level(incumbent)
+                def cost(play):
+                    return (beats(list(play), lead, TRUMP, floor, o)[1], sum(map(points, play)),
+                            tuple(sorted(map(o.level, play), reverse=True)), tuple(sorted(play)))
+                winners = (p for p in plays if beats(list(p), lead, TRUMP, floor, o)[0])
+                expected = min(winners, key=cost, default=())
+                actual = bot._cheapest_winning(list(cards), lead, TRUMP, floor, o)
+                assert Counter(actual or ()) == Counter(expected), (cards, lead, incumbent)
+
+    # Two disjoint tractors compete for overlapping trump pairs. Breaking
+    # unused copies into singles can change which tractor the engine matches.
+    hand = [c for c in ("H2", "H3", "H4", "H5", "H8", "H9") for _ in range(2)]
+    for extra in ([], ["CJ"]):
+        lead = [c for c in ("CA", "CK", "C8", "C9") for _ in range(2)] + extra
+        for floor in map(o.level, ("H3", "H5", "H9")):
+            valid = []
+            for play in set(combinations(hand, len(lead))):
+                wins, top = beats(list(play), lead, TRUMP, floor, o)
+                if wins:
+                    valid.append((top, sum(map(points, play)), tuple(sorted(map(o.level, play), reverse=True)),
+                                  tuple(sorted(play))))
+            actual = bot._cheapest_winning(hand, lead, TRUMP, floor, o)
+            assert tuple(sorted(actual or ())) == (min(valid)[-1] if valid else ())
+
+    # At the same winning rank the off-suit level cards tie. Code order is
+    # deterministic even if the pair codes entered the hand in reverse.
+    hand = ["S7", "S7", "C7", "C7", "H5", "H8"]
+    assert Counter(bot._cheapest_winning(hand, leads[1], TRUMP, o.level("HA"), o)) == Counter(["C7","C7","H8"])
+
+
+def test_partner_ruff_keeps_the_original_ballot_choice(monkeypatch):
+    from shengji.engine.cards import Ordering, TRUMP
+
+    bot = HeuristicBot()
+    o = Ordering("H", "7")
+    def forbidden(*args):
+        pytest.fail("exact overruff search reached outside an opposing ruff")
+    monkeypatch.setattr(bot, "_overruff", forbidden)
+    hand = ["H2", "H2", "H8", "H8", "H3"]
+    lead = ["CA", "CA", "CK", "CQ"]
+    assert bot._cheapest_winning(hand, lead, TRUMP, o.level("H6"), o, opposing=False) is None
+    assert bot._cheapest_winning(hand, lead, "C", o.level("CA"), o) is not None
+    assert bot._cheapest_winning(hand + ["C3"], lead, TRUMP, 0, o) is None
+    assert bot._cheapest_winning(hand[:2], lead, TRUMP, 0, o) is None

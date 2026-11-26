@@ -191,3 +191,42 @@ def test_tranche_requires_internal_output_and_archive_reserve(tmp_path, monkeypa
     spec['admit_disk_gib'] -= 1
     with pytest.raises(launch.Refused, match='full leg'):
         launch._admit(spec)
+
+
+def test_tranche_admission_uses_published_window_and_runtime_registry(tmp_path, monkeypatch):
+    import runpy
+
+    source = Path(__file__).resolve().parents[2]
+    api = runpy.run_path(str(source/'server/shengji/seeds.py'))
+    spec = admission_spec(tmp_path, monkeypatch)
+    runtime = tmp_path/'runtime.json'
+    runtime.write_text(json.dumps(dict(schema=api['SCHEMA'], windows=[])))
+    registry = source/'server/runs/seed_windows.json'
+    name = 'r55-loop-tranche1-2675000000'
+    spec.update(source_dir=str(source), rounds=10_000, seed_registry=str(runtime),
+                tranche_reservation=dict(registry=str(registry), name=name, seed0=2675000000))
+    for seed in range(2675000000, 2675050000, 5000):
+        spec['seed'] = seed
+        launch._admit(spec)
+        api['check_and_register'](name=f'fixture-{seed}', purpose='trajectory', seed0=seed,
+                                  clusters=5000, refuse=None, path=runtime)
+    with pytest.raises(launch.Refused, match='already covers'):
+        launch._admit(spec)
+    spec.update(seed=2675000001)
+    with pytest.raises(launch.Refused, match='reserved'):
+        launch._admit(spec)
+    spec.update(seed=2675050000)
+    with pytest.raises(launch.Refused, match='reserved'):
+        launch._admit(spec)
+    spec.update(seed=seed, resume=True, run_id=f'fixture-{seed}')
+    out = Path(spec['output'])
+    out.mkdir()
+    (out/'run.json').write_text(json.dumps({'run_id': spec['run_id']}))
+    launch._admit(spec)
+    shadow = tmp_path/'shadow.json'
+    own = api['find'](api['load'](registry), name)
+    conflict = dict(own, name='another-run', seed0=seed, clusters=1, span=[seed, seed+1])
+    shadow.write_text(json.dumps(dict(schema=api['SCHEMA'], windows=[own, conflict])))
+    spec['tranche_reservation']['registry'] = str(shadow)
+    with pytest.raises(launch.Refused, match='another reservation'):
+        launch._admit(spec)

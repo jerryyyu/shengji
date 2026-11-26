@@ -210,7 +210,9 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
      its tag, since the Ranked / Casual switch shows your choice, not that table's mode) and Enter pressing Join.
 3. **One identity sheet.** The name chip is the only identity control. A guest's chip opens one sheet
    (`IdentitySheet` in `components/GuestChip.tsx`, mounted once by App): "Your name" with the field and its
-   dice, then the sign-in buttons with one line under them, "By signing in you agree to the Terms of use."
+   dice (a new guest's name and the dice's draw are "Adjective Noun", or in a Chinese interface a mood and a
+   game word, "淡定的庄家" / Traditional "機智的大王", at most six characters, `randomName.ts`; a name already
+   given is never renamed when the language changes; Jerry 2026-11-26, decision mocks section 9 B), then the sign-in buttons with one line under them, "By signing in you agree to the Terms of use."
    (the sheet's only copy; App Store guideline 1.2, Jerry 2026-11-16), then Done. Every Sign in opens that same sheet: the Play tab's guest line
    ("Playing as a guest · Sign in to be ranked", which stays), a guest's one name row on Me, the
    Leaderboard's one row "Sign in to be ranked ›", a guest's round-end line at a ranked table (same words) (its card and its sentence on ratings are gone; saying
@@ -424,7 +426,8 @@ switch between accounts included, and goes once as whoever that leaves signed in
 `linked`; with them off the app is today's guest, exactly.
 - **Before the first Play:** the guest chip with the name alone (no "Guest", no rating) and no guest line.
   The account that Play makes keeps the name the guest chose when it passes the display-name checks and no
-  account shows it; a random fill, or a name refused or taken, gets a server-drawn name instead, with no message.
+  account shows it; a random fill, or a name refused or taken, gets a server-drawn name instead, with no message
+  (from the same Chinese lists when the app's interface is Chinese: the creation sends its `lang`).
 - **Chip:** the name and the rating, with the guest chip's pencil; a tap opens the identity sheet.
 - **Play tab:** no guest line; nothing else changes.
 - **Round end:** the rating on the result line, as an account sees it; no "Sign in to be ranked".

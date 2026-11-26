@@ -31,6 +31,7 @@ import {
 import { beforeOnlineSetup, lastSetupOutcome, resetDeviceAccountForTests } from "./deviceAccount";
 import { guestName, NAME_CHOSEN_KEY } from "./guestName";
 import { telemetry } from "./telemetry";
+import { setLanguageChoice } from "./i18n";
 
 type Route = { status: number; body?: unknown };
 let routes: Map<string, Route | Route[]>;
@@ -239,6 +240,19 @@ describe("the first online Play in the app", () => {
         if (saved !== null) localStorage.setItem("shengji.name", saved);
       })).toBeUndefined();
     }
+  });
+
+  it("in a Chinese interface the server is asked for a Chinese name; a chosen name still goes", async () => {
+    setLanguageChoice("zh-Hans");
+    try {
+      expect(await creationBody(() => guestName.fill("淡定的庄家"))).toEqual({ lang: "zh-Hans" });
+      expect(await creationBody(() => typeAndKeep("小明"))).toEqual({ name: "小明", lang: "zh-Hans" });
+      // a Chinese random name saved before the chosen mark existed counts as the fill's
+      expect(await creationBody(() => localStorage.setItem("shengji.name", "机智的大王"))).toEqual({ lang: "zh-Hans" });
+    } finally {
+      setLanguageChoice("system");
+    }
+    expect(await creationBody(() => guestName.fill("Lucky Tractor"))).toBeUndefined();
   });
 
   it("a sign-in with the Keychain's secret never sends a name", async () => {

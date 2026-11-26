@@ -27,6 +27,7 @@ import {
   keepDeviceSecret, settleKeychain,
 } from "./auth";
 import { chosenGuestName } from "./guestName";
+import { locale } from "./i18n/locale";
 import { keychainGet } from "./keychain";
 import { telemetry } from "./telemetry";
 import { deviceIdiom } from "./native";
@@ -71,8 +72,10 @@ async function signInDeviceOnce(): Promise<SetupOutcome> {
     // an unreadable Keychain may hold a secret: never make a second account over it
     return "read_failed";
   }
-  // a new account starts under the name the guest chose, when the server allows it
-  const got = await deviceAuth(token, token ? null : chosenGuestName());
+  // a new account starts under the name the guest chose, when the server
+  // allows it; else the server draws one in a Chinese interface's language
+  const loc = locale();
+  const got = await deviceAuth(token, token ? null : chosenGuestName(), token || loc === "en" ? null : loc);
   if (got.status === 404 || got.status === 403) {
     off = true;
     auth.noDeviceAccounts?.();

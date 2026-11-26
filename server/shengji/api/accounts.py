@@ -185,11 +185,13 @@ def device_accounts_enabled() -> bool:
     return os.environ.get(DEVICE_FLAG, "").strip() == "1"
 
 
-def _free_device_name(taken: Collection[str], rng: random.Random) -> str:
-    """An "Adjective Noun" name whose casefold is not in ``taken`` and that
-    passes ``validate_display_name``: up to ``NAME_DRAWS`` random draws,
-    then every name in a random order. ``DisplayNameError("taken")`` when
-    none is free."""
+def _free_device_name(taken: Collection[str], rng: random.Random, lang: str | None = None) -> str:
+    """A generated name (``device_names.pool``: "Adjective Noun", or for a
+    Chinese ``lang`` "淡定的庄家") whose casefold is not in ``taken`` and
+    that passes ``validate_display_name``: up to ``NAME_DRAWS`` random
+    draws, then every name in a random order; a spent Chinese pool falls
+    back to the English one. ``DisplayNameError("taken")`` when none is
+    free."""
     def usable(name: str) -> bool:
         if name.casefold() in taken:
             return False
@@ -198,15 +200,18 @@ def _free_device_name(taken: Collection[str], rng: random.Random) -> str:
         except DisplayNameError:
             return False
 
-    for _ in range(NAME_DRAWS):
-        name = f"{rng.choice(device_names.ADJECTIVES)} {rng.choice(device_names.NOUNS)}"
-        if usable(name):
-            return name
-    names = device_names.all_names()
-    rng.shuffle(names)
-    for name in names:
-        if usable(name):
-            return name
+    langs = [lang, None] if device_names.pool(lang)[2] != " " else [None]
+    for each in langs:
+        firsts, seconds, joiner = device_names.pool(each)
+        for _ in range(NAME_DRAWS):
+            name = f"{rng.choice(firsts)}{joiner}{rng.choice(seconds)}"
+            if usable(name):
+                return name
+        names = device_names.all_names(each)
+        rng.shuffle(names)
+        for name in names:
+            if usable(name):
+                return name
     raise DisplayNameError("taken")
 
 
@@ -996,25 +1001,29 @@ class Store:
 
     # -- device accounts
     def create_device_user(self, token: str, now: float | None = None,
-                           rng: random.Random | None = None, wanted: Any = None) -> dict:
+                           rng: random.Random | None = None, wanted: Any = None,
+                           lang: str | None = None) -> dict:
         """Create a device account (no provider) holding ``token``'s
         credential; returns the row. It is named ``wanted`` (the guest name
         the app played under) when that passes ``validate_display_name`` and
         no account shows it, case-insensitively, checked in the insert's
-        transaction; otherwise an unused generated name. Only the token's
+        transaction; otherwise an unused generated name, in ``lang``'s
+        words for a Chinese interface (``device_names.pool``). Only the token's
         SHA-256 is stored. Raises ``DisplayNameError("taken")`` when no name
         is usable. ``create_device_account`` also starts the first session in
         the same transaction."""
-        return self._create_device(token, now, rng, wanted, with_session=False)[0]
+        return self._create_device(token, now, rng, wanted, with_session=False, lang=lang)[0]
 
     def _create_device(self, token: str, now: float | None, rng: random.Random | None,
-                       wanted: Any, with_session: bool) -> tuple[dict, str | None]:
+                       wanted: Any, with_session: bool,
+                       lang: str | None = None) -> tuple[dict, str | None]:
         t = int(now if now is not None else time.time())
         with closing(self._open()) as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
                 taken = self._shown_names(conn)
-                name = _kept_device_name(wanted, taken) or _free_device_name(taken, rng or _NAME_RNG)
+                name = (_kept_device_name(wanted, taken)
+                        or _free_device_name(taken, rng or _NAME_RNG, lang))
                 cur = conn.execute(
                     """INSERT INTO users(google_sub, apple_sub, email, name, picture, created_at,
                                          last_login_at, display_name, rating)
@@ -1034,10 +1043,10 @@ class Store:
 
     def create_device_account(self, token: str, now: float | None = None,
                               rng: random.Random | None = None,
-                              wanted: Any = None) -> tuple[dict, str]:
+                              wanted: Any = None, lang: str | None = None) -> tuple[dict, str]:
         """A new device account and its first session token, in one
-        transaction; ``wanted`` as for ``create_device_user``."""
-        row, session = self._create_device(token, now, rng, wanted, with_session=True)
+        transaction; ``wanted`` and ``lang`` as for ``create_device_user``."""
+        row, session = self._create_device(token, now, rng, wanted, with_session=True, lang=lang)
         assert session is not None
         return row, session
 
@@ -2279,18 +2288,23 @@ async def _device_body(request: Request) -> bytes | None:
     return b"".join(chunks)
 
 
-async def _wanted_device_name(request: Request) -> Any:
-    """The ``name`` of a device-creation body, or None: no body, one over
-    ``DEVICE_BODY_MAX`` bytes, one that is not UTF-8 JSON, nested too deep
-    to parse, or not a JSON object all read as no name, never as an error."""
+async def _device_wants(request: Request) -> tuple[Any, str | None]:
+    """The ``name`` and ``lang`` of a device-creation body, each None when
+    absent: no body, one over ``DEVICE_BODY_MAX`` bytes, one that is not
+    UTF-8 JSON, nested too deep to parse, or not a JSON object all read as
+    neither, never as an error. ``lang`` is kept only as "zh-Hans" or
+    "zh-Hant", the interfaces with their own generated names."""
     raw = await _device_body(request)
     if not raw:
-        return None
+        return None, None
     try:
         body = json.loads(raw)
     except (UnicodeDecodeError, ValueError, RecursionError):
-        return None
-    return body.get("name") if isinstance(body, dict) else None
+        return None, None
+    if not isinstance(body, dict):
+        return None, None
+    lang = body.get("lang")
+    return body.get("name"), lang if lang in ("zh-Hans", "zh-Hant") else None
 
 
 @router.post("/auth/device")
@@ -2307,7 +2321,8 @@ async def auth_device(request: Request, response: Response) -> dict:
     A new account is named the body's ``name`` (JSON ``{"name": ...}``, the
     guest name the app played under) when it passes the display-name checks
     and no account shows it; otherwise, or with no usable body, a
-    server-assigned unique name. A refused name is never an error, and the
+    server-assigned unique name, Chinese when the body's ``lang`` is
+    "zh-Hans" or "zh-Hant" (the app's interface language). A refused name is never an error, and the
     answer says only the name given. A sign-in ignores the body.
 
     404 unless ``SHENGJI_DEVICE_ACCOUNTS=1``. 403 unless the request
@@ -2335,10 +2350,10 @@ async def auth_device(request: Request, response: Response) -> dict:
         return {"user": await account_payload(STORE, user)}
     if not DEVICE_HOURLY.allow(ip) or not DEVICE_DAILY.allow(ip):
         raise HTTPException(status_code=429, detail="Too many new accounts; play as a guest for now.")
-    wanted = await _wanted_device_name(request)
+    wanted, lang = await _device_wants(request)
     token = secrets.token_urlsafe(32)
     try:
-        user, session = await STORE.run(STORE.create_device_account, token, None, None, wanted)
+        user, session = await STORE.run(STORE.create_device_account, token, None, None, wanted, lang)
     except DisplayNameError as exc:
         log.warning("device account not created: no free name")
         raise HTTPException(status_code=503, detail="No account available; play as a guest.") from exc

@@ -189,7 +189,7 @@ def test_where_companions_show_is_stored_on_the_account(accounts_on, keypair, cl
     monkeypatch.setenv("COLLECTION_ACCOUNTS", "7, 1")
     private_pem, _ = keypair
     session = {"cookie": _session_cookie(accounts_on, client, private_pem)}
-    assert client.get("/api/me", headers=session).json()["companions"] == "team"
+    assert client.get("/api/me", headers=session).json()["companions"] == "individual"
     assert client.put("/api/me/look", json={"companions": "loud"}, headers=session).status_code == 400
     resp = client.put("/api/me/look", json={"companions": "off"}, headers=session)
     assert resp.status_code == 200 and resp.json()["companions"] == "off"

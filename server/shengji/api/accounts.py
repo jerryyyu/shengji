@@ -172,10 +172,10 @@ LOOK_UNLOCKS: dict[str, tuple[str, int]] = {
 # record and its columns exist for everyone either way.
 COLLECTION_ENV = "COLLECTION_ENABLED"
 COLLECTION_ACCOUNTS_ENV = "COLLECTION_ACCOUNTS"
-# Where a player's own screen draws companions at the table (the table
-# placement itself is not built yet): beside the team, beside each seat, or
-# not at all. NULL in ``users.companions`` means the first.
-COMPANION_MODES = ("team", "individual", "off")
+# Where a player's own screen draws companions at the table: each beside its
+# player's nameplate, together in each team's corner, or not at all. NULL in
+# ``users.companions`` means the first.
+COMPANION_MODES = ("individual", "team", "off")
 
 
 class AuthError(Exception):

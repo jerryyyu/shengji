@@ -1,7 +1,7 @@
 // Where your own screen draws companions at the table: an account keeps it
-// on the server, a guest on this device. It shapes only this screen: the
-// table draws Team view (`TableCompanions.tsx`); Individual draws nothing
-// yet, and Off nothing.
+// on the server, a guest on this device. The Collection shows it as one
+// switch, Show at the table: Off is off, and every other mode (an older
+// "team" or "individual") is on, drawn by each player (`TableCompanions.tsx`).
 import { useSyncExternalStore } from "react";
 import type { AuthUser } from "../auth";
 import { writeMode } from "./writes";
@@ -24,6 +24,9 @@ function subscribe(fn: () => void): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);
 }
+
+/** Whether `mode` draws companions at the table. */
+export const shownAtTable = (mode: CompanionMode): boolean => mode !== "off";
 
 /** The mode in force for `user` (null for a guest). */
 export function useCompanionMode(user: AuthUser | null): CompanionMode {

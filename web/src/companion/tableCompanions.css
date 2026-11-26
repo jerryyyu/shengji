@@ -1,19 +1,30 @@
-/* The companions' two corners of the felt: yours lower left, between the
-   left seat and your hand; theirs upper right, under the top bar and above
-   the right seat. They sit under everything else on the felt and take no
-   taps. A figure stands on its own bottom edge, so a growing one rises. */
+/* The companions by their players' nameplates. They sit under everything
+   else on the felt and take no taps. */
 .table-companions { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
-.tc-team { position: absolute; display: flex; align-items: flex-end; gap: 0; }
-.tc-fig { display: block; line-height: 0; }
-.tc-flip { transform: scaleX(-1); }
-.tc-us { left: 56px; bottom: 112px; }
-.tc-them { right: 56px; top: 44px; }
-.tablet-table .tc-us { left: 40px; bottom: 236px; }
-.tablet-table .tc-them { right: 40px; top: 24px; }
 
-/* The moves at the table are Web Animations of this box (`MOVES` in
-   TableCompanions.tsx) round a still drawing. It is its own layer from the
-   start, so a move repaints nothing as it starts or ends; a jump and its
+/* A figure's hop, cheer and fidget are Web Animations of this box (`MOVES`
+   in TableCompanions.tsx) round a still drawing. It is its own layer from
+   the start, so a move repaints nothing as it starts or ends; a jump and its
    confetti may leave the box, so nothing clips it. */
-.tc-fig { contain: layout; }
 .tc-move { display: block; line-height: 0; transform-origin: 50% 100%; will-change: transform; }
+
+/* By each player: a figure is placed by the transform of its walk box
+   (TableCompanions.tsx `Walker`), so every walk is the compositor's. */
+.tc-seat { position: absolute; left: 0; top: 0; }
+.tc-walk { position: absolute; left: 0; top: 0; display: block; line-height: 0; will-change: transform; }
+.tc-face { display: block; line-height: 0; transform-origin: 50% 100%; will-change: transform; }
+/* your own companion's tag, over its head and never mirrored */
+.tc-you {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #14171e;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 15px;
+  white-space: nowrap;
+}

@@ -43,7 +43,7 @@ export const LOOK_UNLOCKS: Record<string, { count: UnlockCount; of: number }> = 
 
 /** Where your own screen draws companions at the table (the server's
  *  `accounts.COMPANION_MODES`); the first is the default. */
-export const COMPANION_MODES = ["team", "individual", "off"] as const;
+export const COMPANION_MODES = ["individual", "team", "off"] as const;
 export type CompanionMode = (typeof COMPANION_MODES)[number];
 
 export interface Look {

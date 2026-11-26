@@ -373,7 +373,7 @@ export default function App() {
   // on them leads back to the game.
   const tabPage = homeRoute === null ? null
     : homeRoute.tab === "leaderboard" ? <Leaderboard />
-    : homeRoute.tab === "collection" ? <CollectionPage kind={homeRoute.kind ?? null} />
+    : homeRoute.tab === "collection" ? <CollectionPage />
     : <MePage section={homeRoute.section} />;
 
   let screen: ReactNode;

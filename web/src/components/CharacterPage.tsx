@@ -1,33 +1,22 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import type { AuthUser } from "../auth";
 import { Companion, Portrait } from "../companion/Companion";
 import type { Pose } from "../companion/Companion";
 import { DRAWINGS } from "../companion/kinds";
-import type { Colour, CompanionKind } from "../companion/look";
+import { parseLook } from "../companion/look";
+import type { Colour, CompanionKind, LookEntry } from "../companion/look";
+import { guestName } from "../guestName";
 import { isZh, useT } from "../i18n";
 import type { MessageKey } from "../i18n";
+import { prefersReducedMotion } from "../motion";
 
-/** Where a character stands for this viewer, which picks the page's foot:
- *  Equip, Equipped, the unlock line, or (the Shop's, not drawn yet) a price. */
-export type Ownership = "owned" | "equipped" | "store" | "locked";
+/** Where a look stands for this viewer, which picks the one button: Use, In
+ *  use, the unlock line, Sign in to use, or (the Shop's, not drawn yet) a price. */
+export type Ownership = "owned" | "equipped" | "store" | "locked" | "guest";
 
 const KIND_NAME: Record<CompanionKind, MessageKey> = {
   tractor: "home.kindTractor", bun: "home.kindBun", chick: "home.kindChick", sparrow: "home.kindSparrow",
-};
-const REACTION: Record<CompanionKind, MessageKey> = {
-  tractor: "home.reactTractor", bun: "home.reactBun", chick: "home.reactChick", sparrow: "home.reactSparrow",
-};
-const POSES: readonly { pose: Pose; name: MessageKey | null }[] = [
-  { pose: "idle", name: "home.poseIdle" }, { pose: "hop", name: "home.poseHop" },
-  { pose: "cheer", name: "home.poseCheer" }, { pose: "sleep", name: "home.poseSleep" },
-  { pose: "react", name: null },
-];
-
-/** The partner a try-on stands the character beside: the Tractor, or for
- *  the Tractor itself the Bun. */
-const TRY_PARTNER: Record<CompanionKind, { kind: CompanionKind; colour: Colour }> = {
-  tractor: { kind: "bun", colour: "plain" }, bun: { kind: "tractor", colour: "red" },
-  chick: { kind: "tractor", colour: "red" }, sparrow: { kind: "tractor", colour: "red" },
 };
 
 export const kindName = (t: ReturnType<typeof useT>, kind: CompanionKind): string => t(KIND_NAME[kind]);
@@ -38,10 +27,28 @@ export function colourName(kind: CompanionKind, colour: Colour): string {
   return isZh() ? name.zh : name.en;
 }
 
-/** One swatch of the character's colours: its portrait, a lock when not yet earned. */
-export interface Swatch { colour: Colour; label: string; locked: boolean }
+/** A look's one status line: its companion and its colour. */
+export const lookName = (t: ReturnType<typeof useT>, id: string): string => {
+  const { kind, colour } = parseLook(id);
+  return t("home.lookShown", { kind: kindName(t, kind), colour: colourName(kind, colour) });
+};
 
-/** A lock badge on a swatch not yet earned. */
+/** How far a locked look's count has come, for a signed-in player only. */
+export function progressText(t: ReturnType<typeof useT>, entry: LookEntry, user: AuthUser | null): string {
+  if (!entry.needs || !user) return "";
+  if (entry.needs.count === "ranked_wins") return t("home.lookRankedWin");
+  const n = Math.min(user.rounds_played ?? 0, entry.needs.of);
+  return t("home.lookRounds", { n, of: entry.needs.of });
+}
+
+/** What the one button may do for `entry` when `inUse` is worn. */
+export function ownershipOf(entry: LookEntry, inUse: string, user: AuthUser | null): Ownership {
+  if (!user) return "guest";
+  if (!entry.unlocked) return "locked";
+  return entry.id === inUse ? "equipped" : "owned";
+}
+
+/** A lock badge on a colour not yet earned. */
 export function LockBadge() {
   return (
     <svg className="coll-lock" viewBox="0 0 16 16" aria-hidden="true">
@@ -51,72 +58,148 @@ export function LockBadge() {
   );
 }
 
-/** One character's page, opened from the Collection (and from the Shop once
- *  it is built): the live figure on felt, its states, a try-on beside a
- *  partner on your team's pads, its colours, and one foot that `ownership` picks.
- *  The page's one status line names the colour shown, or for a locked one
- *  says how far its count has come (`unlock`). `onEquip` is absent where
- *  there is nothing to store (a guest). */
-export default function CharacterPage({ kind, colour, ownership, swatches, phone, onColour, onEquip, price, unlock }: {
-  kind: CompanionKind; colour: Colour; ownership: Ownership; swatches: readonly Swatch[];
-  phone: boolean; onColour: (colour: Colour) => void; onEquip?: () => void; price?: ReactNode; unlock?: string;
+/** The tick on what is in use. */
+export function Tick() {
+  return (
+    <svg className="coll-tick" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="8" />
+      <path d="M4.5 8.2l2.3 2.3 4.7-4.9" />
+    </svg>
+  );
+}
+
+/** A companion's colours. A tap only shows one (the gold ring); the tick
+ *  marks the one in use. A guest hears each colour's name alone. */
+export function Swatches({ entries, shown, inUse, user, size, className = "", onPick }: {
+  entries: readonly LookEntry[]; shown: string; inUse: string; user: AuthUser | null; size: number; className?: string;
+  onPick: (entry: LookEntry) => void;
 }) {
   const t = useT();
-  const partner = TRY_PARTNER[kind];
-  const status = ownership === "locked" && unlock ? unlock : colourName(kind, colour);
-  const [pose, setPose] = useState<Pose>("idle");
-  const [tryOn, setTryOn] = useState(false);
-  let foot: ReactNode = null;
-  if (ownership === "locked") {
-    foot = null;
-  } else if (ownership === "store") {
-    foot = price ?? null;
-  } else if (onEquip) {
-    foot = (
-      <button type="button" className={`btn big char-foot${ownership === "equipped" ? " done" : " gold"}`}
-              disabled={ownership === "equipped"} onClick={onEquip}>
-        {ownership === "equipped" ? t("home.equipped") : t("home.equip")}
-      </button>
-    );
+  return (
+    <div className={`coll-swatches ${className}`} role="radiogroup" aria-label={t("home.lookColours")}>
+      {entries.map((entry) => {
+        const { kind, colour } = parseLook(entry.id);
+        const name = colourName(kind, colour);
+        const progress = entry.unlocked ? "" : progressText(t, entry, user);
+        return (
+          <button key={entry.id} type="button" role="radio" aria-checked={entry.id === shown}
+                  aria-label={progress ? t("home.lookLocked", { name, progress }) : name}
+                  className={`coll-swatch${entry.id === shown ? " on" : ""}${entry.unlocked ? "" : " locked"}`}
+                  onClick={() => onPick(entry)}>
+            <Portrait look={entry.id} size={size} />
+            {entry.unlocked ? null : <LockBadge />}
+            {entry.id === inUse ? <Tick /> : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The one button: Use, In use (inert), the locked look's unlock line
+ *  (inert), or for a guest Sign in to use. */
+export function UseButton({ entry, ownership, user, onUse, price }: {
+  entry: LookEntry; ownership: Ownership; user: AuthUser | null; onUse: () => void; price?: ReactNode;
+}) {
+  const t = useT();
+  if (ownership === "store") return price ? <>{price}</> : null;
+  let label: string;
+  let act: (() => void) | null = null;
+  if (ownership === "guest") {
+    label = t("home.signInToUse");
+    act = () => guestName.open("collection");
+  } else if (ownership === "locked") {
+    label = entry.needs?.count === "ranked_wins" ? t("home.unlockRankedWin")
+      : t("home.unlockRounds", { of: entry.needs?.of ?? 0, n: Math.min(user?.rounds_played ?? 0, entry.needs?.of ?? 0) });
+  } else if (ownership === "equipped") {
+    label = t("home.inUse");
+  } else {
+    label = t("home.use");
+    act = onUse;
   }
   return (
+    <div className="coll-use-row">
+      <button type="button" className={`btn big coll-use${act ? " gold" : " done"}`} disabled={!act} onClick={act ?? undefined}>
+        {label}
+      </button>
+    </div>
+  );
+}
+
+/** The moves a stage plays by itself, one after another, each for its time. */
+const CYCLE: readonly [Pose, number][] = [["idle", 2200], ["hop", 900], ["idle", 1800], ["cheer", 1500], ["idle", 1800],
+  ["react", 1800], ["idle", 1800], ["sleep", 2400]];
+
+/** A live figure on felt that plays its moves in turn by itself (a tap plays
+ *  the next at once), still under Reduce Motion and while the page is hidden. */
+export function Stage({ kind, colour, size, label, partner }: {
+  kind: CompanionKind; colour: Colour; size: number; label: string;
+  partner?: { kind: CompanionKind; colour: Colour; size: number } | null;
+}) {
+  const [step, setStep] = useState(0);
+  const timer = useRef(0);
+  const [pose] = CYCLE[step % CYCLE.length];
+  useEffect(() => {
+    if (prefersReducedMotion()) return;
+    const go = () => {
+      window.clearTimeout(timer.current);
+      if (document.visibilityState === "hidden") return;
+      timer.current = window.setTimeout(() => setStep((s) => s + 1), CYCLE[step % CYCLE.length][1]);
+    };
+    go();
+    document.addEventListener("visibilitychange", go);
+    return () => { window.clearTimeout(timer.current); document.removeEventListener("visibilitychange", go); };
+  }, [step]);
+  const next = () => setStep((s) => s + 1);
+  return (
+    <div className={`coll-felt char-stage${partner ? " char-try" : ""}`}>
+      <button type="button" className="coll-figure" aria-label={label} onClick={next}>
+        <Companion kind={kind} colour={colour} size={size} state={pose} team={partner ? "us" : undefined} />
+      </button>
+      {partner ? (
+        <span className="char-partner" aria-hidden="true">
+          <Companion kind={partner.kind} colour={partner.colour} size={partner.size} team="us" />
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** The partner a try-on stands the character beside: the Tractor, or for
+ *  the Tractor itself the Bun. */
+const TRY_PARTNER: Record<CompanionKind, { kind: CompanionKind; colour: Colour }> = {
+  tractor: { kind: "bun", colour: "plain" }, bun: { kind: "tractor", colour: "red" },
+  chick: { kind: "tractor", colour: "red" }, sparrow: { kind: "tractor", colour: "red" },
+};
+
+/** The one character page, the Collection's body (and the Shop's, with a
+ *  price for its button, once it is built): the live figure on felt, Try on
+ *  your table, `strip` (the Collection's companions), the colours, the one
+ *  status line (the look shown) and the one button. A tap on a colour only
+ *  shows it; the button puts it in use. */
+export default function CharacterPage({ kind, shown, entries, inUse, user, phone, strip, onShow, onUse, price }: {
+  kind: CompanionKind; shown: string; entries: readonly LookEntry[]; inUse: string; user: AuthUser | null; phone: boolean;
+  strip?: ReactNode; onShow: (entry: LookEntry) => void; onUse: (entry: LookEntry) => void; price?: ReactNode;
+}) {
+  const t = useT();
+  const [tryOn, setTryOn] = useState(false);
+  const entry = entries.find((e) => e.id === shown) ?? entries[0];
+  const { colour } = parseLook(entry.id);
+  const partner = tryOn ? { ...TRY_PARTNER[kind], size: phone ? 100 : 118 } : null;
+  return (
     <div className="char-page">
-      <div className={`coll-felt char-stage${tryOn ? " char-try" : ""}`}>
-        <button type="button" className="coll-figure" aria-label={status}
-                onClick={() => setPose("hop")}>
-          <Companion kind={kind} colour={colour} size={tryOn ? (phone ? 112 : 132) : phone ? 176 : 208} state={pose}
-                     team={tryOn ? "us" : undefined} onPoseEnd={() => setPose("idle")} />
-        </button>
-        {tryOn ? (
-          <span className="char-partner" aria-hidden="true">
-            <Companion kind={partner.kind} colour={partner.colour} size={phone ? 100 : 118} team="us" />
-          </span>
-        ) : null}
-      </div>
-      <div className="char-poses" role="group" aria-label={kindName(t, kind)}>
-        {POSES.map(({ pose: p, name }) => (
-          <button key={p} type="button" className={`char-chip${p === "react" ? " sig" : ""}${p === pose ? " on" : ""}`}
-                  aria-pressed={p === pose} onClick={() => setPose(p)}>
-            {name ? t(name) : t(REACTION[kind])}
-          </button>
-        ))}
+      <Stage kind={kind} colour={colour} size={tryOn ? (phone ? 112 : 132) : phone ? 176 : 208} label={lookName(t, entry.id)}
+             partner={partner} />
+      <div className="char-poses">
         <button type="button" className={`char-chip${tryOn ? " on" : ""}`} aria-pressed={tryOn}
                 onClick={() => setTryOn((v) => !v)}>
           {t("home.tryOnTable")}
         </button>
       </div>
-      <div className="coll-swatches char-swatches" role="radiogroup" aria-label={t("home.lookColours")}>
-        {swatches.map((s) => (
-          <button key={s.colour} type="button" role="radio" aria-checked={s.colour === colour} aria-label={s.label}
-                  className={`coll-swatch${s.colour === colour ? " on" : ""}${s.locked ? " locked" : ""}`}
-                  onClick={() => onColour(s.colour)}>
-            <Portrait look={`${kind}/${s.colour}`} size={56} />
-            {s.locked ? <LockBadge /> : null}
-          </button>
-        ))}
-      </div>
-      <p className="coll-status char-status" role="status">{status}</p>
-      {foot ? <div className="char-foot-row">{foot}</div> : null}
+      {strip}
+      <Swatches entries={entries} shown={entry.id} inUse={inUse} user={user} size={56} className="char-swatches" onPick={onShow} />
+      <p className="coll-status" role="status">{lookName(t, entry.id)}</p>
+      <UseButton entry={entry} ownership={ownershipOf(entry, inUse, user)} user={user} onUse={() => onUse(entry)} price={price} />
     </div>
   );
 }

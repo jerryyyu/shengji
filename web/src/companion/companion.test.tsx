@@ -147,48 +147,47 @@ describe("the Collection tab", () => {
     }) as unknown as typeof fetch;
   });
 
-  it("shows the Tractor on the felt, your row as others see it, the colours and the one control", async () => {
+  const swatch = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".coll-swatch")]
+    .find((s) => s.getAttribute("aria-label")!.startsWith(name))!;
+
+  it("shows the Tractor on the felt, the companions, its colours, the one status line, the button and the switch", async () => {
     authState.current = { status: "in", clientId: "cid", user };
     await draw(<CollectionPage />);
     expect(host.querySelector(".large-title")?.textContent).toBe("Collection");
     expect(host.querySelector(".coll-felt svg.cmp.cmp-idle")).not.toBeNull();
-    const row = host.querySelector(".coll-row .lb-row")!;
-    expect(row.classList.contains("me")).toBe(false);
-    expect(row.textContent).toBe("4Jerry930");
     const swatches = [...host.querySelectorAll<HTMLButtonElement>(".coll-swatch")];
     expect(swatches).toHaveLength(COMPANIONS.tractor.length);
     expect(swatches.filter((s) => s.classList.contains("locked")).map((s) => s.getAttribute("aria-label"))).toEqual([
       "Lantern orange, 14 of 25 rounds", "Jade, 14 of 50 rounds", "Blue and white, 14 of 100 rounds", "Ink black, A ranked win",
     ]);
     expect(swatches[0].getAttribute("aria-checked")).toBe("true");
-    expect(host.querySelector(".coll-status")?.textContent).toBe("");
-    expect([...host.querySelectorAll(".coll-mode .segmented-btn")].map((b) => b.textContent)).toEqual(["Team", "Individual", "Off"]);
-    // no visible words under the swatches: the count is the felt's one status line
+    expect(host.querySelector(".coll-status")?.textContent).toBe("Tractor · Icon red");
+    expect(host.querySelector(".coll-use")?.textContent).toBe("In use");
+    expect(host.querySelector(".coll-at-table")?.textContent).toBe("Show at the table");
+    // no visible words on the swatches
     expect(host.querySelector(".coll-swatches")?.textContent).toBe("");
   });
 
-  it("a locked colour is shown with its count; an unlocked one is equipped", async () => {
+  it("a locked colour's button names what unlocks it; an unlocked one is put in use by Use", async () => {
     authState.current = { status: "in", clientId: "cid", user };
     await draw(<CollectionPage />);
-    const swatch = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".coll-swatch")]
-      .find((s) => s.getAttribute("aria-label")!.startsWith(name))!;
     await act(async () => { swatch("Lantern orange").click(); });
-    expect(host.querySelector(".coll-status")?.textContent).toBe("14 of 25 rounds");
+    expect(host.querySelector(".coll-use")?.textContent).toBe("Play 25 rounds to unlock · 14 of 25");
     expect(fetches.some((f) => f.url === "/api/me/look")).toBe(false);
-    await act(async () => { swatch("Imperial yellow").click(); await new Promise((r) => setTimeout(r, 0)); });
+    await act(async () => { swatch("Imperial yellow").click(); });
+    expect(fetches.some((f) => f.url === "/api/me/look")).toBe(false);
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use")!.click(); await new Promise((r) => setTimeout(r, 0)); });
     const put = fetches.find((f) => f.url === "/api/me/look")!;
     expect(put.init?.method).toBe("PUT");
     expect(JSON.parse(String(put.init?.body))).toEqual({ look: "tractor/yellow" });
     expect(updated).toHaveBeenCalledWith(expect.objectContaining({ look: "tractor/yellow" }));
-    expect(host.querySelector(".coll-status")?.textContent).toBe("");
   });
 
-  it("a guest's choice of where companions show stays on the device", async () => {
+  it("a guest's Show at the table stays on the device", async () => {
     await draw(<CollectionPage />);
-    expect(host.querySelector(".coll-row")).toBeNull();
-    const off = [...host.querySelectorAll<HTMLButtonElement>(".coll-mode .segmented-btn")].find((b) => b.textContent === "Off")!;
-    await act(async () => { off.click(); });
-    expect(off.getAttribute("aria-pressed")).toBe("true");
+    const sw = host.querySelector<HTMLButtonElement>(".coll-at-table")!;
+    await act(async () => { sw.click(); });
+    expect(sw.getAttribute("aria-checked")).toBe("false");
     expect(window.localStorage.getItem("shengji.companions")).toBe("off");
     expect(fetches.some((f) => f.url === "/api/me/look")).toBe(false);
   });
@@ -252,7 +251,13 @@ describe("entitlements and writes stay with their session and their order", () =
 
   const swatch = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".coll-swatch")]
     .find((s) => s.getAttribute("aria-label")!.startsWith(name))!;
-  const mode = (t: string) => [...host.querySelectorAll<HTMLButtonElement>(".coll-mode .segmented-btn")].find((b) => b.textContent === t)!;
+  // a colour is put in use by its swatch, then Use
+  const pick = async (name: string) => {
+    await act(async () => { swatch(name).click(); });
+    const use = host.querySelector<HTMLButtonElement>(".coll-use");
+    if (use && !use.disabled) await act(async () => { use.click(); });
+  };
+  const toggle = () => host.querySelector<HTMLButtonElement>(".coll-at-table")!;
   const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
   const puts = () => held.filter((h) => h.url === "/api/me/look");
   const gets = () => held.filter((h) => h.url === "/api/me");
@@ -265,12 +270,15 @@ describe("entitlements and writes stay with their session and their order", () =
 
   it("a tenth round earned while signed in unlocks yellow without a reload", async () => {
     await draw(<CollectionPage />);
+    await flush();
     expect(swatch("Imperial yellow").classList.contains("locked")).toBe(true);
     server = { ...base, rounds_played: 10 };
-    await act(async () => { swatch("Imperial yellow").click(); });
-    await flush();
+    const { refreshAccount } = await import("./writes");
+    await act(async () => { await refreshAccount(); });
     await draw(<CollectionPage />);
     expect(swatch("Imperial yellow").classList.contains("locked")).toBe(false);
+    await pick("Imperial yellow");
+    await flush();
     expect(server.look).toBe("tractor/yellow");
     expect(authState.current.user?.look).toBe("tractor/yellow");
   });
@@ -288,7 +296,7 @@ describe("entitlements and writes stay with their session and their order", () =
       holdPuts = true;
       await draw(<CollectionPage />);           // the open's read starts, with red
       expect(gets()).toHaveLength(1);
-      await act(async () => { swatch("Paddy green").click(); });
+      await pick("Paddy green");
       await draw(<CollectionPage />);
       const put = puts()[0];
       if (order === "the read answers last") {
@@ -311,16 +319,18 @@ describe("entitlements and writes stay with their session and their order", () =
 
   for (const first of [200, 500] as const) {
     it(`rapid mode changes end at the last choice on the server and the screen (first answer ${first})`, async () => {
+      server = { ...base, companions: "off" };
+      authState.current = { status: "in", clientId: "cid", user: { ...base, companions: "off" } };
       await draw(<CollectionPage />);
       await flush();
       holdPuts = true;
-      await act(async () => { mode("Individual").click(); });
+      await act(async () => { toggle().click(); });     // on
       await draw(<CollectionPage />);
-      await act(async () => { mode("Off").click(); });
+      await act(async () => { toggle().click(); });     // off
       await draw(<CollectionPage />);
-      await act(async () => { mode("Team").click(); });
+      await act(async () => { toggle().click(); });     // on
       await draw(<CollectionPage />);
-      await act(async () => { mode("Off").click(); });
+      await act(async () => { toggle().click(); });     // off
       // one write on the wire; the latest choice waits for it
       expect(puts().map((h) => h.body)).toEqual([{ companions: "individual" }]);
       expect(authState.current.user?.companions).toBe("off");
@@ -334,8 +344,8 @@ describe("entitlements and writes stay with their session and their order", () =
       expect(authState.current.user?.companions).toBe("off");
       // a failed change rolls back to the last confirmed choice, not an older one
       await draw(<CollectionPage />);
-      await act(async () => { mode("Team").click(); });
-      expect(authState.current.user?.companions).toBe("team");
+      await act(async () => { toggle().click(); });
+      expect(authState.current.user?.companions).toBe("individual");
       await act(async () => { puts()[2].reply(500); });
       await flush();
       expect(authState.current.user?.companions).toBe("off");
@@ -350,7 +360,7 @@ describe("entitlements and writes stay with their session and their order", () =
     await flush();
     holdPuts = true;
     holdGets = true;
-    await act(async () => { swatch("Paddy green").click(); });
+    await pick("Paddy green");
     const { refreshAccount } = await import("./writes");
     let read: Promise<unknown> = Promise.resolve();
     await act(async () => { read = refreshAccount(); });          // captures red
@@ -405,10 +415,11 @@ describe("entitlements and writes stay with their session and their order", () =
     await flush();
     server = { ...server, rounds_played: 10 };       // the client still shows 9
     holdGets = true;
-    await act(async () => { swatch("Imperial yellow").click(); });   // locked here: reads first
+    const { equip } = await import("./writes");
+    await act(async () => { void equip("tractor/yellow", false); });   // locked here: reads first
     const unlockRead = gets()[gets().length - 1];
     holdGets = false;
-    await act(async () => { swatch("Paddy green").click(); });        // a newer choice, saved at once
+    await pick("Paddy green");                                         // a newer choice, saved at once
     await flush();
     expect(server.look).toBe("tractor/green");
     await act(async () => { unlockRead.reply(); });
@@ -424,9 +435,10 @@ describe("entitlements and writes stay with their session and their order", () =
     await flush();
     server = { ...server, rounds_played: 10 };
     holdGets = true;
-    await act(async () => { swatch("Imperial yellow").click(); });
+    const { equip } = await import("./writes");
+    await act(async () => { void equip("tractor/yellow", false); });
     const unlockRead = gets()[gets().length - 1];
-    await act(async () => { swatch("Icon red").click(); });           // the equipped one
+    await act(async () => { swatch("Icon red").click(); });           // the one in use
     await act(async () => { unlockRead.reply(); });
     await flush();
     expect(server.look).toBe("tractor/red");
@@ -457,7 +469,7 @@ describe("entitlements and writes stay with their session and their order", () =
     await flush();
     updated.mockClear();
     holdPuts = true;
-    await act(async () => { swatch("Paddy green").click(); });
+    await pick("Paddy green");
     expect(puts()).toHaveLength(1);
     updated.mockClear();
     act(() => { forgetPrivateSession(); });
@@ -470,7 +482,7 @@ describe("entitlements and writes stay with their session and their order", () =
     // and B's own choice is sent at once, not queued behind A's
     await draw(<CollectionPage />);
     await flush();
-    await act(async () => { swatch("Enamel blue").click(); });
+    await pick("Enamel blue");
     expect(puts().map((h) => h.body)).toEqual([{ look: "tractor/green" }, { look: "tractor/blue" }]);
     act(() => { forgetPrivateSession(); });
     updated.mockClear();

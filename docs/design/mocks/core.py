@@ -619,32 +619,38 @@ def f9_me():
 
 def f11_collection():
     """The Collection tab (Jerry 2026-11-26), for a viewer it is shown to (an allowlisted account until it is on
-    for everyone): the Tractor on a corner of felt, your leaderboard row as others see it, the colours, and the
-    one Team · Individual · Off control. No shop, no prices, nothing 'coming'."""
+    for everyone), one page: the look shown on a corner of felt, Try on your table, the four companions, the shown
+    companion's colours, one status line, the one button (Use / In use / the unlock line / Sign in to use) and the
+    one switch, Show at the table. A tap only shows; the button puts in use; a tick marks what is in use."""
     felt_box = ('<div style="border-radius:18px;background:radial-gradient(ellipse at 50% 35%,#2f7a52,#123a26);padding:18px 0 10px;'
-                'display:flex;flex-direction:column;align-items:center;gap:4px"><span style="font-size:96px;line-height:1">🚜</span>'
-                '<span style="font-size:14px;color:#e8ede8;min-height:18px">{status}</span></div>')
-    row = ('<div style="display:flex;align-items:center;gap:12px;background:#242a35;border-radius:12px;padding:10px 14px">'
-           '<span style="width:24px;height:24px;border-radius:12px;background:#c6cdd8;color:#1b1f27;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center">4</span>'
-           '<span style="width:28px;height:28px;border-radius:14px;background:#2f7a52;display:flex;align-items:center;justify-content:center;font-size:14px">🚜</span>'
-           '<span style="flex:1;font-size:16px">Cool Tractor</span><span style="font-weight:700">930</span></div>')
-    grounds = ("#2f7a52", "#f0c25a", "#f4ead2", "#a3232b", "#2c377c", "#2a2024", "#24408f", "#efe9da")
-    def swatches(on=0, locked=(4, 5, 6, 7)):
-        return ('<div style="display:flex;flex-wrap:wrap;gap:12px">' + "".join(
-            f'<span style="position:relative;width:44px;height:44px;border-radius:22px;background:{g};display:flex;align-items:center;justify-content:center;'
-            f'font-size:20px;{"box-shadow:0 0 0 2px " + GOLD if i == on else ""}">🚜'
-            + ('<span style="position:absolute;right:-4px;bottom:-4px;font-size:12px">🔒</span>' if i in locked else "") + '</span>'
+                'display:flex;flex-direction:column;align-items:center;gap:4px"><span style="font-size:96px;line-height:1">{fig}</span></div>')
+    chip = '<div style="text-align:center"><span style="border:1px solid #333b49;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600">Try on your table</span></div>'
+    kinds = ('<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center;font-size:13px;font-weight:600">' + "".join(
+        f'<span><span style="display:inline-flex;width:52px;height:52px;border-radius:26px;background:#2f7a52;align-items:center;justify-content:center;font-size:24px;'
+        f'{"box-shadow:0 0 0 2px " + GOLD if on else ""}">{e}</span><br>{n}{" ✓" if tick else ""}</span>'
+        for e, n, on, tick in (("🚜", "Tractor", False, False), ("🥟", "Bun", True, True), ("🐤", "Chick", False, False), ("🐦", "Sparrow", False, False)))
+        + '</div>')
+    grounds = ("#b42a31", "#1f6157", "#f0c25a", "#2f7a52")
+    def swatches(on=0):
+        return ('<div style="display:flex;justify-content:center;gap:14px">' + "".join(
+            f'<span style="position:relative;width:56px;height:56px;border-radius:28px;background:{g};display:flex;align-items:center;justify-content:center;'
+            f'font-size:24px;{"box-shadow:0 0 0 2px " + GOLD if i == on else ""}">🥟'
+            + ('<span style="position:absolute;right:-2px;top:-2px;font-size:12px">✓</span>' if i == 0 else "") + '</span>'
             for i, g in enumerate(grounds)) + '</div>')
-    mode = ('<div style="display:flex;padding:3px;border-radius:12px;background:#11141a;border:1px solid #333b49">'
-            + "".join(f'<span style="flex:1;text-align:center;padding:7px 0;border-radius:9px;font-size:14px;font-weight:700;'
-                      f'{"background:#2f3a4d" if i == 0 else "color:#9aa3b2"}">{t}</span>' for i, t in enumerate(("Team", "Individual", "Off")))
-            + '</div>')
-    page = phone(felt_box.format(status="") + row + swatches() + mode, active="Collection", title="Collection", user="CT", tabs=b.TABS_COLLECTION)
-    locked = phone(felt_box.format(status="14 of 25 rounds") + row + swatches(on=4) + mode, active="Collection", title="Collection", user="CT", tabs=b.TABS_COLLECTION)
+    def foot(status, button, gold):
+        return (f'<div style="text-align:center;font-size:14px;color:#e8ede8">{status}</div>'
+                f'<div style="text-align:center;border-radius:999px;padding:11px 0;font-weight:700;'
+                f'{"background:" + GOLD + ";color:#14171e" if gold else "background:#2a303c;color:#e8ede8"}">{button}</div>')
+    switch = ('<div style="display:flex;justify-content:space-between;align-items:center;background:#242a35;border-radius:12px;padding:12px 14px">'
+              '<span>Show at the table</span><span style="width:44px;height:26px;border-radius:13px;background:#34c759"></span></div>')
+    page = phone(felt_box.format(fig="🥟") + chip + kinds + swatches() + foot("Bun · Plain", "In use", False) + switch,
+                 active="Collection", title="Collection", user="CT", tabs=b.TABS_COLLECTION)
+    shown = phone(felt_box.format(fig="🥟") + chip + kinds + swatches(on=2) + foot("Bun · Taro", "Use", True) + switch,
+                  active="Collection", title="Collection", user="CT", tabs=b.TABS_COLLECTION)
     return [
-        ("Collection: the Tractor and its colours", [
-            shot(page, 390, 844, "Tap Collection", "The Tractor idles on the felt; tap it and it hops. One tap on a colour equips it."),
-            shot(locked, 390, 844, "Tap a locked colour", "It shows on the felt, and its count is the page's one status line."),
+        ("Collection: one page, one button, one switch", [
+            shot(page, 390, 844, "Tap Collection", "The look in use moves on the felt by itself; the tick marks it."),
+            shot(shown, 390, 844, "Tap a colour", "It only shows; Use puts it in use. A locked one's button says what unlocks it."),
         ]),
     ]
 

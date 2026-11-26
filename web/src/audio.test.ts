@@ -58,6 +58,9 @@ const fakeWindow = {
   },
   setTimeout: globalThis.setTimeout.bind(globalThis),
   clearTimeout: globalThis.clearTimeout.bind(globalThis),
+  // late-bound so fake timers reach the clock watchdog
+  setInterval: (fn: () => void, ms: number) => globalThis.setInterval(fn, ms),
+  clearInterval: (id: ReturnType<typeof setInterval>) => globalThis.clearInterval(id),
   AudioContext: FakeAudioContext,
 };
 
@@ -498,3 +501,110 @@ it("drops an announcement requested during an interruption", async () => {
   c.onstatechange?.();
   expect(started).toHaveBeenCalledTimes(0);
 });
+
+describe("a stuck context is revived", () => {
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  async function running() {
+    const audio = await freshModule();
+    Object.assign(globalThis, {
+      fetch: async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }),
+    });
+    const started: FakeAudioContext[] = [];
+    const proto = FakeAudioContext.prototype as unknown as Record<string, unknown>;
+    proto.decodeAudioData = async () => ({ duration: 0.05 });
+    proto.createBufferSource = function (this: FakeAudioContext) {
+      const owner = this;
+      const src = {
+        buffer: null, onended: null as null | (() => void),
+        connect() {}, disconnect() {}, stop() {},
+        start() { started.push(owner); setTimeout(() => src.onended?.(), 50); },
+      };
+      return src;
+    };
+    proto.destination = {};
+    FakeAudioContext.allowResume = true;
+    dispatch("click");
+    await wait(0);
+    const c = FakeAudioContext.last!;
+    expect(c.state).toBe("running");
+    c.onstatechange?.();
+    return { audio, c, started };
+  }
+
+  it("replaces a suspended context whose resume hangs on the next tap, and the next sound plays", async () => {
+    const { audio, c, started } = await running();
+    c.state = "suspended";
+    c.resume = () => new Promise<void>(() => {});
+    c.onstatechange?.();
+    audio.play(["H9"]); // dropped: the context that ran is held
+    await wait(RESUME_WAIT);
+    expect(started).toEqual([]);
+
+    dispatch("touchend");
+    await wait(0);
+    const fresh = FakeAudioContext.last!;
+    expect(fresh).not.toBe(c);
+    expect(fresh.state).toBe("running");
+
+    audio.play(["H9"]);
+    for (let i = 0; i < 20 && started.length === 0; i++) await wait(5);
+    expect(started).toEqual([fresh]);
+  });
+
+  it("replaces a context the first gesture made when its resume hangs, on a later gesture", async () => {
+    await freshModule();
+    const proto = FakeAudioContext.prototype as unknown as { resume: () => Promise<void> };
+    const resume = proto.resume;
+    proto.resume = () => new Promise<void>(() => {});
+    try {
+      // cold: no prewarm ran, so this gesture creates the context
+      dispatch("touchend");
+      await wait(0);
+      const first = FakeAudioContext.last!;
+      expect(first.state).toBe("suspended");
+
+      await wait(RESUME_WAIT);
+      dispatch("touchend");
+      expect(FakeAudioContext.last).not.toBe(first);
+    } finally {
+      proto.resume = resume;
+    }
+  });
+
+  it("detects a running context whose clock froze and replaces it", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "performance"] });
+    try {
+      const { audio, c, started } = await running();
+      const t0 = performance.now();
+      let frozenAt: number | null = null;
+      Object.defineProperty(c, "currentTime", {
+        get: () => frozenAt ?? (performance.now() - t0) / 1000,
+      });
+      audio.play(["H9"]);
+      for (let i = 0; i < 20 && started.length === 0; i++) await wait(5);
+      expect(started).toEqual([c]);
+
+      // a healthy clock is left alone
+      vi.advanceTimersByTime(4000);
+      expect(FakeAudioContext.last).toBe(c);
+
+      frozenAt = c.currentTime;
+      audio.play(["H9"]); // keeps the watchdog awake
+      vi.advanceTimersByTime(4000);
+      const fresh = FakeAudioContext.last!;
+      expect(fresh).not.toBe(c);
+      await wait(0);
+      expect(fresh.state).toBe("running");
+
+      started.length = 0;
+      audio.play(["H9"]);
+      for (let i = 0; i < 20 && started.length === 0; i++) await wait(5);
+      expect(started).toEqual([fresh]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+const RESUME_WAIT = 350;

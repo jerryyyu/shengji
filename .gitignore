@@ -30,12 +30,9 @@ server/runs/locks/
 docs/scaling_log/scaling.html
 docs/atlas_v2/atlas_v2.html
 
-# Training outputs and run logs (#688). The two served numpy weight files are the
-# exceptions: the Dockerfile copies them into the production image.
+# Training outputs and run logs (#688).
 server/*.npz
 server/snapshots_*/*
-!server/snapshots_v7w/ep02.npz
-!server/snapshots_v11pair/ep07.npz
 server/ckpt_*.progress.jsonl
 server/runs/logs/
 server/runs/*.lock

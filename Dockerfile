@@ -32,15 +32,6 @@ COPY server/pyproject.toml server/uv.lock* ./
 COPY server/shengji ./shengji
 # The operator's account-suspension tool, run through `fly ssh console`.
 COPY server/scripts/suspend_account.py ./scripts/suspend_account.py
-# Trained value head for the mc-vleaf hybrid (numpy weights, ~2MB — the
-# server does NOT install torch; see server/shengji/rl/npnet.py)
-COPY server/snapshots_v7w/ep02.npz ./snapshots_v7w/ep02.npz
-# Learned override (rl-override-v11pair). Numpy weights, ~2MB, parity with
-# torch asserted from committed fixtures in tests/test_npnet_prod_parity.py.
-# Only used when SHENGJI_BOT names it. Fly selects the compact W32 policy
-# through fly.toml; the source fallback remains mc for local launches that
-# omit the environment variable. The W32 package lives on the /data volume.
-COPY server/snapshots_v11pair/ep07.npz ./snapshots_v11pair/ep07.npz
 RUN uv sync --no-dev --frozen 2>/dev/null || uv sync --no-dev
 # The compiled extension, matched to this image's CPython. `fast.py` activates
 # it only when SHENGJI_FAST=1 and falls back silently otherwise, so a missing

@@ -290,3 +290,65 @@ def _r49_env():
     release-49 recipe the identities in this module are derived from)."""
     from test_release49_fly_config import fly_env
     return fly_env()
+
+
+@pytest.mark.parametrize("offset", [0, 1])
+def test_joint_lengths_reach_returned_hands_and_kitty(offset):
+    from shengji.rl.encode import CARD_INDEX
+    from shengji.train.belief_history import EFF
+    from shengji.train.belief_seq import sample_worlds
+    from test_world_history_legal import started
+
+    rnd, _ = started(7)
+    seat = (rnd.banker + offset) % 4
+    expected = []
+
+    class Uniform:
+        def marginals(self, inp):
+            return np.ones_like(inp["M"], dtype=float)
+
+    def length_draw(inp, mask, batch, rng):
+        # Generate feasible test quotas using only information available to the actor.
+        seed_worlds = sample_worlds(Uniform().marginals(inp), inp["n_c"], mask,
+                                    inp["sizes"], batch, rng)
+        suit = inp["card_feat"][:, 1:6].argmax(axis=1)
+        quotas = np.stack([seed_worlds[:, suit == s].sum(1) for s in range(5)], axis=1)
+        expected.extend(quotas)
+        return quotas
+
+    proposal = bn.SuitLengthProposal(Uniform(), rnd, seat, draw_lengths=length_draw,
+                                     seed=33, batch=4)
+    for row in range(5):
+        hands, kitty = proposal(rnd, seat, None)
+        counts = np.zeros_like(proposal.inp["K"])
+        for rel in (1, 2, 3):
+            for code in hands[(seat + rel) % 4]:
+                counts[CARD_INDEX[code], rel - 1] += 1
+        if offset:
+            for code in kitty:
+                counts[CARD_INDEX[code], 3] += 1
+        else:
+            assert kitty == rnd.buried
+        residual = counts - proposal.inp["K"]
+        assert (residual >= 0).all()
+        assert not residual[~proposal.M].any()
+        np.testing.assert_array_equal(residual.sum(1), proposal.inp["n_c"])
+        groups = np.array([EFF.index(rnd.ordering.eff_suit(c)) for c in bn._codes()])
+        actual = np.stack([residual[groups == s].sum(0) for s in range(5)])
+        np.testing.assert_array_equal(actual, expected[row])
+    assert not np.array_equal(expected[0], expected[1])
+
+    proposal.queue.clear()
+    proposal.draw_lengths = lambda *args: np.zeros((4, 5, 4), dtype=int)
+    with pytest.raises(bn.BeliefNumpyError, match="available slots or cards"):
+        proposal(rnd, seat, None)
+    assert not proposal.queue
+
+    # Balanced quotas can still require a receiver that the draw mask forbids.
+    from shengji.train.belief_seq import BeliefSeqError
+    group, receiver = np.argwhere(expected[0] > 0)[0]
+    proposal.M[groups == group, receiver] = False
+    proposal.draw_lengths = lambda *args: np.stack(expected[:4])
+    with pytest.raises(BeliefSeqError, match="infeasible state"):
+        proposal(rnd, seat, None)
+    assert not proposal.queue

@@ -25,10 +25,16 @@ A path is REFUSED, with the reason printed, when any of these holds for it or it
               HEAD, byte-identical to HEAD's blob, `cat-file blob` in the common dir streams bytes with the pinned
               sha256, and a remote-tracking main/HEAD ref or local main holds it (same path, or the ref contains
               HEAD).  Standalone clones, untracked, ignored and modified files stay pinned.
+              A sha256 match is also exempt (EXEMPT pin <sha12> vaulted at <path>) when the model vault
+              (SAFE_RM_VAULT, default ~/model-vault; inert where absent) lists the sha in MANIFEST.sha256 (every
+              line a strict `<sha256> <space|*><name>` record, the name taken literally with no '.', '..' or empty
+              component past one leading './', else the vault is ignored) and that copy is a regular file reached
+              without symlinks, outside R, hashing to the pin when read now.  Never
+              when R is inside the vault or the vault inside R.  Path pins are never exempt.
 Checks run per path immediately before its delete, so a queued list is re-validated at delete time.
 Every decision is appended to ~/.safe_rm.log.
 """
-import glob, hashlib, os, re, shutil, subprocess, sys, time
+import glob, hashlib, os, re, shutil, stat, subprocess, sys, time
 
 SKIP = {"Library", ".Trash", ".git", "node_modules", "__pycache__", ".cache"}
 
@@ -200,6 +206,8 @@ PIN_GLOBS = ("~/shengji-archive/*/commands.json ~/shengji-archive/*/slots*.json 
              "~/fleet/*/SHA256SUMS ~/fleet/*/launch.py")
 PIN_EXT = (".pt", ".npz", ".ckpt", ".safetensors", ".bin", ".npy", ".jsonl", ".tar")
 HEX = re.compile(r"\b[0-9a-f]{64}\b")
+# sha256sum/shasum record: digest, a space, the mode marker (space = text, '*' = binary), the filename as written
+MANIFEST_LINE = re.compile(r"([0-9a-f]{64}) ([ *])(.+)", re.S)
 
 
 def pin_files():
@@ -258,14 +266,99 @@ def pinned(r, typed):
         if h.hexdigest() in hexes:
             matched.append((fp, h.hexdigest(), {b1.hexdigest(), b256.hexdigest()}))
     recoverable = git_recoverable(r, matched)
+    vault = Vault(r)
     exempt = []
     for fp, digest, _ in matched:
         line = f"{fp} sha256 {digest[:12]} pinned by {hexes[digest]}"
         if fp in recoverable:
             exempt.append(f"{line}: {recoverable[fp]}")
+        elif vault.copy(digest):
+            exempt.append(f"{digest[:12]} vaulted at {vault.copy(digest)} ({fp}, pinned by {hexes[digest]})")
         else:
             hits.append(line)
     return hits, exempt
+
+
+def file_sha256(path):
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as fh:
+            for b in iter(lambda: fh.read(1 << 22), b""):
+                h.update(b)
+    except OSError:
+        return None
+    return h.hexdigest()
+
+
+class Vault:
+    """The model vault (SAFE_RM_VAULT, default ~/model-vault): a sha256 pin on a file under R is satisfied by a
+    vault copy that MANIFEST.sha256 lists under that sha, that is a regular file reached from the vault root with
+    no symlink on the way, whose realpath is outside R, and whose bytes hash to the pin when read now.  Inert
+    when the vault or its manifest is missing, and whenever R and the vault overlap in either direction."""
+
+    def __init__(self, r):
+        self.r, self.listed, self.verified = r, {}, {}
+        root = os.path.abspath(os.path.expanduser(os.environ.get("SAFE_RM_VAULT", "~/model-vault")))
+        self.root = root
+        real = os.path.realpath(root)
+        if os.path.islink(root) or not os.path.isdir(root) or under(real, r) or under(r, real):
+            return
+        manifest = os.path.join(root, "MANIFEST.sha256")
+        if os.path.islink(manifest) or not os.path.isfile(manifest):
+            return
+        try:
+            text = open(manifest, errors="surrogateescape", newline="").read()
+        except OSError:
+            return
+        listed = {}
+        for line in text.split("\n")[:-1] if text.endswith("\n") else text.split("\n"):
+            entry = MANIFEST_LINE.fullmatch(line)
+            name = entry and entry.group(3)
+            if not entry or not self.literal(name):
+                return
+            listed.setdefault(entry.group(1), []).append(name)
+        self.listed = listed
+
+    @staticmethod
+    def literal(name):
+        """True for a filename that names one vault path as written: relative, '/'-separated, no empty, '.' or
+        '..' component (one leading './' aside), no backslash escape and no control character.  A manifest with any
+        other line is unsupported and the whole vault is ignored."""
+        if name.startswith("/") or "\\" in name or any(ord(c) < 32 or c == "\x7f" for c in name):
+            return False
+        parts = name.split("/")
+        if parts[0] == "." and len(parts) > 1:
+            parts = parts[1:]
+        return all(x not in ("", ".", "..") for x in parts)
+
+    def clean(self, rel):
+        """the vault path for a manifest entry, or None unless every component below the root is a real dir or
+        file (no symlink) and the file is regular and outside R"""
+        if not self.literal(rel):
+            return None
+        parts = rel.split("/")
+        path = self.root
+        for part in parts[1:] if parts[0] == "." else parts:
+            path = os.path.join(path, part)
+            if os.path.islink(path):
+                return None
+        try:
+            st = os.lstat(path)
+        except OSError:
+            return None
+        if not stat.S_ISREG(st.st_mode) or under(os.path.realpath(path), self.r):
+            return None
+        return path
+
+    def copy(self, digest):
+        if digest not in self.verified:
+            self.verified[digest] = None
+            for rel in self.listed.get(digest, ()):
+                path = self.clean(rel)
+                if path and file_sha256(path) == digest:
+                    self.verified[digest] = path
+                    break
+        return self.verified[digest]
 
 
 def git(top, *args, git_dir=None):

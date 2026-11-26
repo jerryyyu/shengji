@@ -45,7 +45,7 @@ runpy.run_path(script, run_name='__main__')
     return [sys.executable, str(wrapper), str(SCRIPT), ','.join(map(str, processes)), *map(str, args)]
 
 
-def run(w, *args, home=None, processes=()):
+def run(w, *args, home=None, processes=(), extra=None, timeout=300):
     env = dict(os.environ)
     env.update(
         HOME=str(home or w / "home"),
@@ -54,8 +54,9 @@ def run(w, *args, home=None, processes=()):
         SAFE_RM_PINS=f"{w}/archive/*/commands.json {w}/archive/*/SHA256SUMS",
         SAFE_RM_KEEP=str(w / "home/.safe_rm.keep"),
     )
+    env.update(extra or {})
     p = subprocess.run(invocation(w, *args, processes=processes), env=env,
-                       capture_output=True, text=True, timeout=300)
+                       capture_output=True, text=True, timeout=timeout)
     return p.returncode, p.stdout + p.stderr
 
 
@@ -515,3 +516,146 @@ def test_linked_worktree_with_a_loose_object_linked_into_the_target_refuses(worl
     assert _exists(co, blob)
     rc, out = run(world, "--dry-run", wt)
     assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def _vaulted(world, vault=None):
+    """root/run/best.pt pinned by sha256, with a byte-identical copy listed in the vault manifest."""
+    vault = vault or world / "home/model-vault"
+    h = big_file(world / "root/run/best.pt")
+    (vault / "prod").mkdir(parents=True, exist_ok=True)
+    (vault / "prod/best.pt").write_bytes((world / "root/run/best.pt").read_bytes())
+    (vault / "MANIFEST.sha256").write_text(f"{h}  ./prod/best.pt\n")
+    _pin(world, h)
+    return vault, h
+
+
+def test_vaulted_pin_is_exempt(world):
+    vault, h = _vaulted(world)
+    rc, out = run(world, "--dry-run", world / "root/run")
+    assert rc == 0 and "WOULD DELETE" in out
+    assert f"EXEMPT pin {h[:12]} vaulted at {vault / 'prod/best.pt'}" in out
+
+
+def test_vault_override_is_honoured(world):
+    vault, h = _vaulted(world, vault=world / "elsewhere/vault")
+    rc, out = run(world, "--dry-run", world / "root/run", extra={"SAFE_RM_VAULT": str(vault)})
+    assert rc == 0 and f"vaulted at {vault / 'prod/best.pt'}" in out
+
+
+def test_no_vault_keeps_the_pin(world):
+    h = big_file(world / "root/run/best.pt")
+    _pin(world, h)
+    rc, out = run(world, "--dry-run", world / "root/run")
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_listed_but_missing_vault_copy_refuses(world):
+    vault, _ = _vaulted(world)
+    (vault / "prod/best.pt").unlink()
+    rc, out = run(world, "--dry-run", world / "root/run")
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_corrupt_vault_copy_refuses(world):
+    vault, _ = _vaulted(world)
+    (vault / "prod/best.pt").write_bytes(os.urandom(2_000_000))
+    rc, out = run(world, "--dry-run", world / "root/run")
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_symlinked_vault_file_refuses(world):
+    vault, _ = _vaulted(world)
+    real = world / "outside/best.pt"
+    real.parent.mkdir()
+    (vault / "prod/best.pt").rename(real)
+    (vault / "prod/best.pt").symlink_to(real)
+    rc, out = run(world, "--dry-run", world / "root/run")
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_vault_entry_that_is_not_a_regular_file_refuses(world):
+    # opening a FIFO for hashing would block; only regular files are read
+    vault, _ = _vaulted(world)
+    (vault / "prod/best.pt").unlink()
+    os.mkfifo(vault / "prod/best.pt")
+    rc, out = run(world, "--dry-run", world / "root/run", timeout=60)
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_symlinked_vault_directory_refuses(world):
+    vault, _ = _vaulted(world)
+    (vault / "prod").rename(world / "outside-prod")
+    (vault / "prod").symlink_to(world / "outside-prod")
+    rc, out = run(world, "--dry-run", world / "root/run")
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_vault_copy_inside_the_target_refuses(world):
+    # a manifest entry that climbs out of the vault names the target's own file
+    vault, h = _vaulted(world)
+    (vault / "prod/best.pt").unlink()
+    (vault / "MANIFEST.sha256").write_text(f"{h}  ./../../root/run/best.pt\n")
+    rc, out = run(world, "--dry-run", world / "root/run")
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_vault_copy_linked_into_the_target_refuses(world):
+    vault, _ = _vaulted(world)
+    (vault / "prod/best.pt").unlink()
+    (vault / "prod/best.pt").symlink_to(world / "root/run/best.pt")
+    rc, out = run(world, "--dry-run", world / "root/run")
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_vault_inside_the_target_refuses(world):
+    vault, _ = _vaulted(world, vault=world / "root/run/vault")
+    rc, out = run(world, "--dry-run", world / "root/run", extra={"SAFE_RM_VAULT": str(vault)})
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_target_inside_the_vault_refuses(world):
+    vault, h = _vaulted(world)
+    (vault / "old").mkdir()
+    (vault / "old/best.pt").write_bytes((world / "root/run/best.pt").read_bytes())
+    rc, out = run(world, "--dry-run", vault / "old")
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_vault_does_not_lift_a_path_pin(world):
+    vault, h = _vaulted(world)
+    (world / "archive/pk/commands.json").write_text(f'{{"init_sha256": "{h}", "init": "{world}/root/run/best.pt"}}\n')
+    rc, out = run(world, "--dry-run", world / "root/run")
+    assert rc == 1 and "names" in out and "vaulted at" in out
+
+
+@pytest.mark.parametrize("name", ["missing/../prod/best.pt", "prod/../prod/best.pt", "*prod/best.pt",
+                                  "./prod/./best.pt", "prod//best.pt"])
+def test_manifest_name_that_is_not_a_plain_literal_path_refuses(world, name):
+    # the digest and the copy at prod/best.pt are right; the name is taken as written (a second '*' is part of it)
+    # and any '..', '.' or empty component refuses, even where the filesystem would resolve it
+    vault, h = _vaulted(world)
+    (vault / "MANIFEST.sha256").write_text(f"{h}  {name}\n")
+    rc, out = run(world, "--dry-run", world / "root/run")
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_escaped_manifest_record_refuses(world):
+    vault, h = _vaulted(world)
+    (vault / "MANIFEST.sha256").write_text(f"\\{h}  ./prod/best.pt\n")
+    rc, out = run(world, "--dry-run", world / "root/run")
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_one_unsupported_manifest_line_disables_the_vault(world):
+    vault, h = _vaulted(world)
+    (vault / "MANIFEST.sha256").write_text(f"{h}  ./prod/best.pt\n{h} ./prod/best.pt\n")
+    rc, out = run(world, "--dry-run", world / "root/run")
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+@pytest.mark.parametrize("record", ["{h} *./prod/best.pt", "{h} *prod/best.pt", "{h}  prod/best.pt"])
+def test_valid_text_and_binary_mode_records_are_exempt(world, record):
+    vault, h = _vaulted(world)
+    (vault / "MANIFEST.sha256").write_text(record.format(h=h) + "\n")
+    rc, out = run(world, "--dry-run", world / "root/run")
+    assert rc == 0 and f"EXEMPT pin {h[:12]} vaulted at {vault / 'prod/best.pt'}" in out

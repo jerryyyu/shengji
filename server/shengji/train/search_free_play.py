@@ -193,6 +193,10 @@ class SearchFreeModel:
         for i in range(CAND_LAYERS):
             p = f"layers.{i}."
             x = x + self._mha(p + "self_attn.", _ln(x, c[p + "norm1.weight"], c[p + "norm1.bias"]))
+            # The output head reads token zero. After the last attention pass
+            # the feed-forward network acts independently on each token.
+            if i == CAND_LAYERS - 1:
+                x = x[:, :1]
             y = _ln(x, c[p + "norm2.weight"], c[p + "norm2.bias"])
             y = _gelu(y @ c[p + "linear1.weight"].T + c[p + "linear1.bias"])
             x = x + y @ c[p + "linear2.weight"].T + c[p + "linear2.bias"]

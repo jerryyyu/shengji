@@ -210,6 +210,11 @@ PAIR_SEATS = ((0, 2), (1, 3))
 # leaving a ranked table one joined before its first ranked round there.
 OFFER_SECS = 20.0
 JOIN_COOLDOWN_SECS = 60.0
+# An untagged (no ``panel_seq``) table_start or queue_start_bots means Ready
+# from a joiner and Start from an owner, and cannot say which panel it was
+# tapped on: for this long after its entry's role changes it is refused, and
+# the fresh state is sent.
+ROLE_GRACE_SECS = 5.0
 PARTY_TTL = 300.0
 COUNT_DEBOUNCE = 1.0
 JOIN_LIMIT = (10, 60.0)      # queue_join per account per window
@@ -357,6 +362,11 @@ class Entry:
     # never becomes an irrevocable Start.
     panel_key: tuple = ()
     panel_seq: int = 0
+    # The entry's role at its table, (owns the table, its leader), and when
+    # it last changed: a tagged tap from before is refused by ``panel_seq``,
+    # an untagged one for ROLE_GRACE_SECS (``_check_role``).
+    role: tuple = ()
+    role_at: float = 0.0
     # "ranked" or "casual" (``queue_join``'s ``mode``).
     mode: str = "ranked"
     # The entry's code while it is queued: alone it is its own table's, and
@@ -945,9 +955,16 @@ class Matchmaker:
         takes back Ready, since the leader's Start with bots waits for it;
         re-renders of the same panel keep it."""
         t = self._table(e)
-        key: tuple = (("table", t.id) if t is not None
+        role = (e.table is not None and bool(e.table.entries) and e.table.entries[0] is e, e.leader)
+        if role != e.role:
+            # gaining the table, or a new leader, turns a Ready into a Start:
+            # an untagged tap from before must not land as one
+            if e.role and ((role[0] and not e.role[0]) or role[1] != e.role[1]):
+                e.role_at = self.clock()
+            e.role = role
+        key: tuple = (("table", t.id, role) if t is not None
                       else ("offer", e.offer.code) if e.offer is not None
-                      else ("own", self._partner_ready(e)))
+                      else ("own", self._partner_ready(e), role))
         if key != e.panel_key:
             e.panel_key, e.panel_seq = key, next(self._panel)
         return e.panel_seq
@@ -958,11 +975,17 @@ class Matchmaker:
         tapped Ready."""
         return e.size == 2 and set(e.members) - {e.leader} <= e.taps
 
-    def _check_panel(self, e: Entry, msg: dict) -> None:
-        """Refuse a tap sent against a panel the entry no longer shows; a
-        message without ``panel_seq`` (an older client) is not checked."""
+    def _check_panel(self, e: Entry, msg: dict, role_dependent: bool = False) -> None:
+        """Refuse a tap sent against a panel the entry no longer shows. A
+        message without ``panel_seq`` (an older client) is not checked,
+        except a role-dependent one (Ready from a joiner, Start from an
+        owner) within ROLE_GRACE_SECS of the entry's role changing."""
         sent = msg.get("panel_seq")
         if sent is None or isinstance(sent, bool) or not isinstance(sent, int):
+            self._panel_seq(e)                # refreshes the role
+            if role_dependent and e.role_at and self.clock() - e.role_at < ROLE_GRACE_SECS:
+                self._send_state(e)
+                raise QueueError("panel_changed", "Your table changed. Look again before you tap.")
             return
         if sent != self._panel_seq(e):
             self._send_state(e)
@@ -1275,12 +1298,13 @@ class Matchmaker:
                 elif t == "queue_start_bots" and e is not None and self._table(e) is not None \
                         and self._owns(e, queue_id):
                     # the owner's Start with bots at a waiting table
-                    self._check_panel(e, msg)
+                    self._check_panel(e, msg, role_dependent=True)
                     await self._table_start_now(queue_id)
                 elif t == "table_start" or (t == "queue_start_bots" and self._table(e) is not None):
-                    # a joiner's Start with bots at a table is its Ready
+                    # a joiner's Start with bots at a table is its Ready; an
+                    # owner's table_start is its Start
                     if e is not None:
-                        self._check_panel(e, msg)
+                        self._check_panel(e, msg, role_dependent=True)
                     await self._table_start(queue_id)
                 elif t == "table_unready":
                     self._table_unready(queue_id)

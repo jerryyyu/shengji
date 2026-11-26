@@ -5289,3 +5289,65 @@ def test_an_older_pages_start_from_the_owner_or_a_duo_leader_is_its_start_with_t
         (match_id, slots), = env.started
         assert match_id is None and [s.user_id for s in slots] == [1, None, 2, None]
     run(go())
+
+
+def test_a_ready_sent_before_its_sender_became_owner_is_refused_and_a_fresh_start_works():
+    """P2's Ready, sent against the panel it had as a joiner, arrives after
+    P1 left and P2 owns the table: it is refused, never taken as a Start."""
+    async def go():
+        env = Env()
+        for uid in (1, 2, 3):
+            await env.join(uid)
+            await env.send(uid, "queue_wait_players")
+        await env.send(3, "table_start")
+        stale = env.conns[2].last("queue_state")["panel_seq"]
+        await env.send(1, "queue_leave")
+        assert env.conns[2].last("queue_state")["opener"] is True
+        await env.send(2, "table_start", panel_seq=stale)
+        assert env.conns[2].last("error")["code"] == "panel_changed" and env.started == []
+        await env.send(2, "queue_start_bots", panel_seq=stale)
+        assert env.started == []
+        fresh = env.conns[2].last("queue_state")["panel_seq"]
+        assert fresh != stale
+        await env.send(2, "table_start_now", panel_seq=fresh)
+        (_, slots), = env.started
+        assert sorted(humans_of(slots)) == [2, 3]
+    run(go())
+
+
+def test_an_untagged_start_right_after_a_role_change_is_refused_then_taken_by_the_new_role():
+    """An older page's untagged table_start cannot say which panel it saw: for
+    ROLE_GRACE_SECS after its entry's role changes it is refused (the fresh
+    state is sent); after that it means what the current role means."""
+    async def go():
+        env = Env()
+        for uid in (1, 2, 3):
+            await env.join(uid)
+            await env.send(uid, "queue_wait_players")
+        await env.send(3, "table_start")
+        await env.send(1, "queue_leave")
+        await env.send(2, "table_start")              # untagged, just promoted
+        assert env.conns[2].last("error")["code"] == "panel_changed" and env.started == []
+        env.clock.advance(mm.ROLE_GRACE_SECS)
+        await env.send(2, "table_start")              # the owner's Start now
+        (_, slots), = env.started
+        assert sorted(humans_of(slots)) == [2, 3]
+    run(go())
+
+
+def test_a_duo_partner_who_becomes_its_leader_cannot_have_an_untagged_ready_taken_as_a_start():
+    async def go():
+        env = Env()
+        await _duo_table(env, 1, friend=2)
+        await env.join(3)
+        await env.send(3, "table_start")
+        (t,) = env.mm.tables.values()
+        assert t.entries[0] is env.mm._entry(1)       # the pair owns the table
+        stale = env.conns[2].last("queue_state")["panel_seq"]
+        await env.send(1, "queue_leave")              # its partner leads it now
+        assert env.mm._entry(2).leader == 2
+        await env.send(2, "table_start", panel_seq=stale)
+        assert env.conns[2].last("error")["code"] == "panel_changed" and env.started == []
+        await env.send(2, "table_start")              # untagged, inside the grace
+        assert env.conns[2].last("error")["code"] == "panel_changed" and env.started == []
+    run(go())

@@ -59,6 +59,10 @@ process_dylibs "$REL" python/app
 # framework whose binary needs a later iOS than its Info.plist declares.
 STRAY=$(find "$CODESIGNING_FOLDER_PATH" -name '*.a' -print)
 [ -z "$STRAY" ] || { echo "error: static libraries in the bundle: $STRAY"; exit 1; }
+# The min-OS check covers device bundles only: those are what the App Store
+# validates. The arm64 simulator's floor is iOS 14, so BeeWare's simulator
+# slice is built for 14.0 while the shared framework plist template says 13.0.
+[ "$SITE" = iphoneos ] || exit 0
 for fw in "$CODESIGNING_FOLDER_PATH"/Frameworks/*.framework; do
   [ -f "$fw/Info.plist" ] || continue
   exe=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$fw/Info.plist")

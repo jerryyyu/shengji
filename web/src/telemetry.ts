@@ -344,7 +344,7 @@ export class Telemetry {
     }
   }
 
-  /** A How to play step in view, or its last step's Start playing (`done`). */
+  /** A How to play step in view, or its last step finished by Done or the practice round (`done`). */
   howtoStep(step: number, done: boolean): void {
     this.push({ e: "howto_step", t: now(), step: clamp(step, 1, 20), done });
   }

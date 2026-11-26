@@ -4652,6 +4652,19 @@ button.games-row { cursor: pointer; }
   font-weight: 600;
   color: var(--text);
 }
+/* Your move timer over a timed game: the table's ring and "Your turn",
+   between the title and the count (a fourth column only while it shows). */
+.howto-head:has(> .howto-clock) { grid-template-columns: auto 1fr auto auto; }
+.howto-clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-13);
+  font-weight: 700;
+  color: var(--gold);
+  white-space: nowrap;
+}
+.howto-clock .timer-ring { --size: 32px; --band: 2.5px; }
 .howto-count { justify-self: end; padding-right: 18px; font-size: var(--fs-13); color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .howto-step { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .howto-step > .howto-visual { flex: 1; justify-content: center; }

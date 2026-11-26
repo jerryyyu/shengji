@@ -18,7 +18,8 @@ import GamesList from "./components/GamesList";
 import { useGamesRoute } from "./replay/route";
 import { setContinueHandler } from "./replay/continueGame";
 import HowTo from "./howto/HowTo";
-import { useHowtoRoute } from "./howto/route";
+import { closeHowto, useHowtoRoute } from "./howto/route";
+import { randomName } from "./randomName";
 import SupportPage from "./support/SupportPage";
 import PrivacyPage from "./support/PrivacyPage";
 import TermsPage from "./support/TermsPage";
@@ -337,6 +338,25 @@ export default function App() {
     }, status === "open" && !inRoom && !offline);
     return () => setContinueHandler(null, false);
   }, [status, inRoom, offline]);
+  // How to play's last step deals a practice round: a created room against
+  // Beginner bots, as Play offline's Start makes one (casual, no move
+  // timer). Only from outside every table and queue, so nothing is left by
+  // a tap.
+  const canPractice = status === "open" && !seatedAnywhere;
+  const practice = () => {
+    if (!guestName.name.trim() && account.status !== "in") guestName.fill(randomName());
+    if (offline) {
+      // the offline table's Start, from How to play: the game stays on this device
+      offlineGame.setBotLevel("beginner");
+      offlineGame.setTable(true);
+      offlineGame.played = true;
+      clearSavedRoom();
+    } else {
+      rounds.noteEntry("queue");
+    }
+    conn.send({ type: "create_room", name: getSavedName(), start: true, bot_level: "beginner" });
+    closeHowto();
+  };
   // The tabs' pages keep the tab bars over a game too; the Your table pill
   // on them leads back to the game.
   const tabPage = homeRoute === null ? null
@@ -353,7 +373,7 @@ export default function App() {
   if (infoRoute) {
     screen = infoRoute === "support" ? <SupportPage /> : infoRoute === "terms" ? <TermsPage /> : <PrivacyPage />;
   } else if (howtoRoute) {
-    screen = <HowTo route={howtoRoute} />;
+    screen = <HowTo route={howtoRoute} game={game} onPractice={canPractice ? practice : null} />;
   } else if (gamesRoute) {
     screen = <GamesList route={gamesRoute} />;
   } else if (homeRoute) {

@@ -202,3 +202,56 @@ def test_the_proposal_holds_the_heuristics_play_first_and_no_refusable_lead(mode
                     prev = after.last_trick
                     after.play(seat, list(a))
                     assert Counter(actual_play_after(after, seat, prev)) == Counter(a)
+
+
+def test_candidate_shard_restores_pre_play_inputs_across_hidden_deals(tmp_path, model):
+    from shengji.ai.refusal import Refusal
+    from shengji.engine.round import Round, Trick
+    from shengji.engine.cards import Ordering
+    from shengji.train.search_free_candidates import convert
+
+    attempt = ["C5", "C5", "D5", "D5", "H5", "H5"]
+    ballot = [attempt, ["S8"]]
+    resolved = []
+    sizes = []
+    for opponents in ([["LJ", "LJ"], ["C8"], ["D8"]], [["LJ", "C8"], ["LJ"], ["D8"]]):
+        rnd = Round("5", 0, random.Random(1))
+        rnd.phase, rnd.turn, rnd.trump_suit = "play", 0, "H"
+        rnd.ordering = Ordering("H", "5")
+        rnd.hands = [attempt + ["S8"], *opponents]
+        rnd.trick = Trick(leader=0)
+        for action in ballot:
+            after = copy.deepcopy(rnd)
+            after.play(0, action)
+            forced = after.trick.plays[0].cards
+            if action == attempt:
+                sizes.append(len(forced))
+            resolved.append(bn.history_tokens(after, [Refusal(0, tuple(action), tuple(forced), 0)]))
+    assert sizes == [2, 6]
+
+    source, dest = tmp_path / "resolved.npz", tmp_path / "public.npz"
+    labels = dict(n_rows=2, row=[0, 0, 1, 1], slot=[0, 1, 0, 1],
+                  mean=[0.4, 0.6, 0.8, 0.2], played=[False, True, True, False])
+    tokens = {k: np.concatenate([t[k] for t in resolved]) for k in resolved[0]}
+    # Candidate shards store float features at full precision, unlike rounded history inputs.
+    tokens["tok_f"] = tokens["tok_f"].astype(np.float32)
+    tokens["tok_f"][:, 7] = [0.4, 0, 1.2, 0]
+    for key in ("tok_cards", "tok_att"):
+        tokens[key] = tokens[key].astype(np.uint8)
+    np.savez(source, **labels, **tokens)
+    assert convert(source, dest) == 1
+    with pytest.raises(FileExistsError):
+        convert(source, dest)
+    expected = [sf.candidate_token(rnd, 0, a) for a in ballot]
+    inp = bn.decision_inputs(rnd, 0)
+    states = model.trunk_states(inp)
+    with np.load(dest) as cand:
+        for k, v in labels.items():
+            np.testing.assert_array_equal(cand[k], v)
+        for row in (0, 1):
+            batch = list(zip(*(cand[k][cand["row"] == row] for k in
+                               ("tok_int", "tok_f", "tok_cards", "tok_att"))))
+            for tok, live in zip(batch, expected):
+                for field, served in zip(tok, live):
+                    np.testing.assert_array_equal(field, served)
+            np.testing.assert_array_equal(model.score(inp, states, batch), model.score(inp, states, expected))

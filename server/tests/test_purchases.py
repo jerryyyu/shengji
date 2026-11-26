@@ -668,3 +668,9 @@ def test_a_transaction_refused_to_a_device_account_is_delivered_after_it_links(a
     resp = client.post("/api/store/verify", json={"jws": pending}, headers=signed_in)
     assert resp.status_code == 200, resp.text
     assert client.get("/api/me", headers=signed_in).json()["products"] == [GOAT]
+
+
+def test_the_shops_sign_in_entry_point_is_a_known_telemetry_source():
+    from shengji.api import telemetry
+
+    assert "shop" in telemetry.SIGNIN_FROM

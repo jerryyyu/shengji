@@ -135,10 +135,11 @@ PROVIDERS = frozenset({"google", "apple"})
 # Where the identity sheet was opened: the Play tab's guest line, the chip,
 # Me's name row, Me's Sign in row (the app's own account), the Leaderboard's
 # Sign in row, a round end's rating line, the saved games' signed-out prompt,
-# a player's Report row, or the app's one ask after its move to its own domain
-# left it signed out (web/src/originMove.ts).
+# a player's Report row, the app's one ask after its move to its own domain
+# left it signed out (web/src/originMove.ts), or the Shop's Sign in to buy
+# and Restore purchases for a device account.
 SIGNIN_FROM = frozenset({"play_line", "chip", "me_row", "me_signin", "leaderboard_row",
-                         "round_end", "lapsed", "report", "moved"})
+                         "round_end", "lapsed", "report", "moved", "shop"})
 # A provider sign-in: its button tapped (the app's native buttons; the
 # website's Google button is Google's own frame), the account confirmed, a
 # refusal, or the provider's sheet dismissed.

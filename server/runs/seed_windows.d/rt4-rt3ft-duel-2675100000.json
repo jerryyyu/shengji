@@ -1,0 +1,14 @@
+{
+  "name": "rt4-rt3ft-duel-2675100000",
+  "purpose": "screen",
+  "seed0": 2675100000,
+  "clusters": 3940,
+  "span": [
+    2675100000,
+    2675103940
+  ],
+  "created_at": "2026-11-26T14:19:04-05:00",
+  "host": "ultra",
+  "git_head": "992faa87da23cfd079368a4f3d41ca2716def4bd",
+  "note": "RT4 versus FT-200k (RT3-FT), paired tier-i DEV after RT4-M Arm A. First 3,920 deals are scored once. The last 20 are reserved for validity-only pilot coverage and excluded from the score. RT4 advantage bar: mean >= +0.02 levels/round and LB80 > 0. Source reservation only. See board #1263."
+}

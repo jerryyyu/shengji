@@ -125,6 +125,9 @@ SIGNIN_STEPS = frozenset({"provider_tap", "done", "error", "closed"})
 # confirm shown, or the device's account given way to the identity's.
 DEVICE_STEPS = frozenset({"created", "restored", "fell_back_guest", "linked",
                           "conflict_shown", "switched"})
+# The iOS app asked for Apple's rating sheet: at the 2nd ranked or the 5th
+# casual round win (web/src/reviewPrompt.ts).
+REVIEW_TRIGGERS = frozenset({"ranked2", "casual5"})
 QUEUE_EVENTS = frozenset({"join", "leave", "start", "start_failed"})
 APP_UA_TOKEN = re.compile(r"(?:^|\s)ShengjiApp/(\S{1,32})(?=\s|$)")
 APP_VERSION = re.compile(r"\d{1,4}\.\d{1,4}(?:\.\d{1,4})?")
@@ -144,6 +147,10 @@ def _bool(v: Any) -> bool | None:
     return v if type(v) is bool else None
 
 
+def _version(v: Any) -> str | None:
+    return v if isinstance(v, str) and APP_VERSION.fullmatch(v) else None
+
+
 SCHEMA: dict[str, dict[str, Any]] = {
     "screen": {"name": _enum(SCREENS), "prev": _enum(SCREENS),
                "ms_on_prev": _int(0, MAX_MS)},
@@ -161,10 +168,12 @@ SCHEMA: dict[str, dict[str, Any]] = {
                # the connection notices: why the page dropped its socket, and
                # for how long it had none
                "cause": _enum(DISCONNECT_CAUSES), "ms": _int(0, MAX_MS)},
+    # the app version asked for, as the page read it from its User-Agent
+    "review_prompt": {"trigger": _enum(REVIEW_TRIGGERS), "version": _version},
 }
 # The field without which an event says nothing; missing or invalid drops it.
 REQUIRED = {"screen": "name", "turn_done": "phase", "tap": "id", "notice": "code",
-            "signin": "step", "device_account": "step"}
+            "signin": "step", "device_account": "step", "review_prompt": "trigger"}
 
 # Server-side queue events (``queue_event``): field -> check.
 QUEUE_FIELDS: dict[str, Any] = {

@@ -17,6 +17,7 @@ import ChatBubbles from "./ChatBubbles";
 import OpponentActions from "./OpponentActions";
 import { syncBlocked } from "../chatBlocks";
 import { haptic } from "../native";
+import { useReviewPrompt } from "../useReviewPrompt";
 import { nameWidthClass } from "../nameWidth";
 import Toast from "./Toast";
 import HandLine from "./HandLine";
@@ -473,6 +474,7 @@ export default function Table({ state }: { state: GameState }) {
   const lead = state.phase === "play" ? leadToFollow(state.trick, state.you) : null;
 
   useTableHaptics(state);
+  useReviewPrompt(state, liveHere);
   // your move timer (ranked tables): the ring for the whole decision, red in
   // its last seconds, and a haptic at five
   const clockSample = useMoveClockSample(me?.turn_deadline, state);

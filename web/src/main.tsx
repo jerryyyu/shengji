@@ -7,9 +7,13 @@ import App from './App.tsx'
 import { aliasInviteLink } from './codes'
 import { NearbyDebugMount } from './nearbyGate'
 import { loadLanguage } from './i18n'
+import { startReviewSessions } from './reviewPrompt'
 
 // an older ?room= or ?party= invite reads as ?code= before anything looks at the address
 aliasInviteLink()
+
+// in the app, this launch or page load is a moment of use for the rating ask
+startReviewSessions()
 
 function render() {
   createRoot(document.getElementById('root')!).render(

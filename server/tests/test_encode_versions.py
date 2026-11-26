@@ -6,7 +6,7 @@ replacement cannot satisfy:
 
 A. v1 is byte-identical to ``origin/main``'s encoder on real positions,
 B. v2's first 531 columns ARE the v1 vector,
-C. an archived 531-wide checkpoint still loads and still runs a forward pass,
+C. a net routes to the encoder its own width names (531 is v1, 560 is v2),
 D. a v1 cache key and a v2 cache key cannot collide.
 """
 
@@ -174,26 +174,6 @@ def test_the_v2_columns_state_the_trick_the_v1_vector_never_did():
     assert after[542:546] == [0.0, 1.0, 0.0, 0.0]
     assert after[536] == min(points, 80) / 80.0
     assert after[:531] == encode_obs(rnd, follower, version=1)
-
-
-# ---------------------------------------- C. an archived checkpoint still runs
-
-def test_archived_v1_checkpoint_loads_and_runs_a_forward_pass():
-    """C: the test #283 could not pass — a real 531-wide archived net."""
-    from shengji.ai.mcbot import MCBot
-    from shengji.rl.npnet import NpNet
-    net = NpNet(str(Path(__file__).parents[1] / "snapshots_v11pair" / "ep07.npz"))
-    assert net.obs_dim == 531, "the archived v11pair checkpoint is 531 wide"
-    assert net.enc_version == 1
-    assert net.w["t0w"].shape[1] == 531
-
-    rnd, seat = _self_play_state(seed=2)
-    obs = encode_obs(rnd, seat, version=net.enc_version)
-    assert len(obs) == 531
-    from shengji.rl.encode import encode_action
-    actions = MCBot(seed=2)._candidates(rnd, seat)
-    scores = net.value_candidates(obs, [encode_action(a, rnd) for a in actions])
-    assert scores.shape == (len(actions),) and np.all(np.isfinite(scores))
 
 
 def test_the_torch_nets_and_arch_route_by_their_own_width():

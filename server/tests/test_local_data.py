@@ -21,8 +21,8 @@ def test_every_local_data_path_is_ignored_and_untracked(path):
 
 def test_an_absent_local_input_skips_and_names_the_file(tmp_path, monkeypatch):
     monkeypatch.setattr(local_data, "SERVER", tmp_path)
-    with pytest.raises(pytest.skip.Exception, match="server/snapshots_v7w/ep02.pt"):
-        require_local_data("snapshots_v7w/ep02.pt")
+    with pytest.raises(pytest.skip.Exception, match="server/rl_data/highn_late_air.jsonl"):
+        require_local_data("rl_data/highn_late_air.jsonl")
 
 
 def test_a_missing_repository_input_fails_instead_of_skipping(tmp_path, monkeypatch):

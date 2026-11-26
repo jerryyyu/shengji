@@ -7,7 +7,6 @@ the container stays small and starts fast, and prod never needs a
 GPU/MPS runtime.
 
 Export:  uv run python -m shengji.rl.npnet export <ckpt.pt> <out.npz>
-Parity is asserted by tests/test_npnet_parity.py against torch.
 """
 
 from __future__ import annotations

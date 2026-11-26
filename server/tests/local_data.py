@@ -20,7 +20,6 @@ SERVER = Path(__file__).resolve().parents[1]
 LOCAL_DATA = {
     "rl_data/highn_corpus_all.jsonl": "the mined high-N corpus (pilot_states SOURCES 'original')",
     "rl_data/highn_late_air.jsonl": "the late-trick corpus (pilot_states SOURCES 'late')",
-    "snapshots_v7w/ep02.pt": "the v7w torch checkpoint behind the tracked ep02.npz",
 }
 
 

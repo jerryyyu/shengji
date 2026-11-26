@@ -67,8 +67,6 @@ server/tests/test_luna_token_batch.py
 server/tests/test_luna_token_pilot.py
 server/tests/test_luna_turn.py
 server/tests/test_net_rollout.py
-server/tests/test_npnet_parity.py
-server/tests/test_npnet_prod_parity.py
 server/tests/test_pair_ballot_retention.py
 server/tests/test_parallel_decode.py
 server/tests/test_pilot_freezer.py

@@ -1,3 +1,4 @@
+import errno
 import hashlib
 import json
 import os
@@ -589,8 +590,21 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
     run_path.write_text(json.dumps(actual))
     cache_root = directory / "cache"
     cache_options = {"encode_rounds": 4} if interrupt else {}
+    refused_links = set()
+    if interrupt:
+        host_link = os.link
+
+        def volume_link(source, target):
+            if Path(target).is_relative_to(cache_root):
+                refused_links.add(Path(target).name)
+                raise OSError(errno.ENOTSUP, "cache volume does not support hard links")
+            return host_link(source, target)
+
+        monkeypatch.setattr(os, "link", volume_link)
     for worker_id in range(rt4m_cache.WORKERS):
         assert rt4m_cache.partition(directory / "reserved", cache_root, worker_id, recipe, **cache_options) == 0
+    if interrupt:
+        assert {"cache_device.json", "cache_encode.json"} <= refused_links
     cache, = (cache_root / "A").iterdir()
     assert cache.name.endswith("-encode4") == interrupt
     marker = cache / "cache_encode.json"

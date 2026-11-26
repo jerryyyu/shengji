@@ -41,9 +41,18 @@ def build_head(trunk_config):
             cs = self.ln(q) + self.typ[3] + hand[..., None] * self.hand + (cards > 0)[..., None] * self.incand
             x = torch.cat([t[:, None], (self.prev(prev) + self.typ[1])[:, None],
                            (self.ctx(g) + self.typ[2])[:, None], cs], 1)
-            for layer in self.layers:
+            return self.out(self._summary(x)).unbind(-1)
+
+        def _summary(self, x):
+            for layer in self.layers[:-1]:
                 x = layer(x)
-            return self.out(x[:, 0]).unbind(-1)
+            # Only the summary query feeds the score. Every token still supplies a key and value.
+            last = self.layers[-1]
+            norm = last.norm1(x)
+            attended, _ = last.self_attn(norm[:, :1], norm, norm, need_weights=False)
+            x = x[:, :1] + last.dropout1(attended)
+            y = last.linear2(last.dropout(last.activation(last.linear1(last.norm2(x)))))
+            return (x + last.dropout2(y))[:, 0]
 
     return Head()
 

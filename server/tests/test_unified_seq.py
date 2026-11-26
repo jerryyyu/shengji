@@ -628,7 +628,14 @@ def test_fixed_trunk_candidate_update_exports_served_scores(world, tmp_path, mon
     pred = trainer.score_batch(m, head, b, c)
     opt = torch.optim.SGD(head.parameters(), lr=0.01)
     reference = copy.deepcopy(head)
+    def full_summary(x):
+        for layer in reference.layers:
+            x = layer(x)
+        return x[:, 0]
+
+    monkeypatch.setattr(reference, "_summary", full_summary)
     full = trainer.score_batch(m, reference, b, c)
+    torch.testing.assert_close(torch.stack(pred), torch.stack(full), atol=1e-5, rtol=1e-5)
     trainer.candidate_loss(*full, c).backward()
     torch.optim.SGD(reference.parameters(), lr=0.01).step()
     group_sizes, trunk_calls = [], []

@@ -491,12 +491,18 @@ describe("Details: the kitty and the last trick, closed by default", () => {
   const kitty = ["S5", "C3", "D10", "C4", "C6", "C7", "C8", "D9"];
 
   const viewBtn = () => host.querySelector<HTMLButtonElement>(".round-end-actions > .round-end-view-btn")!;
-  const shape = () => [...host.querySelector(".modal.round-end")!.querySelectorAll("*")].map((e) => e.tagName + "." + e.className.split(" ")[0]);
+  // every element of the card, the button's two words aside (they trade the "on" mark)
+  const shape = () => [...host.querySelector(".modal.round-end")!.querySelectorAll("*")]
+    .filter((e) => !e.parentElement?.classList.contains("round-end-view-words"))
+    .map((e) => e.tagName + "." + e.className.split(" ")[0]);
 
   it("is a button on the row, Next round · Details · Leave game, closed by default", () => {
     renderModal(makeResult({ kitty_cards: kitty }), { ...state, last_trick: lastTrick });
     const row = host.querySelector(".round-end-actions")!;
-    expect([...row.querySelectorAll(":scope > button")].map((b) => b.textContent)).toEqual(["Next round", "Details", "Leave game"]);
+    expect([...row.querySelectorAll(":scope > button")].map((b) => b.querySelector(".on")?.textContent ?? b.textContent)).toEqual(["Next round", "Details", "Leave game"]);
+    // both words sit in the button, the other one hidden, so its width never changes
+    expect([...viewBtn().querySelectorAll(".round-end-view-words > span")].map((s) => [s.textContent, s.getAttribute("aria-hidden")]))
+      .toEqual([["Details", null], ["Levels", "true"]]);
     expect(viewBtn().getAttribute("aria-expanded")).toBe("false");
     // the old disclosure toggle is gone
     expect(host.querySelector("details, summary")).toBeNull();
@@ -512,7 +518,7 @@ describe("Details: the kitty and the last trick, closed by default", () => {
                 { ...state, last_trick: lastTrick });
     const before = shape();
     act(() => viewBtn().click());
-    expect(viewBtn().textContent).toBe("Levels");
+    expect(viewBtn().querySelector(".on")!.textContent).toBe("Levels");
     expect(viewBtn().getAttribute("aria-expanded")).toBe("true");
     const swap = host.querySelector(".round-end-swap")!;
     expect(swap.classList.contains("details")).toBe(true);
@@ -534,7 +540,7 @@ describe("Details: the kitty and the last trick, closed by default", () => {
     expect(swap.querySelector(".round-end-details > .kitty-bonus")!.textContent).toBe("They won the last trick: 15 × 2 × 1 card = +30");
     expect(swap.querySelector(".round-end-trick-label")!.textContent).toBe("Last trick · Ada, 10 points");
     act(() => viewBtn().click());
-    expect(viewBtn().textContent).toBe("Details");
+    expect(viewBtn().querySelector(".on")!.textContent).toBe("Details");
     expect(swap.classList.contains("details")).toBe(false);
     expect(shape()).toEqual(before);
   });

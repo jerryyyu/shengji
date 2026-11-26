@@ -347,7 +347,12 @@ export default function RoundEndModal({ state, result, clock = null, clockEnd = 
           {hasDetails ? (
             <button type="button" className="btn big round-end-view-btn" aria-expanded={open} aria-controls={detailsId}
                     onClick={() => setOpen((v) => !v)}>
-              {open ? t("roundend.levels") : t("roundend.details")}
+              {/* both words share one cell, so the button keeps one width and
+                  Next round does not move as it toggles */}
+              <span className="round-end-view-words">
+                <span className={open ? undefined : "on"} aria-hidden={open || undefined}>{t("roundend.details")}</span>
+                <span className={open ? "on" : undefined} aria-hidden={!open || undefined}>{t("roundend.levels")}</span>
+              </span>
             </button>
           ) : null}
           <RoundEndLeave ranked={ranked} guest={state.guest === true} />

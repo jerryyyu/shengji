@@ -920,6 +920,11 @@ describe("the round-end card on a phone", () => {
     expect(rule(css, ".round-end-row")["flex-wrap"]).toBeUndefined();
     expect(css).not.toContain(".details-open");
   });
+
+  it("starts the lanes at the cell's top, as the panel does, and keeps the bar's 14px rhythm above the buttons", () => {
+    expect(rule(css, ".round-end-lanes")["justify-content"]).toBe("flex-start");
+    expect(rule(css, ".round-end-actions")["margin-top"]).toBe(rule(css, ".points-bar")["padding-bottom"]);
+  });
 });
 
 describe("the lobby on a phone, upright or sideways", () => {

@@ -170,9 +170,9 @@ describe("the round end in Chinese", () => {
     ] };
     render(<RoundEndModal state={table(0, { last_trick: last })}
                           result={result({ attacker_points: 115, kitty_points: 30, kitty_cards: kitty, winner_team: 1 })} />);
-    expect(host.querySelector(".round-end-view-btn")!.textContent).toBe("详情");
+    expect(host.querySelector(".round-end-view-btn .on")!.textContent).toBe("详情");
     act(() => host.querySelector<HTMLButtonElement>(".round-end-view-btn")!.click());
-    expect(host.querySelector(".round-end-view-btn")!.textContent).toBe("级数");
+    expect(host.querySelector(".round-end-view-btn .on")!.textContent).toBe("级数");
     expect(host.querySelector(".round-end-kitty-label")!.textContent).toBe("底牌 · 15 分");
     expect(host.querySelector(".kitty-bonus")!.textContent).toBe("闲家抠底：15 × 2 × 1 张 = +30");
     expect(host.querySelector(".round-end-trick-label")!.textContent).toBe("最后一轮 · 机器人 3，10 分");

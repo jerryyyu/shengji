@@ -2358,9 +2358,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   font-weight: 400;
 }
 
+/* the status line keeps the points bar's 14px label room below it too, so
+   the bar, the status line and the buttons sit at one rhythm */
 .round-end-actions {
   display: flex;
   gap: 10px;
+  margin-top: 14px;
 }
 
 .round-end-actions > .btn.primary {
@@ -2398,6 +2401,18 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   color: #c4ccd8;
 }
 
+.round-end-view-words {
+  display: inline-grid;
+}
+
+.round-end-view-words > span {
+  grid-area: 1 / 1;
+}
+
+.round-end-view-words > span:not(.on) {
+  visibility: hidden;
+}
+
 .round-end-swap {
   display: grid;
   min-width: 0;
@@ -2408,10 +2423,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   min-width: 0;
 }
 
+/* the lanes sit at the cell's top, as the Details panel does, so the gap
+   under the title is the same either way; spare height falls below them */
 .round-end-lanes {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 4px;
 }
 

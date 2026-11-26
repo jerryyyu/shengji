@@ -344,6 +344,61 @@ describe("entitlements and writes stay with their session and their order", () =
     });
   }
 
+  it("a read started while a write is on the wire never undoes the confirmed choice", async () => {
+    await draw(<CollectionPage />);
+    await flush();
+    holdPuts = true;
+    holdGets = true;
+    await act(async () => { swatch("Paddy green").click(); });
+    const { refreshAccount } = await import("./writes");
+    let read: Promise<unknown> = Promise.resolve();
+    await act(async () => { read = refreshAccount(); });          // captures red
+    await act(async () => { puts()[0].reply(); });               // the server now holds green
+    await flush();
+    await act(async () => { gets()[gets().length - 1].reply(); await read; });
+    await flush();
+    expect(server.look).toBe("tractor/green");
+    expect(authState.current.user?.look).toBe("tractor/green");
+  });
+
+  it("an older read answering after a newer one never puts its counts back", async () => {
+    await draw(<CollectionPage />);
+    await flush();
+    holdGets = true;
+    const { refreshAccount } = await import("./writes");
+    let older: Promise<unknown> = Promise.resolve();
+    let newer: Promise<unknown> = Promise.resolve();
+    await act(async () => { older = refreshAccount(); });         // sees 9 rounds
+    server = { ...server, rounds_played: 10 };
+    await act(async () => { newer = refreshAccount(); });         // sees 10
+    const [a, b] = gets().slice(-2);
+    await act(async () => { b.reply(); await newer; });
+    expect(authState.current.user?.rounds_played).toBe(10);
+    await act(async () => { a.reply(); await older; });
+    expect(authState.current.user?.rounds_played).toBe(10);
+  });
+
+  it("a session change settles the writes still waiting to be sent", async () => {
+    await draw(<CollectionPage />);
+    await flush();
+    holdPuts = true;
+    const { writeMode } = await import("./writes");
+    let first: Promise<void> = Promise.resolve();
+    let second: Promise<void> = Promise.resolve();
+    await act(async () => { first = writeMode("individual"); });
+    await act(async () => { second = writeMode("off"); });        // waits behind the first
+    expect(puts()).toHaveLength(1);
+    act(() => { forgetPrivateSession(); });
+    const settled = (p: Promise<unknown>) => Promise.race([p.then(() => "settled", () => "settled"),
+      new Promise((r) => setTimeout(() => r("pending"), 20))]);
+    await act(async () => { void writeMode("team").catch(() => {}); });    // the new session's first write
+    expect(await settled(second)).toBe("settled");
+    await act(async () => { puts()[0].reply(); });
+    expect(await settled(first)).toBe("settled");
+    // the old session's waiting choice was never sent
+    expect(puts().map((h) => h.body)).toEqual([{ companions: "individual" }, { companions: "team" }]);
+  });
+
   it("a save that lands after a switch to another account changes nothing", async () => {
     await draw(<CollectionPage />);
     await flush();

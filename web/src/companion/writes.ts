@@ -29,7 +29,7 @@ interface FieldState {
 }
 type Settle = { resolve: (ok: boolean) => void; reject: (err: unknown) => void };
 
-let session: { scope: string; fields: Record<Field, FieldState> } | null = null;
+let session: { scope: string; fields: Record<Field, FieldState>; reads: number; applied: number } | null = null;
 
 const scopeNow = () => viewerScope(auth.state);
 const signedInUser = () => (auth.state.status === "in" ? auth.state.user : null);
@@ -37,11 +37,24 @@ const signedInUser = () => (auth.state.status === "in" ? auth.state.user : null)
 function fields(): Record<Field, FieldState> {
   const scope = scopeNow();
   if (session?.scope !== scope) {
+    if (session) settleSession(session.fields);
     const fresh = (): FieldState => ({ gen: 0, confirmed: null, sending: null, waiting: null });
-    session = { scope, fields: { look: fresh(), companions: fresh() } };
+    session = { scope, fields: { look: fresh(), companions: fresh() }, reads: 0, applied: 0 };
   }
   return session.fields;
 }
+
+/** A session that ended: its waiting choices are never sent, and they
+ *  resolve as overtaken. */
+function settleSession(old: Record<Field, FieldState>): void {
+  for (const field of ["look", "companions"] as const) {
+    const waiting = old[field].waiting;
+    old[field].waiting = null;
+    for (const s of waiting?.settle ?? []) s.resolve(false);
+  }
+}
+
+const busy = (st: FieldState) => st.sending !== null || st.waiting !== null;
 
 const valueOf = (user: AuthUser, field: Field): Value =>
   field === "look" ? user.look ?? "" : user.companions ?? "team";
@@ -52,19 +65,26 @@ function show(field: Field, value: Value): void {
   auth.updated(field === "look" ? { ...now, look: value } : { ...now, companions: value as CompanionMode });
 }
 
-/** Read the account again: its counts and what they unlock. A field chosen
- *  since the read began keeps the choice. */
+/** Read the account again: its counts and what they unlock. A read answers
+ *  only if no later read has answered first. A field takes the read's value
+ *  only if it was not chosen since the read began and had no write on the
+ *  wire or waiting at either end: the server may have answered the read
+ *  before it took that write. */
 export async function refreshAccount(): Promise<AuthUser | null> {
   if (!signedInUser()) return null;
   const f = fields();
   const scope = scopeNow();
+  const own = session!;
+  const n = ++own.reads;
   const started = { look: f.look.gen, companions: f.companions.gen };
+  const busyAtStart = { look: busy(f.look), companions: busy(f.companions) };
   const user = await fetchMe().catch(() => null);
   const now = signedInUser();
-  if (!user || !now || scopeNow() !== scope) return null;
+  if (!user || !now || scopeNow() !== scope || n < own.applied) return null;
+  own.applied = n;
   const next = { ...user };
   for (const field of ["look", "companions"] as const) {
-    if (f[field].gen !== started[field] || f[field].sending !== null || f[field].waiting !== null) {
+    if (f[field].gen !== started[field] || busyAtStart[field] || busy(f[field])) {
       if (field === "look") next.look = now.look;
       else next.companions = now.companions;
     } else if (f[field].confirmed === null || f[field].confirmed.gen <= f[field].gen) {
@@ -108,6 +128,7 @@ function send(field: Field, gen: number, value: Value, scope: string, settle: Se
       if (err) s.reject(err);
       else s.resolve(ok);
     }
+    // a session that ended sends nothing more (`settleSession` resolved its waiting choice)
     if (scopeNow() !== scope) return;
     const st = fields()[field];
     st.sending = null;

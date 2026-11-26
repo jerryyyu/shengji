@@ -35,10 +35,10 @@ async function dropLink(t: NearbyTable, p: Player): Promise<void> {
 }
 
 describe("a lobby seat whose link drops", () => {
-  it("a blip from one who has not tapped Start never starts the game, and the seat outlasts a stuck link's recovery", async () => {
+  it("a guest's older Start and a blip never start the game, and the seat outlasts a stuck link's recovery", async () => {
     const { t, a, b } = await lobby();
-    t.send(t.host, { type: "table_start" });
     t.send(a, { type: "table_start" });
+    t.send(b, { type: "table_start" });
     await t.advance(1);
     expect(t.room!.game).toBeNull();
     const seat = b.seat!;
@@ -53,30 +53,30 @@ describe("a lobby seat whose link drops", () => {
     await t.join("Bo", { token: b.token, player: b });
     expect(b.seat).toBe(seat);
     expect(t.room!.game).toBeNull();
-    t.send(b, { type: "table_start" });
+    t.send(t.host, { type: "table_start_now" });
     await t.settle(() => t.room!.game !== null, 10_000);
+    expect(t.room!.seats[seat].name).toBe("Bo");
   }, 60_000);
 
-  it("a Start tapped before the drop still counts", async () => {
-    const { t, a, b } = await lobby();
-    t.send(t.host, { type: "table_start" });
-    t.send(b, { type: "table_start" });
-    await t.advance(1);
+  it("the host's Start does not wait for a guest whose link is down", async () => {
+    const { t, b } = await lobby();
+    const seat = b.seat!;
     await dropLink(t, b);
-    expect(t.room!.lobbyReady.has(b.seat!)).toBe(true);
-    t.send(a, { type: "table_start" });
+    t.send(t.host, { type: "table_start_now" });
     await t.settle(() => t.room!.game !== null, 10_000);
+    expect(t.room!.seats[seat].isBot).toBe(false);
+    expect(t.room!.seats[seat].connected).toBe(false);   // covered by a bot after its window
   }, 60_000);
 
-  it("after the hold the seat is free and the others start without it", async () => {
-    const { t, a, b } = await lobby();
-    t.send(t.host, { type: "table_start" });
-    t.send(a, { type: "table_start" });
-    await t.advance(1);
+  it("after the hold the seat is free, nothing starts by itself, and the host's Start fills it with a bot", async () => {
+    const { t, b } = await lobby();
     const seat = b.seat!;
     await dropLink(t, b);
     await t.advance(LOBBY_SEAT_HOLD + 1);
-    expect(t.room!.game).not.toBeNull();
+    expect(t.room!.game).toBeNull();
+    expect(t.room!.lobby![seat]).toBeNull();
+    t.send(t.host, { type: "table_start_now" });
+    await t.settle(() => t.room!.game !== null, 10_000);
     expect(t.room!.seats[seat].isBot).toBe(true);
   }, 60_000);
 });

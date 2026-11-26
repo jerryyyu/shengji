@@ -131,10 +131,10 @@ function queued(over: Record<string, unknown> = {}) {
   return { type: "queue_state", queued: true, count: 3, since, front: false, party_id: null,
            leader: true, bots_at: since + 60, ...over };
 }
-type Seat = { name: string; you?: boolean; ready?: boolean; reconnecting?: boolean; since?: number;
+type Seat = { name: string; you?: boolean; reconnecting?: boolean; since?: number;
               sit?: string; pair?: boolean; leader?: boolean } | null;
 const seat = (name: string, over: Partial<NonNullable<Seat>> = {}): Seat => ({
-  name, you: false, ready: false, reconnecting: false, since: nowSecs() - 30, sit: `sit-${name}`, pair: false,
+  name, you: false, reconnecting: false, since: nowSecs() - 30, sit: `sit-${name}`, pair: false,
   leader: true, ...over,
 });
 /** A queue_state at a waiting table (you at seat 0 unless `you` says). */
@@ -145,11 +145,7 @@ function atTable(seats: Seat[], table: Record<string, unknown> = {}, over: Recor
     ...over,
     table: {
       id: "t1", you, seats, timer: null,
-      ready: taken.filter((s) => s.ready).length, of: taken.length,
-      you_ready: !!seats[you]?.ready,
-      // the joiners but you whose Ready is out: never the owner, never one reconnecting
-      waiting_for: seats.flatMap((s, at) => s && at !== ((table.opener as number | undefined) ?? 0)
-        && !s.ready && !s.you && !s.reconnecting ? [s.name] : []),
+      of: taken.length,
       ...table,
     },
   });
@@ -591,8 +587,8 @@ describe("a Duo is a table", () => {
     members: youLead ? [JERRY, ALICE] : [{ ...JERRY, you: false }, { ...ALICE, you: true }],
   });
   /** Your own table alone: as its Duo opener (`opener`) or the friend who joined by its code. */
-  const duoState = (opener: boolean, ready: number, youReady: boolean, over: Record<string, unknown> = {}) =>
-    queued({ party_id: "d1", leader: opener, duo: true, held_seat: null, duo_ready: ready, you_ready: youReady,
+  const duoState = (opener: boolean, over: Record<string, unknown> = {}) =>
+    queued({ party_id: "d1", leader: opener, duo: true, held_seat: null,
              code: "4N5Z", opener, allow_joiners: true, ...over });
   const joiners = (p: Element) => [...p.querySelectorAll("[role='switch']")].filter((b) => b.textContent === "Allow joiners");
   const lobby = () => q(".lobby-panel")!;
@@ -625,66 +621,39 @@ describe("a Duo is a table", () => {
     expect(document.body.textContent).not.toContain("Duo code");
   });
 
-  it("the friend who opened the link sits in the held seat: You and Jerry, Ready and Leave, no line, no switch", async () => {
+  it("the friend who opened the link sits in the held seat: You and Jerry, the wait for Jerry and Leave, no switch", async () => {
     await renderApp();
     say(duoParty(false));
-    say(duoState(false, 0, false));
+    say(duoState(false));
     const p = panel()!;
     expect(p.querySelector(".tp-title")?.textContent).toBe("You and Jerry");
-    expect(lines()).toEqual([]);
+    expect(lines()).toEqual(["Waiting for Jerry to start"]);
     expect(p.querySelector(".tp-seat.friend")?.getAttribute("aria-label")).toBe("Jerry, your Duo partner");
     expect(p.querySelector(".tp-seat.held")).toBeNull();
     expect(p.querySelector(".tp-led")).toBeNull();
-    expect(words(primary()!)).toBe("Ready");
-    await pastGuard();
-    expect(primary()!.disabled).toBe(false);
+    expect(primary()).toBeNull();
+    expect(p.querySelector(".tp-tick")).toBeNull();
     expect(button("Leave", p)).toBeDefined();
     expect(joiners(p)).toHaveLength(0);
     expect(p.textContent).not.toContain("Allow joiners");
+    expect(p.textContent).not.toContain("Ready");
     expect(p.querySelector(".tp-code")?.textContent).toBe("4N5Z");
+    expect(sentTypes()).not.toContain("table_start");
   });
 
-  it("the partner's Ready: Waiting for Jerry with the bots' ring, and a second tap takes it back", async () => {
-    await renderApp();
-    say(duoParty(false));
-    say(duoState(false, 0, false));
-    await pastGuard();
-    click(primary());
-    expect(lastSent()).toEqual({ type: "table_start" });
-    expect(words(primary()!)).toBe("Waiting for Jerry");
-    say(duoState(false, 1, true));
-    expect(lines()).toEqual([]);
-    expect(words(primary()!)).toBe("Waiting for Jerry");
-    expect(primary()!.disabled).toBe(false);              // a tap takes the Ready back
-    expect(primary()!.classList.contains("waiting")).toBe(true);
-    expect(ringSecs()).not.toBeNull();
-    expect(panel()!.querySelector(".tp-seat.you")?.getAttribute("aria-label")).toBe("You, ready");
-    click(primary());
-    expect(lastSent()).toEqual({ type: "table_start", on: false });
-    say(duoState(false, 0, false));
-    expect(words(primary()!)).toBe("Ready");
-    // one Ready and one take-back, never a second Ready
-    const starts = FakeWS.all.flatMap((w) => w.sent).filter((m) => m.type === "table_start");
-    expect(starts).toEqual([{ type: "table_start" }, { type: "table_start", on: false }]);
-  });
-
-  it("the leader's panel: no Ready, Waiting for Alice until her Ready, then Start with bots, and Allow joiners", async () => {
+  it("the leader's panel: Start with bots at once with the partner there, and Allow joiners", async () => {
     await renderApp();
     say(duoParty(true));
-    say(duoState(true, 0, false));
+    say(duoState(true));
     await pastGuard();
     const p = panel()!;
     expect(p.querySelector(".tp-title")?.textContent).toBe("You and Alice");
     expect(lines()).toEqual([]);
-    expect(words(primary()!)).toBe("Waiting for Alice");
-    expect(primary()!.disabled).toBe(true);
-    expect(primary()!.classList.contains("waiting")).toBe(true);
-    expect(ringSecs()).not.toBeNull();
     expect(p.textContent).not.toContain("Ready");
-    say(duoState(true, 1, false));
-    expect(panel()!.querySelector(".tp-seat.friend .tp-tick")).not.toBeNull();
+    expect(p.querySelector(".tp-tick")).toBeNull();
     expect(words(primary()!)).toBe("Start with bots");
     expect(primary()!.disabled).toBe(false);
+    expect(ringSecs()).not.toBeNull();
     openSettings(panel()!);
     expect(joiners(panel()!)).toHaveLength(1);
     click(primary());
@@ -692,7 +661,7 @@ describe("a Duo is a table", () => {
     expect(sentTypes()).not.toContain("table_start");
   });
 
-  it("at a waiting table a Duo's partner taps Ready; the held seat stays the friend's, never a move target", async () => {
+  it("at a waiting table a Duo's partner waits for the owner with Leave; the held seat stays the friend's, never a move target", async () => {
     await renderApp();
     // a stranger at Jerry's Duo table, the partner seat still held
     say(atTable([seat("Jerry"), seat("Mei", { you: true }), null, null], { you: 1, held_seat: 2, held_seats: [2] },
@@ -701,27 +670,26 @@ describe("a Duo is a table", () => {
     expect(held.tagName).not.toBe("BUTTON");
     expect(held.getAttribute("aria-label")).toBe("Partner seat, held, other team");
     expect(panel()!.querySelectorAll("button.tp-seat")).toHaveLength(1);    // only seat 3 moves you
-    // the Duo member who is not its leader has Ready and Leave, not "Jerry leads"
+    // the Duo member who is not its leader waits with Leave, not "Jerry leads"
     say(duoParty(false));
     say(atTable([seat("Mei"), null, seat("Jerry", { pair: true }), seat("Alice", { you: true, pair: true, leader: false })],
-                { you: 3 }, { party_id: "d1", leader: false, duo: true, duo_ready: 0, opener: false }));
+                { you: 3 }, { party_id: "d1", leader: false, duo: true, opener: false }));
     expect(panel()!.querySelector(".tp-led")).toBeNull();
-    expect(words(primary()!)).toBe("Ready");
-    await pastGuard();
-    click(primary());
-    expect(lastSent()).toEqual({ type: "table_start" });
+    expect(primary()).toBeNull();
+    expect(lines()).toEqual(["Waiting for Mei to start"]);
+    expect(button("Leave", panel()!)).toBeDefined();
   });
 
   it("Leave before the game: one sheet, Leave the Duo?, the partner keeps the table (and its code, when you opened it)", async () => {
     await renderApp();
     say(duoParty(false));
-    say(duoState(false, 0, false));
+    say(duoState(false));
     click(button("Leave", panel()!));
     expect(leaveSheetText()).toBe("Leave the Duo? / Jerry keeps the table.");
     click(q("[role='alertdialog'] .leave-sheet-stay"));
     expect(leaveSheetText()).toBeNull();
     say(duoParty(true));
-    say(duoState(true, 0, false));
+    say(duoState(true));
     click(button("Leave", panel()!));
     expect(leaveSheetText()).toBe("Leave the Duo? / Alice keeps the table and its code.");
     confirmLeave();
@@ -780,7 +748,7 @@ describe("a Duo is a table", () => {
     window.history.replaceState(null, "", "/?code=WXYZ");
     await renderApp();
     say(duoParty(true));
-    say(duoState(true, 0, false));
+    say(duoState(true));
     await settle();
     expect(leaveSheetText()).toBe("Leave to join WXYZ? / Alice keeps the table and its code.");
     click(q("[role='alertdialog'] .leave-sheet-stay"));
@@ -862,7 +830,9 @@ describe("the panel's primary button", () => {
     expect(live()).toBe(region);                           // the same region throughout
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null]));
     expect(live()).toBe(region);
-    expect(region.textContent).toBe("Table. You and Alice. 0 of 1 ready. Waiting for Alice.");
+    expect(region.textContent).toBe("Table. You and Alice. 2 seated.");
+    say(atTable([seat("Jerry"), seat("Alice", { you: true }), null, null], { you: 1 }, { opener: false }));
+    expect(region.textContent).toBe("Table. You and Jerry. 2 seated. Waiting for Jerry to start.");
     // the clocks themselves are not in any live region
     expect(panel()?.closest("[aria-live]")).toBeNull();
   });
@@ -881,7 +851,7 @@ const TABLE_STATE = {
 };
 
 describe("a shared table", () => {
-  it("a second person makes it shared: both teams, the joiners' ready count, and the owner's Start with the bots' ring", async () => {
+  it("a second person makes it shared: both teams, the seated count, and the owner's Start with the bots' ring", async () => {
     await renderApp();
     fakeClock();
     say(queued());
@@ -890,8 +860,8 @@ describe("a shared table", () => {
     const p = panel()!;
     expect(p.classList.contains("tp-shared")).toBe(true);
     expect(p.querySelector(".tp-title")?.textContent).toBe("You and Alice");
-    // one status, the joiners' ready count; the bots' countdown is the ring on Start
-    expect(lines()).toEqual(["0 of 1 ready"]);
+    // one status, who is seated; the bots' countdown is the ring on Start
+    expect(lines()).toEqual(["2 seated"]);
     expect(ringSecs()).toBe("42");
     const [ours, theirs] = [...p.querySelectorAll(".tp-col")];
     expect([...ours.querySelectorAll(".tp-seat")].map((s) => s.getAttribute("aria-label")))
@@ -902,73 +872,70 @@ describe("a shared table", () => {
     tick(6000);
     expect(theirs.querySelector(".tp-seat")?.getAttribute("aria-label")).toBe("Alice, other team. Move");
     expect(ringSecs()).toBe("36");
-    // the owner has no Ready: its Start waits, quiet and not dimmed, for Alice's
-    expect(words(primary()!)).toBe("Waiting for Alice");
-    expect(primary()?.disabled).toBe(true);
-    expect(primary()?.classList.contains("waiting")).toBe(true);
-    say(atTable([seat("Jerry", { you: true }), seat("Alice", { ready: true }), null, null],
-                { timer: { at: nowSecs() + 36, name: "Alice", you: false } }));
-    expect(lines()).toEqual(["1 of 1 ready"]);
+    // the owner's Start is enabled at once: a joiner has nothing to tap
     expect(words(primary()!)).toBe("Start with bots");
+    expect(primary()?.disabled).toBe(false);
+    expect(primary()?.classList.contains("waiting")).toBe(false);
     click(primary());
     expect(lastSent()).toEqual({ type: "table_start_now" });
     expect(primary()?.disabled).toBe(true);
     expect(q(".tabbar")).not.toBeNull();
   });
 
-  it("the owner's Start needs no wait after an arrival, only every connected joiner's Ready; a joiner's button is Ready", async () => {
+  it("the owner's Start needs no wait after an arrival and none for a joiner; a joiner has no button but Leave", async () => {
     await renderApp();
-    say(atTable([seat("Jerry", { you: true }), seat("Alice", { ready: true, since: nowSecs() }), null, null]));
+    say(atTable([seat("Jerry", { you: true }), seat("Alice", { since: nowSecs() }), null, null]));
     await pastGuard();
     expect(words(primary()!)).toBe("Start with bots");
     expect(primary()?.disabled).toBe(false);
     click(primary());
     expect(lastSent()).toEqual({ type: "table_start_now" });
     expect(words(primary()!)).toBe("Starting…");
-    // refused because a Ready was taken back meanwhile: quietly, and the panel looks again
+    // refused because the panel changed meanwhile: quietly, and the panel looks again
     say({ type: "error", code: "panel_changed", message: "Your table changed. Look again before you tap." });
     expect(q(".toast")).toBeNull();
-    // a joiner who is reconnecting does not hold it; one at the table does, by name or by count
+    // a joiner reconnecting or newly seated never holds it
     say(atTable([seat("Jerry", { you: true }), seat("Alice", { reconnecting: true }),
                  seat("Bobby Tables The Third", { since: nowSecs() }), null]));
-    expect(words(primary()!)).toBe("Waiting for Bobby Tabl…");
-    say(atTable([seat("Jerry", { you: true }), seat("Alice"), seat("Bobby Tables The Third"), null]));
-    expect(words(primary()!)).toBe("Waiting for 2 players");
+    expect(words(primary()!)).toBe("Start with bots");
+    expect(primary()?.disabled).toBe(false);
+    expect(lines()).toEqual(["3 seated"]);
     expect(document.body.textContent).not.toContain("Start now");
-    // a joiner's button is Ready
+    // a joiner waits for the owner with Leave
     say(atTable([seat("Jerry"), seat("Alice", { you: true }), null, null], { you: 1 }, { opener: false }));
-    expect(words(primary()!)).toBe("Ready");
-    click(primary());
-    expect(lastSent()).toEqual({ type: "table_start" });
+    expect(primary()).toBeNull();
+    expect(lines()).toEqual(["Waiting for Jerry to start"]);
+    expect(button("Leave", panel()!)).toBeDefined();
+    expect(panel()!.textContent).not.toContain("Ready");
   });
 
-  it("after a joiner's Ready the button waits for the owner by name; a newcomer keeps the tick", async () => {
+  it("a joiner waits for the owner by name; a newcomer changes nothing it does, and no seat has a tick", async () => {
     await renderApp();
-    say(atTable([seat("Jerry"), seat("Alice", { you: true, ready: true }), null, null], { you: 1 }, { opener: false }));
+    say(atTable([seat("Jerry"), seat("Alice", { you: true }), null, null], { you: 1 }, { opener: false }));
     await pastGuard();
-    expect(button("Waiting for Jerry", panel()!)?.disabled).toBe(false);   // a tap takes it back
-    expect(panel()!.querySelector(".tp-seat.you")?.getAttribute("aria-label")).toBe("You, ready");
-    expect(panel()!.querySelector(".tp-seat.you .tp-tick")).not.toBeNull();
-    say(atTable([seat("Jerry"), seat("Alice", { you: true, ready: true }),
+    expect(lines()).toEqual(["Waiting for Jerry to start"]);
+    expect(panel()!.querySelector(".tp-seat.you")?.getAttribute("aria-label")).toBe("You");
+    expect(panel()!.querySelector(".tp-tick")).toBeNull();
+    say(atTable([seat("Jerry"), seat("Alice", { you: true }),
                  seat("Bobby Tables The Third", { since: nowSecs() }), null],
                 { you: 1, timer: { at: nowSecs() + 18, name: "Jerry", you: false } }, { opener: false }));
-    expect(button("Waiting for Jerry", panel()!)?.disabled).toBe(false);
     expect(panel()!.querySelector(".tp-title")?.textContent).toBe("You, Jerry and Bobby Tabl…");
-    expect(lines()).toEqual(["1 of 2 ready"]);
-    // the ring stays on the waiting button: the bots still come
-    expect(ringSecs()).toMatch(/^1[789]$/);
+    expect(lines()).toEqual(["Waiting for Jerry to start"]);
+    // a joiner has no button, so no ring: the owner's Start carries the clock
+    expect(primary()).toBeNull();
+    expect(ringSecs()).toBeNull();
     const names = [...panel()!.querySelectorAll(".tp-seat")].map((s) => s.getAttribute("aria-label"));
     expect(names.some((n) => n?.startsWith("Bobby Tables The Third, Just joined"))).toBe(true);
   });
 
-  it("with every switch on there is no timer: no ring, no line and no Add bots row", async () => {
+  it("with every switch on there is no timer: no ring and no Add bots row, the seated line stays", async () => {
     await renderApp();
     say(atTable([seat("Jerry", { you: true }), seat("Alice")], {}, { bots_at: null, wait_players: true }));
-    expect(lines()).toEqual(["0 of 1 ready"]);
+    expect(lines()).toEqual(["2 seated"]);
     expect(ringSecs()).toBeNull();
     expect(panel()!.textContent).not.toMatch(/Add bots|Bots in/);
     say(atTable([seat("Jerry", { you: true }), seat("Alice")], { timer: { at: nowSecs() + 30, name: "Jerry", you: true } }));
-    expect(lines()).toEqual(["0 of 1 ready"]);
+    expect(lines()).toEqual(["2 seated"]);
     expect(ringSecs()).toMatch(/^(29|30|31)$/);
   });
 
@@ -990,7 +957,7 @@ describe("a shared table", () => {
 
   it("the table starting goes straight to the game: no match-found sheet", async () => {
     await renderApp();
-    say(atTable([seat("Jerry", { you: true, ready: true }), seat("Alice", { ready: true }), null, null]));
+    say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null]));
     say({ type: "match_started", match_id: "t1", room: "ABCD", rated: true });
     expect(panel()).toBeNull();
     expect(document.body.textContent).not.toContain("match found");
@@ -1035,7 +1002,7 @@ describe("a shared table", () => {
 
   it("server_error after the room's frames: back to the lobby, at your table again", async () => {
     await renderApp();
-    say(atTable([seat("Jerry", { you: true, ready: true }), seat("Mei", { ready: true }), null, null]));
+    say(atTable([seat("Jerry", { you: true }), seat("Mei"), null, null]));
     say({ type: "match_started", match_id: "t1", room: "ABCD", rated: true });
     say({ type: "resume", token: "t1", gen: 1 });
     say({ type: "room", room: "ABCD", you: 0, host: 0, start_level: "2", matched: true,
@@ -1088,7 +1055,7 @@ describe("a shared table", () => {
     expect(ours.children[0]?.tagName).toBe("BUTTON");
     expect(q(".home-body")?.className).not.toContain("wt-behind");
     expect(q("[inert]")).toBeNull();
-    expect(lines()).toEqual(["0 of 1 ready"]);
+    expect(lines()).toEqual(["2 seated"]);
     expect(ringSecs()).toBe("42");
   });
 });
@@ -1323,7 +1290,7 @@ describe("one code for rooms and tables", () => {
     say({ type: "room_seats", room: "4N5Z", table: true, mode: "ranked", in_game: false, allow_joiners: true,
           full: false, closed: false,
           seats: [0, 1, 2, 3].map((seat) => ({ seat, team: seat % 2, state: seat === 0 ? "taken" : seat === 2 ? "held" : "open",
-                                               name: seat ? null : "Ann", ready: false })) });
+                                               name: seat ? null : "Ann" })) });
     await settle();
     expect(sentTypes()).not.toContain("table_join");
     // the Duo's held seat is yours, glowing
@@ -2050,12 +2017,11 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
                  bots_paused: true, bots_at: null }));
     expect(panel()?.classList.contains("tp-join")).toBe(true);
     expect(panel()?.textContent).not.toMatch(/ranked/i);
-    say(queued({ offer: null, table: { id: "t1", you: 0, timer: null, ready: 0, of: 2, you_ready: false,
-                                       waiting_for: ["Sam"],
-                                       seats: [{ name: "Me", you: true, ready: false, reconnecting: false,
+    say(queued({ offer: null, table: { id: "t1", you: 0, timer: null, of: 2,
+                                       seats: [{ name: "Me", you: true, reconnecting: false,
                                                  since: nowSecs(), pair: false, leader: true },
                                                null,
-                                               { name: "Sam", you: false, ready: false, reconnecting: false,
+                                               { name: "Sam", you: false, reconnecting: false,
                                                  since: nowSecs(), pair: false, leader: true },
                                                null] } }));
     expect(panel()?.classList.contains("tp-shared")).toBe(true);
@@ -2194,7 +2160,7 @@ describe("the unified table on the client", () => {
     expect(lastSent()).toEqual({ type: "queue_join", mode: "casual" });
   });
 
-  it("a single moves seats before Start: a green seat sends table_move; no visible hint, the label says Move here", async () => {
+  it("a single moves seats until the start: a green seat sends table_move; no visible hint, the label says Move here", async () => {
     await renderApp();
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null]));
     await pastGuard();
@@ -2209,15 +2175,12 @@ describe("the unified table on the client", () => {
     // seat refusals in a few words
     say({ type: "error", code: "seat_taken", message: "That seat was just taken. Pick another." });
     expect(q(".toast")?.textContent).toBe("That seat was just taken.Pick another.");
-    say({ type: "error", code: "already_ready", message: "You tapped Ready, so your seat is set." });
-    expect(q(".toast")?.textContent).toBe("You tapped Ready, so your seat is set.");
     say({ type: "error", code: "pair_seats_fixed", message: "A Duo's seats stay together." });
     expect(q(".toast")?.textContent).toBe("A Duo's seats stay together.");
-    // after your Start your seat is set: no open seat buttons (the opener
-    // may still move Alice)
-    say(atTable([seat("Jerry", { you: true, ready: true }), seat("Alice"), null, null]));
+    // a joiner has no Ready to set its seat: its open seats still move it
+    say(atTable([seat("Jerry"), seat("Alice", { you: true }), null, null], { you: 1 }, { opener: false }));
     expect(panel()!.querySelector(".tp-hint")).toBeNull();
-    expect(panel()!.querySelector("button.tp-seat.open")).toBeNull();
+    expect(panel()!.querySelectorAll("button.tp-seat.open")).toHaveLength(2);
   });
 
   it("a Duo's seats never move", async () => {
@@ -2261,9 +2224,9 @@ describe("the unified table on the client", () => {
     expect(primary()?.textContent).toBe("I’m back");
     click(primary());
     expect(lastSent()).toEqual({ type: "table_here" });
-    say(atTable([seat("Jerry", { you: true }), seat("Alice", { ready: true }), null, null], {},
+    say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null], {},
                 { still_here_until: null }));
-    expect(lines()).toEqual(["1 of 1 ready"]);
+    expect(lines()).toEqual(["2 seated"]);
     // Start takes the place under a fresh guard: a second tap cannot start
     expect(primary()?.textContent).toBe("Start with bots");
     expect(primary()?.disabled).toBe(true);
@@ -2287,7 +2250,7 @@ describe("the unified table on the client", () => {
     expect(sentOf("table_here")).toHaveLength(1);
   });
 
-  it("panel_seq goes back with Start with bots, Start and Join; panel_changed refreshes quietly", async () => {
+  it("panel_seq goes back with Start with bots, the owner's Start and Join; panel_changed refreshes quietly", async () => {
     await renderApp();
     say(queued({ panel_seq: 7 }));
     await pastGuard();
@@ -2298,10 +2261,10 @@ describe("the unified table on the client", () => {
     expect(q(".toast")).toBeNull();
     expect(sentOf("queue_status").length).toBe(before + 1);
     expect(words(primary()!)).toBe("Start with bots");
-    say(atTable([seat("Jerry"), seat("Alice", { you: true }), null, null], { you: 1 }, { panel_seq: 8, opener: false }));
+    say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null], {}, { panel_seq: 8 }));
     await pastGuard();
     click(primary());
-    expect(lastSent()).toEqual({ type: "table_start", panel_seq: 8 });
+    expect(lastSent()).toEqual({ type: "table_start_now", panel_seq: 8 });
     say({ type: "queue_state", queued: false, count: 0 });
     click(findBtn());
     say(queued({ panel_seq: 9, bots_paused: true, bots_at: null, offer: {
@@ -2389,24 +2352,15 @@ describe("the first joiner", () => {
 });
 
 
-describe("deferred mock items: take back a Ready, the opener moves people", () => {
-  it("a Ready is taken back with one more tap: Waiting for Alice sends table_start off, then Ready shows again", async () => {
+describe("deferred mock items: the opener moves people", () => {
+  it("a joiner never sends table_start: it has no Ready to take back", async () => {
     await renderApp();
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), seat("Li"), null], {}, { opener: false }));
     await pastGuard();
-    click(primary());
-    expect(lastSent()).toEqual({ type: "table_start" });
-    say(atTable([seat("Jerry", { you: true, ready: true }), seat("Alice"), seat("Li", { ready: true }), null], {},
-                { opener: false }));
-    expect(words(primary()!)).toBe("Waiting for Alice");
-    expect(lines()).toEqual(["2 of 2 ready"]);
-    expect(primary()!.className).toContain("waiting");
-    click(primary());
-    expect(lastSent()).toEqual({ type: "table_start", on: false });
-    say(atTable([seat("Jerry", { you: true }), seat("Alice"), seat("Li", { ready: true }), null], {}, { opener: false }));
-    expect(words(primary()!)).toBe("Ready");
-    expect(lines()).toEqual(["1 of 2 ready"]);
-    expect(primary()!.className).not.toContain("waiting");
+    expect(primary()).toBeNull();
+    expect(lines()).toEqual(["Waiting for Alice to start"]);
+    click(button("Leave", panel()!));
+    expect(sentTypes()).not.toContain("table_start");
   });
 
   it("only the opener taps a person, then a seat, then confirms once: table_move with from", async () => {
@@ -2540,7 +2494,7 @@ describe("the table frame is the table", () => {
     // queue_state's copy says something else: Ghost sits there, under another code
     const table = (state as unknown as { table: Record<string, unknown> }).table;
     const stale = { ...state, code: "OLD1", table: { ...table, code: "OLD1", seats: [
-      seat("Jerry", { you: true }), seat("Ghost"), null, null], ready: 0, of: 2, waiting_for: ["Ghost"] } };
+      seat("Jerry", { you: true }), seat("Ghost"), null, null], of: 2 } };
     raw(stale);
     expect(panel()).toBeNull();                     // nothing until its table frame
     raw(tableFrameFor(state));

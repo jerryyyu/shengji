@@ -114,8 +114,9 @@ export function OfflineControls({ local, status, room: roomMsg = null, code = ""
     offlineGame.setBotLevel(level);
     conn.send({ type: "table_bot_level", level });
   };
-  const ready = (on: boolean) => {
-    conn.send(on ? { type: "table_start" } : { type: "table_start", on: false });
+  // the nearby host's Start: everyone seated plays, bots in the open seats
+  const hostStart = () => {
+    conn.send({ type: "table_start_now" });
   };
 
   // a nearby table's lobby, for its host and for a joiner
@@ -123,7 +124,7 @@ export function OfflineControls({ local, status, room: roomMsg = null, code = ""
     return (
       <>
         <ModeSwitch value="casual" disabled={false} rankedOff />
-        <nbUi.NearbyRoomPanel room={roomMsg} onReady={ready} onToggle={toggleNearby} onBots={pickNearbyBots}
+        <nbUi.NearbyRoomPanel room={roomMsg} onHostStart={hostStart} onToggle={toggleNearby} onBots={pickNearbyBots}
                               onLeave={host.phase !== "off" ? leave : () => nbUi.nearbyJoin.leave()} />
       </>
     );

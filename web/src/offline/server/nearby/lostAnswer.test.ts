@@ -71,12 +71,15 @@ describe("a newcomer whose answer was lost", () => {
     const sock = joinUnheard(t, 2);
     await t.settle(() => t.room!.lobby![2] !== null, 10_000);
     await t.settle(() => sock.readyState === NearbySocket.CLOSED, 100_000);
-    t.send(t.host, { type: "table_start" });
     await t.advance(1);
     // held for a phone that may be back by its token
     expect(t.room!.game).toBeNull();
     await t.advance(CONFIRM_SECONDS);
     expect(t.room!.lobby?.[2] ?? null).toBeNull();
+    expect(t.room!.game).toBeNull();          // nothing starts by itself
+    t.send(t.host, { type: "table_start_now" });
+    await t.settle(() => t.room!.game !== null, 10_000);
+    expect(t.room!.seats[2].isBot).toBe(true);
   }, 60_000);
 });
 

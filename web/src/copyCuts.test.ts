@@ -50,6 +50,12 @@ const CUT = [
   "Levels restart at",
   "重新打起",
   "满 80 上台",
+  // a joiner's Ready and the ready count (Jerry 2026-11-26, J1); the English
+  // "Ready" is a common word in identifiers, so its zh label holds it
+  "\"准备\"",
+  "of {count} ready",
+  "已准备 {n}",
+  "Waiting for {n} players",
 ];
 
 const SRC = fileURLToPath(new URL(".", import.meta.url));

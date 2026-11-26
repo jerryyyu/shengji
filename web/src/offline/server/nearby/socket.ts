@@ -46,8 +46,8 @@ const RESUME_GRACE_SECONDS = 2;
 
 /** The moves the host may not have had, kept across a seat's links so the
  *  link that replaces a stuck one sends the last of them again, once. */
-type MoveKind = "play" | "bury" | "declare" | "pass_declare" | "next_round" | "table_start";
-const MOVE_KINDS: ReadonlySet<string> = new Set<MoveKind>(["play", "bury", "declare", "pass_declare", "next_round", "table_start"]);
+type MoveKind = "play" | "bury" | "declare" | "pass_declare" | "next_round";
+const MOVE_KINDS: ReadonlySet<string> = new Set<MoveKind>(["play", "bury", "declare", "pass_declare", "next_round"]);
 
 /** A move the host has not answered. */
 interface Unanswered {
@@ -55,8 +55,6 @@ interface Unanswered {
   kind: MoveKind;
   /** The cards of a play, bury or declare; empty otherwise. */
   ids: number[];
-  /** A table_start's `on`: false takes the Start back. */
-  on: boolean;
   /** The table frame the page had when it sent the move: the decision it
    *  answers (decisionAt). */
   at: Record<string, unknown>;
@@ -129,7 +127,6 @@ function decisionAt(frame: Record<string, unknown>, kind: MoveKind): string | nu
 
 /** Whether `frame` shows the decision `move` was sent at, still waiting. */
 function sameDecision(frame: Record<string, unknown>, move: Unanswered): boolean {
-  if (move.kind === "table_start") return true;
   if (move.kind === "declare") {
     if (frame.type !== "state" || frame.joining_you) return false;
     if (JSON.stringify([frame.levels, frame.games_won]) !== JSON.stringify([move.at.levels, move.at.games_won])) return false;
@@ -145,18 +142,12 @@ function sameDecision(frame: Record<string, unknown>, move: Unanswered): boolean
  *  it again applies it once: the frame shows the same decision the move was
  *  sent at (sameDecision), and it still asks this seat for that move (a
  *  play or bury with its cards in hand, a declare still on offer, a pass or
- *  Next not yet counted) or, in the lobby, still shows its Start as it
- *  was. Anything else (another phase, a declaration that beat it, a later
+ *  Next not yet counted). Anything else (another phase, a declaration that beat it, a later
  *  decision that looks like it) means it was applied or is stale, and it is
  *  never sent again. */
 function stillOwed(frame: Record<string, unknown> | null, move: Unanswered): boolean {
   if (frame === null || !sameDecision(frame, move)) return false;
   const you = frame.you;
-  if (move.kind === "table_start") {
-    const lobby = frame.type === "room" ? frame.nearby as { ready?: unknown } | undefined : undefined;
-    if (!lobby || !Array.isArray(lobby.ready)) return false;
-    return lobby.ready.includes(you) !== move.on;
-  }
   if (frame.type !== "state" || frame.joining_you) return false;
   switch (move.kind) {
     case "declare": {
@@ -656,7 +647,7 @@ export class NearbySocket {
     if (this.seen === null) return;
     const move: Unanswered = {
       text, kind, ids: Array.isArray(msg.card_ids) ? msg.card_ids as number[] : [],
-      on: msg.on !== false, at: this.seen, resent: false,
+      at: this.seen, resent: false,
     };
     if (!sameDecision(this.seen, move)) return;
     moves.set(kind, move);

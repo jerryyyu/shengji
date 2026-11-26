@@ -195,9 +195,9 @@ describe("room links land in the panel", () => {
     expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
     // the queue's table, back on this fresh page, holds this device first
     say({ type: "queue_state", queued: true, count: 2, since: nowSecs(), leader: true, bots_at: nowSecs() + 60,
-          table: { id: "t1", you: 0, timer: null, ready: 0, of: 2, you_ready: false, waiting_for: ["Alice"],
-                   seats: [{ name: "Jerry", you: true, ready: false, reconnecting: false, since: nowSecs(), pair: false, leader: true },
-                           { name: "Alice", you: false, ready: false, reconnecting: false, since: nowSecs(), pair: false, leader: true },
+          table: { id: "t1", you: 0, timer: null, of: 2,
+                   seats: [{ name: "Jerry", you: true, reconnecting: false, since: nowSecs(), pair: false, leader: true },
+                           { name: "Alice", you: false, reconnecting: false, since: nowSecs(), pair: false, leader: true },
                            null, null] } });
     await settle();
     const alert = q("[role='alertdialog']")!;
@@ -214,9 +214,9 @@ describe("room links land in the panel", () => {
 describe("a Play table's chat before the game", () => {
   const table = (over: Record<string, unknown> = {}) => ({
     type: "queue_state", queued: true, count: 2, since: nowSecs(), leader: true, bots_at: nowSecs() + 60,
-    table: { id: "t1", you: 0, timer: null, ready: 0, of: 2, you_ready: false, waiting_for: ["Alice"],
-             seats: [{ name: "Jerry", you: true, ready: false, reconnecting: false, since: nowSecs(), pair: false, leader: true },
-                     { name: "Alice", you: false, ready: false, reconnecting: false, since: nowSecs(), pair: false, leader: true },
+    table: { id: "t1", you: 0, timer: null, of: 2,
+             seats: [{ name: "Jerry", you: true, reconnecting: false, since: nowSecs(), pair: false, leader: true },
+                     { name: "Alice", you: false, reconnecting: false, since: nowSecs(), pair: false, leader: true },
                      null, null], ...over },
   });
 
@@ -299,11 +299,10 @@ describe("every Play table has a code", () => {
   });
   const shared = (over: Record<string, unknown> = {}) => own({
     count: 2, code: "4N5Z", opener: false,
-    table: { id: "t1", code: "4N5Z", opener: 0, you: 2, timer: null, ready: 0, of: 2, you_ready: false,
-             waiting_for: ["Mei"],
-             seats: [{ name: "Mei", you: false, ready: false, reconnecting: false, since: nowSecs(), pair: false, leader: true },
+    table: { id: "t1", code: "4N5Z", opener: 0, you: 2, timer: null, of: 2,
+             seats: [{ name: "Mei", you: false, reconnecting: false, since: nowSecs(), pair: false, leader: true },
                      null,
-                     { name: "Jerry", you: true, ready: false, reconnecting: false, since: nowSecs(), pair: false, leader: true },
+                     { name: "Jerry", you: true, reconnecting: false, since: nowSecs(), pair: false, leader: true },
                      null] },
     ...over,
   });
@@ -472,10 +471,9 @@ describe("every Play table has a code", () => {
     const switches = (p: Element) => [...p.querySelectorAll("[role='switch']")]
       .filter((b) => b.textContent === "Allow joiners");
     const seat = (name: string, you: boolean, pair = false) =>
-      ({ name, you, ready: false, reconnecting: false, since: nowSecs(), pair, leader: true });
+      ({ name, you, reconnecting: false, since: nowSecs(), pair, leader: true });
     const table = (opener: number, mine = seat("Jerry", true)) =>
-      ({ id: "t1", code: "4N5Z", opener, you: 2, timer: null, ready: 0, of: 2, you_ready: false,
-         waiting_for: ["Mei"], seats: [seat("Mei", false), null, mine, null] });
+      ({ id: "t1", code: "4N5Z", opener, you: 2, timer: null, of: 2, seats: [seat("Mei", false), null, mine, null] });
     await renderApp();
     say(shared({ table: table(2), opener: true }));
     const mine = q(".tp-shared")!;
@@ -501,10 +499,10 @@ describe("every Play table has a code", () => {
 
   /** A queued table's peek answer (PROTOCOL.md "room_seats", table form). */
   const tableSeats = (over: Record<string, unknown> = {},
-                      seats: [string, string | null, boolean?][] = [["taken", "Jerry", true], ["open", null], ["held", null], ["open", null]]) => ({
+                      seats: [string, string | null][] = [["taken", "Jerry"], ["open", null], ["held", null], ["open", null]]) => ({
     type: "room_seats", room: "4N5Z", table: true, mode: "casual", in_game: false,
     allow_joiners: true, full: false, closed: false,
-    seats: seats.map(([state, name, ready], seat) => ({ seat, team: seat % 2, state, name, ready: ready ?? false })),
+    seats: seats.map(([state, name], seat) => ({ seat, team: seat % 2, state, name })),
     ...over,
   });
   const typeCode = (code: string) => {
@@ -526,10 +524,10 @@ describe("every Play table has a code", () => {
     expect(p.querySelector(".tp-title")?.textContent).toBe("Join Jerry");
     // drawn from the held seat a Duo's code fills: Jerry across, the others open
     // you glow in the held seat a Duo's code fills: Jerry across, the others open
-    expect(seatNames(p).sort()).toEqual(["Jerry, ready, your team", "Open seat, other team",
+    expect(seatNames(p).sort()).toEqual(["Jerry, your team", "Open seat, other team",
                                          "Open seat, other team", "You, your team"]);
     expect(p.querySelector(".tp-seat.you.picked .tp-seat-name")?.textContent).toBe("You");
-    expect(p.querySelector(".tp-seat.person .tp-seat-name")?.textContent).toBe("Jerry ✓");
+    expect(p.querySelector(".tp-seat.person .tp-seat-name")?.textContent).toBe("Jerry");
     expect(p.querySelectorAll(".tp-line")).toHaveLength(0);
     expect(sentOf("table_join")).toHaveLength(0);
     click(button("Join", p));
@@ -555,11 +553,11 @@ describe("every Play table has a code", () => {
     typeCode("4n5z");
     expect(lastSent()).toEqual({ type: "table_peek", code: "4N5Z" });
     await settle();
-    say(tableSeats({}, [["taken", "Mei"], ["taken", "Li", true], ["open", null], ["open", null]]));
+    say(tableSeats({}, [["taken", "Mei"], ["taken", "Li"], ["open", null], ["open", null]]));
     await settle();
     const p = q(".tp-join-code")!;
     expect(p.querySelector(".tp-title")?.textContent).toBe("Join Mei");
-    expect(seatNames(p).sort()).toEqual(["Li, ready, other team", "Mei, your team",
+    expect(seatNames(p).sort()).toEqual(["Li, other team", "Mei, your team",
                                          "Open seat, other team", "You, your team"]);
     expect(sentOf("table_join")).toHaveLength(0);
     click(button("Join", p));
@@ -811,7 +809,7 @@ describe("a full room's dropped seats are taken only on purpose", () => {
     say({ type: "room_seats", room: "4N5Z", table: true, mode: "casual", in_game: false, allow_joiners: true,
           full: false, closed: false,
           seats: [0, 1, 2, 3].map((seat) => ({ seat, team: seat % 2, state: seat ? "open" : "taken",
-                                               name: seat ? null : "Jerry", ready: false })) });
+                                               name: seat ? null : "Jerry" })) });
     await settle();
     click(button("Join", q(".tp-join-code")!));
     say({ type: "error", code: "table_full", message: "That table is full." });

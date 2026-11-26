@@ -174,7 +174,6 @@ describe("error routes, as a player sees them", () => {
 
   it.each([
     ["pair_seats_fixed", "A Duo's seats stay together."],
-    ["already_ready", "You tapped Ready, so your seat is set."],
     ["seat_taken", "That seat was just taken.Pick another."],
     ["table_closed", "That table is no longer open."],
     ["no_offer", "That table is no longer open."],
@@ -185,7 +184,7 @@ describe("error routes, as a player sees them", () => {
     expect(toastNow()).toEqual({ text: words, info: true });
   });
 
-  it.each(["seat_taken", "table_closed", "no_offer", "bad_seat", "pair_seats_fixed", "already_ready"])(
+  it.each(["seat_taken", "table_closed", "no_offer", "bad_seat", "pair_seats_fixed"])(
     "%s is said once: the queue's words, with no toast of the server's before them", async (code) => {
       await atSharedTable();
       say(err(code, "server words"));

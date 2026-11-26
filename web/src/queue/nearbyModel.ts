@@ -9,7 +9,7 @@ import { nearbyChoices, nearbyStartSeat } from "../joinSeats";
 import type { RoomMsg } from "../protocol";
 import { BOT_FILL_MS } from "./store";
 import type { ModelSeat, NearbySwitch, Ring, TableModel } from "./tableModel";
-import { labelList, seatLabel, shortName, teamWord } from "./tableText";
+import { labelList, seatLabel, shortName, teamWord, waitingLine } from "./tableText";
 
 /** The offline table's Nearby switch: `on` while the table is open to nearby
  *  phones; `line`, why it fell back off (the denied line links to Settings). */
@@ -21,47 +21,38 @@ export function nearbySwitch({ on, line }: { on: boolean; line: "denied" | "wifi
 }
 
 /** A nearby table's lobby, from its room frame, as a shared online table
- *  draws it: who sits where with their Start, "n of m ready", the code
- *  without an Invite link, the host's Nearby switch (locked once someone
- *  has joined), and Start with the bots' ring. `botsAt`: the ring's end,
- *  in Date.now() time. */
+ *  draws it: who sits where, the code without an Invite link, the host's
+ *  Nearby switch (locked once someone has joined). The host has Start with
+ *  bots with the bots' ring and the seated count; a guest's Join was all
+ *  it does, so it waits for the host with Leave. `botsAt`: the ring's
+ *  end, in Date.now() time. */
 export function nearbyRoomModel(room: RoomMsg, { now, botsAt }: { now: number; botsAt: number | null }): TableModel {
-  const nb = room.nearby ?? { ready: [], bots_in: null, locked: false };
-  const ready = new Set(nb.ready);
+  const nb = room.nearby ?? { bots_in: null, locked: false };
   const people = room.players.filter((p) => !p.is_bot);
   const others = people.filter((p) => p.seat !== room.you);
   const host = room.host === room.you;
-  const youReady = ready.has(room.you);
   const seats = [0, 1, 2, 3].map((at): ModelSeat => {
     const p = room.players.find((x) => x.seat === at);
     const ours = (at - room.you + 4) % 2 === 0;
     if (!p) return { at, look: "open", name: "", sub: "", label: seatLabel("queue.seat.open", ours) };
-    const tick = ready.has(at);
     const sub = !p.connected ? t("queue.seat.reconnecting") : "";
-    if (at === room.you) {
-      return { at, look: "you", name: t("queue.seat.you"), sub: "", tick,
-               label: labelList([t("queue.seat.you"), tick && t("queue.seat.ready")]) };
-    }
-    return { at, look: "person", name: shortName(p.name), sub, tick,
-             label: labelList([p.name, tick && t("queue.seat.ready"), sub, teamWord(ours)]) };
+    if (at === room.you) return { at, look: "you", name: t("queue.seat.you"), sub: "", label: t("queue.seat.you") };
+    return { at, look: "person", name: shortName(p.name), sub,
+             label: labelList([p.name, sub, teamWord(ours)]) };
   });
   const names = others.map((p) => shortName(p.name));
   const title = names.length === 0 ? t("queue.title.yourTable")
     : names.length === 1 ? t("queue.title.youAnd", { name: names[0] })
     : t("queue.title.youAndMany", {
       name: `${names.slice(0, -1).join(t("queue.list.comma"))}${t("queue.list.and")}${names[names.length - 1]}` });
-  const waitingFor = people.filter((p) => p.connected && !ready.has(p.seat)).map((p) => shortName(p.name));
-  const label = !youReady ? t("queue.btn.start")
-    : waitingFor.length === 0 ? t("queue.btn.starting")
-    : waitingFor.length === 1 ? t("queue.btn.waitingFor", { name: waitingFor[0] })
-    : t("queue.btn.waitingForN", { n: waitingFor.length });
+  const hostName = room.players.find((p) => p.seat === room.host)?.name ?? "";
   const ring: Ring | null = botsAt !== null && botsAt > now ? { left: (botsAt - now) / 1000, total: BOT_FILL_MS / 1000 } : null;
   return {
     kind: "offline",
     tag: "Offline",
     title,
-    status: others.length
-      ? { text: t("queue.status.ready", { n: people.filter((p) => ready.has(p.seat)).length, count: people.length }) }
+    status: !host ? { text: waitingLine(hostName) }
+      : others.length ? { text: t("queue.status.seated", { n: people.length }) }
       : undefined,
     seats,
     you: room.you,
@@ -72,8 +63,7 @@ export function nearbyRoomModel(room: RoomMsg, { now, botsAt }: { now: number; b
     waitSwitch: null,
     nearbySwitch: host ? { label: NEARBY_COPY.switchLabel, on: true, disabled: nb.locked } : null,
     chat: null,
-    primary: { label, disabled: youReady && waitingFor.length === 0, ring,
-               act: { type: "nearby_ready", on: !youReady }, waiting: youReady },
+    primary: host ? { label: t("queue.btn.startBots"), disabled: false, ring, act: { type: "nearby_start" } } : null,
     secondary: { label: t("queue.btn.leave"), disabled: false, act: { type: "offline_leave" } },
     leave: { kind: "queue", others: [] },
   };

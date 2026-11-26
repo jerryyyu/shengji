@@ -12,6 +12,8 @@ import { nearbyName, validNearbyName } from "./names";
 import { LIMITS, NEARBY_V } from "./protocol";
 import { NearbySocket } from "./socket";
 import { NearbyTable, type Frame, type Player } from "./testkit";
+import { nearbyRoomModel } from "../../../queue/nearbyModel";
+import type { RoomMsg } from "../../../protocol";
 
 beforeEach(() => setNearbyForTests(true));
 afterEach(() => setNearbyForTests(null));
@@ -90,22 +92,44 @@ describe("the nearby lobby", () => {
     expect(fifth.sock.readyState).toBe(NearbySocket.CLOSED);
   });
 
-  it("waits for everyone's Start, as a shared online table; a Start can be taken back", async () => {
+  it("only the host starts: a guest's older Start changes nothing, and nothing starts when every guest has tapped", async () => {
     const t = await lobby(3);
-    const nb = (p: Player) => lastRoom(p).nearby as { ready: number[]; bots_in: number | null; locked: boolean };
-    expect(nb(t.host)).toMatchObject({ ready: [], locked: true });
+    const nb = (p: Player) => lastRoom(p).nearby as { bots_in: number | null; locked: boolean };
+    expect(nb(t.host)).toMatchObject({ locked: true });
+    expect(nb(t.host)).not.toHaveProperty("ready");
     expect(nb(t.host).bots_in).toBeGreaterThan(55);
-    t.send(t.host, { type: "table_start" });
-    await t.settle(() => nb(t.joiners[0]).ready.length === 1);
-    t.send(t.joiners[0], { type: "table_start" });
-    await t.settle(() => nb(t.host).ready.length === 2);
+    for (const j of t.joiners) t.send(j, { type: "table_start" });
     t.send(t.joiners[0], { type: "table_start", on: false });
-    await t.settle(() => nb(t.host).ready.length === 1);
+    await t.advance(2);
     expect(t.room!.game).toBeNull();
-    t.send(t.joiners[0], { type: "table_start" });
-    t.send(t.joiners[1], { type: "table_start" });
+    expect(errors(t.joiners[0])).toHaveLength(0);
+    t.send(t.host, { type: "table_start_now" });
     await t.settle(() => t.players().every((p) => t.lastState(p) !== undefined));
     expect(t.room!.seats.filter((s) => s.isBot)).toHaveLength(1);
+  });
+
+  it("the host's Start does not wait for a guest whose link is down", async () => {
+    const t = await lobby(3);
+    await t.advance(LIMITS.pingSeconds + 1);
+    t.fake.drop(t.code, t.fake.peersOf(t.code)[1]);
+    await t.advance(1);
+    expect(t.room!.game).toBeNull();
+    t.send(t.host, { type: "table_start_now" });
+    await t.settle(() => t.room!.game !== null, 10_000);
+    expect(t.room!.seats.filter((s) => !s.isBot)).toHaveLength(3);
+  });
+
+  it("the host's panel has an enabled Start with bots and the seated count; a guest's waits for the host with Leave", async () => {
+    const t = await lobby(2);
+    const at = { now: Date.now(), botsAt: null };
+    const host = nearbyRoomModel(lastRoom(t.host) as unknown as RoomMsg, at);
+    expect(host.primary).toMatchObject({ label: "Start with bots", disabled: false, act: { type: "nearby_start" } });
+    expect(host.status?.text).toBe("2 seated");
+    expect(host.seats!.every((s) => !s.tick)).toBe(true);
+    const guest = nearbyRoomModel(lastRoom(t.joiners[0]) as unknown as RoomMsg, at);
+    expect(guest.primary).toBeNull();
+    expect(guest.status?.text).toMatch(/^Waiting for .+ to start$/);
+    expect(guest.secondary?.act).toEqual({ type: "offline_leave" });
   });
 
   it("the host alone starts at once; a second person starts the bots' ring", async () => {

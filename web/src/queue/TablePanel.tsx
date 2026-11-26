@@ -220,7 +220,7 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
     else if (a.type === "move_to") mover.to(a.at);
     else if (a.type !== "code_pick" && a.type !== "code_join" && a.type !== "code_cancel"
              && a.type !== "offline_start" && a.type !== "offline_leave" && a.type !== "nearby_toggle"
-             && a.type !== "nearby_settings" && a.type !== "nearby_ready" && a.type !== "nearby_again") queueSend(a);
+             && a.type !== "nearby_settings" && a.type !== "nearby_start" && a.type !== "nearby_again") queueSend(a);
   };
   const sheet = asking ? (
     <LeaveSheet context={m.leave}
@@ -261,12 +261,13 @@ export function JoinCodePanel({ join, busy, onJoin, onCancel, onPick }: {
 export interface NearbyActs {
   onToggle?: () => void;
   onSettings?: () => void;
-  onReady?: (on: boolean) => void;
+  /** A nearby lobby host's Start. */
+  onHostStart?: () => void;
   /** The Bots row's pick (the offline table's, or a nearby lobby's host). */
   onBots?: (level: BotLevel) => void;
 }
 
-function offlineAct({ onStart, onLeave, onBots, onToggle, onSettings, onReady }: NearbyActs & {
+function offlineAct({ onStart, onLeave, onBots, onToggle, onSettings, onHostStart }: NearbyActs & {
   onStart?: () => void; onLeave: () => void;
 }) {
   return (a: PanelAction) => {
@@ -275,7 +276,7 @@ function offlineAct({ onStart, onLeave, onBots, onToggle, onSettings, onReady }:
     else if (a.type === "bot_level") onBots?.(a.level);
     else if (a.type === "nearby_toggle") onToggle?.();
     else if (a.type === "nearby_settings") onSettings?.();
-    else if (a.type === "nearby_ready") onReady?.(a.on);
+    else if (a.type === "nearby_start") onHostStart?.();
   };
 }
 
@@ -293,7 +294,7 @@ export function OfflinePanel({ ready, starting, bots, onBots, onStart, onLeave, 
 }
 
 /** A nearby table's lobby in Play's place, for its host and each joiner:
- *  the shared table's ready count and ring. `model` is nearbyModel.ts's
+ *  the host's Start with the bots' ring, a joiner's wait. `model` is nearbyModel.ts's
  *  `nearbyRoomModel`, passed in by the nearby UI (nearbyUi.tsx), so this
  *  file carries none of nearby play's copy. */
 export function NearbyRoomPanel({ room, model, onLeave, ...acts }: {

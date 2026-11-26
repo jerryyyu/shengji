@@ -92,6 +92,9 @@ Code sources for the live strings: `web/src/queue/tableText.ts` (join lines :59-
 | table_declutter | hand edit | Invite link (a button beside the code) | Invite (the code is the one control) |
 | coach_cue | hand edit | Your turn: tap 2 ♣ cards, then Play (the coach line beside the Your turn button) | Tap 2 ♣ cards, then Play (the button already says Your turn; Jerry 2026-11-24) |
 | round_end_ladder | hand edit | They took 35 of 80. We go up 1, to 3. (the round end's result sentence; zh 闲家得 35 分（满 80 上台）。我们升 1 级，打 3。) | cut (a rank lane per team and the attackers' points bar show it; the status line keeps Next banker; Jerry 2026-11-24, design B) |
+| lobby_owner_starts | hand edit | Ready (a joiner's button; zh 准备), and its "Waiting for Alice" after the tap | cut (Jerry 2026-11-26, J1: "Drop Ready; Join is all a joiner does"); a joiner's panel is "Waiting for Alice to start" and Leave |
+| lobby_owner_starts | hand edit | 1 of 2 ready (the shared table's status line; zh 已准备 1/2), and the seat's ready tick | cut (Jerry 2026-11-26, J1); the owner's line is "3 seated", a joiner's "Waiting for Alice to start" |
+| lobby_owner_starts | hand edit | Waiting for 2 players (the owner's button while joiners were not Ready; zh 等 2 位玩家) | cut (Jerry 2026-11-26, A: the owner's Start with bots is always enabled) |
 | round_end_ladder | hand edit | Levels restart at 2. (a won game's result line; zh 双方从 2 重新打起。) | cut (the winners' lane ends past A on the crown and the button says Next game; Jerry 2026-11-24: "We don't need level restart at 2") |
 
 ## Kept, and why
@@ -99,12 +102,12 @@ Code sources for the live strings: `web/src/queue/tableText.ts` (join lines :59-
 | what | text | why |
 |---|---|---|
 | presence line | '2 tables have a seat · 3 people playing' (+ split by mode); core.html shortens it to '2 tables · 1 ranked, 1 casual · 3 playing' so it fits one phone line | Approved; Jerry: keep today's counts. One line. |
-| panel status | '1 of 2 ready' | The one live status: tells you who you wait for. |
-| panel status | 'Bots in 0:40' (own table, alone) | The one live status when no ready count exists; becomes the ring in section 9. |
+| panel status | 'Waiting for Jerry to start' (a joiner), '3 seated' (the owner) | The one live status: tells you who starts the table (Jerry 2026-11-26, J1; it was '1 of 2 ready'). |
+| panel status | 'Bots in 0:40' (own table, alone) | The one live status when no other line exists; becomes the ring in section 9. |
 | leave sheet | one line: 'Free.' / 'Wait 1 minute to play again.' / 'This round counts as at best a draw.' / 'The room closes.' / 'This offline game ends.' | The leave cost changes the decision; it is the only place it is said. |
 | mode tag | 'Casual' / 'Offline' above the panel title: the offline panels and a code's Join panel only (cut from the queue's panels 2026-11-22) | Says what the table is when the switch is not visible; one word. |
 | round end / game won | outcome in words, 'Games: Us 1 · Them 0' | The news itself, not a description. |
-| seat labels | names, bot icon, ready tick; an open seat is a bare '+' ('Open seat' is its accessible label since 2026-11-22), a dropped player's 'Alice (away)' | The seats are the panel. |
+| seat labels | names, bot icon (no ready tick since 2026-11-26); an open seat is a bare '+' ('Open seat' is its accessible label since 2026-11-22), a dropped player's 'Alice (away)' | The seats are the panel. |
 
 ## Question for Jerry
 

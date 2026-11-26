@@ -138,10 +138,6 @@ export interface QueueStateMsg {
   /** Queued: the seat your entry holds for your friend (2 while alone),
    *  else your table's first held seat, or null. */
   held_seat?: number | null;
-  /** Queued in a Duo made at a table: how many of you tapped Ready (the
-   *  partner taps, its leader never; null otherwise), and whether you did. */
-  duo_ready?: number | null;
-  you_ready?: boolean;
 }
 
 /** A seat at an offered open table, in seat order (team 0 at seats 0+2). */
@@ -172,8 +168,6 @@ export interface OpenTableOfferMsg {
 export interface TableSeatMsg {
   name: string;
   you: boolean;
-  /** Tapped Start (for a pair, its leader did). */
-  ready: boolean;
   /** The app is away; the seat is held for a minute. */
   reconnecting: boolean;
   /** When this person sat down. */
@@ -201,13 +195,8 @@ export interface WaitingTableMsg {
   you: number;
   /** The table's bot timer and whose it is; null when every switch is on. */
   timer: { at: number; name: string; you: boolean } | null;
-  /** People whose Ready is in, of the people seated. */
-  ready: number;
+  /** The people seated. */
   of: number;
-  you_ready: boolean;
-  /** The connected joiners but you whose Ready the owner's Start still
-   *  waits for, by name. */
-  waiting_for: string[];
 }
 
 /** One seat of a table frame, in seat order (team 0 at seats 0+2). */
@@ -218,8 +207,6 @@ export interface TableFrameSeatMsg {
   state: "taken" | "open" | "held" | "bot";
   name: string | null;
   you: boolean;
-  /** Tapped Ready (a Duo member: its own; never the owner); null in a game. */
-  ready: boolean | null;
   reconnecting: boolean;
   /** When this person sat down; null in a game. */
   since: number | null;
@@ -250,11 +237,6 @@ export interface TableFrameMsg {
     /** The table's bot timer and whose it is; null when none runs. */
     bots: { at: number; name: string; you: boolean } | null;
   };
-  /** Your own Ready is in; null in a game. */
-  your_ready: boolean | null;
-  /** The connected joiners but you whose Ready the owner's Start still
-   *  waits for, by name. */
-  waiting_for: string[] | null;
   /** The key the table's chat frames carry: `table_chat.table` (null
    *  alone), or the room's code in a game. */
   chat_log: string | null;

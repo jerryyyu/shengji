@@ -18,10 +18,9 @@ function read(f: TableFrameMsg, alone: boolean) {
   return {
     code: f.code, mode: f.mode, phase: f.phase, you: f.you, opener: f.opener === f.you, settings: f.settings,
     seats: f.seats.map((s) => ({ seat: s.seat, team: s.team, state: s.state, name: s.you ? null : s.name, you: s.you,
-                                 ready: s.ready, reconnecting: s.reconnecting, since: alone ? null : s.since, sit: alone ? null : s.sit,
+                                 reconnecting: s.reconnecting, since: alone ? null : s.since, sit: alone ? null : s.sit,
                                  pair: s.pair })),
-    bots: f.timers.bots?.at ?? null, yourReady: f.your_ready,
-    waitingFor: f.waiting_for, chatLog: f.chat_log,
+    bots: f.timers.bots?.at ?? null, chatLog: f.chat_log,
   };
 }
 

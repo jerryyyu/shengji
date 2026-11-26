@@ -108,3 +108,9 @@ class NumpyCompleteWorldEvaluator(CompleteWorldEvaluator):
             out[start:stop] = values
             self.forward_calls += 1
         return out
+
+
+
+# Capture the forwards before a consumer can bind a diagnostic replacement.
+_STOCK_NUMPY_FORWARDS = (NumpyCompleteWorldEvaluator.probabilities,
+                         NumpyCompleteWorldEvaluator.probabilities_stacked)

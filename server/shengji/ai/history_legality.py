@@ -21,7 +21,8 @@ seat played afterwards satisfies the cap today and still means the seat held
 a pair it was obliged to play.  Follow-suit itself is already sound through
 the public voids (a seat that showed out holds none of the suit now and,
 truthfully, never plays it later), so in practice only the pair and tractor
-obligations reject; the test still runs the whole rule.
+obligations reject. The sampler omits singleton checks whose result is
+fixed by public cards or an earlier void check for the same seat and suit.
 
 Leads are not tested here: a lead is legal for any hand that holds its cards,
 which every world does, and a refused throw is the refusal rule's subject
@@ -160,6 +161,26 @@ def first_throw_violation(throws, hands, ordering) -> int | None:
     return None
 
 
+def _world_dependent_follows(events, ordering):
+    """Keep committed follows that can be the first violation in a sampled world."""
+    checks = []
+    voids = set()
+    for event in events:
+        if len(event.lead) == len(event.cards) == 1:
+            suit = ordering.eff_suit(event.lead[0])
+            # The committed card is in the reconstructed hand in every world.
+            if ordering.eff_suit(event.cards[0]) == suit:
+                continue
+            # If this seat could show out earlier, its later hand (a subset)
+            # is also void. If it couldn't, the earlier check fails first.
+            key = (event.seat, suit)
+            if key in voids:
+                continue
+            voids.add(key)
+        checks.append(event)
+    return checks
+
+
 def first_violation(events, hands, ordering) -> int | None:
     """The index into ``events`` of the first follow the world's hands make
     illegal, else None.  ``hands`` are the world's four current hands."""
@@ -296,6 +317,7 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
     changes."""
     from .cwv_policy import sample_worlds
     events = follow_events(rnd, seat)
+    checks = _world_dependent_follows(events, rnd.ordering)
     thrown = throw_events(rnd) if throws else []
     ordering = rnd.ordering
     current = len(rnd.history)
@@ -334,10 +356,10 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
             refusal_rejected += 1
             continue
         if attempts <= history_cap:
-            bad = first_violation(events, world, ordering)
+            bad = first_violation(checks, world, ordering)
             if bad is not None:
                 rejected += 1
-                by_age[current - events[bad].trick] += 1
+                by_age[current - checks[bad].trick] += 1
                 continue
             if thrown and first_throw_violation(thrown, world, ordering) is not None:
                 throw_rejected += 1

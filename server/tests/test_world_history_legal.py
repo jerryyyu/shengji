@@ -566,3 +566,52 @@ def test_valid_fill_preserves_combined_proposal_caps(monkeypatch):
     assert attempts == 2
     assert stats["history_cap_rejected"] == 1
     assert stats["history_valid_worlds"] == stats["history_resampled_worlds"] == 1
+
+
+def test_history_sampler_preserves_draws_and_rejection_ages_with_fewer_checks(monkeypatch):
+    _, rnd, seat = fixture()
+    prepare = HL._world_dependent_follows
+    validate = HL._legal.validate_follow
+    calls = []
+
+    def counted(*args):
+        calls.append(1)
+        return validate(*args)
+
+    monkeypatch.setattr(HL._legal, "validate_follow", counted)
+
+    def sample():
+        sampler = MCBot(seed=SEED)
+        return HL.sample_worlds_history_legal(sampler, rnd, seat, W, mem=Memory(rnd, seat, own_kitty=True))
+
+    monkeypatch.setattr(HL, "_world_dependent_follows", lambda events, ordering: events)
+    expected = sample()
+    full_calls = len(calls)
+    calls.clear()
+    monkeypatch.setattr(HL, "_world_dependent_follows", prepare)
+    assert sample() == expected
+    assert expected[2]["history_rejections_by_age"]
+    assert len(calls) < full_calls
+
+
+def test_singleton_void_checks_keep_the_earliest_event_per_seat_and_effective_suit():
+    from shengji.engine.cards import Ordering
+
+    ordering = Ordering("H", "7")
+    events = [
+        HL.FollowEvent(1, ("D7",), ("H9",), ("D7", "C3", "S4", "C5"), 0),
+        HL.FollowEvent(1, ("C3",), ("H8",), ("C3", "S4", "C5"), 1),
+        HL.FollowEvent(1, ("S4",), ("D7",), ("S4", "C5"), 2),
+        HL.FollowEvent(2, ("S3",), ("D7",), ("S3",), 2),
+        HL.FollowEvent(1, ("C5",), ("DA",), ("C5",), 3),
+    ]
+    checks = HL._world_dependent_follows(events, ordering)
+    assert checks == [events[1], events[3], events[4]]
+    for hand1, hand2 in [([], []), (["LJ"], []), ([], ["H2"]), (["D2"], [])]:
+        hands = [[], hand1, hand2, []]
+        full = HL.first_violation(events, hands, ordering)
+        reduced = HL.first_violation(checks, hands, ordering)
+        if full is None:
+            assert reduced is None
+        else:
+            assert checks[reduced] is events[full]

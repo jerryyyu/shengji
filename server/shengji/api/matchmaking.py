@@ -64,10 +64,10 @@ starts with bots at its own ``bots_at``, or at once on ``queue_start_bots``.
 
 Away and idle: a closed socket keeps its entry ``AWAY_SECS`` alone,
 ``WAIT_AWAY_SECS`` alone with its switch on (nothing starts without it), and
-``TABLE_AWAY_SECS`` at a waiting table. A table's owner that has sent
-nothing for ``TABLE_IDLE_SECS`` leaves (a joiner never idles out: its Join
-is its consent and its Ready only a signal); at a table with no timer it is
-asked "still here?" first (``still_here_until``) and leaves
+``TABLE_AWAY_SECS`` at a waiting table. A seated entry, owner or joiner,
+Ready or not, that has sent nothing for ``TABLE_IDLE_SECS`` leaves (any
+message resets its clock); at a table with no timer it is asked "still
+here?" first (``still_here_until``) and leaves
 ``STILL_HERE_SECS`` later unless any message (``table_here``) answers.
 
 Every queued entry holds a table code from the room code space
@@ -196,8 +196,8 @@ WINDOW_FROM = 5
 AWAY_SECS = 10.0
 TABLE_AWAY_SECS = 60.0
 WAIT_AWAY_SECS = 60.0
-# A table's owner that has sent nothing for this long leaves the table and
-# the queue, with no cooldown. At a table with no timer
+# A seated entry, owner or joiner, Ready or not, that has sent nothing for
+# this long leaves the table and the queue, with no cooldown. At a table with no timer
 # it is asked "still here?" instead and leaves only STILL_HERE_SECS later,
 # since there nobody is waiting on a clock and patience is the point.
 TABLE_IDLE_SECS = 120.0
@@ -1050,8 +1050,8 @@ class Matchmaker:
         t.forced_by = None
         if owned and t.entries:
             # the next arrival owns the table now: its leader has no Ready,
-            # and a Duo partner's own Ready stays; as a joiner it never
-            # idled, so its idle clock starts at the handover
+            # and a Duo partner's own Ready stays; its idle clock starts at
+            # the handover, so a quiet joiner is asked before it is dropped
             heir = t.entries[0]
             t.ready.discard(heir.id)
             heir.taps.discard(heir.leader)
@@ -2643,15 +2643,15 @@ class Matchmaker:
                 self._send(u, payload)
 
     def _drop_idle(self, now: float) -> None:
-        """A table's owner that has sent nothing for ``TABLE_IDLE_SECS``
-        leaves, with no cooldown; a joiner's Join is its consent and its
-        Ready only a signal, so a joiner never idles out. At a table with no
-        timer the owner is asked "still here?" first and leaves
+        """A seated entry, owner or joiner, Ready or not, that has sent
+        nothing for ``TABLE_IDLE_SECS`` leaves, with no cooldown; any
+        message (a Ready tap, chat, a move) resets its clock. At a table with
+        no timer it is asked "still here?" first and leaves
         ``STILL_HERE_SECS`` later unless a member sends anything. A reconnecting one is left to
         ``_drop_away``."""
         for e in list(self.entries.values()):
             t = self._table(e)
-            if (t is None or t.entries[0] is not e or now - e.active_at < TABLE_IDLE_SECS
+            if (t is None or now - e.active_at < TABLE_IDLE_SECS
                     or not self._entry_available(e)):
                 continue
             if t.timer() is None and now - e.active_at < TABLE_IDLE_SECS + STILL_HERE_SECS:

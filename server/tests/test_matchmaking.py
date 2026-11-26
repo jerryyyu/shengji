@@ -698,33 +698,31 @@ def test_at_a_full_table_the_owners_start_goes_without_a_joiner_who_is_gone():
     run(go())
 
 
-def test_at_a_table_with_no_timer_two_minutes_idle_asks_the_owner_still_here_and_half_a_minute_more_removes_it():
+def test_at_a_table_with_no_timer_two_minutes_idle_asks_still_here_and_half_a_minute_more_removes_you():
     async def go():
         env = Env()
         for uid in (1, 2, 3):
             await env.join(uid)
             await env.send(uid, "queue_wait_players")
         env.clock.advance(100)
+        await env.send(3, "table_start")      # a Ready tap resets the clock, as any tap
         await env.send(1, "queue_allow_bots") # a tap resets the clock
         await env.send(1, "queue_wait_players")
         env.clock.advance(mm.TABLE_IDLE_SECS - 100)
         await env.mm.pump()
-        assert env.conns[1].last("queue_state")["still_here_until"] is None
-        env.clock.advance(100)
-        await env.mm.pump()
-        asked = env.conns[1].last("queue_state")
+        assert env.conns[2].last("queue_removed") is None
+        asked = env.conns[2].last("queue_state")
         assert asked["still_here_until"] == env.clock.t + mm.STILL_HERE_SECS
-        for uid in (2, 3):                    # a joiner's Join is its consent: never asked
-            assert env.conns[uid].last("queue_state")["still_here_until"] is None
+        assert env.conns[1].last("queue_state")["still_here_until"] is None
         env.clock.advance(mm.STILL_HERE_SECS)
         await env.mm.pump()
-        removed = env.conns[1].last("queue_removed")
+        removed = env.conns[2].last("queue_removed")
         assert removed["reason"] == "idle" and removed["cooldown_until"] is None
-        assert env.mm._entry(2) is not None and env.mm._entry(3) is not None
+        assert env.mm._entry(1) is not None and env.mm._entry(3) is not None
         (t,) = env.mm.tables.values()
-        assert t.seats == [None, 3, 2, None]
-        await env.join(1)                     # straight back: no cooldown
-        assert env.mm._entry(1) is not None
+        assert t.seats == [1, 3, None, None]
+        await env.join(2)                     # straight back: no cooldown
+        assert env.mm._entry(2) is not None
     run(go())
 
 
@@ -3428,18 +3426,19 @@ def test_still_here_is_answered_by_table_here_and_asked_again_after_another_idle
         for uid in (1, 2):
             await env.join(uid)
             await env.send(uid, "queue_wait_players")
-        env.clock.advance(mm.TABLE_IDLE_SECS)  # the owner is asked; a joiner never is
+        env.clock.advance(mm.TABLE_IDLE_SECS)  # the owner has no Ready: it is asked too
         await env.mm.pump()
+        assert env.conns[2].last("queue_state")["still_here_until"] is not None
         assert env.conns[1].last("queue_state")["still_here_until"] is not None
-        assert env.conns[2].last("queue_state")["still_here_until"] is None
         await env.send(1, "table_here")
-        assert env.conns[1].last("queue_state")["still_here_until"] is None
+        await env.send(2, "table_here")
+        assert env.conns[2].last("queue_state")["still_here_until"] is None
         env.clock.advance(mm.STILL_HERE_SECS + 1)
         await env.mm.pump()
-        assert env.mm._entry(1) is not None and env.conns[1].last("queue_removed") is None
+        assert env.mm._entry(2) is not None and env.conns[2].last("queue_removed") is None
         env.clock.advance(mm.TABLE_IDLE_SECS - mm.STILL_HERE_SECS - 1)
         await env.mm.pump()
-        assert env.conns[1].last("queue_state")["still_here_until"] == (
+        assert env.conns[2].last("queue_state")["still_here_until"] == (
             env.clock.t + mm.STILL_HERE_SECS)
         await env.send(3, "table_here", conn=env.player(3))
         assert env.conns[3].last("error")["code"] == "not_seated"
@@ -5586,24 +5585,48 @@ def test_a_stale_ready_after_a_promotion_is_never_a_start():
     run(go())
 
 
-def test_a_joiner_never_idles_out_ready_or_not_but_the_owner_is_asked():
+def test_an_unready_joiner_is_asked_still_here_and_removed_after_the_idle_window():
     async def go():
         env = Env()
-        for uid in (1, 2, 3):
+        for uid in (1, 2):
             await env.join(uid)
             await env.send(uid, "queue_wait_players")
-        await env.send(3, "table_start")
-        env.clock.advance(mm.TABLE_IDLE_SECS)
+        env.clock.advance(mm.TABLE_IDLE_SECS - 10)
+        await env.send(1, "table_here")        # the owner stays active
+        env.clock.advance(10)
         await env.mm.pump()
-        assert env.conns[1].last("queue_state")["still_here_until"] is not None
-        for uid in (2, 3):
-            assert env.conns[uid].last("queue_state")["still_here_until"] is None
-        env.clock.advance(mm.STILL_HERE_SECS + 1)
+        asked = env.conns[2].last("queue_state")
+        assert asked["still_here_until"] == env.clock.t + mm.STILL_HERE_SECS
+        assert env.conns[1].last("queue_state")["still_here_until"] is None
+        env.clock.advance(mm.STILL_HERE_SECS)
         await env.mm.pump()
-        assert env.conns[1].last("queue_removed")["reason"] == "idle"
-        assert env.mm._entry(2) is not None and env.mm._entry(3) is not None
+        removed = env.conns[2].last("queue_removed")
+        assert removed["reason"] == "idle" and removed["cooldown_until"] is None
+        assert env.mm._entry(2) is None
     run(go())
 
+
+def test_a_joiners_ready_tap_resets_its_idle_clock_and_a_ready_joiner_idles_too():
+    async def go():
+        env = Env()
+        for uid in (1, 2):
+            await env.join(uid)
+            await env.send(uid, "queue_wait_players")
+        env.clock.advance(mm.TABLE_IDLE_SECS - 10)
+        await env.send(2, "table_start")       # the tap is activity
+        await env.send(1, "table_here")
+        env.clock.advance(10)
+        await env.mm.pump()
+        assert env.conns[2].last("queue_state")["still_here_until"] is None
+        env.clock.advance(mm.TABLE_IDLE_SECS - 20)
+        await env.send(1, "table_here")        # the owner stays active
+        env.clock.advance(10)                  # Ready, but quiet a full window since
+        await env.mm.pump()
+        assert env.conns[2].last("queue_state")["still_here_until"] is not None
+        env.clock.advance(mm.STILL_HERE_SECS)
+        await env.mm.pump()
+        assert env.conns[2].last("queue_removed")["reason"] == "idle"
+    run(go())
 
 def test_a_promoted_owners_idle_clock_starts_at_the_handover():
     async def go():
@@ -5613,6 +5636,7 @@ def test_a_promoted_owners_idle_clock_starts_at_the_handover():
             await env.send(uid, "queue_wait_players")
         env.clock.advance(mm.TABLE_IDLE_SECS + mm.STILL_HERE_SECS + 1)
         await env.send(1, "queue_leave")       # 2, quiet all along, owns it now
+        await env.send(3, "table_here")        # the other joiner stays active
         await env.mm.pump()
         assert env.mm._entry(2) is not None and env.conns[2].last("queue_removed") is None
         env.clock.advance(mm.TABLE_IDLE_SECS)

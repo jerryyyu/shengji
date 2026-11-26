@@ -471,6 +471,8 @@ describe("the table", () => {
 
   it("a card landing across a walk in flight stops the walk and its gait, and the figure ends clear", async () => {
     vi.useFakeTimers();
+    // one fixed draw: the same wait, the same walk, the same destination every run
+    const rnd = vi.spyOn(Math, "random").mockReturnValue(0.5);
     const made: { el: Element; cancel: ReturnType<typeof vi.fn> }[] = [];
     const proto = Element.prototype as unknown as { animate?: unknown };
     const had = proto.animate;
@@ -491,6 +493,7 @@ describe("the table", () => {
       expect(flight.every((a) => a.cancel.mock.calls.length >= 1)).toBe(true);
       expect(clear(spotOf(1), 40, false, layout())).toBe(true);
     } finally {
+      rnd.mockRestore();
       proto.animate = had;
       vi.useRealTimers();
     }

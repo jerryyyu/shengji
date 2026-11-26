@@ -2,6 +2,7 @@ import { RANKS } from "../protocol";
 import type { GameState, RoundResult } from "../protocol";
 import { conn } from "../ws";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { DUR, EASE, prefersReducedMotion } from "../motion";
 import ResultDialog from "./ResultDialog";
 import LeaveSheet from "./LeaveSheet";
@@ -57,6 +58,10 @@ interface RoundEndModalProps {
   /** The levels the round was played at, from the last state before the
    *  result; null when the table opened onto the result. */
   before?: [string, string] | null;
+  /** A watcher's card: its own main button (Take a seat or Play) and Leave
+   *  in place of Next and Leave, Details as for a player, and its one status
+   *  line under the result. A watcher has no seat, no rating and no Next. */
+  watch?: { primary: ReactNode; leave: ReactNode; note: string | null };
 }
 
 type Outcome = "WinRound" | "LoseRound" | "WinGame" | "LoseGame";
@@ -252,7 +257,7 @@ function kittyBonusText(state: GameState, result: RoundResult): { full: string; 
   return { full: t(teamSubject(attack, state) === "We" ? "roundend.weBonus" : "roundend.theyBonus", { math }), short: math };
 }
 
-export default function RoundEndModal({ state, result, clock = null, clockEnd = null, live = false, before = null }: RoundEndModalProps) {
+export default function RoundEndModal({ state, result, clock = null, clockEnd = null, live = false, before = null, watch }: RoundEndModalProps) {
   const t = useT();
   const titleId = useId();
   useScreen("round_end");
@@ -356,9 +361,11 @@ export default function RoundEndModal({ state, result, clock = null, clockEnd = 
         {gameWon ? (
           <p className="result-games">{t("roundend.games", { us: result.games_won[us], them: result.games_won[them] })}</p>
         ) : null}
-        {rating ? null : <RatingLine result={result} ranked={ranked} guest={state.guest === true} />}
+        {watch ? (watch.note ? <p className="watch-caught-up" role="status">{watch.note}</p> : null)
+          : rating ? null : <RatingLine result={result} ranked={ranked} guest={state.guest === true} />}
 
         <div className="round-end-actions">
+          {watch ? watch.primary : (
           <button
             className={`btn primary big${!iAmReady && clock !== null && clock <= LOW_SECS ? " clock-low" : ""}`}
             disabled={iAmReady || sent}
@@ -371,6 +378,7 @@ export default function RoundEndModal({ state, result, clock = null, clockEnd = 
             {iAmReady ? null : <TimerRing left={clock} end={clockEnd} total={MOVE_SECS} />}
             {iAmReady ? t("roundend.waiting") : gameWon ? t("roundend.nextGame") : t("roundend.nextRound")}
           </button>
+          )}
           {hasDetails ? (
             <button type="button" className="btn big round-end-view-btn" aria-expanded={open} aria-controls={detailsId}
                     onClick={() => {
@@ -385,7 +393,7 @@ export default function RoundEndModal({ state, result, clock = null, clockEnd = 
               </span>
             </button>
           ) : null}
-          <RoundEndLeave ranked={ranked} guest={state.guest === true} />
+          {watch ? watch.leave : <RoundEndLeave ranked={ranked} guest={state.guest === true} />}
         </div>
       </div>
     </ResultDialog>

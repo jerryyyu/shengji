@@ -14,7 +14,7 @@ import { clearToast, currentToast, showToast } from "../toast";
 import { useNearbyUi } from "../nearbyGate";
 import { displayName, t, useT } from "../i18n";
 
-function TrumpChip({ state }: { state: GameState }) {
+export function TrumpChip({ state }: { state: GameState }) {
   const t = useT();
   const trump = state.trump;
   if (!trump) {

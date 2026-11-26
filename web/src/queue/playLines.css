@@ -258,3 +258,17 @@
   line-height: 18px;
   text-align: center;
 }
+
+/* "5 playing" when a table can be watched: gold, with a chevron; one tap
+   goes to a table */
+.play-presence-watch {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #f2c14e;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.play-presence-watch:focus-visible { outline: 2px solid #f2c14e; outline-offset: 2px; border-radius: 4px; }
+.play-presence-chev { margin-left: 2px; }

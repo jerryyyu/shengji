@@ -114,7 +114,9 @@ export const HINT_MS = 2600;
 const FULL_NAME_MS = 2500;
 const LONG_PRESS_MS = 450;
 
-function OpponentPanel({ player, state }: { player: StatePlayer; state: GameState }) {
+/** One seat round the table. `readOnly` (a watcher's table) offers no
+ *  block or report: a watcher is not at the table. */
+export function OpponentPanel({ player, state, readOnly = false }: { player: StatePlayer; state: GameState; readOnly?: boolean }) {
   const t = useT();
   const pos = seatPos(player.seat, state.you);
   // a tap or long press shows the whole name; only the phone layout draws it
@@ -124,7 +126,7 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
   // nearby phone's) never offers them
   const [actions, setActions] = useState(false);
   const offline = useOffline();
-  const canAct = !player.is_bot && !offline;
+  const canAct = !player.is_bot && !offline && !readOnly;
   const pressTimer = useRef<number | null>(null);
   const longPressed = useRef(false);
   const optionsButton = useRef<HTMLButtonElement | null>(null);
@@ -151,7 +153,7 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
   const backs = Math.min(player.cards_left, 5);
   const shownName = displayName(player.name, player.is_bot);
   return (
-    <div className={`opponent pos-${pos} team${player.team}${onTurn ? " on-turn" : ""}${player.connected || player.is_bot ? "" : " disconnected"}`}
+    <div data-seat={player.seat} className={`opponent pos-${pos} team${player.team}${onTurn ? " on-turn" : ""}${player.connected || player.is_bot ? "" : " disconnected"}`}
          data-name-len={nameWidthClass(shownName)}
          onClick={() => {
            if (longPressed.current) { longPressed.current = false; return; }

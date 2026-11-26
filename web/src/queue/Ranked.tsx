@@ -12,6 +12,7 @@ import { clock, queue, useNow, useQueue } from "./store";
 import { tx, useT } from "../i18n";
 import { telemetry } from "../telemetry";
 import { rounds } from "../roundTelemetry";
+import { watch } from "../watch/store";
 import type { MessageKey } from "../i18n";
 
 /** The ranked mark: a trophy. */
@@ -64,7 +65,16 @@ export function PresenceLine({ q, online, offline = false }: {
       <span className="play-presence-dot" aria-hidden="true" />
       <span>
         {presenceParts(q.presence, q.playMode).map((part, i) => (
-          part.hl ? <b key={i} className="play-presence-hl">{part.text}</b> : <span key={i}>{part.text}</span>
+          part.watch ? (
+            // the way in to watching: one tap lands at a table the server picks
+            <span key={i}>
+              {/^\s*·\s*/.exec(part.text)?.[0] ?? ""}
+              <button type="button" className="play-presence-watch"
+                      onClick={() => watch.open(q.playMode)}>
+                {part.text.replace(/^\s*·\s*/, "")}<span className="play-presence-chev" aria-hidden="true">›</span>
+              </button>
+            </span>
+          ) : part.hl ? <b key={i} className="play-presence-hl">{part.text}</b> : <span key={i}>{part.text}</span>
         ))}
       </span>
     </p>

@@ -482,6 +482,24 @@ switch between accounts included, and goes once as whoever that leaves signed in
   If the old origin was signed in and the app still settles signed out, the one identity sheet opens once at
   Sign in; no new surface or copy.
 
+## Watching a table (Jerry 2026-11-26: "The spectate flow looks great in the video, let's build it")
+Behind the server's `SPECTATE_ENABLED`; off, nothing below shows. The way in is the Play tab's presence line: its
+"N playing" part (or, with nobody playing and a rerun to show, the nobody line) is a gold link with a chevron,
+and one tap goes to a table the server picks (the selected mode first, then the table furthest into its game),
+with no list. A watcher sees the table's last FINISHED round, one round behind: it never opens the table's socket,
+and the players are not told. The watch screen is the table (`watch/WatchScreen.tsx` draws the table's own seats,
+trick and hand read-only), turned landscape as a game is: four tabs (team dot, crown, name, cards left; the
+selected one filled) in table order from the seat it lands behind, the banker; a tab turns the table to that
+player (cards and seats travel about 0.5 s, a fade under Reduce Motion) and docks their hand in the game's order.
+The round opens with the banker's bury (the eight cards rise and leave into the kitty); the next play's cards rise
+before they land, at a steady rhythm. The watcher bar holds icon controls (previous trick, play/pause, next trick,
+speed 0.5×/1×/2×, remembered on this device), which step whole tricks inside the finished round only, and ⋯ with
+Next table and Leave. A small kitty stack beside the tabs opens the kitty peek, the one surface added: the eight
+buried cards, dismissed by a tap. The round end is the game's own card (Details shows the kitty and the last
+trick) with the watcher's buttons: Take a seat (a casual table seating joiners: the code's own Join) or Play (a
+ranked table: the queue's Play), and Leave; under it the one line "Round N in play" until that round finishes,
+then its replay plays.
+
 ## Polish checklist (UI review)
 A UI review ask walks this list after the copy rule and the flow-map row. This file, `COPY_CUTS.md` and the felt (the hand and the table, where reading a card beats a uniform press) win over any item here. Adapted from `jakubkrehel/make-interfaces-feel-better` at `6d9f2f1df10e8ce2ae1708598a73b0506fb98794` (MIT, copyright Jakub Krehel); its framework snippets, image outlines, RTL rules and shadow-for-border swap do not apply here.
 

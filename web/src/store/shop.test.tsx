@@ -575,3 +575,55 @@ describe("signing in on the item page", () => {
     expect(host.querySelector(".coll-use")?.textContent).toBe("Use");
   });
 });
+
+describe("an open character that goes away", () => {
+  const owner: AuthUser = { ...user, features: { collection: true }, products: [LAMB],
+    looks: [...tractorLooks, ...lambLooks(true)] };
+  const title = () => host.querySelector(".large-title")?.textContent;
+
+  it("a refund while the Lamb's page is open returns to the grid", async () => {
+    authState.current = { status: "in", clientId: "cid", user: owner };
+    await draw();
+    await openTile(".coll-yours", 4);
+    expect(title()).toBe("Spring Lamb");
+    // a refresh brings the account back without the Lamb
+    authState.current = { status: "in", clientId: "cid", user: { ...owner, products: [], looks: tractorLooks } };
+    await draw();
+    expect(title()).toBe("Collection");
+    expect(names(".coll-yours")).toEqual(FREE_TILES);
+  });
+
+  it("an account switch while the Lamb's page is open returns to the grid", async () => {
+    authState.current = { status: "in", clientId: "cid", user: owner };
+    await draw();
+    await openTile(".coll-yours", 4);
+    authState.current = { status: "in", clientId: "cid", user: { ...user, email: "mei@x", features: { collection: true },
+      products: [], looks: tractorLooks } };
+    await draw();
+    expect(title()).toBe("Collection");
+    authState.current = { status: "out", clientId: "cid", user: null };
+    await draw();
+    expect(title()).toBe("Collection");
+  });
+
+  it("the store turning off while a store character's page is open returns to the grid", async () => {
+    nativeShell();
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    await openTile(".coll-more", 1);
+    expect(title()).toBe("Baby Panda");
+    expect(host.querySelector(".coll-use.gold")?.textContent).toBe("Buy $3.99");
+    authState.current = { status: "in", clientId: "cid", user: { ...user, features: { collection: true } } };
+    await draw();
+    expect(title()).toBe("Collection");
+    expect(host.querySelector(".coll-more")).toBeNull();
+    // and a Soon page closes with the store too
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    await openTile(".coll-more", 2);
+    expect(title()).toBe("Jade Rabbit");
+    authState.current = { status: "in", clientId: "cid", user: { ...user, features: { collection: true } } };
+    await draw();
+    expect(title()).toBe("Collection");
+  });
+});

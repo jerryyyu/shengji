@@ -109,19 +109,37 @@ export default function CollectionPage() {
     }
   };
 
+  // The page open must still be one this viewer may see: its character still
+  // listed (a refund, a revocation or another account takes an owned one
+  // away), and a store character's page only while the store is shown. One
+  // that is not falls back to the grid at once, on this render.
+  const available = (k: Opened): boolean => {
+    if (k === null) return true;
+    if (isSoon(k)) return shop.shown;
+    if (entriesOf(k).length === 0) return false;
+    return !COMPANION_PRODUCTS[k] || owns(k) || shop.shown;
+  };
+  const showing = available(opened) ? opened : null;
+  useEffect(() => {
+    if (opened !== null && showing === null) {
+      setOpened(null);
+      setStatus("");
+    }
+  }, [opened, showing]);
+
   const back = (
     <button type="button" className="coll-back" onClick={() => { setOpened(null); setStatus(""); }}>
       {t("home.tabCollection")}
     </button>
   );
 
-  if (opened !== null) {
-    if (isSoon(opened)) {
+  if (showing !== null) {
+    if (isSoon(showing)) {
       return (
-        <LargeTitlePage className="coll-page" scroller={scroller} title={kindName(t, opened)} phone={phone}
+        <LargeTitlePage className="coll-page" scroller={scroller} title={kindName(t, showing)} phone={phone}
                        onRefresh={() => refreshAccount()} action={back}>
           <div className="char-page">
-            <Stage kind="tractor" colour={SOON_STAND_IN[opened]} size={phone ? 176 : 208} label={kindName(t, opened)} />
+            <Stage kind="tractor" colour={SOON_STAND_IN[showing]} size={phone ? 176 : 208} label={kindName(t, showing)} />
             <div className="coll-use-row">
               <button type="button" className="btn big coll-use done" disabled>{t("home.soon")}</button>
             </div>
@@ -129,7 +147,7 @@ export default function CollectionPage() {
         </LargeTitlePage>
       );
     }
-    const kind = opened;
+    const kind = showing;
     const entries = entriesOf(kind);
     const product = COMPANION_PRODUCTS[kind];
     const price = product && !owns(kind) ? (

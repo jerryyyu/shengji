@@ -124,12 +124,8 @@ describe("the home shell in Chinese", () => {
     expect(host.querySelector(".tabbar")?.getAttribute("aria-label")).toBe("主导航");
   });
 
-  it("the top bar's mark is the brand alone, labelled 升级：打牌", async () => {
+  it("the top bar's tabs read 打牌 · 排行榜 · 我", async () => {
     await render(<TopBar active="leaderboard" />);
-    const mark = host.querySelector(".topbar-mark")!;
-    expect(mark.getAttribute("aria-label")).toBe("升级：打牌");
-    expect(mark.textContent).toBe("升级");
-    expect(mark.querySelector("span")).toBeNull();
     expect(texts(".topbar-tab")).toEqual(["打牌", "排行榜", "我"]);
   });
 

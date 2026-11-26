@@ -5294,24 +5294,7 @@ body.keyboard-open .tabbar { display: none; }
   height: calc(56px + env(safe-area-inset-top, 0px));
   padding: env(safe-area-inset-top, 0px) max(28px, env(safe-area-inset-right, 0px)) 0
     max(28px, env(safe-area-inset-left, 0px));
-  background: #161a22;
-  border-bottom: 0.5px solid var(--grp-line);
 }
-.topbar-mark {
-  justify-self: start;
-  appearance: none;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  cursor: pointer;
-}
-.topbar-mark { white-space: nowrap; }
-.topbar-mark b { font-size: 24px; color: var(--gold); letter-spacing: 0.02em; }
-.topbar-mark span { font-size: var(--fs-10); letter-spacing: 0.28em; text-transform: uppercase; color: var(--text-dim); }
 /* The wide tabs: the same glass pill, the active tab in a lighter capsule. */
 .topbar-tabs {
   grid-column: 2;

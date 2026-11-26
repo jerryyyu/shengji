@@ -79,6 +79,9 @@ so the bot covers the seat at once instead of after a dropped seat's 30 s and a 
 **Section 5, tabs.** The same three tabs (Play / Leaderboard / Me) on phone, iPad and desktop. Stats and
 Games become a switch inside Me. The Leaderboard is the phone's column at every width, centred and capped like
 Me; your own row keeps "(you)" in view when a long name truncates (Jerry 11-15).
+The wide layout (700px and up) has no top bar strip: the three tabs float as the glass pill group centred at the top
+and the account chip at the top right, over the page background, and no tab shows a corner wordmark (Play's page
+carries the 升级 SHENG JI title). Jerry 2026-11-26: "can we just remove the top bar entirely? and we can keep the pills".
 It opens on This week, or on All time when nobody has played a ranked round this week yet, until the viewer
 picks a period (Jerry 2026-11-24: "default to global when it's empty"; no extra Play button). On This week each
 row ends in the places it moved on the week's list (▲3 green, ▼1 red, a dash for none, nothing for a player new

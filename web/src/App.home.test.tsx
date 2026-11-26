@@ -187,7 +187,7 @@ describe("the bars", () => {
     expect(host.querySelector(".tabbar")).toBeNull();
     const tabs = () => [...host.querySelectorAll<HTMLButtonElement>(".topbar-tabs .topbar-tab")];
     expect(tabs().map((b) => b.textContent)).toEqual(["Play", "Leaderboard", "Me"]);
-    // Play carries the title itself; the other tabs show the wordmark
+    // no corner wordmark on any tab: Play's page carries the title
     expect(host.querySelector(".topbar-mark")).toBeNull();
     const account = () => host.querySelector<HTMLButtonElement>(".topbar .account-pill")!;
     expect(account().textContent).toContain("Jerry");
@@ -196,7 +196,7 @@ describe("the bars", () => {
     expect(host.querySelector(".topbar .guest-pill")).toBeNull();
     // the account chip opens Me, where the name is edited, from any tab
     await act(async () => { tabs()[1].click(); await new Promise((r) => setTimeout(r, 0)); });
-    expect(host.querySelector(".topbar-mark")?.textContent).toContain("升级");
+    expect(host.querySelector(".topbar-mark")).toBeNull();
     await act(async () => { account().click(); await new Promise((r) => setTimeout(r, 0)); });
     expect(window.location.hash).toBe("#/me");
     expect(tabs()[2].getAttribute("aria-current")).toBe("page");

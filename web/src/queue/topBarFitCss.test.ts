@@ -33,7 +33,7 @@ describe("the top bar while searching", () => {
     expect(bar).toContain("grid-template-columns: minmax(min-content, 1fr) auto minmax(min-content, 1fr);");
     expect(bar).toContain("column-gap: 8px;");
     expect(bar).not.toMatch(/grid-template-columns: 1fr auto 1fr/);
-    expect(decls(".topbar-mark")).toContain("white-space: nowrap");
+    expect(bar).not.toMatch(/background:|border-bottom:/);
   });
 
   it("caps the account chip so a long name ellipsizes instead of widening the bar", () => {

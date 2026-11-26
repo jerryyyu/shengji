@@ -25,7 +25,6 @@ import base64
 import binascii
 import json
 import logging
-import os
 import time
 from collections.abc import Sequence
 from datetime import datetime, timezone
@@ -70,11 +69,6 @@ APPLE_ROOTS: tuple[bytes, ...] = (
 LEAF_OID = x509.ObjectIdentifier("1.2.840.113635.100.6.11.1")
 INTERMEDIATE_OID = x509.ObjectIdentifier("1.2.840.113635.100.6.2.1")
 
-# The App Store environments whose purchases grant an entitlement,
-# comma-separated. Production is the live store; Sandbox is TestFlight and
-# App Review, which tests purchases against the production server.
-STORE_ENVIRONMENTS_ENV = "STORE_ENVIRONMENTS"
-DEFAULT_ENVIRONMENTS = ("Production", "Sandbox")
 # The China mainland storefront sells nothing: its purchases are refused.
 BLOCKED_STOREFRONTS = frozenset({"CHN"})
 NON_CONSUMABLE = "Non-Consumable"
@@ -93,10 +87,8 @@ class VerificationError(Exception):
 
 
 def allowed_environments() -> frozenset[str]:
-    raw = os.environ.get(STORE_ENVIRONMENTS_ENV)
-    if raw is None:
-        return frozenset(DEFAULT_ENVIRONMENTS)
-    return frozenset(p.strip() for p in raw.split(",") if p.strip())
+    """``accounts.store_environments``: where purchases count."""
+    return accounts.store_environments()
 
 
 def _b64url(part: str) -> bytes:
@@ -308,13 +300,14 @@ async def notify(body: NotifyBody) -> dict:
             return {}
         log.info("store notification refused: %s", exc.code)
         raise HTTPException(status_code=400, detail=exc.code) from None
+    signed_at = payload["signedDate"] / 1000
     if kind in REVOKING_NOTIFICATIONS:
         companion = companion_of(txn["product_id"])
         when = txn["revoked_at"] if txn["revoked_at"] is not None else time.time()
-        user_id = await store.run(store.revoke_entitlement, txn, when, companion)
+        user_id = await store.run(store.revoke_entitlement, txn, when, signed_at, companion)
         _forget_look(user_id, companion)
         log.info("store purchase revoked: %s %s", kind, txn["product_id"])
     else:
-        await store.run(store.restore_entitlement, txn["original_transaction_id"])
+        await store.run(store.restore_entitlement, txn["original_transaction_id"], signed_at)
         log.info("store purchase restored: %s %s", kind, txn["product_id"])
     return {}

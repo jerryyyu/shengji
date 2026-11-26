@@ -244,6 +244,20 @@ def collection_for(user_id: int | None) -> bool:
     return collection_enabled() or (user_id is not None and user_id in collection_allowlist())
 
 
+# The App Store environments whose purchases count, comma-separated.
+# Production is the live store; Sandbox is TestFlight and App Review, which
+# test purchases against the production server.
+STORE_ENVIRONMENTS_ENV = "STORE_ENVIRONMENTS"
+DEFAULT_STORE_ENVIRONMENTS = ("Production", "Sandbox")
+
+
+def store_environments() -> frozenset[str]:
+    raw = os.environ.get(STORE_ENVIRONMENTS_ENV)
+    if raw is None:
+        return frozenset(DEFAULT_STORE_ENVIRONMENTS)
+    return frozenset(p.strip() for p in raw.split(",") if p.strip())
+
+
 def store_for(user_id: int | None) -> bool:
     """Whether ``user_id`` may see the Shop and have purchases verified: a
     signed-in account the Collection is on for, while ``STORE_ENABLED=1``.
@@ -804,15 +818,19 @@ def _migrate_v11(conn: sqlite3.Connection) -> None:
 
 
 # One row per App Store purchase (an original transaction), written only from
-# a transaction whose Apple signature verified. ``user_id`` is NULL for a
-# refund or revocation Apple reported before any account presented the
-# purchase, so the purchase can never be claimed afterwards. An original
-# transaction belongs to at most one account. Deleting the account deletes
-# its rows, so the same Apple ID can restore onto a new account.
+# a transaction whose Apple signature verified. An original transaction
+# belongs to at most one account. ``user_id`` is NULL while no account holds
+# it: a refund Apple reported before any account presented the purchase, or a
+# purchase whose account was deleted. The first account to present an
+# unrevoked, unheld purchase takes it, so the same Apple ID can restore onto
+# a new account; a revoked row stays, unheld, as the refund's record.
+# ``state_at`` is the ``signedDate`` of the Apple notification that last set
+# ``revoked_at``: a notification signed no later than it is a duplicate or
+# out of order and changes nothing.
 _ENTITLEMENTS_V12 = """
     CREATE TABLE IF NOT EXISTS entitlements (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_id INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
         product_id TEXT NOT NULL,
         original_transaction_id TEXT NOT NULL UNIQUE,
         transaction_id TEXT NOT NULL,
@@ -820,7 +838,8 @@ _ENTITLEMENTS_V12 = """
         storefront TEXT NULL,
         purchased_at REAL NOT NULL,
         verified_at REAL NOT NULL,
-        revoked_at REAL NULL
+        revoked_at REAL NULL,
+        state_at REAL NULL
     );
     CREATE INDEX IF NOT EXISTS entitlements_user ON entitlements(user_id)
 """
@@ -1144,18 +1163,27 @@ class Store:
             return dict(row) if row else None
 
     # -- App Store entitlements
-    def owned_products(self, user_id: int) -> frozenset[str]:
-        """The product ids the account holds an unrevoked entitlement to."""
+    def owned_products(self, user_id: int, environments: Collection[str] | None = None) -> frozenset[str]:
+        """The product ids the account holds an unrevoked entitlement to,
+        bought in one of ``environments`` (default: the ones the store
+        accepts, ``store_environments``), so a grant from an environment no
+        longer accepted stops counting."""
+        envs = sorted(store_environments() if environments is None else environments)
+        if not envs:
+            return frozenset()
+        marks = ",".join("?" * len(envs))
         with closing(self._open()) as conn:
             rows = conn.execute(
-                "SELECT product_id FROM entitlements WHERE user_id = ? AND revoked_at IS NULL",
-                (user_id,)).fetchall()
+                f"""SELECT product_id FROM entitlements
+                    WHERE user_id = ? AND revoked_at IS NULL AND environment IN ({marks})""",
+                (user_id, *envs)).fetchall()
         return frozenset(r["product_id"] for r in rows)
 
     def claim_entitlement(self, user_id: int, txn: Mapping[str, Any], now: float | None = None) -> str:
-        """Record a verified purchase (``purchases.Transaction`` fields) for
-        ``user_id``. ``"granted"`` when the account now holds it (also when it
-        already did); ``"revoked"`` when Apple refunded or revoked that
+        """Record a verified purchase (``purchases.transaction`` fields) for
+        ``user_id``, or bind it to ``user_id`` when no account holds it and it
+        is not revoked. ``"granted"`` when the account now holds it (also when
+        it already did); ``"revoked"`` when Apple refunded or revoked that
         purchase; ``"claimed"`` when another account holds it."""
         t = time.time() if now is None else now
         with closing(self._open()) as conn:
@@ -1169,6 +1197,10 @@ class Store:
                     (user_id, txn["product_id"], txn["original_transaction_id"],
                      txn["transaction_id"], txn["environment"], txn.get("storefront"),
                      float(txn["purchased_at"]), t))
+                conn.execute(
+                    """UPDATE entitlements SET user_id = ?
+                       WHERE original_transaction_id = ? AND user_id IS NULL AND revoked_at IS NULL""",
+                    (user_id, txn["original_transaction_id"]))
                 row = conn.execute(
                     "SELECT user_id, revoked_at FROM entitlements WHERE original_transaction_id = ?",
                     (txn["original_transaction_id"],)).fetchone()
@@ -1180,30 +1212,34 @@ class Store:
             return "revoked"
         return "granted" if row["user_id"] == user_id else "claimed"
 
-    def revoke_entitlement(self, txn: Mapping[str, Any], revoked_at: float,
+    def revoke_entitlement(self, txn: Mapping[str, Any], revoked_at: float, signed_at: float,
                            companion: str | None) -> int | None:
-        """Mark the purchase ``txn`` revoked at ``revoked_at`` (a refund or a
-        revocation Apple signed), recording it unowned if no account has
-        presented it yet, and unequip ``companion`` (the product's) from the
-        account that held it. The account's id, or None."""
+        """Apply a refund or revocation Apple signed at ``signed_at``: mark
+        the purchase ``txn`` revoked at ``revoked_at`` (recording it unheld if
+        no account has presented it) and unequip ``companion`` (the product's)
+        from the account holding it. A notification signed no later than the
+        one that last set the purchase's state changes nothing. The holding
+        account's id, or None."""
         with closing(self._open()) as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
                 conn.execute(
                     """INSERT INTO entitlements(user_id, product_id, original_transaction_id,
                            transaction_id, environment, storefront, purchased_at, verified_at,
-                           revoked_at)
-                       VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+                           revoked_at, state_at)
+                       VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                        ON CONFLICT(original_transaction_id) DO UPDATE SET
-                           revoked_at = COALESCE(entitlements.revoked_at, excluded.revoked_at)""",
+                           revoked_at = COALESCE(entitlements.revoked_at, excluded.revoked_at),
+                           state_at = excluded.state_at
+                       WHERE entitlements.state_at IS NULL OR excluded.state_at > entitlements.state_at""",
                     (txn["product_id"], txn["original_transaction_id"], txn["transaction_id"],
                      txn["environment"], txn.get("storefront"), float(txn["purchased_at"]),
-                     revoked_at, revoked_at))
+                     revoked_at, revoked_at, signed_at))
                 row = conn.execute(
-                    "SELECT user_id FROM entitlements WHERE original_transaction_id = ?",
+                    "SELECT user_id, revoked_at FROM entitlements WHERE original_transaction_id = ?",
                     (txn["original_transaction_id"],)).fetchone()
                 user_id = row["user_id"]
-                if user_id is not None and companion is not None:
+                if user_id is not None and companion is not None and row["revoked_at"] is not None:
                     conn.execute(
                         """UPDATE users SET look_companion = NULL, look_colour = NULL
                            WHERE id = ? AND look_companion = ?""", (user_id, companion))
@@ -1213,12 +1249,15 @@ class Store:
                 raise
         return user_id
 
-    def restore_entitlement(self, original_transaction_id: str) -> int | None:
-        """Clear the revocation of a purchase whose refund Apple reversed; the
-        holding account's id, or None."""
+    def restore_entitlement(self, original_transaction_id: str, signed_at: float) -> int | None:
+        """Clear the revocation of a purchase whose refund Apple reversed in
+        a notification signed at ``signed_at``, unless a notification signed
+        no earlier already set its state; the holding account's id, or None."""
         with closing(self._open()) as conn:
-            conn.execute("UPDATE entitlements SET revoked_at = NULL WHERE original_transaction_id = ?",
-                         (original_transaction_id,))
+            conn.execute(
+                """UPDATE entitlements SET revoked_at = NULL, state_at = ?
+                   WHERE original_transaction_id = ? AND (state_at IS NULL OR state_at < ?)""",
+                (signed_at, original_transaction_id, signed_at))
             row = conn.execute("SELECT user_id FROM entitlements WHERE original_transaction_id = ?",
                                (original_transaction_id,)).fetchone()
         return None if row is None else row["user_id"]
@@ -1957,7 +1996,9 @@ class Store:
 
     def delete_user(self, user_id: int) -> bool:
         """Remove a user; its sessions, game links and blocks (made by it or
-        of it) go by cascade, and so do the games no other account links. The anonymous room logs are
+        of it) go by cascade, and so do the games no other account links. Its App
+        Store purchases stay, held by no account: a refund keeps its record and
+        an unrefunded purchase can be restored onto a new account. The anonymous room logs are
         untouched: they never held the account."""
         with closing(self._open()) as conn:
             conn.execute("BEGIN IMMEDIATE")

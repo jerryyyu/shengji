@@ -355,7 +355,7 @@ def test_the_entitlements_migration_snapshots_first(accounts_on, tmp_path):
     with accounts_sqlite(path) as db:
         cols = [r[1] for r in db.execute("PRAGMA table_info(entitlements)")]
     assert cols == ["id", "user_id", "product_id", "original_transaction_id", "transaction_id",
-                    "environment", "storefront", "purchased_at", "verified_at", "revoked_at"]
+                    "environment", "storefront", "purchased_at", "verified_at", "revoked_at", "state_at"]
     assert store.backup_path(1).exists()
 
 
@@ -379,7 +379,7 @@ def test_a_v11_database_gains_the_table_after_a_verified_backup(accounts_on, tmp
         assert db.execute("SELECT name FROM sqlite_master WHERE name = 'entitlements'").fetchone() is None
 
 
-def test_purchases_follow_a_merged_device_account_and_go_with_a_deleted_one(accounts_on):
+def test_purchases_follow_a_merged_device_account_and_outlive_a_deleted_one(accounts_on):
     store = accounts_on.STORE
     a = store.upsert_user(_claims(sub="s1", email="a@example.com", name="A"))
     b = store.upsert_user(_claims(sub="s2", email="b@example.com", name="B"))
@@ -395,4 +395,98 @@ def test_purchases_follow_a_merged_device_account_and_go_with_a_deleted_one(acco
     assert store.claim_entitlement(b["id"], txn) == "granted"
     assert store.delete_user(b["id"])
     with store._open() as conn:
-        assert conn.execute("SELECT COUNT(*) FROM entitlements").fetchone()[0] == 0
+        assert [tuple(r) for r in conn.execute("SELECT user_id, revoked_at FROM entitlements")] == [(None, None)]
+
+
+# ------------------------------------------------------------ lifecycle sequences
+def _signed_at(ms_offset: int) -> int:
+    return int(time.time() * 1000) + ms_offset
+
+
+def _notify_at(chain: Chain, kind: str, txn: dict, signed: int) -> dict:
+    body = {"bundleId": "com.jerryyu.shengji", "environment": txn.get("environment", "Sandbox"),
+            "signedTransactionInfo": chain.sign(txn)}
+    return {"signedPayload": chain.sign({
+        "notificationType": kind, "notificationUUID": f"uuid-{kind}-{signed}",
+        "data": body, "version": "2.0", "signedDate": signed})}
+
+
+def test_a_refund_reversed_before_any_claim_still_lets_the_buyer_claim(accounts_on, client, shop, chain):
+    one = _txn(originalTransactionId="41", transactionId="41")
+    refunded = dict(one, revocationDate=_signed_at(-2000))
+    assert client.post("/api/store/notify", json=_notify_at(chain, "REFUND", refunded, _signed_at(-2000))).status_code == 200
+    assert client.post("/api/store/notify", json=_notify_at(chain, "REFUND_REVERSED", one, _signed_at(-1000))).status_code == 200
+    resp = client.post("/api/store/verify", json={"jws": chain.sign(one)}, headers=shop)
+    assert resp.status_code == 200, resp.text
+    assert client.get("/api/me", headers=shop).json()["products"] == [GOAT]
+
+
+def test_a_late_duplicate_refund_after_its_reversal_changes_nothing(accounts_on, client, shop, chain):
+    assert client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=shop).status_code == 200
+    refunded = _txn(revocationDate=_signed_at(-3000))
+    refund = _notify_at(chain, "REFUND", refunded, _signed_at(-3000))
+    assert client.post("/api/store/notify", json=refund).status_code == 200
+    assert accounts_on.STORE.owned_products(1) == frozenset()
+    assert client.post("/api/store/notify", json=_notify_at(chain, "REFUND_REVERSED", _txn(), _signed_at(-1000))).status_code == 200
+    assert accounts_on.STORE.owned_products(1) == frozenset({GOAT})
+    # Apple redelivers the first refund after its reversal: older, so ignored
+    assert client.post("/api/store/notify", json=refund).status_code == 200
+    assert client.get("/api/me", headers=shop).json()["products"] == [GOAT]
+    # and a reversal delivered before its refund leaves the refund in force
+    two = _txn(originalTransactionId="52", transactionId="52", productId=PANDA)
+    assert client.post("/api/store/verify", json={"jws": chain.sign(two)}, headers=shop).status_code == 200
+    late_reversal = _notify_at(chain, "REFUND_REVERSED", two, _signed_at(-5000))
+    newer_refund = _notify_at(chain, "REFUND", dict(two, revocationDate=_signed_at(-4000)), _signed_at(-4000))
+    assert client.post("/api/store/notify", json=newer_refund).status_code == 200
+    assert client.post("/api/store/notify", json=late_reversal).status_code == 200
+    assert PANDA not in client.get("/api/me", headers=shop).json()["products"]
+
+
+def test_a_duplicate_refund_before_any_claim_keeps_the_purchase_unclaimable(accounts_on, client, shop, chain):
+    one = _txn(originalTransactionId="63", transactionId="63")
+    refund = _notify_at(chain, "REFUND", dict(one, revocationDate=_signed_at(-2000)), _signed_at(-2000))
+    for _ in range(2):
+        assert client.post("/api/store/notify", json=refund).status_code == 200
+    assert client.post("/api/store/verify", json={"jws": chain.sign(one)}, headers=shop).status_code == 409
+    assert client.get("/api/me", headers=shop).json()["products"] == []
+
+
+def test_deleting_the_account_keeps_the_refund_record(accounts_on, client, shop, chain, keypair, monkeypatch):
+    assert client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=shop).status_code == 200
+    refund = _notify_at(chain, "REFUND", _txn(revocationDate=_signed_at(-1000)), _signed_at(-1000))
+    assert client.post("/api/store/notify", json=refund).status_code == 200
+    assert accounts_on.STORE.delete_user(1)
+    with accounts_on.STORE._open() as conn:
+        row = conn.execute("SELECT user_id, revoked_at FROM entitlements").fetchone()
+    assert row["user_id"] is None and row["revoked_at"] is not None
+    # a new account presenting the old, unrevoked JWS is still refused
+    private_pem, _ = keypair
+    client.cookies.clear()
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "1,2")
+    other = {"cookie": _session_cookie(accounts_on, client, private_pem, sub="333", email="c@example.com")}
+    resp = client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=other)
+    assert resp.status_code == 409 and resp.json()["detail"] == "revoked"
+
+
+def test_an_unrefunded_purchase_restores_onto_a_new_account_after_deletion(accounts_on, client, shop, chain, keypair, monkeypatch):
+    assert client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=shop).status_code == 200
+    assert accounts_on.STORE.delete_user(1)
+    private_pem, _ = keypair
+    client.cookies.clear()
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "2")
+    other = {"cookie": _session_cookie(accounts_on, client, private_pem, sub="444", email="d@example.com")}
+    assert client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=other).status_code == 200
+    assert client.get("/api/me", headers=other).json()["products"] == [GOAT]
+
+
+def test_sandbox_grants_disappear_when_only_production_is_enabled(accounts_on, client, shop, chain, monkeypatch):
+    assert client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=shop).status_code == 200
+    assert client.put("/api/me/look", json={"look": "goat/jade"}, headers=shop).status_code == 200
+    monkeypatch.setenv("STORE_ENVIRONMENTS", "Production")
+    me = client.get("/api/me", headers=shop).json()
+    assert me["products"] == [] and me["look"] == "tractor/red"
+    assert client.put("/api/me/look", json={"look": "goat/ink"}, headers=shop).status_code == 403
+    # a Production purchase still counts
+    prod = _txn(originalTransactionId="75", transactionId="75", productId=PANDA, environment="Production")
+    assert client.post("/api/store/verify", json={"jws": chain.sign(prod)}, headers=shop).status_code == 200
+    assert client.get("/api/me", headers=shop).json()["products"] == [PANDA]

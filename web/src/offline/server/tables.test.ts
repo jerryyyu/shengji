@@ -217,3 +217,17 @@ describe("every message the page can send offline is answered or named", () => {
   });
 
 });
+
+describe("a chat line's quick phrase, as server.py's", () => {
+  it("keeps a known id and drops any other, keeping the text", async () => {
+    const { frames, server } = await scenario([CREATE,
+      { type: "table_chat", text: "Nice!", phrase: "nice", at: 1 },
+      { type: "table_chat", text: "as typed", phrase: "hello", at: 1.5 },
+      { type: "table_chat", text: "no id", phrase: 3, at: 2 },
+      { type: "table_chat", text: "plain", at: 2.5 }]);
+    const lines = (frames as Frame[]).filter((f) => f.type === "chat" && f.seat === 0).map((f) => [f.text, f.phrase]);
+    expect(lines).toEqual([["Nice!", "nice"], ["as typed", undefined], ["no id", undefined], ["plain", undefined]]);
+    const room = [...server.rooms.values()][0];
+    expect(room.chat.filter((m) => m.seat === 0).map((m) => "phrase" in m)).toEqual([true, false, false, false]);
+  });
+});

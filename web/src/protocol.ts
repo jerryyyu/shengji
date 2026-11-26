@@ -362,6 +362,9 @@ export interface ChatMsg {
   seat: number | null;
   name: string;
   text: string;
+  /** A quick phrase's id (quickPhrases.ts): a client that knows it words the
+   *  line in its own language; `text` is the sender's wording. */
+  phrase?: string;
   /** A system line's kind and participants (server.py system_event); a
    *  client words the line from these, never from `text`. `actor` is always
    *  a person. Absent from older servers, whose `text` is shown as sent. */

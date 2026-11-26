@@ -58,8 +58,9 @@ export type QueueClientMsg = { name?: string } & (
   | { type: "table_here" }
   /** A chat line to everyone at your waiting table (<=300 chars, trimmed;
    *  30 a minute). Never logged; it becomes the room's chat when the table
-   *  starts. */
-  | { type: "table_chat"; text: string }
+   *  starts. `phrase`: a quick phrase's id (quickPhrases.ts), with `text`
+   *  its wording in the sender's language. */
+  | { type: "table_chat"; text: string; phrase?: string }
   /** Your table's Allow joiners, alone or at a waiting table (anyone
    *  seated, as in a room). Off: Play seats no stranger with you and
    *  offers you no open table; your code still works. */
@@ -275,6 +276,8 @@ export interface TableChatMsg {
   /** The waiting table's id, or null while you wait alone at your own table.
    *  `seat` is null for a line from someone no longer at the table. */
   type: "table_chat"; table: string | null; id: number; seat: number | null; name: string; text: string; t: number;
+  /** A quick phrase's id, present only for a phrase the server knows. */
+  phrase?: string;
 }
 
 /** Your table's chat so far, replacing what you hold: when you sit down at

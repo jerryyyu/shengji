@@ -247,6 +247,12 @@ describe("a Play table's chat before the game", () => {
     say({ type: "table_chat", table: "t1", id: 3, seat: 0, name: "Jerry", text: "yes", t: nowSecs() });
     say({ type: "table_chat", table: "t1", id: 3, seat: 0, name: "Jerry", text: "yes", t: nowSecs() });
     expect([...sheet.querySelectorAll(".chat-msg")].filter((m) => m.textContent?.includes("yes"))).toHaveLength(1);
+    // a quick phrase goes out with its id, and one sent in Chinese reads here in English
+    click(button("Thanks!", sheet));
+    expect(lastSent()).toEqual({ type: "table_chat", text: "Thanks!", phrase: "thanks" });
+    say({ type: "table_chat", table: "t1", id: 4, seat: 1, name: "Alice", text: "加油！", phrase: "luck", t: nowSecs() });
+    expect([...sheet.querySelectorAll(".chat-text")].at(-1)?.textContent).toBe("Good luck!");
+    expect(row().textContent).toContain("Alice: Good luck!");
     // a new table starts an empty log
     say(table({ id: "t2" }));
     expect(row().textContent).not.toContain("Alice:");

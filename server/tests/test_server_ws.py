@@ -384,6 +384,32 @@ def test_room_chat_and_a_guests_name_are_masked_where_the_server_takes_them(clie
                    for line in (room.log_dir / f"{code}.jsonl").read_text().splitlines())
 
 
+def test_room_chat_keeps_a_known_quick_phrase_and_drops_any_other(client):
+    """A quick phrase's id rides with its line, so each client words it in
+    its own language; an id the server does not know is dropped and the
+    text kept, and the round log holds the text only."""
+    import json
+
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code = _room_with_bots(a, "host")
+        room = srv.rooms[code]
+        a.send_json({"type": "table_chat", "text": "Thanks!", "phrase": "thanks"})
+        a.send_json({"type": "table_chat", "text": "typed-line", "phrase": "<b>x</b>"})
+        lines = []
+        while len(lines) < 2:
+            echo = _drain(a, "chat")
+            if echo.get("seat") == 0:
+                lines.append(echo)
+    assert [(m["text"], m.get("phrase")) for m in lines] == [("Thanks!", "thanks"), ("typed-line", None)]
+    assert [(m["text"], m.get("phrase")) for m in room.chat if m["seat"] == 0] == [
+        ("Thanks!", "thanks"), ("typed-line", None)]
+    records = [json.loads(line)
+               for line in (room.log_dir / f"{code}.jsonl").read_text().splitlines()]
+    assert [r["text"] for r in records if r["e"] == "chat"] == ["Thanks!", "typed-line"]
+
+
 def test_room_chat_is_logged_and_reaches_the_scrollback(client):
     """A room's chat is always a game's chat, so every line is logged."""
     import json

@@ -83,6 +83,12 @@ it("shows a live line at its seat for five seconds, in a polite live region", ()
   expect(bubbles()).toHaveLength(0);
 });
 
+it("words a quick phrase in this viewer's language", () => {
+  render();
+  serverSays({ ...line(1, 1, "谢谢！"), phrase: "thanks" });
+  expect(bubbleText()).toEqual(["1:Ann: Thanks!"]);
+});
+
 it("replaces a seat's bubble with its next line and restarts the clock", () => {
   render();
   serverSays(line(1, 1, "first"));

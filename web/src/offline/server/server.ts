@@ -29,6 +29,7 @@ import {
 import { SmartBot, viewFor } from "../bot";
 import { type Clock, type PauseWatch, pausedAfter, pauseWatch, realClock, sleep } from "./clock";
 import { BOT_LEVELS, type BotLevel } from "../../queue/messages";
+import { isQuickPhrase } from "../../quickPhrases";
 import { type ActionEntry, BotGate, DEFAULT_BOT_LEVEL, type DecisionKind, type RemoteBot, requestFor } from "./pybot";
 import { DeckRng, randomSeed } from "./rng";
 import { CANONICAL, LOBBY, RETIRED_MESSAGE, forQueue, forRoom, retired } from "./tables";
@@ -90,6 +91,8 @@ interface ChatEntry {
   name: string;
   text: string;
   t: number;
+  /** A known quick phrase's id (quickPhrases.ts). */
+  phrase?: string;
   /** server.py system_event: a system line's kind and participants. */
   event?: SystemEvent["event"];
   actor?: string;
@@ -1233,7 +1236,9 @@ export class LocalServer {
     } else if (t === "chat") {
       const text = String(msg.text ?? "").trim().slice(0, CHAT_MAX_LEN);
       if (!text) return;
-      this.chatPost(room, { seat, name: room.seats[seat].name, text, t: Date.now() / 1000 });
+      // server.py: a quick phrase's id rides along only when it is a known one
+      const phrase = isQuickPhrase(msg.phrase) ? { phrase: msg.phrase } : {};
+      this.chatPost(room, { seat, name: room.seats[seat].name, text, t: Date.now() / 1000, ...phrase });
       return;
     } else if (t === "allow_joiners") {
       if (seat !== room.host) throw new IllegalPlay("Only the table's opener sets Allow joiners.");

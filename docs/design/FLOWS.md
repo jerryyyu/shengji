@@ -315,9 +315,11 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
   again: the quiet, pressed "Ready" is gold again, its ✓ goes, and the owner's "N of M ready" count drops (2026-11-26: the button no longer reads "Waiting for Alice"; the line under the title says who starts). A Duo's partner
   takes back its own tap; the owner has none. The server's `table_start {on: false}` does it.
 - **Quick chat phrases.** The chat sheet shows one row of phrases first ("Hi!", "GG", "Nice!", "One more?",
-  "Brb"), then the field. All five fit one row of the narrowest chat (a 390 px phone, the in-game panel), so the
-  row never scrolls or wraps. A tap sends the phrase as an ordinary line, through the same validated, rate-limited
-  path; nothing new is logged. On the Play tab the table panel's Chat row opens chat in the shared `Sheet`
+  "Brb", "Thanks!", "Sorry!", "Good luck!"), then the field. The row never wraps; on a 390 px phone the last
+  two or three scroll sideways into view. A tap sends the phrase's id with its wording in the sender's language,
+  through the same validated, rate-limited path as a typed line, and every player reads a known phrase in their
+  own language (an older client shows the sender's wording); typed lines are never translated. Nothing new is
+  logged: the round log keeps the text. On the Play tab the table panel's Chat row opens chat in the shared `Sheet`
   (a bottom sheet on a phone either way round, a centred dialog from 700px); in a game chat keeps its panel on the felt (Jerry 11-15).
 - **The opener moves other people.** At a waiting table, the opener taps a person (the
   seat is outlined), then an empty seat, then confirms once ("Move Alice here?", Cancel / Move). A Duo moves as one

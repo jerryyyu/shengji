@@ -42,7 +42,7 @@
 .chat-panel.chat-tight .chat-input .btn { min-height: 34px; padding-top: 0; padding-bottom: 0; }
 
 /* The chat's quick phrases: one row of chips above the field. The chips
-   share out any spare width; when the chat is narrower than all five, the
+   share out any spare width; when the chat is narrower than all of them, the
    row scrolls sideways rather than wrapping or squeezing them. */
 .chat-quick {
   display: flex; flex-wrap: nowrap; gap: 6px; flex-shrink: 0; padding: 8px 8px 0;

@@ -47,7 +47,7 @@ export type TableAction =
   | { type: "move"; seat: number }
   | { type: "move_other"; from: number; to: number; sit: string | null }
   | { type: "leave" }
-  | { type: "chat"; text: string }
+  | { type: "chat"; text: string; phrase?: string }
   | { type: "start_level"; level: Rank }
   | { type: "allow_joiners"; on: boolean }
   | { type: "bot_level"; level: BotLevel }
@@ -524,7 +524,7 @@ export function queueSend(a: TableAction): void {
     case "move": return queue.tableMove(a.seat);
     case "move_other": if (a.sit) queue.tableMoveOther(a.from, a.to, a.sit); return;
     case "leave": return queue.leave();
-    case "chat": queue.tableChat(a.text); return;
+    case "chat": queue.tableChat(a.text, a.phrase); return;
     case "start_level": return queue.setStartLevel(a.level);
     case "allow_joiners": return queue.setAllowJoiners(a.on);
     case "bot_level": return queue.setBotLevel(a.level);

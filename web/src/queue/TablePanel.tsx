@@ -21,6 +21,7 @@ import type { QueueView } from "./store";
 import { fromCode, fromQueue, offlineModel, queueSend } from "./tableModel";
 import type { MoverSeat, NearbySwitch, PanelAction, Ring, SeatItem, TableButton, TableModel, TableRows as Rows } from "./tableModel";
 import { BOT_LEVELS } from "./messages";
+import { formatChatLine } from "../messageCopy";
 import type { BotLevel } from "./messages";
 import { OFFER_CLOCK_MS, announcement, moveQuestion, panelKind, shortName } from "./tableText";
 import "./tablePanel.css";
@@ -173,7 +174,7 @@ function PanelView({ m, guarded, sheet, act }: {
         <button type="button" className="tp-chat" disabled aria-label={t("queue.chat.offline")}>
           <span className="tp-chat-label" aria-hidden="true">{t("queue.chat")}</span>
         </button>
-      ) : m.chat ? <ChatRow messages={m.chat.messages} you={m.chat.you} onSend={(text) => act({ type: "chat", text })} /> : null}
+      ) : m.chat ? <ChatRow messages={m.chat.messages} you={m.chat.you} onSend={(text, phrase) => act(phrase === undefined ? { type: "chat", text } : { type: "chat", text, phrase })} /> : null}
       {m.led ? <p className="tp-led">{ringOf(m.primary?.ring)}{m.led}</p> : (
         <div className="tp-acts">
           {m.primary ? (
@@ -383,7 +384,7 @@ function MoveConfirm({ names, onMove, onCancel }: { names: string[]; onMove: () 
  *  opens the chat sheet, the shared Sheet. The same log carries into the game, because the
  *  server turns it into the room's scrollback. */
 export function ChatRow({ messages, you, onSend }: {
-  messages: ChatMsg[]; you: number; onSend: (text: string) => void;
+  messages: ChatMsg[]; you: number; onSend: (text: string, phrase?: string) => void;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -397,7 +398,7 @@ export function ChatRow({ messages, you, onSend }: {
       <button type="button" className="tp-chat" aria-expanded={open} onClick={() => setOpen((o) => !o)}
               aria-label={unread ? t("queue.chat.unread", { n: unread }) : t("queue.chat")}>
         <span className="tp-chat-label" aria-hidden="true">{t("queue.chat")}</span>
-        <span className="tp-chat-last" aria-hidden="true">{last ? `${shortName(last.name)}: ${last.text}` : ""}</span>
+        <span className="tp-chat-last" aria-hidden="true">{last ? `${shortName(last.name)}: ${formatChatLine(last)}` : ""}</span>
         {unread ? <span className="tp-chat-badge" aria-hidden="true">{unread}</span> : null}
         <Chevron />
       </button>

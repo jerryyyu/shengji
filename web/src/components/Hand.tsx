@@ -40,6 +40,8 @@ interface HandProps {
   /** When set, the cards that can make the play: they pulse with an idle
    *  coach cue. No card is ever dimmed, these or the others. */
   lit?: Set<number> | null;
+  /** `lit` is a first game's chosen hint: its cards keep the lit ring. */
+  hinted?: boolean;
 }
 
 interface SlotProps {
@@ -121,7 +123,7 @@ interface Drag {
   moved: boolean;
 }
 
-export default function Hand({ hand, selected, selectable, onToggle, rects, lit = null }: HandProps) {
+export default function Hand({ hand, selected, selectable, onToggle, rects, lit = null, hinted = false }: HandProps) {
   const t = useT();
   const handRef = useRef<HTMLDivElement>(null);
   // The card under a finger that is down lifts at once, before the tap's
@@ -314,7 +316,7 @@ export default function Hand({ hand, selected, selectable, onToggle, rects, lit 
   const small = hand.length > FULL_SIZE_MAX;
   const style = { "--n": hand.length } as CSSProperties;
   return (
-    <div className={`hand${selectable ? " selectable" : ""}${small ? " small-cards" : ""}`}
+    <div className={`hand${selectable ? " selectable" : ""}${small ? " small-cards" : ""}${hinted ? " hinted" : ""}`}
          ref={handRef} style={style} role="group"
          aria-label={t("table.handAria", { n: hand.length })}
          onPointerDown={onPointerDown} onPointerMove={onPointerMove}

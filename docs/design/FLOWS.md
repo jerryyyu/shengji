@@ -270,8 +270,20 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
      highest first: why Play is disabled (a refused tap, or a play that does not follow), else the phase's
      help (declaring, burying), else the newcomer coach's cue. The phase's help and the cue are teaching and
      show only while the coach shows (the Coach switch on, or a newcomer on auto); the reason shows always.
-     The coach points and never chooses: no card is selected for you, and no card in the hand is dimmed, legal
-     or not; an idle cue pulses the cards that follow the lead (Jerry's no-dimming rule, 11-12).
+     The coach points and never plays: no card in the hand is dimmed, legal or not; an idle cue pulses the
+     cards that follow the lead (Jerry's no-dimming rule, 11-12). In a player's first game only (Jerry 2026-11-26,
+     from the round-1 quit read: "bot move for player → no"), your own bury or play left 15 s with nothing
+     chosen gets the served bot's choice selected for you, as if you had tapped those cards, and those cards
+     alone are lit with the coach's gold ring (no pulse, no text, no new surface); you still press Play or Bury.
+     A tap of yours during the turn stops it for that turn, a card you chose before the turn is kept, and it
+     never runs on a declare, on another seat's turn or with the Coach switch off. Ranked tables count too: a
+     new player's first game may be a matched one, and this is only a selection. The first game is every round of the
+     first game you sit in, to the round a team passes A (`firstGame.ts`): a browser that has seen a game end
+     keeps `shengji.firstGameDone`; a browser that made the coach's plays before the table is past it; a
+     signed-in account counts only at a table it reached with no rounds played, held by its code so the
+     game's later rounds still count. The bot (`hintPick.ts`, the offline SmartBot on what your seat can see,
+     `frameView.ts`) loads by a dynamic import only when such a turn sits idle. Each preselect is one
+     anonymous `hint_preselect` tap.
      The banker's bury hand is one plain hand: kitty cards carry no mark (Jerry 11-14). The status line in the button row ("Waiting
      for Li", "Dealing cards…") is gone: the seat on turn glows and says "their turn", and the hand fills
      as it is dealt.

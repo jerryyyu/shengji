@@ -36,6 +36,7 @@ import LastTrickPanel from "./LastTrickPanel";
 import LeaveSheet from "./LeaveSheet";
 import { SeatHeldPill } from "./ConnectionPill";
 import { useAnyTapIsBack } from "./seatHeld";
+import { useFirstGameHint } from "./useFirstGameHint";
 
 // the debug overlay loads on its first open, so a player's page never carries it
 const XrayPanel = lazy(() => import("./XrayPanel"));
@@ -579,9 +580,16 @@ export default function Table({ state }: { state: GameState }) {
     return () => window.clearTimeout(t);
   }, [coaching, nothingChosen, state.turn, handKey]);
 
+  // In a first game, an idle bury or play gets the bot's choice selected.
+  const { hinted, touched } = useFirstGameHint({
+    state, decisionKey, selectedCount: selected.size, pending: pending !== null,
+    coachOff: coachSwitch === "off", plays, select: (ids) => setSelected(new Set(ids)),
+  });
+
   // Stable identity so memoized hand cards skip re-rendering (see Hand).
   const toggle = useCallback((id: number) => {
     haptic("select");
+    touched();
     turnRef.current?.select();
     setSelected((prev) => {
       const next = new Set(prev);
@@ -589,7 +597,7 @@ export default function Table({ state }: { state: GameState }) {
       else next.add(id);
       return next;
     });
-  }, []);
+  }, [touched]);
 
   // Selected ids in hand (sorted) order.
   const selectedIds = state.hand.filter((c) => selected.has(c.id)).map((c) => c.id);
@@ -704,7 +712,7 @@ export default function Table({ state }: { state: GameState }) {
         <button
           className="btn subtle"
           disabled={selectedIds.length === 0 || pending !== null}
-          onClick={() => setSelected(new Set())}
+          onClick={() => { touched(); setSelected(new Set()); }}
         >
           {t("table.clear")}
         </button>
@@ -759,7 +767,7 @@ export default function Table({ state }: { state: GameState }) {
           <HandLine parts={{ reason: hint?.text ?? blocked, help: phaseHelp, coach: coach && nothingChosen ? coach.text : null }}
                     tap={hint?.n ?? 0} nudge={nudge} />
           <Hand hand={state.hand} selected={selected} selectable={selectable} onToggle={toggle}
-                rects={handRects} lit={coach?.follow ?? null} />
+                rects={handRects} lit={hinted ?? coach?.follow ?? null} hinted={hinted !== null} />
         </div>
       </div>
 

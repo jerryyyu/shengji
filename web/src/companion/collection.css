@@ -58,3 +58,67 @@
   stroke-linejoin: round;
 }
 .coll-mode { margin: 0 16px 32px; }
+/* the companions, one tile each; the one worn carries the gold outline */
+.coll-kinds {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 16px 16px 0;
+}
+.coll-kind {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 0;
+  border: 0;
+  border-radius: 14px;
+  background: none;
+  color: var(--text, #e8ede8);
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.coll-kind .portrait { box-shadow: 0 0 0 2px transparent; }
+.coll-kind.on .portrait { box-shadow: 0 0 0 2px var(--gold); }
+.coll-kind-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-13, 13px); font-weight: 600; }
+
+/* a character's page: the live figure, its states, its colours, its portraits, its foot */
+.char-back { margin: 0 0 8px; }
+.char-stage { padding-top: 36px; overflow: hidden; }
+.char-poses { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 12px 16px 0; }
+.char-chip {
+  appearance: none;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--ctl-well-edge, #2b323e);
+  border-radius: 999px;
+  background: var(--ctl-well, #212632);
+  color: var(--text, #e8ede8);
+  font: inherit;
+  font-size: var(--fs-13, 13px);
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.char-chip.sig { border-color: var(--gold); color: var(--gold); }
+.char-chip.on { background: #e8ede8; border-color: #e8ede8; color: #14171e; }
+.char-chip.sig.on { background: var(--gold); border-color: var(--gold); }
+.char-try { flex-direction: row; justify-content: center; align-items: flex-end; gap: 0; }
+.char-partner { display: block; line-height: 0; transform: scaleX(-1); }
+/* the colours: four in a row on a phone, each a 56 px portrait */
+.char-swatches {
+  display: grid;
+  grid-template-columns: repeat(4, 60px);
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.char-swatches .coll-swatch { width: 60px; height: 60px; }
+.char-status { margin: 12px 16px 0; }
+.char-foot-row { display: flex; margin: 12px 16px 32px; }
+.char-foot { flex: 1; }
+.char-foot.done:disabled { opacity: 1; }

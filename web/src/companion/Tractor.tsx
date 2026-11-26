@@ -8,6 +8,9 @@ import { createElement } from "react";
 import type { ReactNode } from "react";
 import { TRACTOR_COLOURS } from "./palette";
 import type { TractorColour, TractorColourId } from "./palette";
+import { riderMarkup } from "./TractorRider";
+import { TEAM, confetti, teamPad } from "./rig";
+import type { CharPose, Team } from "./rig";
 
 export type Eyes = "open" | "sleep";
 
@@ -45,22 +48,24 @@ function wheel(cx: number, cy: number, r: number, id: string, detail: boolean): 
 /** The Tractor's shapes in its 400 box, as SVG markup. `id` keeps its
  *  gradient ids apart from another drawing's on the same page; `detail` adds
  *  the treads and scrollwork, which are noise under 40 px; `puffs` draws the
- *  exhaust smoke. */
-export function tractorMarkup(colour: TractorColourId, id: string, { eyes = "open", detail = true, puffs = true, shadow = true }: {
-  eyes?: Eyes; detail?: boolean; puffs?: boolean; shadow?: boolean;
+ *  exhaust smoke; `rider` seats the farm kid at the window (`TractorRider.tsx`);
+ *  `team` paints the waist band and the pad under it at the table. */
+export function tractorMarkup(colour: TractorColourId, id: string, { eyes = "open", detail = true, puffs = true, shadow = true, rider = false, pose = "idle", still = false, team }: {
+  eyes?: Eyes; detail?: boolean; puffs?: boolean; shadow?: boolean; rider?: boolean; pose?: CharPose; still?: boolean; team?: Team;
 } = {}): string {
   const p = colourOf(colour);
+  const r = rider ? riderMarkup(p, id, { pose, still, team }) : null;
   const lg = (name: string, stops: readonly string[]) =>
     `<linearGradient id="${name}-${id}" x1="0" y1="0" x2="1" y2="1">${stops.map((c, i) =>
       `<stop offset="${stops.length === 3 ? [0, 0.6, 1][i] : i}" stop-color="${c}"/>`).join("")}</linearGradient>`;
   const defs = `<defs>${lg("body", p.body)}${lg("roof", ["#fffdf7", "#fdf1dc", "#f1dcc0"])}${lg("glass", ["#e9fbff", "#8fc6d6"])}`
     + `${lg("tyre", ["#4a4048", "#231c22"])}${lg("gold", ["#ffe9a8", "#eeb94f", "#b9781f"])}`
-    + `<radialGradient id="shadow-${id}" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#000" stop-opacity=".42"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient></defs>`;
+    + `<radialGradient id="shadow-${id}" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#000" stop-opacity=".42"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>${r ? r.defs : ""}</defs>`;
   const motif = p.motif && detail
     ? `<g fill="none" stroke="#2a4fb0" stroke-width="3" stroke-linecap="round" opacity=".9">${CURLS.map(([x, y, r, s]) =>
       `<path transform="translate(${x} ${y}) rotate(${r}) scale(${s})" d="${CURL}"/>`).join("")}<path d="M96 250q12-8 24 0M236 268q10-7 20 0"/></g>`
     : "";
-  return defs
+  return defs + (team ? teamPad(team, 200, 140) : "")
     + (shadow ? `<ellipse class="cmp-shadow" cx="200" cy="356" rx="140" ry="17" fill="url(#shadow-${id})"/>` : "")
     + `<g class="cmp-body">`
     + `<rect x="286" y="96" width="20" height="96" rx="8" fill="#3a3038"/>`
@@ -69,15 +74,16 @@ export function tractorMarkup(colour: TractorColourId, id: string, { eyes = "ope
     + `<path d="M80 98Q80 80 100 80H222Q240 80 240 98V104H80Z" fill="${p.roof ?? `url(#roof-${id})`}"/>`
     + `<path d="M196 178H318Q352 178 352 212V268Q352 282 338 282H196Z" fill="${p.hood}"/>`
     + `<rect x="112" y="118" width="96" height="62" rx="12" fill="url(#glass-${id})"/>`
-    + `<path d="M124 170L158 124h18L142 170Z" fill="#fff" opacity=".55"/>`
-    + `<path d="M92 196H228" stroke="${p.stripe ?? `url(#gold-${id})`}" stroke-width="5"/>${motif}`
+    + (r ? r.inside : "")
+    + `<path d="M124 170L158 124h18L142 170Z" fill="#fff" opacity="${r ? ".3" : ".55"}"/>`
+    + `<path d="M92 196H228" ${team ? `class="cmp-team-line" stroke="${TEAM[team].base}" stroke-width="10"` : `stroke="${p.stripe ?? `url(#gold-${id})`}" stroke-width="5"`}/>${motif}`
     + `<rect x="332" y="226" width="22" height="38" rx="7" fill="#fff5d6"/>`
     + `<path d="M336 238h14M336 246h14M336 254h14" stroke="#b9781f" stroke-width="2.4"/>`
     + eye(262, 220, eyes) + eye(306, 220, eyes)
     + `<path d="M274 248q10 8 20 0" fill="none" stroke="#2b1713" stroke-opacity=".7" stroke-width="3.4" stroke-linecap="round"/>`
     + `<ellipse cx="244" cy="244" rx="11" ry="7" fill="#ffb0a0" opacity=".45"/><ellipse cx="324" cy="244" rx="9" ry="6" fill="#ffb0a0" opacity=".35"/>`
-    + wheel(140, 282, 72, id, detail) + wheel(306, 308, 46, id, detail)
-    + `</g>`;
+    + wheel(140, 282, 72, id, detail) + wheel(306, 308, 46, id, detail) + (r ? r.outside : "")
+    + `</g>` + (pose === "cheer" ? confetti(200, 170) : "");
 }
 
 /** An element of the drawing: its tag, its attributes, its children. */
@@ -137,7 +143,7 @@ export function tractorPortraitUrl(colour: TractorColourId, small: boolean): str
       + `<defs><linearGradient id="disc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${p.disc[0]}"/><stop offset="1" stop-color="${p.disc[1]}"/></linearGradient>`
       + `<clipPath id="clip"><circle cx="200" cy="205" r="196"/></clipPath></defs>`
       + `<g clip-path="url(#clip)"><rect x="4" y="9" width="392" height="392" fill="url(#disc)"/>`
-      + `<g transform="translate(30 44) scale(.86)">${tractorMarkup(colour, "p", { detail: !small, puffs: false, shadow: false })}</g></g></svg>`;
+      + `<g transform="translate(30 44) scale(.86)">${tractorMarkup(colour, "p", { detail: !small, puffs: false, shadow: false, rider: true })}</g></g></svg>`;
     url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
     portraits.set(key, url);
   }

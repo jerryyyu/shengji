@@ -60,7 +60,7 @@ describe("looks", () => {
 
   it("unlocks by count, keeps the equipped one, and prefers the server's word", () => {
     const at = (rounds: number, wins: number, equipped = DEFAULT_LOOK) =>
-      lookCatalogue({ rounds, ranked_wins: wins }, equipped).filter((e) => e.unlocked).map((e) => e.id);
+      lookCatalogue({ rounds, ranked_wins: wins }, equipped).filter((e) => e.unlocked && e.id.startsWith("tractor/")).map((e) => e.id);
     expect(at(0, 0)).toEqual(["tractor/red", "tractor/green", "tractor/blue"]);
     expect(at(25, 0)).toEqual(["tractor/red", "tractor/green", "tractor/blue", "tractor/yellow", "tractor/orange"]);
     expect(at(0, 1)).toContain("tractor/ink");

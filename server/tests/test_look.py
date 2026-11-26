@@ -138,6 +138,10 @@ def test_the_web_client_draws_the_same_default(accounts_on):
     palette = (Path(__file__).resolve().parents[2] / "web" / "src" / "companion" / "palette.ts").read_text()
     colours = re.findall(r"^  ([a-z]+): \{ body:", palette, re.M)
     assert tuple(colours) == accounts_on.LOOKS["tractor"]
+    store = (Path(__file__).resolve().parents[2] / "web" / "src" / "companion" / "storePalette.ts").read_text()
+    for kind in ("bun", "chick", "sparrow"):
+        table = re.search(rf"^export const {kind.upper()}_COLOURS = \{{\n(.*?)^\}} as const", store, re.M | re.S)
+        assert tuple(re.findall(r"^  ([a-z]+): \{", table.group(1), re.M)) == accounts_on.LOOKS[kind]
     modes = re.search(r"^export const COMPANION_MODES = \[([^\]]*)\] as const;", text, re.M)
     assert tuple(re.findall(r'"([a-z]+)"', modes.group(1))) == accounts_on.COMPANION_MODES
 
@@ -146,7 +150,8 @@ def test_the_catalogue_lists_free_and_earned_colours(accounts_on):
     a = accounts_on
     fresh = {e["id"]: e for e in a.look_catalogue({"rounds": 0, "ranked_wins": 0})}
     assert list(fresh)[0] == a.DEFAULT_LOOK and len(fresh) >= 6
-    assert [k for k, e in fresh.items() if e["unlocked"]] == ["tractor/red", "tractor/green", "tractor/blue"]
+    assert [k for k, e in fresh.items() if e["unlocked"] and k.startswith("tractor/")] == [
+        "tractor/red", "tractor/green", "tractor/blue"]
     assert fresh["tractor/yellow"]["needs"] == {"count": "rounds", "of": 10}
     assert fresh["tractor/ink"]["needs"] == {"count": "ranked_wins", "of": 1}
     played = {e["id"]: e["unlocked"] for e in a.look_catalogue({"rounds": 25, "ranked_wins": 1})}
@@ -310,3 +315,34 @@ def test_a_seat_left_by_choice_shows_no_portrait(accounts_on, client):
     assert srv.state_for(room, 1)["players"][0]["look"] is None
     assert [p["look"] for p in srv.room_json(room, 1)["players"] if p["seat"] == 0] == [None]
     assert srv.room_table_frame(room, 1)["seats"][0]["look"] is None
+
+
+FREE_LOOKS = [f"{kind}/{colour}" for kind, colours in (
+    ("bun", ("plain", "custard", "taro", "peach")),
+    ("chick", ("yellow", "cream", "cocoa", "ink")),
+    ("sparrow", ("tree", "java", "snow", "oriole"))) for colour in colours]
+
+
+def test_the_free_companions_parse_and_are_unlocked_from_the_start(accounts_on):
+    a = accounts_on
+    for look in FREE_LOOKS:
+        assert a.parse_look(look) == tuple(look.split("/"))
+        assert look not in a.LOOK_UNLOCKS
+    fresh = {e["id"]: e for e in a.look_catalogue({"rounds": 0, "ranked_wins": 0})}
+    assert all(fresh[look]["unlocked"] and fresh[look]["needs"] is None for look in FREE_LOOKS)
+    for bad in ("bun/red", "chick/jade", "sparrow/plain", "bun/", "sparrow", "chick/yellow/x", "lamb/jade"):
+        assert a.parse_look(bad) is None
+
+
+def test_a_free_companion_equips_and_an_unknown_colour_is_refused(accounts_on, keypair, client, monkeypatch):
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "1")
+    private_pem, _ = keypair
+    session = {"cookie": _session_cookie(accounts_on, client, private_pem)}
+    for look in ("bun/custard", "chick/ink", "sparrow/oriole"):
+        resp = client.put("/api/me/look", json={"look": look}, headers=session)
+        assert resp.status_code == 200 and resp.json()["look"] == look
+        assert accounts_on.account_look(1) == look
+        assert client.get("/api/me", headers=session).json()["look"] == look
+    for bad in ("bun/red", "sparrow/jade", "chick/", "lamb/newyear"):
+        assert client.put("/api/me/look", json={"look": bad}, headers=session).status_code == 400
+    assert accounts_on.account_look(1) == "sparrow/oriole"

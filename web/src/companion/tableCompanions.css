@@ -1,0 +1,12 @@
+/* The companions' two corners of the felt: yours lower left, between the
+   left seat and your hand; theirs upper right, under the top bar and above
+   the right seat. They sit under everything else on the felt and take no
+   taps. A figure stands on its own bottom edge, so a growing one rises. */
+.table-companions { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.tc-team { position: absolute; display: flex; align-items: flex-end; gap: 0; }
+.tc-fig { display: block; line-height: 0; }
+.tc-flip { transform: scaleX(-1); }
+.tc-us { left: 56px; bottom: 112px; }
+.tc-them { right: 56px; top: 44px; }
+.tablet-table .tc-us { left: 40px; bottom: 236px; }
+.tablet-table .tc-them { right: 40px; top: 24px; }

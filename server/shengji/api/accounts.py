@@ -131,9 +131,13 @@ PROVIDER_COLUMNS = {"google": "google_sub", "apple": "apple_sub"}
 # Companions a player may equip, each with its colours in the order the
 # Collection lists them. A look travels as ``"<companion>/<colour>"``; a
 # guest, and an account that chose nothing, shows ``DEFAULT_LOOK``. The
-# client's ``web/src/companion/palette.ts`` draws each colour.
+# client's ``web/src/companion/palette.ts`` (the Tractor) and
+# ``storePalette.ts`` (every other companion) draw each colour.
 LOOKS: dict[str, tuple[str, ...]] = {
     "tractor": ("red", "green", "blue", "yellow", "orange", "jade", "porcelain", "ink"),
+    "bun": ("plain", "custard", "taro", "peach"),
+    "chick": ("yellow", "cream", "cocoa", "ink"),
+    "sparrow": ("tree", "java", "snow", "oriole"),
     "goat": ("newyear", "jade", "ink", "lacquer"),
     "panda": ("classic", "bamboo", "snow", "lantern"),
 }

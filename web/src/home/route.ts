@@ -11,12 +11,16 @@ import { tabMemory } from "./session";
 
 export type Tab = "play" | "leaderboard" | "collection" | "me";
 export type MeSection = "stats" | "games";
-export type HomeRoute = { tab: "leaderboard" } | { tab: "collection" } | { tab: "me"; section: MeSection };
+/** The Collection, or one character's page in it (`kind`, a companion id
+ *  the client checks before drawing it). */
+export type HomeRoute = { tab: "leaderboard" } | { tab: "collection"; kind?: string } | { tab: "me"; section: MeSection };
 
 /** The tab a hash names, or null for the bare URL and every other page. */
 export function parseHome(hash: string): HomeRoute | null {
   if (/^#\/leaderboard\/?$/.test(hash)) return { tab: "leaderboard" };
   if (/^#\/collection\/?$/.test(hash)) return { tab: "collection" };
+  const character = /^#\/collection\/([a-z]+)\/?$/.exec(hash);
+  if (character) return { tab: "collection", kind: character[1] };
   if (/^#\/(?:stats|me|me\/stats)\/?$/.test(hash)) return { tab: "me", section: "stats" };
   if (/^#\/(?:games|me\/games)\/?$/.test(hash)) return { tab: "me", section: "games" };
   return null;
@@ -52,6 +56,19 @@ export function openTab(tab: Tab, section?: MeSection): void {
   try {
     if (hash && currentHash() === hash) return;
     if (!hash && !currentHash()) return;
+    window.history.pushState(null, "", window.location.pathname + window.location.search + hash);
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  } catch {
+    /* a sandboxed location */
+  }
+}
+
+/** Open one character's page inside the Collection, as a new history entry
+ *  (back returns to the Collection), or the Collection itself (`kind` null). */
+export function openCharacter(kind: string | null): void {
+  const hash = kind ? `#/collection/${kind}` : "#/collection";
+  try {
+    if (currentHash() === hash) return;
     window.history.pushState(null, "", window.location.pathname + window.location.search + hash);
     window.dispatchEvent(new HashChangeEvent("hashchange"));
   } catch {

@@ -1,22 +1,34 @@
 // A companion look travels as "<companion>/<colour>" (the server's
 // `accounts.LOOKS`, `DEFAULT_COMPANION`, `DEFAULT_COLOUR`, `LOOK_UNLOCKS`,
-// mirrored here by hand and held to them by server/tests/test_look.py). A
+// mirrored here by hand and held to them by server/tests/test_look.py;
+// each companion's colours are its palette's keys, in order). A
 // seat with no look, or one this client cannot draw, shows the default; a
 // bot shows an initial instead.
 import { TRACTOR_COLOURS } from "./palette";
 import type { TractorColourId } from "./palette";
+import { BUN_COLOURS, CHICK_COLOURS, SPARROW_COLOURS } from "./storePalette";
+import type { BunColourId, ChickColourId, SparrowColourId } from "./storePalette";
 
 export const DEFAULT_COMPANION = "tractor";
 export const DEFAULT_COLOUR = "red";
 export const DEFAULT_LOOK = `${DEFAULT_COMPANION}/${DEFAULT_COLOUR}`;
 
-export type CompanionKind = "tractor";
-export type Colour = TractorColourId;
+export type CompanionKind = "tractor" | "bun" | "chick" | "sparrow";
+export type Colour = TractorColourId | BunColourId | ChickColourId | SparrowColourId;
 
-/** Every companion this client draws, each with its colours in Collection order. */
+/** Every companion this client draws, in Collection order, each with its
+ *  colours in Collection order. */
 export const COMPANIONS: Record<CompanionKind, readonly Colour[]> = {
   tractor: Object.keys(TRACTOR_COLOURS) as Colour[],
+  bun: Object.keys(BUN_COLOURS) as Colour[],
+  chick: Object.keys(CHICK_COLOURS) as Colour[],
+  sparrow: Object.keys(SPARROW_COLOURS) as Colour[],
 };
+
+export const COMPANION_KINDS = Object.keys(COMPANIONS) as CompanionKind[];
+
+export const isKind = (raw: unknown): raw is CompanionKind =>
+  typeof raw === "string" && Object.prototype.hasOwnProperty.call(COMPANIONS, raw);
 
 export type UnlockCount = "rounds" | "ranked_wins";
 

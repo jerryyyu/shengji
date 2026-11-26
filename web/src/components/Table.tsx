@@ -39,6 +39,7 @@ import { useAnyTapIsBack } from "./seatHeld";
 import { useFirstGameHint } from "./useFirstGameHint";
 import { Portrait } from "../companion/Companion";
 import { useCollection } from "../companion/feature";
+import TableCompanions from "../companion/TableCompanions";
 
 // the debug overlay loads on its first open, so a player's page never carries it
 const XrayPanel = lazy(() => import("./XrayPanel"));
@@ -739,6 +740,7 @@ export default function Table({ state }: { state: GameState }) {
     <div className={`table-screen phase-${state.phase}${showingLast ? " showing-last" : ""}${isYourTurnCue(state) ? " my-turn" : ""}`}>
       <Hud state={state} />
       <div className="felt">
+        <TableCompanions state={state} />
         {opponents.map((p) => (
           <OpponentPanel key={p.seat} player={p} state={state} />
         ))}

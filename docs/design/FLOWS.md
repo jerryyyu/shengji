@@ -540,9 +540,30 @@ then its replay plays.
   is the move clock. The portrait replaces the Google picture too, so every player looks the same way to everyone.
 - **The Collection tab** is the third of four, its icon four small tiles with one filled when selected. It holds a
   corner of felt with your companion (idle; a tap makes it hop), your leaderboard row as others see it (signed in
-  and ranked only, no caption), the colour swatches, and one control, Team · Individual · Off, where companions
-  are drawn on your own screen (stored on the account, on the device for a guest; read by the table once its
-  placement is built). No Shop, no prices, no silhouettes or empty slots for what is coming.
+  and ranked only, no caption), the four companions as portrait tiles with their names (the one worn ringed in
+  gold), the worn companion's colour swatches, and one control, Team · Individual · Off, where companions are
+  drawn on your own screen (stored on the account, on the device for a guest). No Shop, no prices, no
+  silhouettes or empty slots for what is coming.
+- **The companions** (Jerry 2026-11-26: "we can start with tractor, bun, chick, sparrow"), all free from the start:
+  the Tractor, now with its rider (a farm kid in a straw hat at the cab window), the Bun 包子, the Chick 小鸡 and the
+  Sparrow 麻雀, four colours each beside the Tractor's eight. Hop and cheer are two different moves: hop one small
+  bounce, cheer a two-beat jump through confetti. Each has a signature reaction (the Tractor's hat tip, the Bun's
+  steam puff, the Chick's flutter, the Sparrow's peck). Under Reduce Motion every pose is drawn still at its peak.
+- **One character page** (`#/collection/<companion>`, back returns to the Collection), opened by a companion's
+  tile; it is a page in the tab, not a sheet. It has the live figure on felt (a tap hops), the state chips (Idle,
+  Hop, Cheer, Sleep, the signature, and Try on your table, which stands it beside a partner on your team's
+  pads), the colour swatches (56 px, four in a row on a phone; a tap only shows a colour), the one status line
+  (the colour's name, or for a locked Tractor colour its count), and the foot: Equip, Equipped (inert), or
+  nothing where the status line already gives the unlock. A guest's page has no foot. The Shop's Buy foot comes
+  with the Shop. Jerry 2026-11-26: no portrait-sizes row, bigger swatches, keep Try on your table.
+- **At the table, Team view** draws each team's people together in their team's corner: yours lower left
+  between the left seat and your hand, theirs upper right under the top bar. A team reads three ways, never by
+  hue alone: its corner, the shape under each figure (a disc for Us, a diamond for Them) and the scarf in its
+  colour. Your partner faces you; theirs face the table. A team's companions grow 2.5% a level from 2, to 1.3
+  times at A, capped at 56 px on a phone and 72 px on a tablet; the size changes only when the level does (round
+  end), with a 0.4 s pop. A companion cheers when its person takes a trick and when its team climbs, and sleeps
+  while its person is away. A bot, and a seat its owner left, has none. They sit under the cards and controls
+  and take no taps. Individual draws none yet (its placement is not designed); Off draws none.
 - **Colours** are a palette swap of the one Tractor: Icon red (the default), Paddy green and Enamel blue from the
   start; Imperial yellow at 10 rounds, Lantern orange at 25, Jade at 50, Blue and white at 100, Ink black for a
   ranked win. A tap on an unlocked colour equips it at once; a tap on a locked one shows it on the felt with its
@@ -551,7 +572,7 @@ then its replay plays.
 - **A guest** sees the default and the same swatches; a tap only shows a colour (a guest's look is not stored).
 - Offline and Nearby tables know no account, so they show the initials until the Collection is on for
   everyone; then every person there has the default portrait.
-- Not yet: the companion on the table, the Goat, the Shop, rating finishes.
+- Not yet: Individual placement at the table, the store characters, the Shop, rating finishes.
 
 ## Polish checklist (UI review)
 A UI review ask walks this list after the copy rule and the flow-map row. This file, `COPY_CUTS.md` and the felt (the hand and the table, where reading a card beats a uniform press) win over any item here. Adapted from `jakubkrehel/make-interfaces-feel-better` at `6d9f2f1df10e8ce2ae1708598a73b0506fb98794` (MIT, copyright Jakub Krehel); its framework snippets, image outlines, RTL rules and shadow-for-border swap do not apply here.

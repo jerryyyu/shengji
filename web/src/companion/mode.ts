@@ -1,6 +1,7 @@
 // Where your own screen draws companions at the table: an account keeps it
-// on the server, a guest on this device. Only this screen reads it; the
-// table placement that will read it is not built yet.
+// on the server, a guest on this device. It shapes only this screen: the
+// table draws Team view (`TableCompanions.tsx`); Individual draws nothing
+// yet, and Off nothing.
 import { useSyncExternalStore } from "react";
 import type { AuthUser } from "../auth";
 import { writeMode } from "./writes";

@@ -27,22 +27,22 @@ func ids(_ list: [[String: Any]]) -> [String] { list.compactMap { $0["transactio
 let semaphore = DispatchSemaphore(value: 0)
 Task {
     let ledger = FakeLedger()
-    let goat = DeliveredTransaction(id: 2_000_000_111, productId: "com.jerryyu.shengji.companion.goat", jws: "a.b.c")
+    let lamb = DeliveredTransaction(id: 2_000_000_111, productId: "com.jerryyu.shengji.companion.lamb", jws: "a.b.c")
     let panda = DeliveredTransaction(id: 18_446_744_073_709_551_000, productId: "com.jerryyu.shengji.companion.panda", jws: "d.e.f")
 
     // an update arrives while no page listens: nothing finishes it
-    ledger.open.append(goat)
+    ledger.open.append(lamb)
     var delivery = StoreDelivery(ledger: ledger)
     // a purchase whose grant is interrupted (the app quits before the server answers)
     ledger.open.append(panda)
-    expect(goat.payload["transactionId"] as? String == "2000000111", "the id travels as a string")
+    expect(lamb.payload["transactionId"] as? String == "2000000111", "the id travels as a string")
     expect(panda.payload["transactionId"] as? String == "18446744073709551000", "a large id keeps every digit")
 
     // relaunch: both are handed over again
     delivery = StoreDelivery(ledger: ledger)
     expect(ids(await delivery.pending()) == ["2000000111", "18446744073709551000"], "unacknowledged ones come back")
 
-    // the server records the goat; the page acknowledges it
+    // the server records the lamb; the page acknowledges it
     expect(await delivery.acknowledge("2000000111"), "an acknowledged transaction finishes")
     expect(ids(await delivery.pending()) == ["18446744073709551000"], "only the unacknowledged one is left")
     expect(!(await delivery.acknowledge("2000000111")), "a second acknowledgement finds nothing")

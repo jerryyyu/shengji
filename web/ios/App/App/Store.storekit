@@ -11,17 +11,17 @@
       "localizations" : [
         {
           "description" : "A companion for the table.",
-          "displayName" : "Goat",
+          "displayName" : "Spring Lamb",
           "locale" : "en_US"
         },
         {
           "description" : "牌桌上的伙伴。",
-          "displayName" : "山羊",
+          "displayName" : "小羊",
           "locale" : "zh_Hans"
         }
       ],
-      "productID" : "com.jerryyu.shengji.companion.goat",
-      "referenceName" : "Goat",
+      "productID" : "com.jerryyu.shengji.companion.lamb",
+      "referenceName" : "Spring Lamb",
       "type" : "NonConsumable"
     },
     {
@@ -31,17 +31,17 @@
       "localizations" : [
         {
           "description" : "A companion for the table.",
-          "displayName" : "Panda",
+          "displayName" : "Baby Panda",
           "locale" : "en_US"
         },
         {
           "description" : "牌桌上的伙伴。",
-          "displayName" : "熊猫",
+          "displayName" : "熊猫宝宝",
           "locale" : "zh_Hans"
         }
       ],
       "productID" : "com.jerryyu.shengji.companion.panda",
-      "referenceName" : "Panda",
+      "referenceName" : "Baby Panda",
       "type" : "NonConsumable"
     }
   ],

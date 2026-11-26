@@ -21,6 +21,7 @@
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   /* Motion tokens, mirrored by DUR and EASE in src/motion.ts. */
   --dur-fast: 120ms;
+  --dur-resize: 180ms;
   --dur-lift: 400ms;
   --dur-flight: 340ms;
   --dur-reflow: 280ms;
@@ -2122,42 +2123,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   gap: 4px;
 }
 
-.result-details {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  text-align: center;
-}
-
-.result-details > summary {
-  align-self: center;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  color: #c4ccd8;
-  font-size: var(--fs-14);
-  font-weight: 600;
-  cursor: pointer;
-  list-style: none;
-  text-align: center;
-}
-
-.result-details > summary::-webkit-details-marker {
-  display: none;
-}
-
-.result-details > summary::after {
-  content: "›";
-  font-size: 1.2em;
-  transition: transform var(--dur-fast) ease-out;
-}
-
-.result-details[open] > summary::after {
-  transform: rotate(90deg);
-}
-
 /* a round that wins a game: the crown over the title, and the games score
    as a label under the result line */
 .game-won-crown {
@@ -2198,6 +2163,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   flex-direction: column;
   gap: 4px;
   width: 100%;
+}
+
+/* on the card, the cell and the points bar take the card's own gap, the
+   same as the title's above the cell */
+.modal.round-end > .round-end-ladder {
+  display: contents;
 }
 
 .rank-lane,
@@ -2394,9 +2365,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   font-weight: 400;
 }
 
+/* the status line keeps the points bar's 14px label room below it too, so
+   the bar, the status line and the buttons sit at one rhythm */
 .round-end-actions {
   display: flex;
   gap: 10px;
+  margin-top: 14px;
 }
 
 .round-end-actions > .btn.primary {
@@ -2421,72 +2395,147 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   background: var(--ctl-raised);
 }
 
-/* Details: the kitty and the last trick side by side, so the opened card
-   still fits a sideways phone */
-/* the toggle keeps its 44px hit area but sits tight between the result
-   line and the buttons */
-.round-end .result-details > summary {
-  margin: -8px auto;
+/* Details, a button on the row: Details and Levels swap the kitty and the
+   last trick in for the lanes, in the same grid cell; the card takes the
+   height of the view shown, and the points bar, the status line and the
+   buttons follow it in order. */
+.round-end-actions > .round-end-view-btn {
+  margin: 0;
+  flex: none;
+  padding: 0 14px;
+  border-color: var(--ctl-raised-edge);
+  background: var(--ctl-raised);
+  color: #c4ccd8;
 }
 
-/* the opened card grows to fit the widest last trick (four 5-card throws
-   come to about 700px), never past the screen less a 12px margin a side */
-.modal.round-end.details-open {
-  width: max-content;
-  min-width: min(560px, 100%);
-  max-width: min(100%, calc(100vw - 24px));
+.round-end-view-words {
+  display: inline-grid;
 }
 
-.round-end-details {
+.round-end-view-words > span {
+  grid-area: 1 / 1;
+}
+
+.round-end-view-words > span:not(.on) {
+  visibility: hidden;
+}
+
+/* a little more air under the title than the card's gap, the same for
+   the lanes and for Details */
+.round-end-swap {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  margin-top: 10px;
+}
+
+.round-end-swap > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.round-end-lanes {
   display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin-top: 4px;
-  padding: 10px;
-  border-radius: 12px;
-  background: #11141a;
-  border: 1px solid var(--panel-edge);
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* the view not shown leaves the flow, so the cell, and the card, are as
+   tall as the view shown; it stays laid out at the cell's width, so the
+   Details fit is measured before it opens */
+.round-end-swap.details > .round-end-lanes,
+.round-end-swap:not(.details) > .round-end-details {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  visibility: hidden;
+}
+
+/* the kitty's fan, then one fan per seat, on one row, straight on the card
+   like the lanes: RoundEndDetails sets --cw, --fit-step and --fit-col from
+   the measured width and the counts */
+.round-end-details {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   text-align: left;
+}
+
+.round-end-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
 }
 
 .round-end-col {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
 }
 
+/* the kitty takes the row's spare width, which gives its label room */
 .round-end-kitty {
-  flex: 1;
+  flex: 1 1 0;
+}
+
+.round-end-last-trick {
+  flex: none;
+}
+
+/* the kitty's label at the left, the last trick's at the right over its
+   seats; a pair too long for one line puts the trick's on a second */
+.round-end-heads {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  column-gap: 12px;
+  row-gap: 2px;
+}
+
+.round-end-trick-label {
+  margin-left: auto;
+  text-align: right;
 }
 
 /* a CJK name in the label moves to the next line whole */
 .round-end-col-label {
   word-break: keep-all;
   font-size: var(--fs-11);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-dim);
 }
 
-.round-end-kitty-cards,
-.round-end-play-cards {
+.round-end-fan {
   display: flex;
-  --cw: 34px;
 }
 
-.round-end-kitty-cards .card + .card {
-  margin-left: -15px;
+.round-end-fan > .card + .card {
+  margin-left: calc(var(--fit-step, 18px) - var(--cw));
 }
 
-/* each play overlaps like a hand: an 18px step keeps every rank readable */
-.round-end-play-cards .card + .card {
-  margin-left: -16px;
-}
-
+/* one line across the panel, never two: the sum alone when the sentence
+   is wider (RoundEndDetails measures the probe, an unseen copy of it) */
 .kitty-bonus {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: #c4ccd8;
   font-size: var(--fs-12);
+  font-variant-numeric: tabular-nums;
+}
+
+.kitty-bonus.kitty-bonus-probe {
+  position: absolute;
+  overflow: visible;
+  left: 0;
+  top: 0;
+  visibility: hidden;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .round-end-plays {
@@ -2494,14 +2543,16 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   margin: 0;
   padding: 0;
   display: flex;
-  gap: 10px;
+  gap: 6px;
 }
 
 .round-end-play {
+  width: var(--fit-col, auto);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 3px;
+  min-width: 0;
 }
 
 .round-end-play.winner .round-end-play-cards {
@@ -2510,10 +2561,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   outline-offset: 1px;
 }
 
-/* a name stays on one line under its cards and ends in an ellipsis, so
-   four long names fit a sideways phone */
+/* a name stays on one line under its cards and ends in an ellipsis */
 .round-end-play-who {
-  max-width: 88px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3537,10 +3587,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     margin-right: 12px;
   }
 
-  .result-details > summary {
-    font-size: var(--fs-13);
-  }
-
   @media (prefers-reduced-motion: reduce) {
     .hand .card,
     .hand-slot {
@@ -3568,6 +3614,16 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     gap: 8px;
     max-height: 100%;
     overflow-y: auto;
+  }
+
+  /* the round end's row holds three buttons, and Details holds the kitty
+     and four seats' fans in the ladder's width */
+  .modal.round-end {
+    width: min(440px, 100%);
+  }
+
+  .modal.round-end .round-end-swap {
+    margin-top: 6px;
   }
 
   .modal-title {

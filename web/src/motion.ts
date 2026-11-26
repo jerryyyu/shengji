@@ -9,6 +9,8 @@
 
 export const DUR = {
   fast: 120,
+  /** a card growing or shrinking to new content */
+  resize: 180,
   lift: 400,
   flight: 340,
   reflow: 280,

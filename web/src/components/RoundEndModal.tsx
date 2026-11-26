@@ -1,8 +1,8 @@
 import { RANKS } from "../protocol";
 import type { GameState, RoundResult } from "../protocol";
 import { conn } from "../ws";
-import Card from "./Card";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { DUR, EASE, prefersReducedMotion } from "../motion";
 import ResultDialog from "./ResultDialog";
 import LeaveSheet from "./LeaveSheet";
 import { OFFLINE } from "../offlineMode";
@@ -10,7 +10,7 @@ import { TimerRing } from "./MoveClock";
 import { LOW_SECS, MOVE_SECS } from "../useMoveClock";
 import { telemetry, useScreen } from "../telemetry";
 import { attackingTeam, myTeam, pointsOf, teamWord } from "../tableCopy";
-import RoundEndLastTrick from "./RoundEndLastTrick";
+import RoundEndDetails from "./RoundEndDetails";
 import { useAuth } from "../auth";
 import { guestName } from "../guestName";
 import { displayName, t, useT } from "../i18n";
@@ -225,11 +225,22 @@ function nextBankerLine(state: GameState, result: RoundResult): string {
   });
 }
 
-/** "They won the last trick: ×2, +30" when the attackers took the last
- *  trick, else null. The multiplier is read back from the bonus the server
- *  applied (bonus = buried points x multiplier); with nothing buried to
- *  multiply it is the engine's 2 x the cards in the lead. */
-function kittyBonusText(state: GameState, result: RoundResult): string | null {
+/** The kitty bonus as its sum: the buried points × 2 × the cards the
+ *  multiplier counts, "5 × 2 × 2 cards = +20"; "+20" alone when the multiplier
+ *  cannot be read back. The one place its form is set. */
+function bonusMath(points: number, mult: number | null, bonus: number): string {
+  return mult === null || mult % 2 !== 0
+    ? t("roundend.bonusOnly", { bonus })
+    : t("roundend.bonusMath", { points, cards: mult / 2, bonus });
+}
+
+/** The kitty bonus line when the attackers took the last trick, else null:
+ *  the sentence, "They won the last trick: 5 × 2 × 2 cards = +20", and its
+ *  sum alone for a row too narrow for the sentence. The multiplier is
+ *  read back from the bonus the server applied (bonus = buried points x
+ *  multiplier); with nothing buried to multiply it is the engine's 2 x the
+ *  cards in the lead. */
+function kittyBonusText(state: GameState, result: RoundResult): { full: string; short: string } | null {
   const attack = attackingTeam(state);
   const last = state.last_trick;
   if (attack === null || !last || last.winner % 2 !== attack) return null;
@@ -237,16 +248,43 @@ function kittyBonusText(state: GameState, result: RoundResult): string | null {
   const mult = result.kitty_points > 0 && buried > 0 && result.kitty_points % buried === 0
     ? result.kitty_points / buried
     : buried === 0 ? 2 * (last.plays[0]?.cards.length ?? 1) : null;
-  const times = mult !== null ? t("roundend.times", { n: mult }) : "";
-  return t(teamSubject(attack, state) === "We" ? "roundend.weBonus" : "roundend.theyBonus",
-           { times, points: result.kitty_points });
+  const math = bonusMath(buried, mult, result.kitty_points);
+  return { full: t(teamSubject(attack, state) === "We" ? "roundend.weBonus" : "roundend.theyBonus", { math }), short: math };
 }
 
 export default function RoundEndModal({ state, result, clock = null, clockEnd = null, live = false, before = null }: RoundEndModalProps) {
   const t = useT();
   const titleId = useId();
   useScreen("round_end");
+  // Details swaps the kitty and the last trick in for the lanes, in place
   const [open, setOpen] = useState(false);
+  // each view is as tall as its own content: the cell's height glides from
+  // the one to the other (and not under Reduce Motion)
+  // A tap mid-glide starts the next glide from the height on screen then:
+  // the running glide is cancelled before the new height is measured (it
+  // holds the cell's height while it runs), and a glide's end touches the
+  // cell only while it is still the latest one.
+  const swapRef = useRef<HTMLDivElement | null>(null);
+  const fromHeight = useRef<number | null>(null);
+  const glideGen = useRef(0);
+  useLayoutEffect(() => {
+    const el = swapRef.current;
+    const from = fromHeight.current;
+    fromHeight.current = null;
+    if (!el || from === null) return;
+    const gen = ++glideGen.current;
+    el.getAnimations?.().forEach((a) => a.cancel());
+    el.style.overflow = "";
+    if (typeof el.animate !== "function" || prefersReducedMotion()) return;
+    const to = el.offsetHeight;
+    if (Math.abs(to - from) < 1) return;
+    el.style.overflow = "hidden";
+    const glide = el.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: DUR.resize, easing: EASE.outExpo });
+    const done = () => { if (glideGen.current === gen) el.style.overflow = ""; };
+    glide.onfinish = done;
+    glide.oncancel = done;
+  }, [open]);
+  const detailsId = useId();
   const ranked = !!state.matched;
   // kitty_cards are the 8 cards the banker buried (the server sends rnd.buried).
   const buriedPoints = pointsOf(result.kitty_cards);
@@ -287,7 +325,7 @@ export default function RoundEndModal({ state, result, clock = null, clockEnd = 
   useEffect(() => { setSent(false); }, [state]);
   return (
     <ResultDialog titleId={titleId}>
-      <div className={`panel modal round-end${gameWon ? " game-won" : ""}${open ? " details-open" : ""}`}>
+      <div className={`panel modal round-end${gameWon ? " game-won" : ""}`}>
         {gameWon ? <div className={`game-won-crown${live ? " flash" : ""}`} aria-hidden="true">👑</div> : null}
         <h2 id={titleId} tabIndex={-1} className={`modal-title team${lostTeam ?? result.winner_team}`}>
           {lostTeam !== null
@@ -295,10 +333,19 @@ export default function RoundEndModal({ state, result, clock = null, clockEnd = 
             : teamTitle(result.winner_team, state, gameWon ? "WinGame" : "WinRound")}
         </h2>
 
-        {/* the pictures say the round: each team's lane, then the attackers' points */}
+        {/* the pictures say the round: each team's lane (or, with Details, the
+            kitty and the last trick in the same cell), then the attackers' points */}
         <div className="round-end-ladder">
-          {lane(us)}
-          {lane(them)}
+          <div ref={swapRef} className={`round-end-swap${open ? " details" : ""}`}>
+            <div className="round-end-lanes" aria-hidden={open || undefined} inert={open || undefined}>
+              {lane(us)}
+              {lane(them)}
+            </div>
+            {hasDetails ? (
+              <RoundEndDetails id={detailsId} state={state} kitty={result.kitty_cards} kittyPoints={buriedPoints}
+                               bonus={bonus} hidden={!open} />
+            ) : null}
+          </div>
           <PointsBar team={attack} points={result.attacker_points} />
         </div>
 
@@ -310,24 +357,6 @@ export default function RoundEndModal({ state, result, clock = null, clockEnd = 
           <p className="result-games">{t("roundend.games", { us: result.games_won[us], them: result.games_won[them] })}</p>
         ) : null}
         {rating ? null : <RatingLine result={result} ranked={ranked} guest={state.guest === true} />}
-
-        {hasDetails ? (
-          <details className="result-details" onToggle={(e) => setOpen(e.currentTarget.open)}>
-            <summary>{t("roundend.details")}</summary>
-            <div className="round-end-details">
-              {result.kitty_cards.length > 0 ? (
-                <div className="round-end-col round-end-kitty">
-                  <div className="round-end-col-label">{t("roundend.kitty", { points: buriedPoints })}</div>
-                  <div className="round-end-kitty-cards">
-                    {result.kitty_cards.map((code, i) => <Card key={i} code={code} />)}
-                  </div>
-                  {bonus ? <div className="kitty-bonus">{bonus}</div> : null}
-                </div>
-              ) : null}
-              {state.last_trick ? <RoundEndLastTrick state={state} trick={state.last_trick} /> : null}
-            </div>
-          </details>
-        ) : null}
 
         <div className="round-end-actions">
           <button
@@ -342,6 +371,20 @@ export default function RoundEndModal({ state, result, clock = null, clockEnd = 
             {iAmReady ? null : <TimerRing left={clock} end={clockEnd} total={MOVE_SECS} />}
             {iAmReady ? t("roundend.waiting") : gameWon ? t("roundend.nextGame") : t("roundend.nextRound")}
           </button>
+          {hasDetails ? (
+            <button type="button" className="btn big round-end-view-btn" aria-expanded={open} aria-controls={detailsId}
+                    onClick={() => {
+                      fromHeight.current = swapRef.current?.offsetHeight ?? null;
+                      setOpen((v) => !v);
+                    }}>
+              {/* both words share one cell, so the button keeps one width and
+                  Next round does not move as it toggles */}
+              <span className="round-end-view-words">
+                <span className={open ? undefined : "on"} aria-hidden={open || undefined}>{t("roundend.details")}</span>
+                <span className={open ? "on" : undefined} aria-hidden={!open || undefined}>{t("roundend.levels")}</span>
+              </span>
+            </button>
+          ) : null}
           <RoundEndLeave ranked={ranked} guest={state.guest === true} />
         </div>
       </div>

@@ -1,5 +1,5 @@
 // Runs the interaction suites end to end.
-//   node e2e/run.mjs ci     the scripted-socket suites (matrix, client): needs only web/dist
+//   node e2e/run.mjs ci     the scripted-socket suites (matrix, client, watch): needs only web/dist
 //   node e2e/run.mjs full   those, then the live flows against a game server it starts
 //   node e2e/run.mjs flows  the live flows alone
 // `full` needs a Python with the server's dependencies: PY=/path/to/python
@@ -50,6 +50,7 @@ if (mode !== "flows") {
   }
   rc |= run("matrix.mjs", { BASE: base });
   rc |= run("client.mjs", { BASE: base });
+  rc |= run("watch.mjs", { BASE: base });
 }
 if (mode === "full" || mode === "flows") {
   let base = process.env.BASE;

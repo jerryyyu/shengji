@@ -13,6 +13,7 @@ fs.mkdirSync(OUT, { recursive: true });
 
 /** Layout sizes in CSS px. `kb` is the on-screen keyboard's height there. */
 export const DEVICES = {
+  "phone-land-max": { w: 932, h: 430, touch: true, kb: 220 }, // iPhone 14 Pro Max, table
   "phone-land": { w: 844, h: 390, touch: true, kb: 210 },     // iPhone 14 Pro, table
   "phone-land-se": { w: 667, h: 375, touch: true, kb: 200 },  // iPhone SE, table
   // The iOS app, sideways: the notch and the home indicator take the safe areas.

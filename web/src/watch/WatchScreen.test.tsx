@@ -9,6 +9,7 @@ import fixture from "../replay/server-round-finished.fixture.json";
 import WatchScreen from "./WatchScreen";
 import { watch } from "./store";
 import { canWatch } from "./store";
+import { setLanguageChoice } from "../i18n";
 
 // a watcher shown the Collection still sees no portraits: the feed carries no looks
 vi.mock("../companion/feature", () => ({ useCollection: () => true }));
@@ -135,6 +136,70 @@ describe("the watch screen", () => {
     watch.open("casual");
     await act(async () => { (card.querySelectorAll(".round-end-actions button:not(.round-end-view-btn)")[1] as HTMLButtonElement).click(); });
     expect(watch.get()).toBeNull();
+  });
+});
+
+describe("a replay", () => {
+  const rerun = { ...feed, table: "rerun", rerun: true, live_round: null, code: null, mode: "ranked",
+    players: ["Player 1", "Player 2", "Player 3", "Player 4"],
+    events: fixture.events.map((e) => (e.e !== "round_start" ? e : {
+      ...e, players: (e as { players: { seat: number; is_bot: boolean }[] }).players
+        .map((p) => ({ ...p, name: `Player ${p.seat + 1}` })) })) };
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      urls.push(url);
+      return new Response(JSON.stringify(rerun), { status: 200 });
+    }));
+  });
+
+  it("says Replay in the strip, never a round number", async () => {
+    await open();
+    const chip = host.querySelector(".watch-round")!;
+    expect(chip.textContent).toBe("Replay");
+    expect(chip.closest(".hud")).not.toBeNull();
+  });
+
+  it("offers no Next table, only Leave", async () => {
+    await open();
+    await act(async () => { button("More").click(); });
+    expect([...host.querySelectorAll("[role=menuitem]")].map((b) => b.textContent)).toEqual(["Leave"]);
+  });
+
+  it("names its players by seat in the viewer's language", async () => {
+    setLanguageChoice("zh-Hans");
+    try {
+      await open();
+      expect(tabs().map((b) => b.querySelector(".watch-tab-name")!.textContent).sort())
+        .toEqual(["玩家 1", "玩家 2", "玩家 3", "玩家 4"]);
+    } finally {
+      setLanguageChoice("system");
+    }
+  });
+
+  it("names its players by seat", async () => {
+    await open();
+    expect(tabs().map((b) => b.querySelector(".watch-tab-name")!.textContent))
+      .toEqual(["Player 1", "Player 2", "Player 3", "Player 4"].slice(banker).concat(
+        ["Player 1", "Player 2", "Player 3", "Player 4"].slice(0, banker)));
+  });
+});
+
+describe("a live table", () => {
+  it("says its round in the strip and offers Next table", async () => {
+    await open();
+    expect(host.querySelector(".watch-round")!.textContent).toBe("Round 3");
+    await act(async () => { button("More").click(); });
+    expect([...host.querySelectorAll("[role=menuitem]")].map((b) => b.textContent)).toEqual(["Next table", "Leave"]);
+  });
+
+  it("puts the transport, the tabs and the kitty in one row above the hand", async () => {
+    await open();
+    const row = host.querySelector(".watch-tabs-row")!;
+    expect(row.querySelector(".watch-controls [aria-label='Pause']")).not.toBeNull();
+    expect(row.querySelector("[role=tablist]")).not.toBeNull();
+    expect(row.querySelector(".watch-kitty-slot")).not.toBeNull();
+    expect(host.querySelector(".hud .watch-ctl")).toBeNull();
+    expect(row.nextElementSibling?.classList.contains("watch-hand")).toBe(true);
   });
 });
 

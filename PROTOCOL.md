@@ -725,7 +725,8 @@ account may watch any live table's last finished round.
   finished round: `{table, watcher, mode, live_round, code, rerun, waiting,
   round, seat, players, finished, events}`. `events` are the saved games'
   allow-listed records with every card shown; `seat` is the banker. With no
-  table it answers the latest finished ranked round with `rerun: true`; with
+  table it answers a recent finished ranked round with `rerun: true`, its players
+  named `Player 1` to `Player 4` (in `players` and the `round_start` record); with
   neither, 404.
 - `GET /api/watch/{table}?after=N&w=` follows that table: its round after `N`
   once finished, else `{waiting: true, live_round}`. 404 once the table cannot

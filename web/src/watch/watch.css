@@ -1,36 +1,53 @@
 /* Watching a table: the real table's felt, seats, trick and hand, with the
-   watcher's tab strip in place of your name and controls. */
-/* the trick sits higher so the tab strip never touches the bottom play, and
-   takes no taps: the tabs and the kitty under its box stay reachable */
-.watch-screen .trick-area { translate: 0 -16px; pointer-events: none; }
+   watcher's one row (controls, seat tabs, kitty) above the hand. */
+.watch-screen .trick-area { pointer-events: none; }
 .watch-screen .watch-tabs-row { position: relative; z-index: 5; pointer-events: auto; }
-.watch-screen > .watch-round { position: absolute; z-index: 30; left: 8px; top: 52px; }
 .watch-screen .watch-seat { display: contents; }
 .watch-screen .opponent { cursor: pointer; }
-.watch-round { display: inline-flex; align-items: center; gap: 6px; }
+/* A watcher reads the hand and never plays it: it draws at the bury's size
+   in every beat (33 cards or 25, nothing resizes when the bury ends), and
+   the height that frees is the watcher's row, which the trick cross keeps
+   clear of as it does of a player's button row. */
+:root.phone-landscape .watch-screen.table-screen {
+  --watch-row: 38px;
+  --hand-cw: clamp(37px, calc(var(--safe-w) * 0.07), 56px);
+  --lift: 14px;
+  --row-reserve: var(--watch-row);
+  --zone-bottom: calc(var(--trick-bottom) + var(--watch-row));
+  --cross-bottom: calc(var(--zone-bottom) + var(--space-s));
+  --cross-avail: calc(var(--view-h) - var(--header-bottom) - var(--zone-bottom));
+}
+.watch-round { display: inline-flex; align-items: center; gap: 5px; color: #aab3c2; }
 .watch-round svg,
 .watch-ctl svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2;
   stroke-linecap: round; stroke-linejoin: round; }
-.watch-controls { display: flex; align-items: center; gap: 4px; }
-.watch-ctl { position: relative; min-width: 32px; height: 32px; padding: 0 6px; border: 0; border-radius: 16px;
-  background: rgba(10, 26, 20, 0.82); color: #fff; display: inline-flex; align-items: center;
+.watch-tabs-row { display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(0, max-content) minmax(max-content, 1fr); align-items: center;
+  gap: 8px; width: 100%; padding: 0 8px; box-sizing: border-box; height: var(--watch-row, 38px); }
+.watch-controls { justify-self: end; display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: 16px;
+  background: rgba(10, 16, 22, 0.86); }
+.watch-kitty-slot { justify-self: start; width: 34px; height: 30px; }
+.watch-ctl { position: relative; min-width: 34px; height: 28px; padding: 0 6px; border: 0; border-radius: 14px;
+  background: transparent; color: #fff; display: inline-flex; align-items: center;
   justify-content: center; font: 700 12px/1 inherit; cursor: pointer; }
-/* drawn 32 px, tapped at 44: the extenders overlap the 4 px gaps, never a neighbour's face */
-.watch-ctl::after { content: ""; position: absolute; inset: -6px -2px; }
+.watch-ctl::after { content: ""; position: absolute; inset: -8px -1px; }
 .watch-ctl:disabled { opacity: 0.4; cursor: default; }
 .watch-ctl:focus-visible, .watch-tab:focus-visible, .watch-kitty:focus-visible {
   outline: 2px solid #f2c14e; outline-offset: 2px; }
-.watch-speed { font-variant-numeric: tabular-nums; min-width: 40px; }
-.watch-tabs-row { display: flex; align-items: center; justify-content: center; gap: 8px; }
-.watch-tabs { display: flex; gap: 4px; padding: 2px; border-radius: 14px; background: rgba(10, 16, 22, 0.86); }
-.watch-tab { position: relative; height: 26px; padding: 0 11px; border: 0; border-radius: 10px; background: transparent;
-  color: #aab3c2; font: 700 13px/26px inherit; display: inline-flex; align-items: center; gap: 6px;
-  white-space: nowrap; cursor: pointer; }
-.watch-tab::after { content: ""; position: absolute; inset: -9px -2px; }
+.watch-speed { font-variant-numeric: tabular-nums; min-width: 38px; }
+.watch-tabs { display: flex; gap: 2px; padding: 2px; border-radius: 16px; background: rgba(10, 16, 22, 0.86); min-width: 0; }
+.watch-tab { position: relative; height: 28px; padding: 0 10px; border: 0; border-radius: 14px; background: transparent;
+  color: #aab3c2; font: 700 13px/28px inherit; display: inline-flex; align-items: center; gap: 5px;
+  white-space: nowrap; cursor: pointer; min-width: 0; }
+.watch-tab::after { content: ""; position: absolute; inset: -8px -1px; }
 .watch-tab.on { background: #2e3648; color: #fff; }
+.watch-tab .seat-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.watch-tab .seat-dot.t0 { background: var(--team0, #5b9dff); }
+.watch-tab .seat-dot.t1 { background: var(--team1, #ff9d4d); }
 .watch-tab .banker-crown { font-size: 12px; }
 .watch-tab-n { color: #8c96a6; font-weight: 600; font-variant-numeric: tabular-nums; }
-.watch-tab-name { max-width: 9em; overflow: hidden; text-overflow: ellipsis; }
+.watch-tab-name { max-width: 6em; min-width: 1.5em; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.watch-tab { flex: 0 1 auto; }
+.watch-tabs { overflow: hidden; }
 .watch-kitty { position: relative; width: 34px; height: 30px; border: 0; padding: 0; background: none; cursor: pointer;
   --cw: 18px; }
 .watch-kitty::after { content: ""; position: absolute; inset: -7px -5px; }
@@ -38,6 +55,28 @@
 .watch-kitty .card:nth-child(1) { left: 2px; }
 .watch-kitty .card:nth-child(2) { left: 7px; }
 .watch-kitty .card:nth-child(3) { left: 12px; }
+/* The tablet table: the watcher's hand is drawn at the banker's 33-card size
+   in every beat too, so the hand never grows when the bury ends. */
+.tablet-table .watch-screen .watch-hand .hand {
+  --watch-cw: min(var(--hcw), calc(var(--hand-w) / 13.2));
+  --cw: var(--watch-cw);
+  --pitch: min(calc(var(--watch-cw) * 0.5), calc((var(--hand-w) - var(--watch-cw)) / max(1, calc(var(--n, 25) - 1))));
+}
+/* a narrow phone: the three groups close up around the tabs */
+@media (max-width: 760px) {
+  .watch-tabs-row { display: flex; justify-content: center; gap: 6px; padding: 0 4px; }
+  .watch-tab { padding: 0 7px; }
+  .watch-tab-name { max-width: 4.5em; }
+}
+/* the wide table draws its controls larger; the row keeps its place above the hand */
+:root:not(.phone-landscape) .watch-tabs-row { height: 48px; margin-bottom: 6px; }
+:root:not(.phone-landscape) .watch-ctl { min-width: 44px; height: 38px; border-radius: 19px; font-size: 14px; }
+:root:not(.phone-landscape) .watch-ctl svg { width: 20px; height: 20px; }
+:root:not(.phone-landscape) .watch-tab { height: 38px; padding: 0 14px; border-radius: 19px; font-size: 15px; line-height: 38px; }
+:root:not(.phone-landscape) .watch-controls, :root:not(.phone-landscape) .watch-tabs { border-radius: 21px; }
+/* the wide table: the watcher's row and the hand stack, centred; the hand never runs past the screen */
+.watch-screen .you-area { display: flex; flex-direction: column; align-items: center; width: 100%; min-width: 0; }
+.watch-screen .you-area > .watch-hand { max-width: 100%; }
 .watch-hand { animation: watch-fade 0.3s ease-out; }
 @keyframes watch-fade { from { opacity: 0.3; } to { opacity: 1; } }
 .watch-kitty-peek { position: fixed; inset: 0; z-index: 400; display: flex; align-items: center;

@@ -198,21 +198,23 @@ export interface PresencePart { text: string; hl?: boolean; watch?: boolean }
 export function presenceParts(p: Presence | null, mode: QueueMode = "ranked"): PresencePart[] {
   if (p && p.waiting >= 1) return [{ text: t("queue.presence.waiting", { n: p.waiting }) }];
   const watchable = canWatch(p);
+  const liveWatch = watchable && (p?.watch ?? 0) > 0;
+  const replay: PresencePart[] = watchable && !liveWatch ? [{ text: " · " + t("watch.rerunLink"), watch: true }] : [];
   if (p && p.tables >= 1) {
     const ranked = p.ranked ?? 0;
     const casual = p.casual ?? 0;
-    const playing = { text: t("queue.presence.playing", { n: p.playing }), watch: watchable };
+    const playing = { text: t("queue.presence.playing", { n: p.playing }), watch: liveWatch };
     if (ranked >= 1 && casual >= 1) {
       return [{ text: t("queue.presence.tablesSplit", { n: p.tables }) },
               { text: t("queue.presence.ranked", { n: ranked }), hl: mode === "ranked" },
               { text: t("queue.presence.comma") },
-              { text: t("queue.presence.casual", { n: casual }), hl: mode === "casual" }, playing];
+              { text: t("queue.presence.casual", { n: casual }), hl: mode === "casual" }, playing, ...replay];
     }
     const key = ranked >= 1 ? "queue.presence.tablesRanked" : casual >= 1 ? "queue.presence.tablesCasual"
       : "queue.presence.tables";
-    return [{ text: t(key, { n: p.tables }) }, playing];
+    return [{ text: t(key, { n: p.tables }) }, playing, ...replay];
   }
-  return [{ text: t("queue.presence.nobody"), watch: watchable }];
+  return [{ text: t("queue.presence.nobody") }, ...replay];
 }
 
 /** The one toast a game started alone gets when its first newcomer sits. */

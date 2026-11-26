@@ -9,11 +9,12 @@ on:
 permissions:
   contents: read
 
-# A pull request's newer push cancels its older run. Every push to main runs to
-# completion: its group is its own sha, so a later merge neither cancels it nor
-# replaces it while it waits.
+# A pull request's newer push cancels its older run. Pushes to main share one
+# group: the run in flight finishes, and a newer merge replaces the one still
+# waiting, so a waiting merge's checks are covered by the newer run on its
+# descendant. A manual dispatch keeps its own sha group and runs to completion.
 concurrency:
-  group: pr-checks-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: pr-checks-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || (github.event_name == 'push' && 'main' || github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

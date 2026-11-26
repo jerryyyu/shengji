@@ -2,12 +2,30 @@
 // code (H2..SA, H10-style tens, BJ/LJ) plus the VOICE_CLIPS below. Clips are
 // fetched+decoded lazily and cached; sequences are queued and played
 // back-to-back without overlap.
+//
+// A sound is for the moment it was asked for. iOS can hold a context out of
+// "running" (interrupted or suspended) for minutes while its resume() promise
+// stays pending; when that ends every sound still waiting on it would start
+// at once, as one loud burst. So a context that has run and is now held drops
+// each request at once (only the first unlock gets LATE_MS of grace), a
+// change of context state invalidates every earlier request and cancels every
+// live source, and at most MAX_VOICES source nodes are ever live.
 
 import type { GameState, Trump } from "./protocol";
 
 const MUTE_KEY = "shengji.muted";
 const GAP_MS = 50; // pause between clips in a sequence
 const MAX_QUEUE = 4; // pending sequences beyond this drop the oldest
+/** Longest a sound waits for a running context before it is dropped. */
+const LATE_MS = 150;
+/** A queued sequence still waiting this long after its request is dropped. */
+const STALE_MS = 2000;
+/** Live sources (clips and ticks) at once; one more is dropped. */
+const MAX_VOICES = 3;
+/** A source whose onended has not come this long after its natural end is
+ *  stopped and disconnected, so a freed slot always means a dead node. */
+const END_GRACE_MS = 500;
+const TICK_S = 0.07;
 
 /** Non-card clips in public/sounds. */
 const VOICE_CLIPS = {
@@ -23,8 +41,57 @@ let ctx: AudioContext | null = null;
 const clipCache = new Map<string, Promise<AudioBuffer | null>>();
 /** Clips whose speculative fetch failed: a demand play may fetch them again. */
 const retryable = new Set<string>();
-const queue: string[][] = [];
+interface Request {
+  names: string[];
+  at: number;
+  epoch: number;
+}
+const queue: Request[] = [];
 let pumping = false;
+/** Bumped whenever the context stops running, is replaced or the page hides:
+ *  requests from an older epoch never play. */
+let epoch = 0;
+/** Cancels (stop, disconnect, free the slot) of every live source node. */
+const live = new Set<() => void>();
+/** Contexts that have reached "running" at least once. */
+const ranOnce = new WeakSet<AudioContext>();
+/** Ran-once contexts that have left "running" since. */
+const heldAfterRun = new WeakSet<AudioContext>();
+
+function now(): number {
+  return performance.now();
+}
+
+function invalidate(): void {
+  epoch++;
+  queue.length = 0;
+  for (const cancel of [...live]) cancel();
+}
+
+/** Counts `node` as a live voice until it ends or is cancelled. `release` and
+ *  `cancel` are idempotent: the slot is freed exactly once, however many of
+ *  onended, the guard timer and an invalidation arrive. */
+function addVoice(
+  node: AudioScheduledSourceNode, durationMs: number, onFree?: () => void,
+): () => void {
+  let freed = false;
+  const release = () => {
+    if (freed) return;
+    freed = true;
+    live.delete(cancel);
+    window.clearTimeout(guard);
+    onFree?.();
+  };
+  const cancel = () => {
+    try { node.stop(); } catch { /* not started, or already stopped */ }
+    try { node.disconnect(); } catch { /* already disconnected */ }
+    release();
+  };
+  live.add(cancel);
+  node.onended = release;
+  const guard = window.setTimeout(cancel, durationMs + END_GRACE_MS);
+  return cancel;
+}
 let muted = localStorage.getItem(MUTE_KEY) === "1"; // default: unmuted
 
 function ensureCtx(): AudioContext {
@@ -46,8 +113,17 @@ function ensureCtx(): AudioContext {
  *  until a reload. */
 function watch(c: AudioContext): AudioContext {
   c.onstatechange = () => {
+    if (c !== ctx) return;
     const state = c.state as string;
-    if (state === "running" || state === "closed") return;
+    if (state === "running") {
+      // a recovery, not the first unlock: what was asked for before is stale
+      if (heldAfterRun.delete(c)) invalidate();
+      ranOnce.add(c);
+      return;
+    }
+    if (ranOnce.has(c)) heldAfterRun.add(c);
+    invalidate();
+    if (state === "closed") return;
     void c.resume().catch(() => {});
     armUnlock();
   };
@@ -93,6 +169,37 @@ async function ensureRunning(): Promise<AudioContext> {
   return c;
 }
 
+/** The running context for a sound of `reqEpoch`, or null to drop the sound.
+ *  Before the first unlock a resume that lands within LATE_MS (the sound of
+ *  the unlock tap itself) still plays. A context that has run and is now held
+ *  drops the sound at once: its resume can land before the statechange that
+ *  reports the recovery, and a sound kept waiting would play stale. */
+async function runningFor(reqEpoch: number): Promise<AudioContext | null> {
+  const c = ensureCtx();
+  if (c.state !== "running" && ranOnce.has(c)) {
+    armUnlock();
+    if (reqEpoch === epoch) invalidate();
+    return null;
+  }
+  if (c.state !== "running") {
+    armUnlock();
+    let timer = 0;
+    await Promise.race([
+      c.resume().catch(() => {}),
+      new Promise<void>((r) => { timer = window.setTimeout(r, LATE_MS); }),
+    ]);
+    window.clearTimeout(timer);
+  }
+  if (c.state !== "running" || ctx !== c) {
+    // a held context: everything asked for meanwhile is late too
+    if (reqEpoch === epoch) invalidate();
+    return null;
+  }
+  if (reqEpoch !== epoch || muted) return null;
+  ranOnce.add(c);
+  return c;
+}
+
 // Unlock the context on a user gesture (autoplay policy).
 //
 // iOS (all browsers there are WebKit, including iPhone Chrome) does not
@@ -128,6 +235,7 @@ function unlockHandler(): void {
   if (ctx !== null && (ctx.state as string) === "interrupted") {
     const stuck = ctx;
     ctx = null;
+    invalidate();
     void stuck.close().catch(() => {});
   }
   void ensureRunning().then((c) => {
@@ -141,7 +249,10 @@ armUnlock();
 // re-arming there would be no listener left to unlock it again, so audio would
 // die permanently the first time the player switched apps.
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState !== "visible") return;
+  if (document.visibilityState !== "visible") {
+    invalidate();
+    return;
+  }
   if (ctx !== null && ctx.state !== "running") {
     void ctx.resume().catch(() => {});
     armUnlock();
@@ -205,27 +316,25 @@ function fetchClip(name: string, speculative: boolean): Promise<AudioBuffer | nu
   return p;
 }
 
-async function playBuffer(buffer: AudioBuffer): Promise<void> {
-  const c = await ensureRunning();
-  if (c.state !== "running") return; // still blocked — drop, don't stall
-  return new Promise((resolve) => {
+/** Plays `buffer` now; false when it was dropped instead. */
+async function playBuffer(buffer: AudioBuffer, reqEpoch: number): Promise<boolean> {
+  const c = await runningFor(reqEpoch);
+  if (c === null || live.size >= MAX_VOICES) return false;
+  // rechecked after the await: a recovery in between makes the request stale
+  if (reqEpoch !== epoch || ctx !== c || c.state !== "running") return false;
+  await new Promise<void>((resolve) => {
     const src = c.createBufferSource();
     src.buffer = buffer;
     src.connect(c.destination);
-    // Guard timer so a wedged onended can never stall the pump.
-    const guard = window.setTimeout(
-      resolve, buffer.duration * 1000 + 500);
-    src.onended = () => {
-      window.clearTimeout(guard);
-      resolve();
-    };
+    // the guard inside addVoice keeps a wedged onended from stalling the pump
+    const cancel = addVoice(src, buffer.duration * 1000, resolve);
     try {
       src.start();
     } catch {
-      window.clearTimeout(guard);
-      resolve();
+      cancel();
     }
   });
+  return true;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -235,8 +344,8 @@ function sleep(ms: number): Promise<void> {
 /** Short synthesized click for plays with no voice line (junk dumps). */
 function playTick(): void {
   if (muted) return;
-  void ensureRunning().then((c) => {
-    if (c.state !== "running") return;
+  void runningFor(epoch).then((c) => {
+    if (c === null || live.size >= MAX_VOICES) return;
     const t = c.currentTime;
     const osc = c.createOscillator();
     const gain = c.createGain();
@@ -245,15 +354,23 @@ function playTick(): void {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
     osc.connect(gain);
     gain.connect(c.destination);
+    addVoice(osc, TICK_S * 1000);
     osc.start(t);
-    osc.stop(t + 0.07);
+    osc.stop(t + TICK_S);
   });
 }
 
 /** Enqueue a sequence of clip names (played in order, never overlapping). */
 export function play(names: string[]): void {
   if (muted || names.length === 0) return;
-  queue.push(names);
+  // A context that has run and is held now: the request is dropped here, so a
+  // recovery landing while its clip loads cannot carry it through.
+  if (ctx !== null && ranOnce.has(ctx) && ctx.state !== "running") {
+    void ctx.resume().catch(() => {});
+    armUnlock();
+    return;
+  }
+  queue.push({ names, at: now(), epoch });
   while (queue.length > MAX_QUEUE) queue.shift();
   void pump();
 }
@@ -265,13 +382,14 @@ async function pump(): Promise<void> {
     for (;;) {
       const seq = queue.shift();
       if (!seq) break;
-      for (const name of seq) {
+      if (seq.epoch !== epoch || now() - seq.at > STALE_MS) continue;
+      for (const name of seq.names) {
         if (muted) break;
         const buf = await loadClip(name);
-        if (buf) {
-          await playBuffer(buf);
-          await sleep(GAP_MS);
-        }
+        if (!buf) continue;
+        // a dropped clip ends its sequence: the rest would be out of context
+        if (!(await playBuffer(buf, seq.epoch))) break;
+        await sleep(GAP_MS);
       }
     }
   } finally {

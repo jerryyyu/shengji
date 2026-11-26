@@ -848,6 +848,11 @@ class Store:
         self._lock = threading.Lock()
         # Ids deleted through ``DELETE /api/me`` since this process started.
         self.deleted_ids: set[int] = set()
+        # The look of each of this store's accounts seen on a socket or stored
+        # since this process started, so a seat's look enters a frame without
+        # a database read (``account_look``); an account missing here shows
+        # ``DEFAULT_LOOK``.
+        self.seen_looks: dict[int, str] = {}
 
     @property
     def path(self) -> Path:
@@ -905,15 +910,47 @@ class Store:
         the migrations past it run."""
         return self.path.with_name(f"{self.path.name}.v{version}.bak")
 
-    def _snapshot_before_migration(self, conn: sqlite3.Connection, version: int) -> None:
-        """A consistent copy of the database as it stood at ``version``,
-        written once beside it (``VACUUM INTO`` needs no open transaction).
-        An existing copy is kept: a migration that failed and is retried
-        must not overwrite the copy taken before its first attempt."""
-        target = self.backup_path(version)
-        if target.exists():
-            return
+    def _vacuum_into(self, conn: sqlite3.Connection, target: Path) -> None:
         conn.execute("VACUUM INTO ?", (str(target),))
+
+    @staticmethod
+    def _verified_backup(path: Path, version: int, tables: int) -> bool:
+        """Whether ``path`` is a whole copy of a version-``version`` database
+        with ``tables`` tables that passes SQLite's integrity check."""
+        if not path.is_file() or path.stat().st_size == 0:
+            return False
+        try:
+            with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as db:
+                if db.execute("PRAGMA integrity_check").fetchone() != ("ok",):
+                    return False
+                found = db.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0]
+                stored = db.execute("SELECT MAX(version) FROM schema_version").fetchone()[0]
+        except sqlite3.DatabaseError:
+            return False
+        return found == tables and stored == version
+
+    def _snapshot_before_migration(self, conn: sqlite3.Connection, version: int) -> None:
+        """A verified copy of the database as it stood at ``version``, beside
+        it, before any migration past it runs (``VACUUM INTO`` needs no open
+        transaction). The copy is written to a sibling staging file, checked
+        (``_verified_backup``) and only then moved into place, so the backup's
+        name never holds a partial file. A valid copy already there is kept:
+        a migration that failed and is retried must not replace the copy
+        taken before its first attempt. A copy that cannot be verified
+        raises, and nothing is migrated."""
+        target = self.backup_path(version)
+        tables = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0]
+        if self._verified_backup(target, version, tables):
+            return
+        staging = target.with_name(f"{target.name}.tmp-{os.getpid()}")
+        staging.unlink(missing_ok=True)
+        try:
+            self._vacuum_into(conn, staging)
+            if not self._verified_backup(staging, version, tables):
+                raise sqlite3.DatabaseError(f"backup of version {version} failed verification")
+            os.replace(staging, target)
+        finally:
+            staging.unlink(missing_ok=True)
 
     def _open(self) -> sqlite3.Connection:
         conn = self._connect()
@@ -2107,22 +2144,18 @@ def look_id(row: Mapping[str, Any] | None) -> str:
     return stored if parse_look(stored) is not None else DEFAULT_LOOK
 
 
-# The look of each account seen on a socket or stored since this process
-# started, so a seat's look enters a frame without a database read. An
-# account missing here shows ``DEFAULT_LOOK``.
-_SEEN_LOOKS: dict[int, str] = {}
-
-
 def remember_look(row: Mapping[str, Any]) -> str:
+    """``look_id`` of ``row``, kept in ``STORE.seen_looks`` for the seats."""
     look = look_id(row)
-    _SEEN_LOOKS[int(row["id"])] = look
+    if row.get("id") is not None:
+        STORE.seen_looks[int(row["id"])] = look
     return look
 
 
 def account_look(user_id: int | None) -> str:
     """The look a person's seat shows: their account's, or ``DEFAULT_LOOK``
     for a guest (``None``) and an account not seen yet."""
-    return DEFAULT_LOOK if user_id is None else _SEEN_LOOKS.get(user_id, DEFAULT_LOOK)
+    return DEFAULT_LOOK if user_id is None else STORE.seen_looks.get(user_id, DEFAULT_LOOK)
 
 
 def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int = 0) -> dict:

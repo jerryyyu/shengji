@@ -1205,8 +1205,9 @@ def room_json(room: Room, seat: int) -> dict:
 
 def seat_look(sd: Seat) -> str | None:
     """The companion look a person's seat shows (``accounts.account_look``);
-    None for a bot seat, which shows an initial."""
-    return None if sd.is_bot else accounts.account_look(sd.user_id)
+    None for a bot seat, which shows an initial, and for a seat its person
+    left by choice, which the bot plays now."""
+    return None if sd.is_bot or sd.left_by_choice else accounts.account_look(sd.user_id)
 
 
 def room_seats_json(room: Room, device: str | None = None,

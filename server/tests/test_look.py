@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import time
 
+import pytest
+
 from tests.test_accounts import (  # noqa: F401
     V1_SCHEMA, _claims, _columns, _session_cookie, accounts_on, accounts_sqlite, keypair)
 from tests.test_ratings import _rounds_at, env  # noqa: F401
@@ -45,12 +47,11 @@ def test_a_new_account_has_the_default_and_put_persists_it(accounts_on, keypair,
 def test_seats_carry_the_look_and_bots_carry_none(accounts_on, keypair, client):
     private_pem, _ = keypair
     cookie = _session_cookie(accounts_on, client, private_pem)
-    accounts_on._SEEN_LOOKS.clear()
     with client.websocket_connect("/ws", headers={"cookie": cookie}) as a:
         a.send_json({"type": "create_room"})
         room = _drain(a, "room")
         assert room["players"][0]["look"] == "tractor/red"
-        assert accounts_on._SEEN_LOOKS == {1: "tractor/red"}    # learnt at the handshake
+        assert accounts_on.STORE.seen_looks == {1: "tractor/red"}    # learnt at the handshake
         st = _drain(a, "state")             # the game starts at once, bots seated
         looks = {p["seat"]: p["look"] for p in st["players"]}
         assert looks == {0: "tractor/red", 1: None, 2: None, 3: None}
@@ -212,3 +213,100 @@ def test_the_collection_is_shown_only_to_listed_accounts_unless_on_for_all(accou
     assert client.get("/api/auth/config").json()["collection"] is True
     assert client.get("/api/me", headers=one).json()["features"] == {"collection": True}
     assert client.put("/api/me/look", json={"look": "tractor/blue"}, headers=one).status_code == 200
+
+
+def _v1_database(tmp_path):
+    path = tmp_path / "old" / "accounts.sqlite3"
+    path.parent.mkdir()
+    with accounts_sqlite(path) as db:
+        db.executescript(V1_SCHEMA)
+    return path
+
+
+def _tables(path):
+    with accounts_sqlite(path) as db:
+        return {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+
+
+def test_an_interrupted_backup_is_redone_before_the_migration_retries(accounts_on, tmp_path, monkeypatch):
+    path = _v1_database(tmp_path)
+    store = accounts_on.Store(path)
+    backup = store.backup_path(1)
+    real = accounts_on.Store._vacuum_into
+
+    def interrupted(self, conn, target):
+        target.write_bytes(b"")          # what a killed VACUUM INTO leaves
+        raise accounts_on.sqlite3.OperationalError("interrupted")
+
+    monkeypatch.setattr(accounts_on.Store, "_vacuum_into", interrupted)
+    with pytest.raises(accounts_on.sqlite3.OperationalError):
+        store.schema_version()
+    # nothing migrated, and no backup published under the real name
+    with accounts_sqlite(path) as db:
+        assert db.execute("SELECT MAX(version) FROM schema_version").fetchone() == (1,)
+    assert not backup.exists() or backup.stat().st_size == 0
+    monkeypatch.setattr(accounts_on.Store, "_vacuum_into", real)
+    retry = accounts_on.Store(path)
+    assert retry.schema_version() == len(accounts_on.SCHEMA)
+    assert {"users", "sessions", "schema_version"} <= _tables(backup)
+    with accounts_sqlite(backup) as db:
+        assert db.execute("SELECT MAX(version) FROM schema_version").fetchone() == (1,)
+        assert db.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+    assert not [p for p in path.parent.iterdir() if ".tmp" in p.name]
+
+
+def test_a_zero_byte_backup_already_in_place_is_replaced_not_trusted(accounts_on, tmp_path):
+    path = _v1_database(tmp_path)
+    store = accounts_on.Store(path)
+    store.backup_path(1).write_bytes(b"")
+    assert store.schema_version() == len(accounts_on.SCHEMA)
+    assert "users" in _tables(store.backup_path(1))
+
+
+def test_a_valid_backup_already_in_place_is_kept(accounts_on, tmp_path):
+    path = _v1_database(tmp_path)
+    store = accounts_on.Store(path)
+    backup = store.backup_path(1)
+    with accounts_sqlite(path) as db:
+        db.execute("VACUUM INTO ?", (str(backup),))
+    with accounts_sqlite(backup) as db:
+        db.execute("UPDATE users SET name = 'Marked'")
+        db.commit()
+    assert store.schema_version() == len(accounts_on.SCHEMA)
+    with accounts_sqlite(backup) as db:
+        assert db.execute("SELECT name FROM users").fetchall() == [("Marked",)]
+
+
+def test_no_migration_runs_without_a_verified_backup(accounts_on, tmp_path, monkeypatch):
+    path = _v1_database(tmp_path)
+    monkeypatch.setattr(accounts_on.Store, "_vacuum_into", lambda self, conn, target: target.write_bytes(b"junk"))
+    with pytest.raises(accounts_on.sqlite3.DatabaseError):
+        accounts_on.Store(path).schema_version()
+    with accounts_sqlite(path) as db:
+        assert db.execute("SELECT MAX(version) FROM schema_version").fetchone() == (1,)
+    assert not accounts_on.Store(path).backup_path(1).exists()
+
+
+def test_cached_looks_belong_to_their_store(accounts_on, tmp_path, monkeypatch):
+    first = accounts_on.Store(tmp_path / "a.sqlite3")
+    second = accounts_on.Store(tmp_path / "b.sqlite3")
+    monkeypatch.setattr(accounts_on, "STORE", first)
+    accounts_on.remember_look({"id": 1, "look_companion": "tractor", "look_colour": "green"})
+    assert accounts_on.account_look(1) == "tractor/green"
+    monkeypatch.setattr(accounts_on, "STORE", second)
+    assert accounts_on.account_look(1) == "tractor/red"
+
+
+def test_a_seat_left_by_choice_shows_no_portrait(accounts_on, client):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as g:
+        g.send_json({"type": "create_room", "name": "Guest"})
+        code = _drain(g, "room")["room"]
+        _drain(g, "state")
+    room = srv.rooms[code]
+    room.seats[0].left_by_choice = True
+    assert srv.seat_look(room.seats[0]) is None
+    assert srv.state_for(room, 1)["players"][0]["look"] is None
+    assert [p["look"] for p in srv.room_json(room, 1)["players"] if p["seat"] == 0] == [None]
+    assert srv.room_table_frame(room, 1)["seats"][0]["look"] is None

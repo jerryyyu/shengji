@@ -182,6 +182,16 @@ def _scratch_seed_windows(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _fresh_seen_looks():
+    """Every test starts with no cached companion looks on the process's
+    store: a look one test equips must not reach another test's frames."""
+    accounts = sys.modules.get("shengji.api.accounts")
+    if accounts is not None:
+        accounts.STORE.seen_looks.clear()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _fresh_connection_limits():
     """Every test starts with no per-address counts: the suite's sockets
     all come from one test-client address."""

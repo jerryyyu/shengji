@@ -122,6 +122,7 @@ def test_runner_constructs_exact_served_bot(release50_packages, release55_pair, 
                                  sampler_worlds=0, sampler_splits=[])
         assert labels is not None and len(labels["X"]) == len(plays)
         assert all(row["allocation"]["serving_decision"]["bury_belief_worlds"] for row in buries)
+        assert all(row["allocation"]["serving_decision"]["elapsed_seconds"] >= 0 for row in buries)
         assert manifest["counts"]["bury_belief_worlds"] == 2
         assert manifest["counts"]["bury_belief_fallbacks"] == sum(
             row["allocation"]["serving_decision"]["bury_belief_fallbacks"] for row in buries)

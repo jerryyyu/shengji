@@ -1728,12 +1728,14 @@ def _bury_fields(base: dict, run_id: str, cluster: int, mirror: int,
     # The served bbw chooser records its belief-world draw on the bot record.
     # Preserve those optional fields at the trajectory boundary so the
     # self-play manifest can consume the producer's telemetry.
-    belief_fields = ({
+    serving_fields = ({
         key: raw[key]
         for key in ("bury_belief_worlds", "bury_belief_fallbacks",
                     "bury_belief_error", "bury_belief_ms")
         if key in raw
     } if capture_served_budget else {})
+    if capture_served_budget and "elapsed_seconds" in raw:
+        serving_fields["elapsed_seconds"] = raw["elapsed_seconds"]
     if raw.get("schema") == "cwv-bury-fallback-v1":
         if not capture_served_budget:
             raise TrajectoryError("partial bury fallback is not MC training evidence")
@@ -1800,8 +1802,8 @@ def _bury_fields(base: dict, run_id: str, cluster: int, mirror: int,
             "searched": int(raw.get("candidate_count", k)) > 1,
             "work": ({key: _finite(v) for key, v in work.items()}
                      if isinstance(work, dict) else None),
-            **({"serving_decision": dict(belief_fields)}
-               if belief_fields else {}),
+            **({"serving_decision": dict(serving_fields)}
+               if serving_fields else {}),
         },
         "preference": preference_from_evidence(means_f, [math.inf] * k, played),
         "action_values": {

@@ -14,7 +14,7 @@ import YourTablePill from "../queue/YourTablePill";
 import { SeatedAtContext } from "../queue/seatedAt";
 import type { SeatedAt } from "../queue/seatedAt";
 import AccountChip from "../components/AccountChip";
-import { isZh, useT } from "../i18n";
+import { useT } from "../i18n";
 import type { MessageKey } from "../i18n";
 import GuestChip from "../components/GuestChip";
 
@@ -111,8 +111,8 @@ export function TabBar({ active }: { active: Tab }) {
   );
 }
 
-/** The wide layout's top bar: the wordmark (except on Play, whose page
- *  carries the title), the phone's three tabs centred, and the account chip
+/** The wide layout's top bar: no strip of its own, only the phone's three
+ *  tabs as a glass pill centred over the page and the account chip
  *  at the end (a guest's opens the identity sheet), after the Your table
  *  pill on a tab other than Play. */
 export function TopBar({ active }: { active: Tab }) {
@@ -127,12 +127,6 @@ export function TopBar({ active }: { active: Tab }) {
   }
   return (
     <header className="topbar">
-      {/* Play shows the title itself */}
-      {active === "play" ? null : (
-        <button type="button" className="topbar-mark" aria-label={t("home.markAria")} onClick={() => openTab("play")}>
-          <b>升级</b>{isZh() ? null : <span>Sheng Ji</span>}
-        </button>
-      )}
       <nav className="topbar-tabs" aria-label={t("home.navMain")}>
         {TABS.map((x) => (
           <button key={x.tab} type="button" className={`topbar-tab${x.tab === active ? " on" : ""}`}

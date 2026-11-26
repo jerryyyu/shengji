@@ -6,7 +6,6 @@ export const home = defineMessages({
   "home.tabLeaderboard": { en: "Leaderboard", zh: "排行榜" },
   "home.tabMe": { en: "Me", zh: "我" },
   "home.navMain": { en: "Main", zh: "主导航" },
-  "home.markAria": { en: "Sheng Ji: Play", zh: "升级：打牌" },
   "home.refreshing": { en: "Refreshing", zh: "刷新中" },
   "home.today": { en: "Today", zh: "今天" },
   "home.yesterday": { en: "Yesterday", zh: "昨天" },

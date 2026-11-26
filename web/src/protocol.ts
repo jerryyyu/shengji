@@ -393,6 +393,8 @@ export interface RoomSeats {
     claimable: boolean;
     controller: Controller;
     reserved_secs: number | null;
+    /** The seat this device left by choice at a casual table: Join takes it back. */
+    yours?: true;
   }[];
   /** A ranked table: `claimable` marks the seats its invite may take (bot
    *  seats, away seats from a round boundary); signed-in players only. */

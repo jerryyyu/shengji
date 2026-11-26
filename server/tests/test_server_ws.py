@@ -3115,16 +3115,56 @@ def test_a_seat_left_by_choice_peeks_as_the_bots_never_as_its_leavers_or_full(cl
         mine = peek(devs[3])
         assert mine["name"] == "Bot 3" and mine["is_bot"] and mine["controller"] == "bot"
         assert mine["claimable"] is True and mine["reserved_secs"] is None
+        assert mine["yours"] is True                          # the Join panel glows it
         stranger = peek("e" * 24)
         assert stranger["name"] == "Bot 3" and stranger["is_bot"]
         assert stranger["claimable"] is False                 # held for the reservation
+        assert "yours" not in stranger
         clock["v"] += srv.TAKEOVER_AFTER + 1
         assert peek("e" * 24)["claimable"] is True
-        # the leaver's Join takes its own seat, as the rule has it
+        # the leaver's Join takes its own seat back, under its name
         with client.websocket_connect(f"/ws?device={devs[3]}") as back:
             back.send_json({"type": "table_join", "expect": "room", "code": code,
                             "name": "cy", "seat": 3})
-            assert _drain(back, "state")["you"] == 3
+            st = _drain(back, "state")
+            assert st["you"] == 3 and len(st["hand"]) > 0
+            assert room.seats[3].connected and not room.seats[3].left_by_choice
+            assert room.seats[3].name == "cy"
+
+
+def test_a_ranked_table_offers_no_leaver_its_seat_back(client):
+    """At a ranked table a deliberate Leave stays a leave: the seat reads as
+    the bot's, not the leaver's, is neither claimable nor ``yours`` for the
+    device that left it, and that device's Join does not take it back."""
+    from shengji.api import server as srv
+
+    devs = ["a" * 24, "b" * 24, "c" * 24, "d" * 24]
+    with ExitStack() as sockets:
+        a = sockets.enter_context(client.websocket_connect(f"/ws?device={devs[0]}"))
+        code = _room_with_bots(a)
+        room = srv.rooms[code]
+        peers = []
+        for seat, n in enumerate(("amy", "bo", "cy"), start=1):
+            w = sockets.enter_context(client.websocket_connect(f"/ws?device={devs[seat]}"))
+            w.send_json({"type": "table_join", "expect": "room", "code": code, "name": n, "seat": seat})
+            assert _drain(w, "state")["you"] == seat
+            peers.append(w)
+        room.matched = True
+        for i, sd in enumerate(room.seats):
+            sd.queue_id = srv.guest_queue_id(devs[i])
+        peers[2].send_json({"type": "table_leave"})
+        _drain(peers[2], "left")
+        assert room.seats[3].left_by_choice
+        with client.websocket_connect(f"/ws?device={devs[3]}") as back:
+            back.send_json({"type": "table_peek", "code": code})
+            frame = _drain(back, "room_seats")
+            mine = frame["seats"][3]
+            assert mine["name"] == "Bot 3" and mine["is_bot"]
+            assert mine["claimable"] is False and "yours" not in mine
+            back.send_json({"type": "table_join", "expect": "room", "code": code,
+                            "name": "cy", "seat": 3})
+            assert _drain(back, "error")["code"] == "ranked_queue_only"
+        assert room.seats[3].left_by_choice and not room.seats[3].connected
 
 
 def test_your_own_rooms_link_or_code_with_its_token_resumes_the_seat_and_its_name(client):

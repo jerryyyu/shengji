@@ -209,7 +209,12 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
      resume goes on to the panel), a waiting-table seat by the device (its peek marks the seat `you`).
      A reload keeps the name the table shows, so nobody hears "X left the table." A Leave stays a leave:
      it forgets the seat, and a seat left by choice reads as the bot's seat in the panel, under the bot's
-     name, joinable as the server's rules have it today (the open decision on a leaver's return is unchanged).
+     name, never the leaver's.
+   - Seat back after Leave (Jerry 2026-11-26, decision mocks section 4, option B): at a casual table
+     reached by code or link, someone who tapped Leave gets the Join panel with their old seat glowing
+     (the bot holds it meanwhile; the peek marks it `yours` and Join takes only that seat); one tap, Join,
+     takes it back. Leaving was deliberate, so it is one tap, not a silent resume. Ranked tables and seats
+     taken from an open table keep today's bar and cooldown: the ranked leaver's seat is not offered.
    - One step: the page peeks a code directly (`table_peek`; the old `code_lookup` → `code_kind` is
      retired), and the store in `codeJoin.ts` holds the whole join as one value.
    - The Join panel is a kind of the one panel (`join-code`): `fromCode` in `queue/tableModel.ts` builds it

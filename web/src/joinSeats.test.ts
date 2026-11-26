@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { hostName, joinSeat, roomChoices, roomDefaultSeat, tableFull, tableHostName, tableJoinSeat, takeoverSeats } from "./joinSeats";
 
-type Row = { seat: number; name: string; is_bot?: boolean; connected?: boolean; claimable?: boolean };
+type Row = { seat: number; name: string; is_bot?: boolean; connected?: boolean; claimable?: boolean; yours?: true };
 const peek = (rows: Row[], over: { in_game?: boolean; ranked?: boolean; full?: boolean } = {}) => ({
   in_game: false, ...over,
   seats: rows.map((r) => ({ is_bot: false, connected: true, claimable: false, team: r.seat % 2,
@@ -9,6 +9,18 @@ const peek = (rows: Row[], over: { in_game?: boolean; ranked?: boolean; full?: b
 });
 
 describe("the Join panel's seats", () => {
+  it("a seat you left by choice at a casual table is the one seat your Join takes back, glowing", () => {
+    const rows: Row[] = [{ seat: 0, name: "Mei" }, { seat: 1, name: "Bot 1", is_bot: true, claimable: true },
+                         { seat: 2, name: "Sam" }, { seat: 3, name: "Bot 3", is_bot: true, claimable: true, yours: true }];
+    expect(roomChoices(peek(rows, { in_game: true }))).toEqual([3]);
+    expect(roomDefaultSeat(peek(rows, { in_game: true }))).toBe(3);
+    expect(tableFull(peek(rows, { in_game: true }))).toBe(false);
+    // at a table of four people it is still yours, never "Table is full"
+    rows[1] = { seat: 1, name: "Li" };
+    expect(roomDefaultSeat(peek(rows, { in_game: true }))).toBe(3);
+    expect(tableFull(peek(rows, { in_game: true }))).toBe(false);
+  });
+
   it("before the game a join sits across from the person the panel names, else at the lowest empty seat", () => {
     expect(joinSeat(peek([{ seat: 0, name: "Jerry" }]))).toBe(2);
     expect(joinSeat(peek([{ seat: 0, name: "Jerry" }, { seat: 2, name: "Mei" }]))).toBe(1);

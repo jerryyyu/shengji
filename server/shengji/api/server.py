@@ -1204,10 +1204,11 @@ def room_seats_json(room: Room, device: str | None = None,
     joiner may claim it and what plays it now. Never a token or an account.
 
     A seat its owner left by choice is the bot's (the bot plays it at once),
-    so it shows as a bot seat under the bot's name, never the leaver's. The
-    peeking ``device`` or account that left it may take it again at a casual
-    table (``_join_room``'s left-seat rule), so for them it is claimable; for
-    anyone else its claim follows the reservation as for a drop."""
+    so it shows as a bot seat under the bot's name, never the leaver's. At a
+    casual table the peeking ``device`` or account that left it takes it back
+    (``_join_room``'s left-seat rule): for them it is claimable and marked
+    ``yours``, the seat their Join takes. A ranked table offers no leaver its
+    seat. For anyone else its claim follows the reservation as for a drop."""
     # A ranked table's invite: its open seats only, and
     # whether there is none.
     ranked_open = (_open_seats(room, invite=True)
@@ -1234,7 +1235,8 @@ def room_seats_json(room: Room, device: str | None = None,
                                   else None),
                 "controller": ("bot" if sd.is_bot or gone else
                                "human" if sd.connected
-                               else "bot_cover")}
+                               else "bot_cover"),
+                **({"yours": True} if sd is own_left and claimable else {})}
 
     return {
         "type": "room_seats",

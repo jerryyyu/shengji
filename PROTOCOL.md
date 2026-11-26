@@ -113,8 +113,10 @@ private information. The lobby uses it to show a seat picker when a game is in
 progress and more than one bot seat is open — which bot you replace decides
 who your partner is. A seat its owner left by choice is the bot's: it reads as
 a bot seat under the bot's name (`is_bot: true`, `controller: "bot"`), never
-the leaver's, and is `claimable` for the device or account that left it at a
-casual table (it takes that seat back), else as a dropped seat is.
+the leaver's. At a casual table it is `claimable` and marked `yours: true` for
+the device or account that left it, whose Join takes that seat back (the Join
+panel glows it); a ranked table offers no leaver its seat. For anyone else it
+is claimable as a dropped seat is.
 
 A queued table's code is answered with the table form instead; a room wins a
 code both could hold, and a code that names neither is

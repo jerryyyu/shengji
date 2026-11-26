@@ -44,6 +44,9 @@ export function joinSeat(peek: Peek): number | null {
  *  bot seat to take) the dropped players' seats. */
 export function roomChoices(peek: Peek): number[] {
   if (peek.full) return [];
+  // the seat you left by choice is the one your Join takes back
+  const yours = peek.seats.find((sd) => sd.yours && sd.claimable);
+  if (yours) return [yours.seat];
   const plain = joinSeat(peek);
   const bots = peek.seats.filter((sd) => sd.claimable && sd.is_bot).map((sd) => sd.seat);
   const seats = plain === null ? bots : [plain, ...bots.filter((at) => at !== plain)];

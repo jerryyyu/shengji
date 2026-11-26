@@ -373,6 +373,19 @@ describe("your own table's link or code", () => {
   });
 });
 
+describe("a seat you left by choice at a casual table", () => {
+  it("glows in the Join panel, stays the seat Join names, and Join takes it back", () => {
+    codes.setPlace(lobby);
+    codes.open("WXYZ");
+    say({ ...ROOM, seats: [seat(0, "Mei"), bot(1), seat(2, "Sam"), { ...bot(3), yours: true }] });
+    expect(codes.view).toMatchObject({ step: "panel", seat: 3, full: false });
+    codes.pick(1);
+    expect(codes.view?.seat).toBe(3);
+    codes.join("Bo");
+    expect(sent.at(-1)).toMatchObject({ type: "table_join", code: "WXYZ", seat: 3, expect: "room" });
+  });
+});
+
 describe("older links", () => {
   it("?party= is an alias of ?code=: the address reads ?code= and its table opens", () => {
     window.history.replaceState(null, "", "/?party=FG3K");

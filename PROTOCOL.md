@@ -342,12 +342,11 @@ it; a room's client does not read it yet. Design and field mapping:
 - `mode`: `"ranked"` or `"casual"`. `opener`: the opener's seat.
 - `settings`: `{allow_joiners, start_level, bot_level}`; `allow_joiners` is null in a
   room that never takes joiners (a test room).
-- `timers`: `{bots, start_now_at}`: `bots` is `queue_state.table.timer`'s
-  `{at, name, you}` (alone: your entry's own `bots_at`), null when no timer
-  runs and in a room; `start_now_at` as `queue_state.table`, null alone and
-  in a room.
-- `your_ready`: whether your Start is in (null in a room); `waiting_for`:
+- `timers`: `{bots}`: `queue_state.table.timer`'s `{at, name, you}` (alone:
+  your entry's own `bots_at`), null when no timer runs and in a room.
+- `your_ready`: whether your Ready is in (null in a room); `waiting_for`:
   as `queue_state.table` (alone: a Duo partner yet to tap), null in a room.
+  Both are signals: the owner's Start never waits for them.
 - `chat_log`: the key the table's chat frames carry: `table_chat.table`
   (null alone) or, in a room, its code.
 
@@ -379,12 +378,13 @@ Unix seconds from the server clock. Refusals are `error` frames with a `code`.
 | `table_start_level` | `start_level` | your casual table's starting level: the opener only (`not_opener`), never at a ranked table (`ranked_level_fixed`), `bad_start_level` for an unknown level. A real change clears every Start at the table |
 | `table_bot_level` | `level: "beginner" \| "standard" \| "advanced"` | your casual table's Bots (see "Table codes"): the opener only (`not_opener`), never at a ranked table (`ranked_bots_fixed`), `bad_setting` for any other value. A real change clears every Start at the table |
 | `table_leave` | — | leave the queue; at a waiting table this frees your seat. A Duo member's leave ends the Duo for the leaver only (see "Duo tables") |
-| `table_start` | optional `on: boolean`, `panel_seq` | tap Start at your waiting table (a Duo's member its own tap): your entry is ready until you take it back; the table starts when every entry at it is ready. With `panel_seq` (see `queue_state`) a tap sent against a panel you no longer see is refused with `panel_changed` |
-| `table_start {on: false}` | — | take back your Start before the table starts (the same who as `table_start`: a Duo's member its own tap, alone too); `not_seated` alone outside a Duo; nothing to take back is no change |
+| `table_start` | optional `on: boolean`, `panel_seq` | a joiner's Ready at its waiting table (a Duo's member its own tap): a signal, its seat's `ready` until taken back; it never starts the table. From the table's owner (an older page) it is the owner's Start, `table_start_now` (a Duo's leader alone: `table_start_bots`). With `panel_seq` (see `queue_state`) a tap sent against a panel you no longer see is refused with `panel_changed`; without it, the owner's tap within 5 s of gaining the table is refused the same way, so a Ready sent just before is never a Start |
+| `table_start {on: false}` | — | take back your Ready before the table starts (the same who as `table_start`: a Duo's member its own tap, alone too; also `table_unready`); `not_seated` alone outside a Duo; nothing to take back is no change |
+| `table_start_now` | optional `panel_seq` | the owner's Start at its waiting table (the opener's leader; `not_opener` for anyone else): it starts at once with everyone seated and connected, Ready or not, bots in the empty seats; a joiner whose socket is gone leaves at the start; `partner_unavailable` while the owner's own Duo partner is not connected. Nothing else starts a waiting table but its bots' timer, four people and every Ready in included. `panel_seq` and the 5 s grace as `table_start` |
 | `table_move` | `seat`, optional `from` and `who` | move yourself to an empty seat at your waiting table: singles only (`pair_seats_fixed`), before your Start (`already_ready`); `seat_taken` for a seat someone holds, `bad_seat` for anything but 0-3. With `from`, another person's seat, and `who`, that seat's `sit` token as the opener confirmed it, the table's opener (its leader) moves that person instead (`not_opener` for anyone else, `bad_seat` for an empty `from` or your own pair's, `seat_changed` when `who` is missing or no longer that seat's sitting, so a delayed move never lands on whoever sat after): a single to the empty `seat`, a pair as one to the two seats of `seat`'s team (both free, the person at `from` into `seat`), never into a held seat (`seat_taken`); it takes back the moved entry's Start. 20 per account per minute |
 | `table_here` | — | answer the "still here?" prompt (`queue_state.still_here_until`); any other queue message from the table answers it too |
 | `table_chat` | `text` | a chat line to everyone at your table (`not_seated` when you are not queued): your waiting table, or while you wait alone your own table, which only you (and a Duo partner) hear. Validated as room `chat` is: trimmed, at most 300 chars, an empty line ignored; 30 per person per minute (`rate_limited`). Kept in memory only (the last 50), never in a log. Lines sent alone merge into the waiting table you sit at, in time order, and either log is the room's opening scrollback (`chat_history`) when the game starts |
-| `table_start_bots` | optional `panel_seq` | alone in the queue: leave it and start a rated game at once: solo = you + 3 bots; pair (leader only) = the pair (seats 0+2) vs 2 bots. At a waiting table it is `table_start` |
+| `table_start_bots` | optional `panel_seq` | alone in the queue: leave it and start a rated game at once: solo = you + 3 bots; pair (leader only, its partner connected: `partner_unavailable`; the partner's Ready not needed) = the pair (seats 0+2) vs 2 bots. At a waiting table it is the owner's `table_start_now`, and a joiner's Ready |
 | `queue_wait_players` | — | "Only tables with people" on (leader only for a pair): the entry keeps its wait, place in line and seat, but its own timer never starts a bot game (`bots_at: null`, `wait_players: true`); it still sits at a table and rides a switch-off player's timer there. Leaving and queueing again turns it off |
 | `queue_allow_bots` | — | undo `queue_wait_players` (leader only): the entry's timer is due 60 s from now (a new `bots_at`); the wait itself is kept |
 | `party_leave` | — | leave your Duo; it dissolves and the other member is told. A queued Duo splits, as `table_leave` does (see "Duo tables") |

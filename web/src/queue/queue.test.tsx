@@ -625,13 +625,13 @@ describe("a Duo is a table", () => {
     expect(document.body.textContent).not.toContain("Duo code");
   });
 
-  it("the friend who opened the link sits in the held seat: You and Jerry, Ready and Leave, no line, no switch", async () => {
+  it("the friend who opened the link sits in the held seat: You and Jerry, the wait for Jerry, Ready and Leave, no switch", async () => {
     await renderApp();
     say(duoParty(false));
     say(duoState(false, 0, false));
     const p = panel()!;
     expect(p.querySelector(".tp-title")?.textContent).toBe("You and Jerry");
-    expect(lines()).toEqual([]);
+    expect(lines()).toEqual(["Waiting for Jerry to start"]);
     expect(p.querySelector(".tp-seat.friend")?.getAttribute("aria-label")).toBe("Jerry, your Duo partner");
     expect(p.querySelector(".tp-seat.held")).toBeNull();
     expect(p.querySelector(".tp-led")).toBeNull();
@@ -644,17 +644,18 @@ describe("a Duo is a table", () => {
     expect(p.querySelector(".tp-code")?.textContent).toBe("4N5Z");
   });
 
-  it("the partner's Ready: Waiting for Jerry with the bots' ring, and a second tap takes it back", async () => {
+  it("the partner's Ready: pressed with the bots' ring and its tick, and a second tap takes it back", async () => {
     await renderApp();
     say(duoParty(false));
     say(duoState(false, 0, false));
     await pastGuard();
+    expect(primary()!.getAttribute("aria-pressed")).toBe("false");
     click(primary());
     expect(lastSent()).toEqual({ type: "table_start" });
-    expect(words(primary()!)).toBe("Waiting for Jerry");
     say(duoState(false, 1, true));
-    expect(lines()).toEqual([]);
-    expect(words(primary()!)).toBe("Waiting for Jerry");
+    expect(lines()).toEqual(["Waiting for Jerry to start"]);
+    expect(words(primary()!)).toBe("Ready");
+    expect(primary()!.getAttribute("aria-pressed")).toBe("true");
     expect(primary()!.disabled).toBe(false);              // a tap takes the Ready back
     expect(primary()!.classList.contains("waiting")).toBe(true);
     expect(ringSecs()).not.toBeNull();
@@ -668,7 +669,7 @@ describe("a Duo is a table", () => {
     expect(starts).toEqual([{ type: "table_start" }, { type: "table_start", on: false }]);
   });
 
-  it("the leader's panel: no Ready, Waiting for Alice until her Ready, then Start with bots, and Allow joiners", async () => {
+  it("the leader's panel: no Ready, Start with bots at once whether or not Alice is Ready, her tick, and Allow joiners", async () => {
     await renderApp();
     say(duoParty(true));
     say(duoState(true, 0, false));
@@ -676,9 +677,9 @@ describe("a Duo is a table", () => {
     const p = panel()!;
     expect(p.querySelector(".tp-title")?.textContent).toBe("You and Alice");
     expect(lines()).toEqual([]);
-    expect(words(primary()!)).toBe("Waiting for Alice");
-    expect(primary()!.disabled).toBe(true);
-    expect(primary()!.classList.contains("waiting")).toBe(true);
+    expect(words(primary()!)).toBe("Start with bots");
+    expect(primary()!.disabled).toBe(false);
+    expect(primary()!.classList.contains("waiting")).toBe(false);
     expect(ringSecs()).not.toBeNull();
     expect(p.textContent).not.toContain("Ready");
     say(duoState(true, 1, false));
@@ -862,7 +863,7 @@ describe("the panel's primary button", () => {
     expect(live()).toBe(region);                           // the same region throughout
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null]));
     expect(live()).toBe(region);
-    expect(region.textContent).toBe("Table. You and Alice. 0 of 1 ready. Waiting for Alice.");
+    expect(region.textContent).toBe("Table. You and Alice. 0 of 1 ready.");
     // the clocks themselves are not in any live region
     expect(panel()?.closest("[aria-live]")).toBeNull();
   });
@@ -902,13 +903,14 @@ describe("a shared table", () => {
     tick(6000);
     expect(theirs.querySelector(".tp-seat")?.getAttribute("aria-label")).toBe("Alice, other team. Move");
     expect(ringSecs()).toBe("36");
-    // the owner has no Ready: its Start waits, quiet and not dimmed, for Alice's
-    expect(words(primary()!)).toBe("Waiting for Alice");
-    expect(primary()?.disabled).toBe(true);
-    expect(primary()?.classList.contains("waiting")).toBe(true);
+    // the owner has no Ready: its Start never waits for Alice's
+    expect(words(primary()!)).toBe("Start with bots");
+    expect(primary()?.disabled).toBe(false);
+    expect(primary()?.classList.contains("waiting")).toBe(false);
     say(atTable([seat("Jerry", { you: true }), seat("Alice", { ready: true }), null, null],
                 { timer: { at: nowSecs() + 36, name: "Alice", you: false } }));
     expect(lines()).toEqual(["1 of 1 ready"]);
+    expect(p.querySelector(".tp-seat.person .tp-tick, .tp-col .tp-tick")).not.toBeNull();
     expect(words(primary()!)).toBe("Start with bots");
     click(primary());
     expect(lastSent()).toEqual({ type: "table_start_now" });
@@ -916,46 +918,52 @@ describe("a shared table", () => {
     expect(q(".tabbar")).not.toBeNull();
   });
 
-  it("the owner's Start needs no wait after an arrival, only every connected joiner's Ready; a joiner's button is Ready", async () => {
+  it("the owner's Start needs no wait after an arrival and no joiner's Ready; a joiner's button is Ready", async () => {
     await renderApp();
-    say(atTable([seat("Jerry", { you: true }), seat("Alice", { ready: true, since: nowSecs() }), null, null]));
+    say(atTable([seat("Jerry", { you: true }), seat("Alice", { since: nowSecs() }), null, null]));
     await pastGuard();
     expect(words(primary()!)).toBe("Start with bots");
     expect(primary()?.disabled).toBe(false);
     click(primary());
     expect(lastSent()).toEqual({ type: "table_start_now" });
     expect(words(primary()!)).toBe("Starting…");
-    // refused because a Ready was taken back meanwhile: quietly, and the panel looks again
+    // refused against a panel that changed meanwhile: quietly, and the panel looks again
     say({ type: "error", code: "panel_changed", message: "Your table changed. Look again before you tap." });
     expect(q(".toast")).toBeNull();
-    // a joiner who is reconnecting does not hold it; one at the table does, by name or by count
+    // nobody's Ready holds it, a reconnecting joiner's or one at the table
     say(atTable([seat("Jerry", { you: true }), seat("Alice", { reconnecting: true }),
                  seat("Bobby Tables The Third", { since: nowSecs() }), null]));
-    expect(words(primary()!)).toBe("Waiting for Bobby Tabl…");
+    expect(words(primary()!)).toBe("Start with bots");
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), seat("Bobby Tables The Third"), null]));
-    expect(words(primary()!)).toBe("Waiting for 2 players");
+    expect(words(primary()!)).toBe("Start with bots");
+    expect(primary()!.disabled).toBe(false);
+    expect(lines()).toEqual(["0 of 2 ready"]);
     expect(document.body.textContent).not.toContain("Start now");
-    // a joiner's button is Ready
+    // a joiner's button is Ready, beside Leave, under the owner's name
     say(atTable([seat("Jerry"), seat("Alice", { you: true }), null, null], { you: 1 }, { opener: false }));
     expect(words(primary()!)).toBe("Ready");
+    expect(lines()).toEqual(["Waiting for Jerry to start"]);
+    expect(button("Leave", panel()!)).toBeDefined();
     click(primary());
     expect(lastSent()).toEqual({ type: "table_start" });
   });
 
-  it("after a joiner's Ready the button waits for the owner by name; a newcomer keeps the tick", async () => {
+  it("after a joiner's Ready the button stays Ready, pressed; the line names the owner; a newcomer keeps the tick", async () => {
     await renderApp();
     say(atTable([seat("Jerry"), seat("Alice", { you: true, ready: true }), null, null], { you: 1 }, { opener: false }));
     await pastGuard();
-    expect(button("Waiting for Jerry", panel()!)?.disabled).toBe(false);   // a tap takes it back
+    expect(button("Ready", panel()!)?.disabled).toBe(false);   // a tap takes it back
+    expect(button("Ready", panel()!)?.getAttribute("aria-pressed")).toBe("true");
+    expect(lines()).toEqual(["Waiting for Jerry to start"]);
     expect(panel()!.querySelector(".tp-seat.you")?.getAttribute("aria-label")).toBe("You, ready");
     expect(panel()!.querySelector(".tp-seat.you .tp-tick")).not.toBeNull();
     say(atTable([seat("Jerry"), seat("Alice", { you: true, ready: true }),
                  seat("Bobby Tables The Third", { since: nowSecs() }), null],
                 { you: 1, timer: { at: nowSecs() + 18, name: "Jerry", you: false } }, { opener: false }));
-    expect(button("Waiting for Jerry", panel()!)?.disabled).toBe(false);
+    expect(button("Ready", panel()!)?.disabled).toBe(false);
     expect(panel()!.querySelector(".tp-title")?.textContent).toBe("You, Jerry and Bobby Tabl…");
-    expect(lines()).toEqual(["1 of 2 ready"]);
-    // the ring stays on the waiting button: the bots still come
+    expect(lines()).toEqual(["Waiting for Jerry to start"]);
+    // the ring stays on the pressed Ready: the bots still come
     expect(ringSecs()).toMatch(/^1[789]$/);
     const names = [...panel()!.querySelectorAll(".tp-seat")].map((s) => s.getAttribute("aria-label"));
     expect(names.some((n) => n?.startsWith("Bobby Tables The Third, Just joined"))).toBe(true);
@@ -2390,7 +2398,7 @@ describe("the first joiner", () => {
 
 
 describe("deferred mock items: take back a Ready, the opener moves people", () => {
-  it("a Ready is taken back with one more tap: Waiting for Alice sends table_start off, then Ready shows again", async () => {
+  it("a Ready is taken back with one more tap: the pressed Ready sends table_start off, then it is unpressed", async () => {
     await renderApp();
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), seat("Li"), null], {}, { opener: false }));
     await pastGuard();
@@ -2398,14 +2406,15 @@ describe("deferred mock items: take back a Ready, the opener moves people", () =
     expect(lastSent()).toEqual({ type: "table_start" });
     say(atTable([seat("Jerry", { you: true, ready: true }), seat("Alice"), seat("Li", { ready: true }), null], {},
                 { opener: false }));
-    expect(words(primary()!)).toBe("Waiting for Alice");
-    expect(lines()).toEqual(["2 of 2 ready"]);
+    expect(words(primary()!)).toBe("Ready");
+    expect(primary()!.getAttribute("aria-pressed")).toBe("true");
+    expect(lines()).toEqual(["Waiting for Alice to start"]);
     expect(primary()!.className).toContain("waiting");
     click(primary());
     expect(lastSent()).toEqual({ type: "table_start", on: false });
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), seat("Li", { ready: true }), null], {}, { opener: false }));
     expect(words(primary()!)).toBe("Ready");
-    expect(lines()).toEqual(["1 of 2 ready"]);
+    expect(primary()!.getAttribute("aria-pressed")).toBe("false");
     expect(primary()!.className).not.toContain("waiting");
   });
 

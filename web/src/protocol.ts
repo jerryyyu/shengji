@@ -36,7 +36,7 @@ export type ClientMsg =
        *  without this; a refused start sends an `error`, then `left`. */
       start?: boolean;
       /** On the device only: a nearby table, which waits in a lobby for
-       *  people on nearby phones until everyone is ready. */
+       *  people on nearby phones until its host starts it. */
       nearby?: boolean;
       /** The on-device server's table Bots (Standard when omitted); the game
        *  server sets Bots on a queue table instead. */
@@ -115,9 +115,9 @@ export interface RoomMsg {
    *  "advanced"). Absent offline. */
   bot_level?: BotLevel;
   /** A nearby table's lobby, hosted on a phone (offline/server/nearby):
-   *  whose Start is in, the seconds until bots take the open seats (null
+   *  whose Ready is in (a signal only), the seconds until bots take the open seats (null
    *  while the host is alone), and whether someone has joined. */
-  nearby?: { ready: number[]; bots_in: number | null; locked: boolean };
+  nearby?: { ready?: number[]; bots_in: number | null; locked: boolean };
 }
 
 export interface StatePlayer {

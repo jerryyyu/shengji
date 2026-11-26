@@ -744,8 +744,8 @@ export class QueueStore {
     if (this.send({ type: "table_start", ...this.seq() })) this.set({ pending: "start" });
   }
 
-  /** The owner's Start at a waiting table: it starts at once with bots.
-   *  The server refuses it while a connected joiner's Ready is out. */
+  /** The owner's Start at a waiting table: it starts at once with
+   *  everyone seated, Ready or not, bots in the empty seats. */
   tableStartNow(): void {
     if (!sharedTable(this.view.frame) || !isOpener(this.view) || this.view.pending !== null) return;
     if (this.send({ type: "table_start_now", ...this.seq() })) this.set({ pending: "start" });

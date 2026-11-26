@@ -23,6 +23,7 @@ export const queue = defineMessages({
 
   // status lines and buttons
   "queue.status.ready": { en: "{n} of {count} ready", zh: "已准备 {n}/{count}" },
+  "queue.status.waitingStart": { en: "Waiting for {name} to start", zh: "等 {name} 开始" },
   "queue.status.full": { en: "Table is full", zh: "这桌满了" },
   "queue.status.stillHere": { en: "You leave the table in {seconds}.", zh: "{seconds} 后离开牌桌。" },
   "queue.led": { en: "{name} leads", zh: "由 {name} 操作" },
@@ -31,8 +32,6 @@ export const queue = defineMessages({
   "queue.btn.starting": { en: "Starting…", zh: "正在开始…" },
   "queue.btn.startBots": { en: "Start with bots", zh: "机器人补位开始" },
   "queue.btn.ready": { en: "Ready", zh: "准备" },
-  "queue.btn.waitingFor": { en: "Waiting for {name}", zh: "等 {name}" },
-  "queue.btn.waitingForN": { en: "Waiting for {n} players", zh: "等 {n} 位玩家" },
   "queue.btn.join": { en: "Join", zh: "加入" },
   "queue.btn.joining": { en: "Joining…", zh: "加入中…" },
   "queue.btn.keepLooking": { en: "Keep looking", zh: "继续找" },

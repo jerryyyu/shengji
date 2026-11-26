@@ -38,9 +38,9 @@ Seating (``seat_waiting``, on every join and every ``tick``):
    which takes the moved entry's Ready back; a seat whose sitting changed
    is refused), and a leaver's seat is simply free again.
 
-A table starts (``tick``, and at once after the event that makes it due):
+A table starts (``tick``, and at once after the event that makes it due),
+four people or fewer:
 
-* when it has four people;
 * at the table's timer: the earliest ``bots_at`` among its entries. An entry
   whose switch is on ("Only tables with people", ``queue_wait_players``)
   has no ``bots_at`` and rides another entry's timer; with every switch on
@@ -51,22 +51,23 @@ A table starts (``tick``, and at once after the event that makes it due):
   dispatched (``Table.forced_by``). The owner is the opener's
   leader and has no Ready of its own; everyone else at the table is a
   joiner, a Duo opener's partner too, and taps Ready (``table_start``;
-  each member of a Duo for itself; ``table_unready`` takes it back). The
-  owner's Start is refused while a connected joiner's Ready is out
-  (``_unready``); a joiner whose socket is gone does not hold it, and
-  leaves at the start.
+  each member of a Duo for itself; ``table_unready`` takes it back). A
+  Ready is a signal to the others (``_unready``): the owner's Start takes
+  everyone seated and connected, Ready or not, and nothing starts because
+  every Ready is in. A joiner whose socket is gone leaves at the start.
 
-Four people wait while a member is reconnecting (``TABLE_AWAY_SECS``); the
-timer and the owner's Start do not, and start without an entry whose socket
-is still gone.
+A full table does not start by itself: it waits for its owner's Start
+like any other. The timer and the owner's Start do not wait for a member
+who is reconnecting, and start without an entry whose socket is still gone.
 There is no ready check: the table is the accept. An entry alone in the queue
 starts with bots at its own ``bots_at``, or at once on ``queue_start_bots``.
 
 Away and idle: a closed socket keeps its entry ``AWAY_SECS`` alone,
 ``WAIT_AWAY_SECS`` alone with its switch on (nothing starts without it), and
-``TABLE_AWAY_SECS`` at a waiting table. A seated entry that has not tapped
-Ready and sent nothing for ``TABLE_IDLE_SECS`` leaves; at a table with no
-timer it is asked "still here?" first (``still_here_until``) and leaves
+``TABLE_AWAY_SECS`` at a waiting table. A seated entry, owner or joiner,
+Ready or not, that has sent nothing for ``TABLE_IDLE_SECS`` leaves (any
+message resets its clock); at a table with no timer it is asked "still
+here?" first (``still_here_until``) and leaves
 ``STILL_HERE_SECS`` later unless any message (``table_here``) answers.
 
 Every queued entry holds a table code from the room code space
@@ -195,8 +196,8 @@ WINDOW_FROM = 5
 AWAY_SECS = 10.0
 TABLE_AWAY_SECS = 60.0
 WAIT_AWAY_SECS = 60.0
-# A seated entry that has not tapped Ready and sent nothing for this long
-# leaves the table and the queue, with no cooldown. At a table with no timer
+# A seated entry, owner or joiner, Ready or not, that has sent nothing for
+# this long leaves the table and the queue, with no cooldown. At a table with no timer
 # it is asked "still here?" instead and leaves only STILL_HERE_SECS later,
 # since there nobody is waiting on a clock and patience is the point.
 TABLE_IDLE_SECS = 120.0
@@ -825,7 +826,7 @@ class Matchmaker:
     def table_payload(self, t: Table, uid: int) -> dict:
         """The waiting table as ``uid`` sees it: the four seats in seat order
         (``null`` for an empty one), whose Ready is in, the timer's owner,
-        and the joiners the owner's Start still waits for (``_unready``)."""
+        and the joiners whose Ready is out (``_unready``)."""
         mine = self._entry(uid)
         by_user = {u: e for e in t.entries for u in e.members}
         seats: list[dict | None] = []
@@ -896,9 +897,10 @@ class Matchmaker:
         return e.id in t.ready
 
     def _unready(self, t: Table) -> list[int]:
-        """The joiners whose Ready the owner's Start waits for: everyone
-        seated at ``t`` but the owner (its first entry's leader) who is
-        connected and has not tapped Ready, in arrival order."""
+        """The joiners whose Ready is out, shown to the others as
+        ``waiting_for`` (a signal; the owner's Start does not wait for it):
+        everyone seated at ``t`` but the owner (its first entry's leader)
+        who is connected and has not tapped Ready, in arrival order."""
         owner = t.entries[0].leader if t.entries else None
         return [u for e in t.entries for u in e.members
                 if u != owner and self._available(u) and not self._tapped(t, e, u)]
@@ -958,7 +960,8 @@ class Matchmaker:
         role = (e.table is not None and bool(e.table.entries) and e.table.entries[0] is e, e.leader)
         if role != e.role:
             # gaining the table, or a new leader, turns a Ready into a Start:
-            # an untagged tap from before must not land as one
+            # an untagged tap from before (table_start_now included) must not
+            # land as one
             if e.role and ((role[0] and not e.role[0]) or role[1] != e.role[1]):
                 e.role_at = self.clock()
             e.role = role
@@ -1047,10 +1050,12 @@ class Matchmaker:
         t.forced_by = None
         if owned and t.entries:
             # the next arrival owns the table now: its leader has no Ready,
-            # and a Duo partner's own Ready stays
+            # and a Duo partner's own Ready stays; its idle clock starts at
+            # the handover, so a quiet joiner is asked before it is dropped
             heir = t.entries[0]
             t.ready.discard(heir.id)
             heir.taps.discard(heir.leader)
+            heir.active_at, heir.prompted = self.clock(), False
         for s, u in enumerate(t.seats):
             if u in e.members:
                 t.seats[s] = None
@@ -1319,7 +1324,7 @@ class Matchmaker:
                     await self._start_bots(queue_id)
                 elif t == "table_start_now":
                     if e is not None:
-                        self._check_panel(e, msg)
+                        self._check_panel(e, msg, role_dependent=True)
                     await self._table_start_now(queue_id)
                 elif t == "table_move":
                     if not self.move_limiter.allow(str(queue_id), now):
@@ -1660,7 +1665,7 @@ class Matchmaker:
         """A joiner's Ready at its table. ``table_unready`` takes it back,
         and so do a change of the starting level and an opener's move of
         the entry; a newcomer does not. The owner has no Ready: an older
-        page's Start from it is the owner's Start, with the same consent
+        page's Start from it is the owner's Start, with the same
         checks (``_table_start_now`` at a waiting table, ``_start_bots`` for
         a Duo at its own table)."""
         e = self._entry(uid)
@@ -1696,23 +1701,20 @@ class Matchmaker:
             if uid in e.taps:
                 e.taps.discard(uid)
                 e.table.ready.discard(e.id)
-                e.table.forced_by = None
                 self._send_table(e.table)
             return
         if e is None or t is None:
             raise QueueError("not_seated", "You are not at a waiting table.")
         if e.id in t.ready:
             t.ready.discard(e.id)
-            t.forced_by = None
             self._send_table(t)
 
     async def _table_start_now(self, uid: int) -> None:
-        """The owner's Start: the waiting table starts at once, bots in its
-        empty seats. Only the owner may, once every connected joiner's
-        Ready is in; a joiner's tap is ``table_start``. A Start sent before a
-        joiner took back its Ready is refused as ``panel_changed``, which
-        the client answers by looking again. The owner's own partner must
-        be connected: its entry would leave at the start otherwise."""
+        """The owner's Start: the waiting table starts at once with everyone
+        seated and connected, Ready or not, bots in its empty seats. Only
+        the owner may; a joiner's tap is ``table_start``. The owner's own
+        partner must be connected: its entry would leave at the start
+        otherwise."""
         e = self._entry(uid)
         t = self._table(e)
         if e is None or t is None:
@@ -1721,9 +1723,6 @@ class Matchmaker:
             raise QueueError("not_opener", "Only the table's opener can start now.")
         if not self._entry_available(e):
             raise QueueError("partner_unavailable", "Your partner is not in the lobby.")
-        if self._unready(t):
-            self._send_state(e)
-            raise QueueError("panel_changed", "Your table changed. Look again before you tap.")
         t.forced_by = uid
         await self._start_due()
 
@@ -1987,15 +1986,12 @@ class Matchmaker:
         if t.forced_by is not None:
             owner = t.entries[0] if t.entries else None
             if (owner is not None and owner.leader == t.forced_by
-                    and self._entry_available(owner) and not self._unready(t)):
+                    and self._entry_available(owner)):
                 return True
-            t.forced_by = None         # the consent the Start was given under is gone
+            t.forced_by = None         # the owner who gave the Start is gone
         timer = t.timer()
-        if timer is not None and now >= timer[0]:
-            return True
-        if not all(self._entry_available(e) for e in t.entries):
-            return False               # four people: wait for a reconnect
-        return t.humans == 4
+        # four people wait for the owner's Start like any other table
+        return timer is not None and now >= timer[0]
 
     async def _start_due(self) -> None:
         """Start every table that is due and every lone entry whose bot timer
@@ -2153,11 +2149,6 @@ class Matchmaker:
         for m in e.members:
             if not self._available(m):
                 raise QueueError("partner_unavailable", "Your partner is not in the lobby.")
-        if e.size == 2 and not self._partner_ready(e):
-            # the leader's Start waits for the partner's Ready, and a Ready
-            # taken back since the tap was sent refuses it
-            self._send_state(e)
-            raise QueueError("panel_changed", "Your table changed. Look again before you tap.")
         if not self.room_capacity():
             err = QueueError("server_busy", limits.BUSY_MESSAGE)
             for m in e.members:
@@ -2652,14 +2643,15 @@ class Matchmaker:
                 self._send(u, payload)
 
     def _drop_idle(self, now: float) -> None:
-        """A seated entry that has not tapped Ready and sent nothing for
-        ``TABLE_IDLE_SECS`` leaves, with no cooldown. At a table with no
-        timer it is asked "still here?" first and leaves ``STILL_HERE_SECS``
-        later unless a member sends anything. A reconnecting one is left to
+        """A seated entry, owner or joiner, Ready or not, that has sent
+        nothing for ``TABLE_IDLE_SECS`` leaves, with no cooldown; any
+        message (a Ready tap, chat, a move) resets its clock. At a table with
+        no timer it is asked "still here?" first and leaves
+        ``STILL_HERE_SECS`` later unless a member sends anything. A reconnecting one is left to
         ``_drop_away``."""
         for e in list(self.entries.values()):
             t = self._table(e)
-            if (t is None or e.id in t.ready or now - e.active_at < TABLE_IDLE_SECS
+            if (t is None or now - e.active_at < TABLE_IDLE_SECS
                     or not self._entry_available(e)):
                 continue
             if t.timer() is None and now - e.active_at < TABLE_IDLE_SECS + STILL_HERE_SECS:

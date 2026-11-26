@@ -12,8 +12,8 @@ import type { OfferView, QueueView, TableFrame } from "./store";
 import type { BotLevel } from "./messages";
 import { telemetry, type TapId } from "../telemetry";
 import {
-  JUST_JOINED_MS, OFFER_SECS, joinTitle, joinerLabel, labelList, moveTargets, ownBotsAt, ownTitle, panelKind,
-  ownerName, seatLabel, sharedStatusLine, sharedTitle, shortName, startLabel, stillHereLine, teamWord,
+  JUST_JOINED_MS, OFFER_SECS, joinTitle, labelList, moveTargets, ownBotsAt, ownTitle, panelKind,
+  ownerName, seatLabel, sharedStatusLine, sharedTitle, shortName, stillHereLine, teamWord, waitingLine,
 } from "./tableText";
 import type { PanelKind } from "./tableText";
 
@@ -66,13 +66,15 @@ export type CodeAction =
 
 /** What the offline table does: Start deals at once; Leave puts Play back;
  *  the Nearby switch opens the table to nearby phones (or closes it), and
- *  its denied line's link opens Settings. At a nearby table Start is the
- *  shared table's ready, and the joiner's not-found panel tries again. */
+ *  its denied line's link opens Settings. At a nearby table the host's
+ *  Start starts it, a guest's Ready is its tick, and the joiner's not-found
+ *  panel tries again. */
 export type OfflineAction =
   | { type: "offline_start" }
   | { type: "offline_leave" }
   | { type: "nearby_toggle" }
   | { type: "nearby_settings" }
+  | { type: "nearby_start" }
   | { type: "nearby_ready"; on: boolean }
   | { type: "nearby_again" };
 
@@ -98,8 +100,10 @@ export interface TableButton {
   disabled: boolean;
   act?: PanelAction;
   ring?: Ring | null;
-  /** Your Start is in, and a tap takes it back. */
+  /** Your Ready is in, and a tap takes it back: drawn quiet. */
   waiting?: boolean;
+  /** A toggle's state, drawn as `aria-pressed`. */
+  pressed?: boolean;
   /** Drawn as `aria-busy`: the press is on its way. */
   busy?: boolean;
 }
@@ -190,7 +194,7 @@ function heldSeat(at: number, ours: boolean): ModelSeat {
            label: ours ? t("queue.seat.heldFriend") : seatLabel("queue.seat.held", false) };
 }
 
-/** Whether you may move seats: a single, before your Start, with someone
+/** Whether you may move seats: a single, before your Ready, with someone
  *  else at the table. A Duo's seats stay together. */
 function canMove(q: QueueView, f: TableFrame): boolean {
   return !q.partyId && !f.your_ready && f.seats.filter((s) => s.state === "taken").length >= 2
@@ -248,6 +252,14 @@ function frameSeats(f: TableFrame, now: number, { alone = false, move = false, b
   });
 }
 
+/** A joiner's Ready: the same word on and off, pressed once tapped (its
+ *  seat's tick says so too); a second tap takes it back. A signal only:
+ *  the owner's Start never waits for it. */
+function readyToggle(on: boolean, pending: QueueView["pending"], ring: Ring | null): TableButton {
+  return { label: t("queue.btn.ready"), disabled: pending !== null, pressed: on, waiting: on,
+           act: on ? { type: "unready" } : { type: "start" }, ring: pending === "start" ? null : ring };
+}
+
 /** The bots' countdown as the ring on a table's primary button, while it
  *  runs: the panel's only timer. */
 function botsRing(at: number | null, now: number): Ring | null {
@@ -299,32 +311,25 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
       chat: { messages: q.tableChat, you: f.you },
     };
     const seats = frameSeats(f, now, { alone: true });
-    const youReady = yourReady(q);
     const ring = botsRing(ownBotsAt(q), now);
     if (tableDuo(q) && partner) {
-      // the pair's own table: the leader owns it and starts with bots once
-      // the partner, its joiner, taps Ready
+      // the pair's own table: the leader owns it and starts, Ready or not;
+      // the partner's Ready is a signal (its tick)
       if (q.leader) {
-        const waiting = (f.waiting_for ?? []).length > 0;
         return {
           ...base, ...extra, kind,
           title: ownTitle(q, partner), seats, you: f.you,
-          primary: waiting
-            ? { label: t("queue.btn.waitingFor", { name: shortName(partner) }), disabled: true,
-                act: { type: "start_bots" }, ring, waiting: true }
-            : { label: t(q.pending === "bots" ? "queue.btn.starting" : "queue.btn.startBots"),
-                disabled: q.pending !== null, act: { type: "start_bots" },
-                ring: q.pending === "bots" ? null : ring },
+          primary: { label: t(q.pending === "bots" ? "queue.btn.starting" : "queue.btn.startBots"),
+                     disabled: q.pending !== null, act: { type: "start_bots" },
+                     ring: q.pending === "bots" ? null : ring },
           secondary: leaveBtn,
         };
       }
+      const youReady = yourReady(q);
       return {
         ...base, ...extra, kind,
-        title: ownTitle(q, partner), seats, you: f.you,
-        primary: { label: joinerLabel(youReady || q.pending === "start", partner),
-                   disabled: q.pending !== null,
-                   act: youReady ? { type: "unready" } : { type: "start" },
-                   ring: q.pending === "start" ? null : ring, waiting: youReady },
+        title: ownTitle(q, partner), status: { text: waitingLine(partner) }, seats, you: f.you,
+        primary: readyToggle(youReady, q.pending, ring),
         secondary: leaveBtn,
       };
     }
@@ -351,23 +356,17 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
       };
     }
     const ring = q.pending === "start" ? null : botsRing(f.timers.bots?.at ?? null, now);
-    const youReady = f.your_ready === true;
-    // the owner's Start with bots waits for every connected joiner's
-    // Ready; everyone else taps Ready
+    // only the owner starts, with everyone seated, Ready or not; a
+    // joiner's Ready is a signal (its tick and the owner's count)
     const owns = opener && q.leader;
-    const waiting = f.waiting_for ?? [];
     return {
       ...base, kind, rows, chat: { messages: q.tableChat, you: f.you },
-      title: sharedTitle(f), status: { text: sharedStatusLine(f) },
+      title: sharedTitle(f), status: { text: owns ? sharedStatusLine(f) : waitingLine(ownerName(f)) },
       seats, you: f.you, led,
       primary: owns
-        ? waiting.length > 0
-          ? { label: startLabel(waiting), disabled: true, act: { type: "start_now" }, ring, waiting: true }
-          : { label: t(q.pending === "start" ? "queue.btn.starting" : "queue.btn.startBots"),
-              disabled: q.pending !== null, act: { type: "start_now" }, ring }
-        : { label: joinerLabel(youReady || q.pending === "start", ownerName(f)),
-            disabled: q.pending !== null, act: youReady ? { type: "unready" } : { type: "start" },
-            ring, waiting: youReady },
+        ? { label: t(q.pending === "start" ? "queue.btn.starting" : "queue.btn.startBots"),
+            disabled: q.pending !== null, act: { type: "start_now" }, ring }
+        : readyToggle(f.your_ready === true, q.pending, ring),
       secondary: leaveBtn,
     };
   }
@@ -413,7 +412,7 @@ function roomSeats(peek: RoomSeats, you: number | null, busy: boolean): ModelSea
 }
 
 /** A queued table's four seats as they stand: who sits there (with their
- *  Start), the open seats and a Duo's held partner seat, and you, glowing,
+ *  Ready), the open seats and a Duo's held partner seat, and you, glowing,
  *  where a code join sits you (the server seats it by its own rule, so no
  *  other seat is offered). */
 function queuedSeats(peek: TableSeats, you: number | null): ModelSeat[] {

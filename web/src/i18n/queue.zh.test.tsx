@@ -91,7 +91,7 @@ describe("the table panel in zh-Hans", () => {
     expect(options).toEqual(expect.arrayContaining(["标准", "高级"]));
   });
 
-  it("draws a shared table's ready line, title, the owner's Start and a joiner's Ready", () => {
+  it("draws a shared table's ready line, title, the owner's Start, and a joiner's wait for the owner with Ready", () => {
     draw(<TablePanel q={view(shared())} guarded={false} />);
     expect(host.querySelector(".tp-title")?.textContent).toBe("我和 Alice");
     expect(host.querySelector(".tp-line")?.textContent).toBe("已准备 1/1");
@@ -102,7 +102,9 @@ describe("the table panel in zh-Hans", () => {
                      table: { ...shared().table, you: 1, you_ready: false,
                               seats: [seat("Jerry", { leader: true }), seat("Alice", { you: true }), null, null] } };
     draw(<TablePanel q={view(joiner)} guarded={false} />);
-    expect(buttons()).toContain("准备");
+    expect(host.querySelector(".tp-line")?.textContent).toBe("等 Jerry 开始");
+    expect(buttons()).toEqual(expect.arrayContaining(["准备", "离开"]));
+    expect(buttons()).not.toContain("机器人补位开始");
   });
 
   it("announces your own table in zh", () => {

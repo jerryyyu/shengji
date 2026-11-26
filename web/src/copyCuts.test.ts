@@ -50,6 +50,7 @@ const CUT = [
   "Levels restart at",
   "重新打起",
   "满 80 上台",
+  "Waiting for {n} players",
 ];
 
 const SRC = fileURLToPath(new URL(".", import.meta.url));

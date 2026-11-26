@@ -77,17 +77,16 @@ describe("a joiner's moves reach the room at once", () => {
     expect(buried).toBe(true);
   }, 120_000);
 
-  it("Start: once both are ready the game deals at once, with no ring to wait out", async () => {
+  it("Start: a guest's older Start changes nothing; the host's deals at once and reaches the guest, with no ring to wait out", async () => {
     const t = new NearbyTable(7, 1, DELAY);
     await t.open();
     const j = await t.join("Mei");
-    t.send(t.host, { type: "table_start" });
+    t.send(j, { type: "table_start" });
     await t.advance(0.5);
     expect(t.room!.game).toBeNull();
     const at = t.clock.now();
-    t.send(j, { type: "table_start" });
+    t.send(t.host, { type: "table_start_now" });
     await t.settle(() => t.room!.game !== null, 10_000);
-    expect(t.clock.now() - at).toBeLessThanOrEqual(DELAY + 1e-9);
     await t.settle(() => t.lastState(j) !== undefined, 10_000);
     expect(t.clock.now() - at).toBeLessThan(1);
   });

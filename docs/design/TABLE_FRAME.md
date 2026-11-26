@@ -10,6 +10,10 @@ and `room_seats`, and translates each into one `TableModel`. One frame,
 
 `{type: "table", code, phase, mode, you, opener, seats[4], settings, timers, your_ready, waiting_for, chat_log}`
 
+A joiner's Ready (`seats[i].ready`, `your_ready`, `waiting_for`) is a signal
+to the others since 2026-11-26 (Jerry): the owner's Start never waits for
+it, and nothing starts because every Ready is in.
+
 - `phase`: `"open"` | `"playing"`. `mode`: `"ranked"` | `"casual"`.
 - `seats`: four, in seat order, each `{seat, team, state, name, you, ready, reconnecting, since, sit, pair, leader, left}`;
   `state` is `taken` | `open` | `held` (kept for a Duo opener's friend) | `bot` (a bot plays it in a game).

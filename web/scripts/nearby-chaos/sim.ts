@@ -1401,7 +1401,6 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
   const held = new Map<Seat, { idx: number; at: number }>();
   const wasConnected = new Map<Seat, boolean>();
   const strikes = new Map<Seat, number>();
-  let lobbySnap: { held: boolean; ready: boolean; human: boolean }[] | null = null;
   let turnKey = "";
   let turnFor = 0;
   let lastCheck = 0;
@@ -1422,15 +1421,6 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
     }
     if (r.closed) return;
     const hostAwake = !H.clock.suspended && hostDev.activeFaults === 0;
-    // L6: no lobby start while a seated joiner's seat is held, unless all tapped Start
-    if (r.lobby) {
-      lobbySnap = r.lobby.map((sd, i) => ({ held: !!sd && !sd.isBot && !sd.connected, ready: r.lobbyReady.has(i), human: !!sd && !sd.isBot }));
-    } else if (lobbySnap) {
-      const snap = lobbySnap;
-      lobbySnap = null;
-      const holds = snap.map((x, i) => (x.held && !x.ready ? i : -1)).filter((i) => i >= 0);
-      if (holds.length && !snap.every((x) => !x.human || x.ready)) gap("no lobby start during a hold (L6)", `the game started with seat ${holds.join(",")} held and not ready`);
-    }
     if (!r.round) return;
     const rnd = r.round;
     for (const [i, sd] of r.seats.entries()) {

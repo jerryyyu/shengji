@@ -144,19 +144,23 @@ describe("lobby seats", () => {
     expect((lastRoom(t.host).players as PlayerJson[]).map((p) => [p.seat, p.connected])).toEqual([[0, true], [1, true]]);
   });
 
-  it("everyone else ready, a not-ready joiner's drop waits out its hold, then the game starts", async () => {
+  it("a joiner's drop waits out its hold and frees the seat; nothing starts by itself until the host's Start", async () => {
     const t = await lobby(3);
     // seated a moment: each phone's socket has shown the host it has its seat
     await t.advance(LIMITS.pingSeconds + 1);
-    t.send(t.host, { type: "table_start" });
     t.send(t.joiners[0], { type: "table_start" });
     await t.advance(1);
-    const t0 = t.clock.now();
+    const seat = t.joiners[1].seat!;
     t.fake.drop(t.code, t.fake.peersOf(t.code)[1]);
     await t.advance(LOBBY_SEAT_HOLD - 1);
     expect(t.room!.game).toBeNull();
+    expect(t.room!.lobby![seat]).not.toBeNull();
+    await t.advance(3);
+    expect(t.room!.lobby![seat]).toBeNull();
+    expect(t.room!.game).toBeNull();
+    t.send(t.host, { type: "table_start_now" });
     await t.settle(() => t.lastState(t.host) !== undefined, 2_000_000);
-    expect(t.clock.now() - t0).toBeLessThan(LOBBY_SEAT_HOLD + 2);
+    expect(t.room!.seats[seat].isBot).toBe(true);
   });
 
   it("one phone holds one lobby seat: its later links resume the same seat by its token", async () => {

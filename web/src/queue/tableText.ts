@@ -95,9 +95,9 @@ export function ownTitle(q: QueueView, partner: string | null): string {
   return t(q.duo && holdsSeat(q) ? "queue.title.yourDuo" : "queue.title.yourTable");
 }
 
-/** A joiner's button: Ready until you tap it, then the owner it waits for. */
-export function joinerLabel(ready: boolean, owner: string): string {
-  return ready ? t("queue.btn.waitingFor", { name: shortName(owner) }) : t("queue.btn.ready");
+/** A joiner's one status line: the owner starts the table, Ready or not. */
+export function waitingLine(owner: string): string {
+  return t("queue.status.waitingStart", { name: shortName(owner) });
 }
 
 /** The table's owner by name: whoever sits in the opener's seat. */
@@ -105,9 +105,9 @@ export function ownerName(f: TableFrame): string {
   return f.seats[f.opener]?.name ?? "";
 }
 
-/** A shared table's one status line: how many joiners are ready (the
- *  owner has no Ready). The bots' countdown is the ring on the button,
- *  never a line. */
+/** The owner's one status line at a shared table: how many joiners are
+ *  ready (the owner has no Ready, and its Start never waits for one). The
+ *  bots' countdown is the ring on the button, never a line. */
 export function sharedStatusLine(f: TableFrame): string {
   const joiners = f.seats.filter((s) => s.state === "taken" && s.seat !== f.opener);
   return t("queue.status.ready", { n: joiners.filter((s) => s.ready).length, count: joiners.length });
@@ -119,12 +119,6 @@ export function sharedTitle(f: TableFrame): string {
   if (others.length === 0) return t("queue.title.yourTable");
   if (others.length === 1) return t("queue.title.youAnd", { name: others[0] });
   return t("queue.title.youAndMany", { name: andList(others) });
-}
-
-/** The owner's Start while it waits: the joiners whose Ready is out. */
-export function startLabel(w: string[]): string {
-  if (w.length === 1) return t("queue.btn.waitingFor", { name: shortName(w[0]) });
-  return t("queue.btn.waitingForN", { n: w.length });
 }
 
 /** Where the person at `from` may go: an empty seat that is not held, and
@@ -151,9 +145,8 @@ export function announcement(q: QueueView): string {
   }
   if (kind === "own" && q.duoReady !== null && q.partyId && q.frame) {
     const partner = q.party?.members.find((m) => !m.you)?.name ?? "";
-    const waiting = (q.frame.waiting_for ?? []).length > 0;
-    const words = !q.leader ? joinerLabel(yourReady(q), partner)
-      : waiting ? t("queue.btn.waitingFor", { name: shortName(partner) }) : t("queue.btn.startBots");
+    const words = q.leader ? t("queue.btn.startBots")
+      : `${waitingLine(partner)}${yourReady(q) ? `${isZh() ? "，" : ", "}${t("queue.seat.ready")}` : ""}`;
     return sentence(ownTitle(q, partner), words);
   }
   if (kind === "own") {
@@ -168,9 +161,7 @@ export function announcement(q: QueueView): string {
     const joiners = f.seats.filter((s) => s.state === "taken" && s.seat !== f.opener);
     const said = t("queue.say.shared", { name: sharedTitle(f), n: joiners.filter((s) => s.ready).length,
                                          count: joiners.length });
-    const waiting = f.waiting_for ?? [];
-    const words = q.leader && f.opener === f.you ? (waiting.length > 0 ? startLabel(waiting) : "")
-      : f.your_ready ? joinerLabel(true, ownerName(f)) : "";
+    const words = q.leader && f.opener === f.you ? "" : waitingLine(ownerName(f));
     return words ? `${said}${isZh() ? "" : " "}${words}${isZh() ? "。" : "."}` : said;
   }
   if (kind === "elsewhere") return t("queue.title.elsewhere");

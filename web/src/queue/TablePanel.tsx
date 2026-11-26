@@ -180,6 +180,7 @@ function PanelView({ m, guarded, sheet, act }: {
             <button ref={primaryRef} type="button"
                     className={`tp-primary${m.primary.waiting ? " waiting" : ""}`}
                     disabled={m.primary.disabled || guarded} aria-busy={m.primary.busy || undefined}
+                    aria-pressed={m.primary.pressed}
                     onClick={press(m.primary)}>
               {ringOf(m.primary.ring)}
               {m.primary.label}
@@ -220,7 +221,7 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
     else if (a.type === "move_to") mover.to(a.at);
     else if (a.type !== "code_pick" && a.type !== "code_join" && a.type !== "code_cancel"
              && a.type !== "offline_start" && a.type !== "offline_leave" && a.type !== "nearby_toggle"
-             && a.type !== "nearby_settings" && a.type !== "nearby_ready" && a.type !== "nearby_again") queueSend(a);
+             && a.type !== "nearby_settings" && a.type !== "nearby_start" && a.type !== "nearby_ready" && a.type !== "nearby_again") queueSend(a);
   };
   const sheet = asking ? (
     <LeaveSheet context={m.leave}
@@ -261,12 +262,15 @@ export function JoinCodePanel({ join, busy, onJoin, onCancel, onPick }: {
 export interface NearbyActs {
   onToggle?: () => void;
   onSettings?: () => void;
+  /** A nearby lobby host's Start. */
+  onHostStart?: () => void;
+  /** A nearby guest's Ready, a signal only. */
   onReady?: (on: boolean) => void;
   /** The Bots row's pick (the offline table's, or a nearby lobby's host). */
   onBots?: (level: BotLevel) => void;
 }
 
-function offlineAct({ onStart, onLeave, onBots, onToggle, onSettings, onReady }: NearbyActs & {
+function offlineAct({ onStart, onLeave, onBots, onToggle, onSettings, onHostStart, onReady }: NearbyActs & {
   onStart?: () => void; onLeave: () => void;
 }) {
   return (a: PanelAction) => {
@@ -275,6 +279,7 @@ function offlineAct({ onStart, onLeave, onBots, onToggle, onSettings, onReady }:
     else if (a.type === "bot_level") onBots?.(a.level);
     else if (a.type === "nearby_toggle") onToggle?.();
     else if (a.type === "nearby_settings") onSettings?.();
+    else if (a.type === "nearby_start") onHostStart?.();
     else if (a.type === "nearby_ready") onReady?.(a.on);
   };
 }
@@ -293,7 +298,7 @@ export function OfflinePanel({ ready, starting, bots, onBots, onStart, onLeave, 
 }
 
 /** A nearby table's lobby in Play's place, for its host and each joiner:
- *  the shared table's ready count and ring. `model` is nearbyModel.ts's
+ *  the host's Start with the bots' ring, a joiner's Ready. `model` is nearbyModel.ts's
  *  `nearbyRoomModel`, passed in by the nearby UI (nearbyUi.tsx), so this
  *  file carries none of nearby play's copy. */
 export function NearbyRoomPanel({ room, model, onLeave, ...acts }: {

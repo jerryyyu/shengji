@@ -398,3 +398,79 @@ describe("no burst after a stall", () => {
     expect(live.max).toBe(3);
   });
 });
+
+describe("review recovery ordering and live sources", () => {
+  const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const follows = [
+    { seat: 0, cards: ["H5"] }, { seat: 1, cards: ["H6"] },
+    { seat: 2, cards: ["H7"] }, { seat: 3, cards: ["H8"] },
+  ];
+  const state = ({
+    phase: "play", banker: 0, levels: ["2", "2"], current_declaration: null,
+    trump: { suit: "S", rank: "2" }, trick: { plays: follows },
+  }) as unknown as import("./protocol").GameState;
+  async function setup() {
+    const audio = await freshModule();
+    const proto = FakeAudioContext.prototype as unknown as Record<string, unknown>;
+    const param = { value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {} };
+    const nodes: { startCount: number; stopTimes: number[]; disconnects: number }[] = [];
+    proto.createOscillator = () => {
+      const node = { startCount: 0, stopTimes: [] as number[], disconnects: 0 };
+      nodes.push(node);
+      return {
+        frequency: param, connect() {}, disconnect() { node.disconnects++; },
+        start() { node.startCount++; }, stop(at?: number) { node.stopTimes.push(at ?? 0); },
+      };
+    };
+    proto.createGain = () => ({ gain: param, connect() {} });
+    proto.destination = {};
+    Object.assign(globalThis, { fetch: async () => ({ ok: false }) });
+    FakeAudioContext.allowResume = true;
+    dispatch("click");
+    await wait(0);
+    const c = FakeAudioContext.last!;
+    c.onstatechange?.();
+    return { audio, c, nodes };
+  }
+
+  it("cancels already started oscillators immediately on interruption", async () => {
+    const { audio, c, nodes } = await setup();
+    audio.announceState(state);
+    await wait(0);
+    expect(nodes.map((node) => node.startCount)).toEqual([1, 1, 1]);
+    expect(nodes.every((node) => node.stopTimes[0] > 0)).toBe(true);
+
+    c.state = "interrupted";
+    c.resume = () => new Promise<void>(() => {});
+    c.onstatechange?.();
+    await wait(90);
+
+    // The audio clock did not advance while the context was held, so its
+    // original playback-clock stop is still in the future.
+    c.state = "running";
+    c.onstatechange?.();
+    audio.resetAnnouncer();
+    audio.announceState(state);
+    await wait(0);
+    const liveAtAudioTime = nodes.filter((node) =>
+      node.startCount > 0 && node.disconnects === 0 && Math.min(...node.stopTimes) > c.currentTime,
+    );
+    expect(liveAtAudioTime).toHaveLength(3);
+  });
+
+  it("rejects sounds requested during a short hold even if resume is observed before statechange", async () => {
+    const { audio, c, nodes } = await setup();
+    const held: (() => void)[] = [];
+    c.state = "interrupted";
+    c.resume = () => new Promise<void>((res) => held.push(res));
+    c.onstatechange?.();
+    audio.announceState(state);
+    await wait(0);
+
+    c.state = "running";
+    for (const resolve of held) resolve();
+    await wait(0);
+    c.onstatechange?.();
+    expect(nodes).toHaveLength(0);
+  });
+});

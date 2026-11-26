@@ -6,9 +6,10 @@
 // A sound is for the moment it was asked for. iOS can hold a context out of
 // "running" (interrupted or suspended) for minutes while its resume() promise
 // stays pending; when that ends every sound still waiting on it would start
-// at once, as one loud burst. So nothing waits on the context for more than
-// LATE_MS, a change of context state invalidates every earlier request, and
-// at most MAX_VOICES sounds are ever live.
+// at once, as one loud burst. So a context that has run and is now held drops
+// each request at once (only the first unlock gets LATE_MS of grace), a
+// change of context state invalidates every earlier request and cancels every
+// live source, and at most MAX_VOICES source nodes are ever live.
 
 import type { GameState, Trump } from "./protocol";
 
@@ -21,7 +22,10 @@ const LATE_MS = 150;
 const STALE_MS = 2000;
 /** Live sources (clips and ticks) at once; one more is dropped. */
 const MAX_VOICES = 3;
-const TICK_MS = 70;
+/** A source whose onended has not come this long after its natural end is
+ *  stopped and disconnected, so a freed slot always means a dead node. */
+const END_GRACE_MS = 500;
+const TICK_S = 0.07;
 
 /** Non-card clips in public/sounds. */
 const VOICE_CLIPS = {
@@ -47,7 +51,12 @@ let pumping = false;
 /** Bumped whenever the context stops running, is replaced or the page hides:
  *  requests from an older epoch never play. */
 let epoch = 0;
-let voices = 0;
+/** Cancels (stop, disconnect, free the slot) of every live source node. */
+const live = new Set<() => void>();
+/** Contexts that have reached "running" at least once. */
+const ranOnce = new WeakSet<AudioContext>();
+/** Ran-once contexts that have left "running" since. */
+const heldAfterRun = new WeakSet<AudioContext>();
 
 function now(): number {
   return performance.now();
@@ -56,6 +65,32 @@ function now(): number {
 function invalidate(): void {
   epoch++;
   queue.length = 0;
+  for (const cancel of [...live]) cancel();
+}
+
+/** Counts `node` as a live voice until it ends or is cancelled. `release` and
+ *  `cancel` are idempotent: the slot is freed exactly once, however many of
+ *  onended, the guard timer and an invalidation arrive. */
+function addVoice(
+  node: AudioScheduledSourceNode, durationMs: number, onFree?: () => void,
+): () => void {
+  let freed = false;
+  const release = () => {
+    if (freed) return;
+    freed = true;
+    live.delete(cancel);
+    window.clearTimeout(guard);
+    onFree?.();
+  };
+  const cancel = () => {
+    try { node.stop(); } catch { /* not started, or already stopped */ }
+    try { node.disconnect(); } catch { /* already disconnected */ }
+    release();
+  };
+  live.add(cancel);
+  node.onended = release;
+  const guard = window.setTimeout(cancel, durationMs + END_GRACE_MS);
+  return cancel;
 }
 let muted = localStorage.getItem(MUTE_KEY) === "1"; // default: unmuted
 
@@ -77,15 +112,16 @@ function ensureCtx(): AudioContext {
  *  ran, so each such change re-arms them; otherwise the page stays silent
  *  until a reload. */
 function watch(c: AudioContext): AudioContext {
-  let ran = false;
   c.onstatechange = () => {
+    if (c !== ctx) return;
     const state = c.state as string;
     if (state === "running") {
       // a recovery, not the first unlock: what was asked for before is stale
-      if (ran) invalidate();
-      ran = true;
+      if (heldAfterRun.delete(c)) invalidate();
+      ranOnce.add(c);
       return;
     }
+    if (ranOnce.has(c)) heldAfterRun.add(c);
     invalidate();
     if (state === "closed") return;
     void c.resume().catch(() => {});
@@ -134,10 +170,17 @@ async function ensureRunning(): Promise<AudioContext> {
 }
 
 /** The running context for a sound of `reqEpoch`, or null to drop the sound.
- *  A resume that lands within LATE_MS (the first sound after an unlock tap)
- *  still plays; a context held back longer never releases a waiting sound. */
+ *  Before the first unlock a resume that lands within LATE_MS (the sound of
+ *  the unlock tap itself) still plays. A context that has run and is now held
+ *  drops the sound at once: its resume can land before the statechange that
+ *  reports the recovery, and a sound kept waiting would play stale. */
 async function runningFor(reqEpoch: number): Promise<AudioContext | null> {
   const c = ensureCtx();
+  if (c.state !== "running" && ranOnce.has(c)) {
+    armUnlock();
+    if (reqEpoch === epoch) invalidate();
+    return null;
+  }
   if (c.state !== "running") {
     armUnlock();
     let timer = 0;
@@ -153,6 +196,7 @@ async function runningFor(reqEpoch: number): Promise<AudioContext | null> {
     return null;
   }
   if (reqEpoch !== epoch || muted) return null;
+  ranOnce.add(c);
   return c;
 }
 
@@ -275,27 +319,17 @@ function fetchClip(name: string, speculative: boolean): Promise<AudioBuffer | nu
 /** Plays `buffer` now; false when it was dropped instead. */
 async function playBuffer(buffer: AudioBuffer, reqEpoch: number): Promise<boolean> {
   const c = await runningFor(reqEpoch);
-  if (c === null || voices >= MAX_VOICES) return false;
-  voices++;
+  if (c === null || live.size >= MAX_VOICES) return false;
   await new Promise<void>((resolve) => {
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      voices--;
-      window.clearTimeout(guard);
-      resolve();
-    };
     const src = c.createBufferSource();
     src.buffer = buffer;
     src.connect(c.destination);
-    // Guard timer so a wedged onended can never stall the pump.
-    const guard = window.setTimeout(finish, buffer.duration * 1000 + 500);
-    src.onended = finish;
+    // the guard inside addVoice keeps a wedged onended from stalling the pump
+    const cancel = addVoice(src, buffer.duration * 1000, resolve);
     try {
       src.start();
     } catch {
-      finish();
+      cancel();
     }
   });
   return true;
@@ -309,9 +343,7 @@ function sleep(ms: number): Promise<void> {
 function playTick(): void {
   if (muted) return;
   void runningFor(epoch).then((c) => {
-    if (c === null || voices >= MAX_VOICES) return;
-    voices++;
-    window.setTimeout(() => { voices--; }, TICK_MS);
+    if (c === null || live.size >= MAX_VOICES) return;
     const t = c.currentTime;
     const osc = c.createOscillator();
     const gain = c.createGain();
@@ -320,8 +352,9 @@ function playTick(): void {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
     osc.connect(gain);
     gain.connect(c.destination);
+    addVoice(osc, TICK_S * 1000);
     osc.start(t);
-    osc.stop(t + 0.07);
+    osc.stop(t + TICK_S);
   });
 }
 

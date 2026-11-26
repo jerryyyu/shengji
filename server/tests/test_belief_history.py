@@ -621,3 +621,36 @@ def test_length_fit_cli_trains_excluding_reserved_deals_and_reloads_for_search(c
     with pytest.raises(ValueError, match="1 of 2 requested steps"):
         lengths.main([*argv, "--steps", "2", "--out", str(other)])
     assert not other.exists()
+
+
+def test_heldout_void_reader_uses_live_public_inputs(chunk):
+    from shengji.ai.belief_numpy import decision_inputs
+    from shengji.train import belief_seq as bs
+    from shengji.train.belief_length_eval import decision
+
+    part = {k: np.copy(chunk["rows"][k]) for k in bs.ROW_KEYS}
+    bs.residualize(part)
+    part.update({k: chunk["hist"][k] for k in ("row_round", "row_ply", "row_seat")})
+    part["_rounds"] = chunk["hist"]
+    index = 0
+    roles = set()
+    for records in chunk["records"]:
+        for d in bl.iter_decisions(records):
+            offline = decision(part, index)
+            live = decision_inputs(d.rnd, d.seat, d.refusals)
+            for key in live:
+                np.testing.assert_array_equal(offline[key], live[key], err_msg=key)
+            roles.add(d.seat == d.rnd.banker)
+            index += 1
+    assert roles == {False, True}
+
+
+def test_paired_void_counts_bin_edges_and_empty_denominators():
+    from shengji.train.belief_length_eval import VoidCounts
+
+    counts = VoidCounts()
+    assert counts.report()["miss_rate"] is None
+    for p, actual in [(0, True), (0, False), (.5, False), (1, True)]:
+        counts.add(p, actual)
+    assert counts.report() == {"candidate_pairs": 4, "true_voids": 2,
+                               "missed_voids": 1, "miss_rate": .5, "sampled_void_ece": .375}

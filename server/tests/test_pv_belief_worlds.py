@@ -379,3 +379,55 @@ def test_learned_length_scores_change_hands_at_the_proposal_boundary():
         assert all(len(cards) == len(rnd.hands[s]) for s, cards in hands.items())
         totals.append([Counter(map(rnd.ordering.eff_suit, hand)) for hand in hands.values()])
     assert totals[0] != totals[1]
+
+
+def test_paired_void_cli_reads_only_held_out_decisions(package, tmp_path, capsys):
+    import hashlib
+    from shengji.train import belief_history as bh
+    from shengji.train import belief_labels as bl
+    from shengji.train import belief_length_eval as evaluator
+    from shengji.train import belief_lengths as fitter
+    from test_belief_labels import synthetic_cluster
+
+    hist = tmp_path / "hist"
+    hist.mkdir()
+    files, histories = {}, {}
+    for split, seed in [("train", 1003), ("test", 1017)]:
+        shard = tmp_path / (split + ".jsonl")
+        shard.write_text("".join(json.dumps(r) + "\n" for r in synthetic_cluster(seed)))
+        rows = bl.extract_cluster(shard, store_index=0, cluster_index=0, calib=0, test=0,
+                                  windows=[], sampler_worlds=0, sampler_splits=())
+        name = split + ".npz"
+        path = tmp_path / name
+        np.savez(path, **{k: rows[k][:3] for k in bl.ARRAY_KEYS})
+        history = bh.chunk_history(str(path), [str(shard)])
+        np.savez(hist / name, **history)
+        files[split] = {"file": name, "rows": 3, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        histories[name] = hashlib.sha256((hist / name).read_bytes()).hexdigest()
+
+    def manifests():
+        data = json.dumps({"chunks": [{"files": files}]}).encode()
+        (tmp_path / "manifest.json").write_bytes(data)
+        (hist / "manifest.json").write_text(json.dumps({
+            "schema": bh.SCHEMA, "files": histories,
+            "source_extract_manifest_sha256": hashlib.sha256(data).hexdigest()}))
+
+    manifests()
+    ckpt = str(tmp_path / "head.pt")
+    assert fitter.main(["--extract", str(tmp_path), "--out", ckpt, "--steps", "1",
+                        "--seed", "15", "--width", "8"]) == 0
+    capsys.readouterr()
+    args = ["--extract", str(tmp_path), "--length-checkpoint", ckpt, "--seed", "3",
+            "--belief-package", package["path"], "--belief-sha256", package["sha256"]]
+    assert evaluator.main(args) is None
+    result = json.loads(capsys.readouterr().out)
+    assert (result["worlds"], result["decisions"], result["deals"]) == (64, 3, 1)
+    for role in ("banker", "other_seats", "kitty"):
+        joint, plain = (result["arms"][a][role] for a in ("joint", "plain"))
+        assert joint["candidate_pairs"] == plain["candidate_pairs"] > 0
+        assert joint["true_voids"] == plain["true_voids"]
+        assert 0 <= joint["sampled_void_ece"] <= 1
+    files["test"] = files["train"]
+    manifests()
+    with pytest.raises(ValueError, match="training exposure"):
+        evaluator.main(args)

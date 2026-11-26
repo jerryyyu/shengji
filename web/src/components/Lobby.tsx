@@ -25,9 +25,11 @@ import { telemetry, type Screen } from "../telemetry";
 import { rounds } from "../roundTelemetry";
 import { panelKind } from "../queue/tableText";
 import { APP_STORE_BADGE, appStoreUrl } from "../appStore";
-import { isZh, useT } from "../i18n";
+import { isZh, locale, useT } from "../i18n";
 
-/** Apple's zh-cn badge, beside the English one under public/badges/. */
+/** Apple's zh-cn badge, beside the English one under public/badges/; a
+ *  Traditional Chinese reader gets the English one until the zh-tw artwork
+ *  is added there. */
 const APP_STORE_BADGE_ZH = "/badges/app-store-zh.svg";
 
 interface LobbyProps {
@@ -252,7 +254,7 @@ export default function Lobby({ status, room = null }: LobbyProps) {
             table panel */}
         <div className="play-art">
           <h1 className="game-title">
-            {isZh() ? "升级" : <>升级 <span className="game-title-en">Sheng Ji</span></>}
+            {isZh() ? t("common.mark") : <>{t("common.mark")} <span className="game-title-en">Sheng Ji</span></>}
           </h1>
           {showArt ? <LobbyPreview /> : null}
         </div>
@@ -314,7 +316,7 @@ function AppStoreBadge() {
   };
   return (
     <a className="app-store-badge" href={appStoreUrl("play-tab-web")} onClick={tapped}>
-      <img src={isZh() ? APP_STORE_BADGE_ZH : APP_STORE_BADGE} alt={t("home.appStoreAlt")} width={120} height={40} />
+      <img src={locale() === "zh-Hans" ? APP_STORE_BADGE_ZH : APP_STORE_BADGE} alt={t("home.appStoreAlt")} width={120} height={40} />
     </a>
   );
 }

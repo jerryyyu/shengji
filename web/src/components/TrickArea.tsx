@@ -196,7 +196,7 @@ export default function TrickArea({ state, trick, winner, declaration, handRects
         </div>
       ) : null}
 
-      {!trick?.plays.length && !declaration ? <div className="table-emblem">升级</div> : null}
+      {!trick?.plays.length && !declaration ? <div className="table-emblem">{t("common.mark")}</div> : null}
 
       {/* The deck the deal comes from, with your share so far. Only the
           phone layout draws it; dealt cards fly into the hand from here. */}

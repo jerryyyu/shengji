@@ -7224,23 +7224,29 @@ dialog.leave-sheet-backdrop {
   font-weight: 600;
 }
 
-/* Simplified Chinese: PingFang SC (or the platform's SC face) for the CJK
-   glyphs; no tracking, which pulls characters apart (a code's Latin letters
-   keep theirs); no strikethrough, which crosses out the strokes. */
+/* Chinese: the script's PingFang face (or the platform's SC or TC face) for
+   the CJK glyphs; no tracking, which pulls characters apart (a code's Latin
+   letters keep theirs); no strikethrough, which crosses out the strokes.
+   :lang(zh) matches both zh-Hans and zh-Hant. */
 :root:lang(zh-Hans) {
   font-family: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC",
     "Microsoft YaHei", sans-serif;
 }
 
-:root:lang(zh-Hans) body :not(input, [class*="code"], [class*="code"] *) {
+:root:lang(zh-Hant) {
+  font-family: system-ui, -apple-system, "PingFang TC", "PingFang HK", "Noto Sans CJK TC",
+    "Microsoft JhengHei", sans-serif;
+}
+
+:root:lang(zh) body :not(input, [class*="code"], [class*="code"] *) {
   letter-spacing: normal !important;
 }
 
-:root:lang(zh-Hans) input::placeholder {
+:root:lang(zh) input::placeholder {
   letter-spacing: normal;
 }
 
-:root:lang(zh-Hans) .play-mode-opt:disabled {
+:root:lang(zh) .play-mode-opt:disabled {
   text-decoration: none;
 }
 

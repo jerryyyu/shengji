@@ -697,7 +697,7 @@ describe("the Settings group", () => {
     expect(account).toEqual(["Show me on the leaderboard", "Edit name"]);
   });
 
-  it("Language opens its choices in place; 中文 redraws Me in Chinese and is remembered", async () => {
+  it("Language opens its choices in place; 简体中文 redraws Me in Chinese and is remembered", async () => {
     authState.current = { status: "in", clientId: "cid", user: JERRY };
     await render();
     const row = () => host.querySelector<HTMLButtonElement>(".me-language")!;
@@ -706,13 +706,30 @@ describe("the Settings group", () => {
     expect(row().querySelector(".me-language-value")?.textContent).toBe("Follow system");
     expect(head()?.textContent).toBe("Settings");
     act(() => row().click());
-    expect(choices()).toEqual(["Follow system", "English", "中文"]);
+    expect(choices()).toEqual(["Follow system", "English", "简体中文", "繁體中文"]);
     act(() => host.querySelectorAll<HTMLButtonElement>(".me-language-option")[2].click());
     expect(localStorage.getItem("shengji.language")).toBe("zh-Hans");
     expect(document.documentElement.lang).toBe("zh-Hans");
     expect(head()?.textContent).toBe("设置");
-    expect(row().querySelector(".me-language-value")?.textContent).toBe("中文");
+    expect(row().querySelector(".me-language-value")?.textContent).toBe("简体中文");
     expect(choices()).toEqual([]);
+    act(() => setLanguageChoice("system"));
+    expect(head()?.textContent).toBe("Settings");
+  });
+
+  it("繁體中文 redraws Me in Traditional Chinese and is remembered", async () => {
+    authState.current = { status: "in", clientId: "cid", user: JERRY };
+    await render();
+    const row = () => host.querySelector<HTMLButtonElement>(".me-language")!;
+    act(() => row().click());
+    const option = host.querySelectorAll<HTMLButtonElement>(".me-language-option")[3];
+    expect(option.getAttribute("lang")).toBe("zh-Hant");
+    act(() => option.click());
+    expect(localStorage.getItem("shengji.language")).toBe("zh-Hant");
+    expect(document.documentElement.lang).toBe("zh-Hant");
+    expect(head()?.textContent).toBe("設定");
+    expect(row().querySelector(".me-language-value")?.textContent).toBe("繁體中文");
+    expect(groupLabels()).toEqual(["新手提示", "音效", "語言", "怎麼玩"]);
     act(() => setLanguageChoice("system"));
     expect(head()?.textContent).toBe("Settings");
   });
@@ -723,7 +740,7 @@ describe("the Settings group", () => {
     await render();
     act(() => host.querySelector<HTMLButtonElement>(".me-language")!.click());
     const choices = [...host.querySelectorAll(".me-language-option .grp-label")].map((e) => e.textContent);
-    expect(choices).toEqual(["Follow system", "English", "中文"]);
+    expect(choices).toEqual(["Follow system", "English", "简体中文", "繁體中文"]);
     expect(host.querySelector(".me-language-value")?.textContent).toBe("Follow system");
   });
 

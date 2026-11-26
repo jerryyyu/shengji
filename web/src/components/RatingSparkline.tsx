@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
-import { isZh, t as tr, useT } from "../i18n";
+import { locale, t as tr, useT } from "../i18n";
 
 /** The rating after each recent round, drawn as one gold line over a faint
  *  fill with the latest point marked. At rest it has no axis and no visible
@@ -33,7 +33,7 @@ export function shortDate(at: number, now: Date = new Date()): string {
   const d = new Date(at * 1000);
   if (d.toDateString() === now.toDateString()) return tr("home.today");
   const sameYear = d.getFullYear() === now.getFullYear();
-  return new Intl.DateTimeFormat(isZh() ? "zh-Hans" : "en-US", {
+  return new Intl.DateTimeFormat(locale() === "en" ? "en-US" : locale(), {
     month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }),
   }).format(d);
 }

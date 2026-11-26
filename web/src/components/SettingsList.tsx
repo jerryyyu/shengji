@@ -41,6 +41,7 @@ const LANGUAGE_LABEL = {
   system: "language.system",
   en: "language.en",
   "zh-Hans": "language.zh",
+  "zh-Hant": "language.zhHant",
 } as const;
 
 /** The Language row: its value is the choice, and a tap opens the choices
@@ -50,7 +51,7 @@ function LanguageRow() {
   const t = useT();
   const [open, setOpen] = useState(false);
   const chosen = languageChoice();
-  const options: LanguageChoice[] = ["system", "en", "zh-Hans"];
+  const options: LanguageChoice[] = ["system", "en", "zh-Hans", "zh-Hant"];
   return (
     <li>
       <button type="button" className="grp-row me-language" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
@@ -63,7 +64,7 @@ function LanguageRow() {
             {options.map((o) => (
               <li key={o}>
                 <button type="button" className="grp-row me-language-option" role="radio" aria-checked={o === chosen}
-                        lang={o === "zh-Hans" ? "zh-Hans" : o === "en" ? "en" : undefined}
+                        lang={o === "system" ? undefined : o}
                         onClick={() => { setLanguageChoice(o); setOpen(false); }}>
                   <span className="grp-label">{t(LANGUAGE_LABEL[o])}</span>
                   <span className="grp-value me-language-check" aria-hidden="true">{o === chosen ? "✓" : ""}</span>

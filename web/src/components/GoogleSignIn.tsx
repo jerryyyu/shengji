@@ -9,7 +9,7 @@ import {
 } from "../nativeAuth";
 import { telemetry, type DeviceStep, type Provider } from "../telemetry";
 import ConfirmSheet from "./ConfirmSheet";
-import { isZh, useT } from "../i18n";
+import { isZh, locale, useT } from "../i18n";
 
 /** GIS's own button wording ("Sign in with Google"), drawn by Google. */
 const GIS_WORDING = "signin_with";
@@ -70,7 +70,7 @@ function WebGoogleSignIn({ clientId }: { clientId: string }) {
         gis.renderButton(slot.current, {
           theme: "filled_black", size: "large", shape: "pill", text: GIS_WORDING, logo_alignment: "center", width,
           // Google draws the button in the page's language when told; English is left to its default
-          ...(isZh() ? { locale: "zh_CN" } : {}),
+          ...(isZh() ? { locale: locale() === "zh-Hant" ? "zh_TW" : "zh_CN" } : {}),
         });
       })
       .catch((e: Error) => {

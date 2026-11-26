@@ -1,11 +1,11 @@
 import { useSyncExternalStore } from "react";
 import { isNative } from "../native";
 
-/** The languages the app speaks. zh-Hans is Simplified Chinese; a reader of
- *  Traditional Chinese (zh-Hant, zh-TW, zh-HK, zh-MO) gets it too, since
- *  Simplified reads better for them than English until Traditional has its
- *  own table. */
-export type Locale = "en" | "zh-Hans";
+/** The languages the app speaks: English, Simplified Chinese (zh-Hans) and
+ *  Traditional Chinese (zh-Hant). */
+export type Locale = "en" | "zh-Hans" | "zh-Hant";
+
+const LOCALES: readonly string[] = ["en", "zh-Hans", "zh-Hant"];
 
 /** The Language row's choice: a fixed language, or the device's. */
 export type LanguageChoice = "system" | Locale;
@@ -43,7 +43,7 @@ export function nativeStore(name: "get" | "set" | "remove"): Method | null {
 }
 
 function parseChoice(v: unknown): LanguageChoice {
-  return v === "en" || v === "zh-Hans" ? v : "system";
+  return typeof v === "string" && LOCALES.includes(v) ? (v as Locale) : "system";
 }
 
 function storeLocal(c: LanguageChoice): void {
@@ -55,13 +55,22 @@ function storeLocal(c: LanguageChoice): void {
   }
 }
 
+/** The Chinese script a zh tag asks for: an explicit script subtag wins,
+ *  else Taiwan, Hong Kong and Macau read Traditional and every other region
+ *  Simplified. */
+function chineseScript(tag: string): Locale {
+  const parts = tag.split(/[-_]/).slice(1);
+  if (parts.includes("hant")) return "zh-Hant";
+  if (parts.includes("hans")) return "zh-Hans";
+  return parts.some((p) => p === "tw" || p === "hk" || p === "mo") ? "zh-Hant" : "zh-Hans";
+}
+
 /** The locale a list of BCP 47 tags asks for, by its first non-empty tag:
- *  zh-Hans for any Chinese tag, Traditional included, English for everything
- *  else. */
+ *  Chinese in its script, English for everything else. */
 export function localeFor(tags: readonly string[]): Locale {
   for (const raw of tags) {
     const tag = raw.toLowerCase();
-    if (tag === "zh" || tag.startsWith("zh-")) return "zh-Hans";
+    if (tag === "zh" || tag.startsWith("zh-") || tag.startsWith("zh_")) return chineseScript(tag);
     if (tag) return "en";
   }
   return "en";
@@ -102,7 +111,7 @@ function resolve(c: LanguageChoice): Locale {
 
 function apply(): void {
   current = resolve(choice);
-  if (typeof document !== "undefined") document.documentElement.lang = current === "zh-Hans" ? "zh-Hans" : "en";
+  if (typeof document !== "undefined") document.documentElement.lang = current;
   for (const cb of listeners) cb();
 }
 
@@ -157,8 +166,8 @@ export function loadLanguage(waitMs = NATIVE_READ_MS): Promise<void> | null {
     .then((r) => {
       if (r === "late") return;
       const stored = (r as { value?: unknown } | undefined)?.value;
-      if (stored === "en" || stored === "zh-Hans" || stored === "system") {
-        choice = stored;
+      if (typeof stored === "string" && (stored === "system" || LOCALES.includes(stored))) {
+        choice = stored as LanguageChoice;
         storeLocal(choice);
         apply();
         return;

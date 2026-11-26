@@ -505,7 +505,7 @@ class Room:
     seats: list[Seat | None] = field(default_factory=list)
     # The opener: the creator, then the next person round the table when the
     # opener leaves the lobby. Only the opener sets the starting level and
-    # Ranked and may start before everyone tapped Start.
+    # Ranked and may start before everyone tapped Ready.
     host: int = 0
     game: Game | None = None
     # The levels the finished round was played at, with its round number:
@@ -1258,7 +1258,7 @@ def room_table_frame(room: Room, seat: int) -> dict:
         "settings": {"allow_joiners": room.allow_joiners,
                      "start_level": room.start_level,
                      "bot_level": room.bot_level},
-        "timers": {"bots": None, "start_now_at": None},
+        "timers": {"bots": None},
         "your_ready": None, "waiting_for": None, "chat_log": room.code,
     }
 

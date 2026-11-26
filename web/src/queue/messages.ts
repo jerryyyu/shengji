@@ -39,12 +39,13 @@ export type QueueClientMsg = { name?: string } & (
   | { type: "table_join"; code: string; seat?: number; token?: string; expect?: "room" }
   /** Leave your search, waiting table or room seat. */
   | { type: "table_leave" }
-  /** `panel_seq` is the queue_state's: a Start sent against a panel that has
-   *  since changed is refused with `panel_changed`. `on: false` takes your
-   *  Start back before the table starts (a Duo member: its own). */
+  /** A joiner's Ready. `panel_seq` is the queue_state's: a tap sent against
+   *  a panel that has since changed is refused with `panel_changed`.
+   *  `on: false` takes your Ready back before the table starts (a Duo
+   *  member: its own). The owner has no Ready. */
   | { type: "table_start"; on?: boolean; panel_seq?: number }
-  /** The opener's Start now at a waiting table, from its `start_now_at`:
-   *  the table starts at once with bots (`not_opener`, `too_soon`). */
+  /** The owner's Start at a waiting table: it starts at once with bots
+   *  once every connected joiner is Ready (`not_opener`, `panel_changed`). */
   | { type: "table_start_now"; panel_seq?: number }
   /** Play bots: start your table now with bots in the open seats (at a
    *  waiting table, your Start). */
@@ -137,8 +138,8 @@ export interface QueueStateMsg {
   /** Queued: the seat your entry holds for your friend (2 while alone),
    *  else your table's first held seat, or null. */
   held_seat?: number | null;
-  /** Queued in a Duo made at a table: how many of you tapped Start (each
-   *  member taps; null otherwise), and whether you did. */
+  /** Queued in a Duo made at a table: how many of you tapped Ready (the
+   *  partner taps, its leader never; null otherwise), and whether you did. */
   duo_ready?: number | null;
   you_ready?: boolean;
 }
@@ -192,9 +193,6 @@ export interface WaitingTableMsg {
   code?: string;
   /** The opener's seat. */
   opener?: number;
-  /** When the opener's Start now unlocks (server clock, seconds): 30 s
-   *  after the latest person sat. */
-  start_now_at?: number;
   /** The empty seat held for the table opener's friend (at most one; null
    *  when none), also as a list. */
   held_seat?: number | null;
@@ -203,11 +201,12 @@ export interface WaitingTableMsg {
   you: number;
   /** The table's bot timer and whose it is; null when every switch is on. */
   timer: { at: number; name: string; you: boolean } | null;
-  /** People whose Start is in, of the people seated. */
+  /** People whose Ready is in, of the people seated. */
   ready: number;
   of: number;
   you_ready: boolean;
-  /** Who else has yet to tap Start, by name (a pair by its leader). */
+  /** The connected joiners but you whose Ready the owner's Start still
+   *  waits for, by name. */
   waiting_for: string[];
 }
 
@@ -219,7 +218,7 @@ export interface TableFrameSeatMsg {
   state: "taken" | "open" | "held" | "bot";
   name: string | null;
   you: boolean;
-  /** Tapped Start (a Duo member: its own); null in a game. */
+  /** Tapped Ready (a Duo member: its own; never the owner); null in a game. */
   ready: boolean | null;
   reconnecting: boolean;
   /** When this person sat down; null in a game. */
@@ -250,12 +249,11 @@ export interface TableFrameMsg {
   timers: {
     /** The table's bot timer and whose it is; null when none runs. */
     bots: { at: number; name: string; you: boolean } | null;
-    /** When the opener's Start now unlocks; null alone and in a game. */
-    start_now_at: number | null;
   };
-  /** Your own Start is in; null in a game. */
+  /** Your own Ready is in; null in a game. */
   your_ready: boolean | null;
-  /** Who else has yet to tap Start, by name (a pair by its leader). */
+  /** The connected joiners but you whose Ready the owner's Start still
+   *  waits for, by name. */
   waiting_for: string[] | null;
   /** The key the table's chat frames carry: `table_chat.table` (null
    *  alone), or the room's code in a game. */

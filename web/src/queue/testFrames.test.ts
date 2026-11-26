@@ -20,7 +20,7 @@ function read(f: TableFrameMsg, alone: boolean) {
     seats: f.seats.map((s) => ({ seat: s.seat, team: s.team, state: s.state, name: s.you ? null : s.name, you: s.you,
                                  ready: s.ready, reconnecting: s.reconnecting, since: alone ? null : s.since, sit: alone ? null : s.sit,
                                  pair: s.pair })),
-    bots: f.timers.bots?.at ?? null, startNowAt: f.timers.start_now_at, yourReady: f.your_ready,
+    bots: f.timers.bots?.at ?? null, yourReady: f.your_ready,
     waitingFor: f.waiting_for, chatLog: f.chat_log,
   };
 }

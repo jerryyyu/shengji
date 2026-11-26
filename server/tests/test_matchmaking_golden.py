@@ -270,6 +270,8 @@ async def lone_start_bots_single_and_pair(env: Env) -> None:
     env.peek(env.code(2))
     await env.send(3, "queue_start_bots")
     await env.send(2, "queue_start_bots")
+    await env.send(3, "table_start")
+    await env.send(2, "queue_start_bots")
 
 
 @scenario
@@ -291,6 +293,8 @@ async def two_lone_entries_meet_at_the_openers_table(env: Env) -> None:
     await env.send(2, "queue_status")
     await env.advance(40.0)
     await env.send(2, "table_start_now")
+    await env.send(1, "table_start_now")
+    await env.send(2, "table_start")
     await env.send(1, "table_start_now")
 
 
@@ -370,6 +374,7 @@ async def a_lone_chat_over_the_cap_merges_in_time_order(env: Env) -> None:
     await env.send(1, "queue_leave")
     await env.send(3, "table_chat", text="alone again")
     await env.send(3, "queue_status")
+    await env.advance(mm.ROLE_GRACE_SECS)
     await env.send(3, "queue_start_bots")
 
 
@@ -390,6 +395,7 @@ async def a_duo_table_holds_its_seat_and_pairs_its_code_joiner(env: Env) -> None
     await env.send(1, "table_start")
     await env.send(2, "table_start")
     await env.send(3, "table_start")
+    await env.send(1, "table_start_now")
     await env.pair(4, 5)
     await env.send(4, "queue_join")
     await env.join(6, 1000.0)
@@ -403,8 +409,8 @@ async def a_duo_paired_alone_chats_and_splits(env: Env) -> None:
     await env.send(2, "table_chat", text="partner alone")
     env.peek(code)
     await env.send(2, "table_start")
-    await env.send(1, "table_start")
     await env.send(1, "table_unready")
+    await env.send(2, "table_unready")
     await env.send(1, "party_leave")
     await env.send(2, "table_chat", text="partner is the opener now")
     await env.send(2, "queue_status")
@@ -433,6 +439,7 @@ async def a_duo_partner_leaving_holds_the_seat_again(env: Env) -> None:
     await env.send(3, "table_start")
     await env.send(6, "table_start")
     await env.send(5, "table_start")
+    await env.send(5, "table_start_now")
 
 
 @scenario
@@ -442,6 +449,8 @@ async def a_duo_starts_with_its_seat_held(env: Env) -> None:
     await env.join(2, duo=True)
     await env.join(3)
     await env.advance(31.0)
+    await env.send(2, "table_start_now")
+    await env.send(3, "table_start")
     await env.send(2, "table_start_now")
 
 
@@ -507,6 +516,7 @@ async def settings_carry_and_are_the_openers(env: Env) -> None:
     await env.send(3, "queue_leave")
     env.peek(c1)
     await env.send(2, "table_start_level", start_level="4")
+    await env.advance(mm.ROLE_GRACE_SECS)
     await env.send(2, "queue_start_bots")
 
 
@@ -527,7 +537,7 @@ async def still_here_at_a_table_with_no_timer(env: Env) -> None:
 async def idle_at_a_timed_table_leaves(env: Env) -> None:
     await env.join(1)
     await env.join(2)
-    await env.send(1, "table_start")
+    await env.send(2, "table_start")
     await env.send(1, "queue_wait_players")
     await env.send(2, "queue_wait_players")
     await env.send(1, "queue_allow_bots")
@@ -535,17 +545,20 @@ async def idle_at_a_timed_table_leaves(env: Env) -> None:
 
 
 @scenario
-async def start_now_unlocks_after_the_latest_arrival(env: Env) -> None:
+async def the_owners_start_waits_for_every_joiners_ready(env: Env) -> None:
     await env.join(1)
     await env.advance(10.0)
     await env.join(2)
     await env.send(1, "table_start_now")
-    await env.advance(20.0)
-    await env.join(3)
-    await env.advance(29.0)
-    await env.send(1, "table_start_now")
-    await env.advance(2.0, pump=False)
+    await env.send(1, "table_start")
     await env.send(2, "table_start_now")
+    await env.send(2, "table_start")
+    await env.advance(5.0)
+    await env.join(3)
+    await env.send(1, "table_start_now")
+    await env.send(3, "table_start")
+    await env.send(3, "table_unready")
+    await env.send(3, "table_start")
     await env.send(1, "table_start_now", panel_seq=1)
     await env.send(1, "table_start_now")
 
@@ -618,14 +631,14 @@ async def a_failed_start_puts_everyone_back_at_the_front(env: Env) -> None:
     await env.send(1, "table_allow_joiners", on=True)
     await env.send(2, "table_chat", text="at the table")
     env.fail_starts = 1
-    await env.send(1, "table_start")
     await env.send(2, "table_start")
+    await env.send(1, "table_start_now")
     await env.send(1, "queue_status")
     await env.send(2, "queue_status")
     await env.tick()
     await env.send(2, "table_chat", text="second table")
-    await env.send(1, "table_start")
     await env.send(2, "table_start")
+    await env.send(1, "table_start_now")
 
 
 @scenario

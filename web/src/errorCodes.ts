@@ -57,7 +57,6 @@ const QUEUE_ROUTES = {
   ranked_level_fixed: { says: "toast" },
   ranked_bots_fixed: { says: "toast" },
   bad_setting: { says: "toast" },
-  too_soon: { says: "toast" },
 } as const satisfies Record<string, ErrorRoute>;
 
 /** Rooms, seats, reports, blocks, and the queue's codes a queue action does not

@@ -6291,8 +6291,9 @@ button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2
 .tp-acts:has(.tp-primary .timer-ring) .tp-primary { flex: 3 0 auto; }
 .tp-acts:has(.tp-primary .timer-ring) .tp-secondary { flex: 1 0 auto; }
 .tp-primary:disabled { background: #2a2f38; border-color: #3a4250; color: #8a929f; cursor: default; }
-/* a Duo's search, after both Starts: a quiet button with the bots' ring */
-.tp-primary.searching:disabled { background: transparent; border-color: #3a4250; color: #e9ecf2; }
+/* the owner's Start while it waits for a joiner's Ready: a quiet button
+   with the bots' ring, never dimmed */
+.tp-primary.waiting:disabled { background: transparent; border-color: #3a4250; color: #e9ecf2; }
 /* Leave's size and fill are Duo's (the Secondary rule); these are its own. */
 .tp-secondary {
   appearance: none; flex: none; font-family: inherit; line-height: inherit; cursor: pointer; white-space: nowrap;

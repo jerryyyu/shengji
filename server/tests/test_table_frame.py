@@ -37,7 +37,7 @@ def _shape(frame: dict) -> None:
         if s["state"] in ("open", "held"):
             assert s["name"] is None
     assert set(frame["settings"]) == {"allow_joiners", "start_level", "bot_level"}
-    assert set(frame["timers"]) == {"bots", "start_now_at"}
+    assert set(frame["timers"]) == {"bots"}
 
 
 def from_queue_state(qs: dict) -> dict:
@@ -62,7 +62,7 @@ def from_queue_state(qs: dict) -> dict:
         else:
             seats.append({"seat": i, "state": "taken", **{k: s[k] for k in QUEUE_SEAT_FIELDS}})
     out.update(code=t["code"], you=t["you"], opener=t["opener"], seats=seats,
-               timers={"bots": t["timer"], "start_now_at": t["start_now_at"]},
+               timers={"bots": t["timer"]},
                your_ready=t["you_ready"], waiting_for=t["waiting_for"], chat_log=t["id"])
     return out
 
@@ -84,7 +84,6 @@ def _agrees(frame: dict, qs: dict) -> None:
         assert qs["table"]["held_seat"] == next(
             (s["seat"] for s in frame["seats"] if s["state"] == "held"), None)
     else:
-        assert frame["timers"]["start_now_at"] is None
         assert frame["timers"]["bots"] == (None if qs["bots_at"] is None else
                                            {**frame["timers"]["bots"], "at": qs["bots_at"]})
     if qs["held_seat"] is not None:
@@ -211,7 +210,7 @@ def _agrees_with_room(frame: dict, room: dict, state: dict | None) -> None:
                                  "start_level": room["start_level"],
                                  "bot_level": room["bot_level"]}
     assert frame["chat_log"] == room["room"]
-    assert frame["timers"] == {"bots": None, "start_now_at": None}
+    assert frame["timers"] == {"bots": None}
     assert frame["your_ready"] is None and frame["waiting_for"] is None
     by_seat = {p["seat"]: p for p in (state or room)["players"]}
     for s in frame["seats"]:

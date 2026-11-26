@@ -95,18 +95,22 @@ export function ownTitle(q: QueueView, partner: string | null): string {
   return t(q.duo && holdsSeat(q) ? "queue.title.yourDuo" : "queue.title.yourTable");
 }
 
-/** A Duo's own-table button: Start until you tap it, then who it waits
- *  for, then the search the pair is in. */
-export function duoStartLabel(q: QueueView, partner: string): string {
-  if (!yourReady(q)) return t("queue.btn.start");
-  return (q.duoReady ?? 0) >= 2 ? t("queue.btn.finding") : t("queue.btn.waitingFor", { name: shortName(partner) });
+/** A joiner's button: Ready until you tap it, then the owner it waits for. */
+export function joinerLabel(ready: boolean, owner: string): string {
+  return ready ? t("queue.btn.waitingFor", { name: shortName(owner) }) : t("queue.btn.ready");
 }
 
-/** A shared table's one status line: who is ready. The bots' countdown is
- *  the ring on the Start button, never a line. */
+/** The table's owner by name: whoever sits in the opener's seat. */
+export function ownerName(f: TableFrame): string {
+  return f.seats[f.opener]?.name ?? "";
+}
+
+/** A shared table's one status line: how many joiners are ready (the
+ *  owner has no Ready). The bots' countdown is the ring on the button,
+ *  never a line. */
 export function sharedStatusLine(f: TableFrame): string {
-  const taken = f.seats.filter((s) => s.state === "taken");
-  return t("queue.status.ready", { n: taken.filter((s) => s.ready).length, count: taken.length });
+  const joiners = f.seats.filter((s) => s.state === "taken" && s.seat !== f.opener);
+  return t("queue.status.ready", { n: joiners.filter((s) => s.ready).length, count: joiners.length });
 }
 
 /** "You and Alice", "You, Alice and Li". */
@@ -117,12 +121,8 @@ export function sharedTitle(f: TableFrame): string {
   return t("queue.title.youAndMany", { name: andList(others) });
 }
 
-/** The Start button's words: Start until you tap it, then who the table is
- *  waiting for. */
-export function startLabel(f: TableFrame): string {
-  if (!f.your_ready) return t("queue.btn.start");
-  const w = f.waiting_for ?? [];
-  if (w.length === 0) return t("queue.btn.starting");
+/** The owner's Start while it waits: the joiners whose Ready is out. */
+export function startLabel(w: string[]): string {
   if (w.length === 1) return t("queue.btn.waitingFor", { name: shortName(w[0]) });
   return t("queue.btn.waitingForN", { n: w.length });
 }
@@ -149,9 +149,12 @@ export function announcement(q: QueueView): string {
   if (kind === "join" && q.offer) {
     return t("queue.say.offer", { name: joinTitle(q.offer) });
   }
-  if (kind === "own" && q.duoReady !== null && q.partyId) {
-    const partner = q.party?.members.find((m) => !m.you)?.name ?? null;
-    return t("queue.say.duoReady", { name: ownTitle(q, partner), n: q.duoReady });
+  if (kind === "own" && q.duoReady !== null && q.partyId && q.frame) {
+    const partner = q.party?.members.find((m) => !m.you)?.name ?? "";
+    const waiting = (q.frame.waiting_for ?? []).length > 0;
+    const words = !q.leader ? joinerLabel(yourReady(q), partner)
+      : waiting ? t("queue.btn.waitingFor", { name: shortName(partner) }) : t("queue.btn.startBots");
+    return sentence(ownTitle(q, partner), words);
   }
   if (kind === "own") {
     const who = t(q.partyId ? "queue.say.duoTable" : q.duo && holdsSeat(q) ? "queue.title.yourDuo" : "queue.title.yourTable");
@@ -162,12 +165,21 @@ export function announcement(q: QueueView): string {
   }
   if (kind === "shared" && q.frame) {
     const f = q.frame;
-    const said = t("queue.say.shared", { name: sharedTitle(f), n: f.seats.filter((s) => s.state === "taken" && s.ready).length,
-                                         count: f.seats.filter((s) => s.state === "taken").length });
-    return f.your_ready ? `${said}${isZh() ? "" : " "}${startLabel(f)}${isZh() ? "。" : "."}` : said;
+    const joiners = f.seats.filter((s) => s.state === "taken" && s.seat !== f.opener);
+    const said = t("queue.say.shared", { name: sharedTitle(f), n: joiners.filter((s) => s.ready).length,
+                                         count: joiners.length });
+    const waiting = f.waiting_for ?? [];
+    const words = q.leader && f.opener === f.you ? (waiting.length > 0 ? startLabel(waiting) : "")
+      : f.your_ready ? joinerLabel(true, ownerName(f)) : "";
+    return words ? `${said}${isZh() ? "" : " "}${words}${isZh() ? "。" : "."}` : said;
   }
   if (kind === "elsewhere") return t("queue.title.elsewhere");
   return "";
+}
+
+/** "Name. Words." in the app's language. */
+function sentence(name: string, words: string): string {
+  return isZh() ? `${name}。${words}。` : `${name}. ${words}.`;
 }
 
 /** One piece of the presence line; `hl` marks the selected mode's count. */

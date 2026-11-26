@@ -30,8 +30,7 @@ export const queue = defineMessages({
   "queue.btn.start": { en: "Start", zh: "开始" },
   "queue.btn.starting": { en: "Starting…", zh: "正在开始…" },
   "queue.btn.startBots": { en: "Start with bots", zh: "机器人补位开始" },
-  "queue.btn.startNow": { en: "Start now", zh: "现在开始" },
-  "queue.btn.finding": { en: "Finding a table", zh: "正在找牌桌" },
+  "queue.btn.ready": { en: "Ready", zh: "准备" },
   "queue.btn.waitingFor": { en: "Waiting for {name}", zh: "等 {name}" },
   "queue.btn.waitingForN": { en: "Waiting for {n} players", zh: "等 {n} 位玩家" },
   "queue.btn.join": { en: "Join", zh: "加入" },
@@ -114,7 +113,6 @@ export const queue = defineMessages({
 
   // the live region
   "queue.say.offer": { en: "Table with people. {name}.", zh: "有人的牌桌。{name}。" },
-  "queue.say.duoReady": { en: "{name}. {n} of 2 ready.", zh: "{name}。已准备 {n}/2。" },
   "queue.say.duoTable": { en: "Your Duo's table", zh: "我的组队牌桌" },
   "queue.say.own": { en: "{name}. Waiting for players.", zh: "{name}，正在等人。" },
   "queue.say.ownNoTimer": { en: "{name}. Waiting for players. No timer.", zh: "{name}，正在等人。不计时。" },
@@ -207,5 +205,5 @@ export const queue = defineMessages({
   "queue.err.seatTaken": { en: "That seat was just taken.", zh: "这个位置刚被人坐了。" },
   "queue.err.pickAnother": { en: "Pick another.", zh: "换一个吧。" },
   "queue.err.pairFixed": { en: "A Duo's seats stay together.", zh: "组队的两个座位不能分开。" },
-  "queue.err.alreadyReady": { en: "You tapped Start, so your seat is set.", zh: "你已点开始，座位定了。" },
+  "queue.err.alreadyReady": { en: "You tapped Ready, so your seat is set.", zh: "你已点准备，座位定了。" },
 });

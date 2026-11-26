@@ -13,7 +13,7 @@ and `room_seats`, and translates each into one `TableModel`. One frame,
 - `phase`: `"open"` | `"playing"`. `mode`: `"ranked"` | `"casual"`.
 - `seats`: four, in seat order, each `{seat, team, state, name, you, ready, reconnecting, since, sit, pair, leader, left}`;
   `state` is `taken` | `open` | `held` (kept for a Duo opener's friend) | `bot` (a bot plays it in a game).
-- `settings`: `{allow_joiners, start_level}`. `timers`: `{bots: {at, name, you} | null, start_now_at}`.
+- `settings`: `{allow_joiners, start_level}`. `timers`: `{bots: {at, name, you} | null}`.
 - `chat_log`: the key the table's chat frames carry (`table_chat.table`, or the room code for `chat`).
 
 **Not in it.** The search (`since`, `count`, `front`, `party_id`, `leader`,
@@ -56,9 +56,8 @@ fresh socket always gets it. `queue_state {queued: false}`, `queue_removed`,
 | `settings.allow_joiners` | `allow_joiners` | `allow_joiners`, null where absent (a test room) |
 | `settings.start_level` | `start_level` | `start_level` |
 | `timers.bots` | `table.timer`; alone: `{at: bots_at, ...}` or null | null |
-| `timers.start_now_at` | `table.start_now_at`; alone null | null |
 | `your_ready` | `you_ready` (= `table.you_ready`) | null |
-| `waiting_for` | `table.waiting_for`; alone: your Duo partner if not ready | null |
+| `waiting_for` | `table.waiting_for`: the connected joiners but you whose Ready is out (the owner has none); alone: your Duo partner if not ready, for its leader | null |
 | `chat_log` | `table.id`, alone null | `room` |
 
 Derivable, so dropped: `table.ready`/`of` (count `ready`/`taken` seats),

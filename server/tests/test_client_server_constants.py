@@ -79,7 +79,6 @@ COPY_RULES = (
     CopyRule("web/src/i18n/messages/queue.ts", r"seconds left to join", "web/src/queue/tableText.ts", "OFFER_CLOCK_MS"),
     CopyRule("web/src/i18n/messages/queue.ts", r"Bots fill the empty seats in", "web/src/queue/store.ts", "BOTS_WARN_MS"),
     CopyRule("web/src/i18n/messages/roundend.ts", r"You can join again in", MATCHMAKING_PY, "JOIN_COOLDOWN_SECS"),
-    CopyRule("web/src/i18n/messages/roundend.ts", r"Start now opens", MATCHMAKING_PY, "START_NOW_SECS"),
 )
 
 WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,

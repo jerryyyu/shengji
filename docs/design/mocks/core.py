@@ -311,22 +311,22 @@ def table_rows(mode="Ranked", opener=True, code="4N5Z", settings_open=False, wai
 def f3_own_table():
     alone = play_tab(SIGNED, panel=tpanel("", "Your table", [], [opn(), you()], [opn(O), opn(O)],
                                            rbtn("Start with bots", 40, 1) + LEAVE, extra=table_rows(wait=False) + chat_row()))
-    joined = play_tab(SIGNED, panel=tpanel("", "You and Alice", ["0 of 2 ready"], [seat("Alice", ""), you()], [opn(O), opn(O)],
-                                            rbtn("Start now", 31, .52) + LEAVE, extra=table_rows() + chat_row("Alice: hi!", 1)))
-    ready = play_tab(SIGNED, panel=tpanel("", "You and Alice", ["1 of 2 ready"], [seat("Alice", ""), you(tick=True)], [opn(O), opn(O)],
-                                           btn("Waiting for Alice", "off") + LEAVE, extra=table_rows() + chat_row("Alice: hi!")))
+    joined = play_tab(SIGNED, panel=tpanel("", "You and Alice", ["0 of 1 ready"], [seat("Alice", ""), you()], [opn(O), opn(O)],
+                                            rbtn("Waiting for Alice", 31, .52, "ghost") + LEAVE, extra=table_rows() + chat_row("Alice: hi!", 1)))
+    ready = play_tab(SIGNED, panel=tpanel("", "You and Alice", ["1 of 1 ready"], [seat("Alice", "", tick=True), you()], [opn(O), opn(O)],
+                                           rbtn("Start with bots", 29, .48) + LEAVE, extra=table_rows() + chat_row("Alice: hi!")))
     game = felt(top=pill("Alice", B), left=pill("Bot 1", O), right=pill("Bot 3", O))
     S_ = lambda nm, kind="person", team=B, tick=False: seat(nm, "", kind, team, tick)
-    desk = wide_play(b.desk_panel("", "You and Alice", ["0 of 2 ready"],
+    desk = wide_play(b.desk_panel("", "You and Alice", ["0 of 1 ready"],
                                   narrow_table({"bottom": S_("You", "you"), "top": S_("Alice"), "left": opn(O), "right": opn(O)}),
-                                  "Start now", "Leave", extra=table_rows() + chat_row()))
+                                  "Waiting for Alice", "Leave", extra=table_rows() + chat_row()))
     return [
         ("Play → your own table → someone joins → ready → game", [
             shot(play_tab(SIGNED, pres="Nobody is playing right now"), 390, 844, "Start", "Nobody to join."),
             shot(alone, 390, 844, "Tap Play", "Your table, with its code as its Invite and one Table settings row holding Allow joiners (on) and Wait for people (off). No Starting level: ranked starts at 2. Open seats are a bare '+'. The ring is the bots' timer."),
-            shot(joined, 390, 844, "Alice presses Play", "She sits as your partner. One status: '0 of 2 ready'. Start now carries the same timer."),
-            shot(ready, 390, 844, "Tap Start now", "Your tick; the button says who you wait for."),
-            shot(game, 844, 390, "Alice taps Start (or the timer)", "Bots take the empty seats; strangers can still join (Allow joiners is on)."),
+            shot(joined, 390, 844, "Alice presses Play", "She sits as your partner. One status: '0 of 1 ready'. You own the table and have no Ready: your button waits for hers, quiet, with the same timer."),
+            shot(ready, 390, 844, "Alice taps Ready", "Her tick; your button is Start with bots. No 30 s wait."),
+            shot(game, 844, 390, "Tap Start with bots (or the timer)", "Bots take the empty seats; strangers can still join (Allow joiners is on)."),
             shot(desk, 1280, 800, "Desktop / iPad", "The same panel in Play's place, with the phone's team columns."),
         ]),
     ]
@@ -354,21 +354,21 @@ def f4_room():
            '<div style="align-self:flex-start;width:270px;border-radius:16px;overflow:hidden;background:#2a2f38">'
            '<div style="height:110px;background:radial-gradient(ellipse at 50% 45%,#35845a,#1d5638 62%,#123a26);display:flex;align-items:center;justify-content:center;color:#f2c14e;font-size:30px;font-weight:800">升级</div>'
            '<div style="padding:8px 12px;font-size:13px"><b>Join my table · 4N5Z</b><div style="color:#9aa3b2">…/?room=4N5Z</div></div></div></div>')
-    alice = play_tab(("Alice", "Guest", "A"), "Casual", panel=tpanel("", "You and Jerry", ["0 of 2 ready"], [seat("Jerry", ""), you()], [opn(O), opn(O)],
-                                                                      btn("Start") + LEAVE, extra=table_rows("Casual", opener=False) + chat_row()))
-    alice_r = play_tab(("Alice", "Guest", "A"), "Casual", panel=tpanel("", "You and Jerry", ["1 of 2 ready"], [seat("Jerry", ""), you(tick=True)], [opn(O), opn(O)],
-                                                                        btn("Waiting for Jerry", "off") + LEAVE, extra=table_rows("Casual", opener=False) + chat_row("Jerry: yay")))
+    alice = play_tab(("Alice", "Guest", "A"), "Casual", panel=tpanel("", "You and Jerry", ["0 of 1 ready"], [seat("Jerry", ""), you()], [opn(O), opn(O)],
+                                                                      btn("Ready") + LEAVE, extra=table_rows("Casual", opener=False) + chat_row()))
+    alice_r = play_tab(("Alice", "Guest", "A"), "Casual", panel=tpanel("", "You and Jerry", ["1 of 1 ready"], [seat("Jerry", ""), you(tick=True)], [opn(O), opn(O)],
+                                                                        btn("Waiting for Jerry", "ghost") + LEAVE, extra=table_rows("Casual", opener=False) + chat_row("Jerry: yay")))
     game = felt(mode="Casual", top=pill("Jerry", B), left=pill("Bot 1", O), right=pill("Bot 3", O))
     return [
-        ("Play (here Casual) → your table, which has a code → Invite → the friend opens the link → both ready → game", [
+        ("Play (here Casual) → your table, which has a code → Invite → the friend opens the link → Ready → game", [
             shot(pc, 390, 844, "Start (Casual)", "No casual table has a seat."),
             shot(own, 390, 844, "Tap Play", "The same table as flow 3, no Create room step: the code as its Invite, one Table settings row with its values (every switch inside it). No CASUAL tag: the switch above says it. Labels only."),
             shot(own_open, 390, 844, "Tap Table settings", "It opens in place (no sheet): Starting level and Bots (the opener's selects), then Allow joiners (on) and Wait for people (off). Tap again to close."),
             shot(shared, 390, 844, "Tap Invite", "The system share sheet."),
             shot(msg, 390, 844, "Alice taps the link", "The link carries the code."),
             shot(alice, 390, 844, "The app opens on Play", "The same panel, no room screen. Alice sees the code and the values on the Table settings row (read-only when opened); Allow joiners is Jerry's."),
-            shot(alice_r, 390, 844, "Alice taps Start", "'1 of 2 ready'. Jerry can Start now after 30 s if anyone is absent."),
-            shot(game, 844, 390, "Jerry taps Start", "A casual game with bots in the empty seats."),
+            shot(alice_r, 390, 844, "Alice taps Ready", "'1 of 1 ready'. Jerry owns the table: his Start with bots is live now. A second tap takes her Ready back."),
+            shot(game, 844, 390, "Jerry taps Start with bots", "A casual game with bots in the empty seats."),
         ]),
     ]
 
@@ -497,8 +497,8 @@ def f6_leave():
     menu = ('<div style="position:absolute;right:10px;top:44px;width:240px;border-radius:14px;overflow:hidden;background:#232832;border:1px solid #333b49;font:600 14px ' + FONT + '">'
             + "".join(f'<div style="padding:9px 14px;{"border-top:1px solid #2b323e;" if i else ""}{"color:#f08a96" if r == "Leave game" else ""}">{r}</div>'
                       for i, r in enumerate(("Coach", "Sound", "Haptics", "How to play", "Copy invite link", "Allow joiners", "Leave game"))) + '</div>')
-    wait = play_tab(SIGNED, panel=tpanel("", "You and Alice", ["0 of 2 ready"], [seat("Alice", ""), you()], [opn(O), opn(O)],
-                                          rbtn("Start now", 31, .52) + LEAVE, extra=chat_row()),
+    wait = play_tab(SIGNED, panel=tpanel("", "You and Alice", ["0 of 1 ready"], [seat("Alice", ""), you()], [opn(O), opn(O)],
+                                          rbtn("Waiting for Alice", 31, .52, "ghost") + LEAVE, extra=chat_row()),
                     overlay=sheet("Leave the table?", "", STAYLEAVE))
     return [
         ("The one leave sheet, with its one line", [
@@ -628,27 +628,28 @@ def f10_game_over():
 
 
 def f_duo():
-    """Duo is a table (Jerry 11-14): one code, the partner seat held, and the pair stays paired after Start."""
+    """Duo is a table (Jerry 11-14): one code, the partner seat held, and the pair stays paired. Its leader owns
+    the table and its partner taps Ready (Jerry 11-26)."""
     held = lambda: seat("Partner", "", "open")
     start = play_tab(SIGNED)
     own = play_tab(SIGNED, panel=tpanel("", "Your Duo", [], [held(), you()], [opn(O), opn(O)],
                                          rbtn("Start with bots", 60, 1) + LEAVE, extra=table_rows() + chat_row()))
-    alice = play_tab(("Alice", "1,018", "A"), panel=tpanel("", "You and Jerry", ["0 of 2 ready"], [seat("Jerry", ""), you()], [opn(O), opn(O)],
-                                                            rbtn("Start", 44, .73) + LEAVE, extra=table_rows(opener=False) + chat_row()))
-    paired = play_tab(SIGNED, panel=tpanel("", "You and Alice", ["2 of 2 ready"], [seat("Alice", "", tick=True), you(tick=True)], [opn(O), opn(O)],
-                                            rbtn("Finding a table", 38, .6, "ghost") + LEAVE, extra=table_rows() + chat_row("Alice: ready")))
+    alice = play_tab(("Alice", "1,018", "A"), panel=tpanel("", "You and Jerry", [], [seat("Jerry", ""), you()], [opn(O), opn(O)],
+                                                            rbtn("Ready", 44, .73) + LEAVE, extra=table_rows(opener=False) + chat_row()))
+    paired = play_tab(SIGNED, panel=tpanel("", "You and Alice", [], [seat("Alice", "", tick=True), you()], [opn(O), opn(O)],
+                                            rbtn("Start with bots", 38, .6) + LEAVE, extra=table_rows() + chat_row("Alice: ready")))
     matched = play_tab(SIGNED, panel=tpanel("", "Join Mei &amp; Sam", [], [seat("Alice", ""), you()], [seat("Mei", "", team=O), seat("Sam", "", team=O)],
                                              rbtn("Join", 16, .8) + btn("Keep looking", "ghost", grow=False)))
     game = felt(top=pill("Alice", B), left=pill("Mei", O), right=pill("Sam", O))
-    leave = play_tab(SIGNED, panel=tpanel("", "You and Alice", ["0 of 2 ready"], [seat("Alice", ""), you()], [opn(O), opn(O)],
-                                           rbtn("Start", 40, .7) + LEAVE, extra=table_rows() + chat_row()),
+    leave = play_tab(SIGNED, panel=tpanel("", "You and Alice", [], [seat("Alice", ""), you()], [opn(O), opn(O)],
+                                           rbtn("Waiting for Alice", 40, .7, "ghost") + LEAVE, extra=table_rows() + chat_row()),
                      overlay=sheet("Leave the Duo?", "Alice keeps the table.", STAYLEAVE))
     return [
-        ("Duo → your table with the partner seat held → the friend joins by link → both ready → matched as a pair", [
+        ("Duo → your table with the partner seat held → the friend joins by link → Ready → matched as a pair or Start with bots", [
             shot(start, 390, 844, "Start", "Play and Duo side by side, one code box."),
             shot(own, 390, 844, "Tap Duo", "Your table, as Play opens it, with the partner seat held. Its code and Invite link are the Duo invite: no separate Duo code or bar. Strangers never take the held seat."),
-            shot(alice, 390, 844, "Alice opens the link", "She lands in the held partner seat. One table, one code, one Leave."),
-            shot(paired, 390, 844, "Both tap Start", "The pair stays paired: ranked looks for another pair or a table with two seats together, and bots fill when the ring ends."),
+            shot(alice, 390, 844, "Alice opens the link", "She lands in the held partner seat and taps Ready. One table, one code, one Leave. Jerry's button reads Waiting for Alice until then."),
+            shot(paired, 390, 844, "Alice taps Ready", "Jerry has no Ready: his button is Start with bots. The pair stays paired: ranked looks for another pair or a table with two seats together, and bots fill when the ring ends."),
             shot(matched, 390, 844, "A table with two open seats", "The pair joins together, as partners."),
             shot(game, 844, 390, "Tap Join", "A ranked game; the Duo is rated as a pair."),
             shot(leave, 390, 844, "Before the game: tap Leave", "One sheet. Alice keeps the table and its code."),

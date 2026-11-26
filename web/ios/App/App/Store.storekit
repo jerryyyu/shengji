@@ -1,0 +1,63 @@
+{
+  "identifier" : "5C2B7E1A-3F4D-4E8B-9A61-7D0C2E9B4F31",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "3.99",
+      "familyShareable" : false,
+      "internalID" : "A3E1F6B2-9C4D-4B7A-8E25-1F0D6C3A9B71",
+      "localizations" : [
+        {
+          "description" : "A companion for the table.",
+          "displayName" : "Goat",
+          "locale" : "en_US"
+        },
+        {
+          "description" : "牌桌上的伙伴。",
+          "displayName" : "山羊",
+          "locale" : "zh_Hans"
+        }
+      ],
+      "productID" : "com.jerryyu.shengji.companion.goat",
+      "referenceName" : "Goat",
+      "type" : "NonConsumable"
+    },
+    {
+      "displayPrice" : "3.99",
+      "familyShareable" : false,
+      "internalID" : "B7D4C2E9-1A6F-4C3B-9D58-2E7A0F4B6C82",
+      "localizations" : [
+        {
+          "description" : "A companion for the table.",
+          "displayName" : "Panda",
+          "locale" : "en_US"
+        },
+        {
+          "description" : "牌桌上的伙伴。",
+          "displayName" : "熊猫",
+          "locale" : "zh_Hans"
+        }
+      ],
+      "productID" : "com.jerryyu.shengji.companion.panda",
+      "referenceName" : "Panda",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

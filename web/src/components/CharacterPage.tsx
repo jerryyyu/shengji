@@ -203,7 +203,7 @@ export function Stage({ kind, colour, size, label, partner, cheer = 0 }: {
 const TRY_PARTNER: Record<CompanionKind, { kind: CompanionKind; colour: Colour }> = {
   tractor: { kind: "bun", colour: "plain" }, bun: { kind: "tractor", colour: "red" },
   chick: { kind: "tractor", colour: "red" }, sparrow: { kind: "tractor", colour: "red" },
-  goat: { kind: "bun", colour: "plain" }, panda: { kind: "bun", colour: "plain" },
+  lamb: { kind: "bun", colour: "plain" }, panda: { kind: "bun", colour: "plain" },
 };
 
 /** The one character page, opened from any tile of the Collection's grid:

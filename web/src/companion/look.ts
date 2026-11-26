@@ -25,7 +25,7 @@ export const COMPANIONS: Record<CompanionKind, readonly Colour[]> = {
   bun: Object.keys(BUN_COLOURS) as Colour[],
   chick: Object.keys(CHICK_COLOURS) as Colour[],
   sparrow: Object.keys(SPARROW_COLOURS) as Colour[],
-  goat: Object.keys(SOLD_COLOURS.goat) as Colour[],
+  lamb: Object.keys(SOLD_COLOURS.lamb) as Colour[],
   panda: Object.keys(SOLD_COLOURS.panda) as Colour[],
 };
 

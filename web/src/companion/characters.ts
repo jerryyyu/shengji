@@ -6,7 +6,7 @@
 // and renders; the art replaces `standIn` and keeps the ids.
 import type { TractorColourId } from "./palette";
 
-export type SoldKind = "goat" | "panda";
+export type SoldKind = "lamb" | "panda";
 
 export interface Colourway {
   standIn: TractorColourId;
@@ -15,21 +15,21 @@ export interface Colourway {
 }
 
 export const SOLD_COLOURS = {
-  goat: {
+  lamb: {
     newyear: { standIn: "red", name: { en: "New Year", zh: "新年", hant: "新年" } },
     jade: { standIn: "jade", name: { en: "Jade", zh: "翡翠", hant: "翡翠" } },
     ink: { standIn: "ink", name: { en: "Ink wash", zh: "水墨", hant: "水墨" } },
     lacquer: { standIn: "orange", name: { en: "Lacquer red", zh: "朱漆", hant: "朱漆" } },
   },
   panda: {
-    classic: { standIn: "porcelain", name: { en: "Classic", zh: "经典", hant: "經典" } },
-    bamboo: { standIn: "green", name: { en: "Bamboo", zh: "竹林", hant: "竹林" } },
-    snow: { standIn: "blue", name: { en: "Snow", zh: "雪", hant: "雪" } },
-    lantern: { standIn: "yellow", name: { en: "Lantern", zh: "灯笼", hant: "燈籠" } },
+    classic: { standIn: "porcelain", name: { en: "Classic", zh: "黑白", hant: "黑白" } },
+    russet: { standIn: "orange", name: { en: "Russet", zh: "小熊猫棕", hant: "小熊貓棕" } },
+    ink: { standIn: "ink", name: { en: "Ink wash", zh: "水墨", hant: "水墨" } },
+    gilded: { standIn: "yellow", name: { en: "Gold dust", zh: "洒金", hant: "灑金" } },
   },
 } as const satisfies Record<SoldKind, Record<string, Colourway>>;
 
-export type SoldColourId = keyof (typeof SOLD_COLOURS)["goat"] | keyof (typeof SOLD_COLOURS)["panda"];
+export type SoldColourId = keyof (typeof SOLD_COLOURS)["lamb"] | keyof (typeof SOLD_COLOURS)["panda"];
 
 export function colourway(kind: SoldKind, colour: string): Colourway {
   const set = SOLD_COLOURS[kind] as Record<string, Colourway>;
@@ -38,7 +38,7 @@ export function colourway(kind: SoldKind, colour: string): Colourway {
 
 /** The App Store product of each character on sale. */
 export const SOLD_PRODUCTS: Record<SoldKind, string> = {
-  goat: "com.jerryyu.shengji.companion.goat",
+  lamb: "com.jerryyu.shengji.companion.lamb",
   panda: "com.jerryyu.shengji.companion.panda",
 };
 
@@ -48,7 +48,7 @@ export type SoonKind = (typeof SOON)[number];
 
 /** Each store character's own name. */
 export const STORE_NAMES: Record<SoldKind | SoonKind, { en: string; zh: string; hant: string }> = {
-  goat: { en: "Spring Lamb", zh: "小羊", hant: "小羊" },
+  lamb: { en: "Spring Lamb", zh: "小羊", hant: "小羊" },
   panda: { en: "Baby Panda", zh: "熊猫宝宝", hant: "熊貓寶寶" },
   rabbit: { en: "Jade Rabbit", zh: "玉兔", hant: "玉兔" },
   cat: { en: "Lucky Cat", zh: "招财猫", hant: "招財貓" },

@@ -52,13 +52,13 @@ const draw = async (node: React.ReactNode) => {
 describe("the free companions", () => {
   it("are the Tractor, the Bun, the Chick and the Sparrow, four colours each beside the Tractor's eight", () => {
     expect(FREE_KINDS).toEqual(["tractor", "bun", "chick", "sparrow"]);
-    expect(COMPANION_KINDS).toEqual(["tractor", "bun", "chick", "sparrow", "goat", "panda"]);
+    expect(COMPANION_KINDS).toEqual(["tractor", "bun", "chick", "sparrow", "lamb", "panda"]);
     expect(COMPANIONS.bun).toEqual(["plain", "custard", "taro", "peach"]);
     expect(COMPANIONS.chick).toEqual(["yellow", "cream", "cocoa", "ink"]);
     expect(COMPANIONS.sparrow).toEqual(["tree", "java", "snow", "oriole"]);
     expect(parseLook("chick/ink")).toEqual({ kind: "chick", colour: "ink" });
     // a colour of another companion, or one not drawn here, is the default
-    for (const bad of ["bun/red", "sparrow/plain", "lamb/newyear", "chick/ink/x"]) {
+    for (const bad of ["bun/red", "sparrow/plain", "goat/newyear", "chick/ink/x"]) {
       expect(parseLook(bad)).toEqual({ kind: "tractor", colour: "red" });
     }
     const fresh = lookCatalogue({ rounds: 0, ranked_wins: 0 }, "tractor/red");

@@ -23,11 +23,11 @@ import CollectionPage from "../components/CollectionPage";
 import { forgetHomeSession } from "../home/session";
 import { lookCatalogue } from "../companion/look";
 
-const GOAT = "com.jerryyu.shengji.companion.goat";
+const LAMB = "com.jerryyu.shengji.companion.lamb";
 const PANDA = "com.jerryyu.shengji.companion.panda";
-const goatLooks = (unlocked: boolean) => ["newyear", "jade", "ink", "lacquer"].map((c) => (
-  { id: `goat/${c}`, unlocked, needs: null, product: GOAT }));
-const pandaLooks = ["classic", "bamboo", "snow", "lantern"].map((c) => (
+const lambLooks = (unlocked: boolean) => ["newyear", "jade", "ink", "lacquer"].map((c) => (
+  { id: `lamb/${c}`, unlocked, needs: null, product: LAMB }));
+const pandaLooks = ["classic", "russet", "ink", "gilded"].map((c) => (
   { id: `panda/${c}`, unlocked: false, needs: null, product: PANDA }));
 const tractorLooks = lookCatalogue({ rounds: 0, ranked_wins: 0 }, "tractor/red");
 
@@ -35,7 +35,7 @@ const user: AuthUser = {
   name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry",
   rounds_played: 0, ranked_wins: 0, look: "tractor/red", companions: "team", products: [],
   store_token: "11111111-1111-4111-8111-111111111111",
-  looks: [...tractorLooks, ...goatLooks(false), ...pandaLooks],
+  looks: [...tractorLooks, ...lambLooks(false), ...pandaLooks],
   features: { collection: true, store: true },
 };
 
@@ -44,10 +44,10 @@ let root: ReturnType<typeof createRoot>;
 const fetches: { url: string; init?: RequestInit }[] = [];
 const plugin = {
   products: vi.fn(async () => ({ products: [
-    { id: GOAT, displayName: "Goat", displayPrice: "$3.99" },
+    { id: LAMB, displayName: "Goat", displayPrice: "$3.99" },
     { id: PANDA, displayName: "Panda", displayPrice: "$3.99" }] })),
-  purchase: vi.fn(async () => ({ status: "purchased", jws: "header.payload.sig", productId: GOAT })),
-  restore: vi.fn(async () => ({ transactions: [{ jws: "restored.jws.sig", productId: GOAT }] })),
+  purchase: vi.fn(async () => ({ status: "purchased", jws: "header.payload.sig", productId: LAMB })),
+  restore: vi.fn(async () => ({ transactions: [{ jws: "restored.jws.sig", productId: LAMB }] })),
   entitlements: vi.fn(async () => ({ transactions: [] })),
   storefront: vi.fn(async () => ({ countryCode: "USA" })),
   addListener: vi.fn(async () => ({ remove: () => {} })),
@@ -63,7 +63,7 @@ function nativeShell(withPlugin = true) {
   };
 }
 
-const ownedUser: AuthUser = { ...user, products: [GOAT], looks: [...tractorLooks, ...goatLooks(true), ...pandaLooks] };
+const ownedUser: AuthUser = { ...user, products: [LAMB], looks: [...tractorLooks, ...lambLooks(true), ...pandaLooks] };
 // what the server holds: a verify grants the Goat, and /api/me then says so
 const server = { granted: false };
 
@@ -123,7 +123,7 @@ describe("the grid's sections", () => {
     expect(names(".coll-yours")).toEqual(FREE_TILES);
     expect(names(".coll-more")).toEqual(["Spring Lamb$3.99", "Baby Panda$3.99", ...SOON_TILES]);
     // only the sold ones are asked of StoreKit; free and Soon characters never
-    expect(plugin.products).toHaveBeenCalledWith({ ids: [GOAT, PANDA] });
+    expect(plugin.products).toHaveBeenCalledWith({ ids: [LAMB, PANDA] });
     expect(host.querySelector(".coll-restore")?.textContent).toBe("Restore purchases");
     // no Shop segment, button or page
     expect(host.querySelector(".coll-shop, .shop-row")).toBeNull();
@@ -168,7 +168,7 @@ describe("the grid's sections", () => {
   it("an owned character sits in Yours, not in More companions", async () => {
     nativeShell();
     authState.current = { status: "in", clientId: "cid", user: {
-      ...user, products: [GOAT], looks: [...tractorLooks, ...goatLooks(true), ...pandaLooks] } };
+      ...user, products: [LAMB], looks: [...tractorLooks, ...lambLooks(true), ...pandaLooks] } };
     await draw();
     expect(names(".coll-yours")).toEqual([...FREE_TILES, "Spring Lamb"]);
     expect(names(".coll-more")).toEqual(["Baby Panda$3.99", ...SOON_TILES]);
@@ -203,10 +203,10 @@ describe("the grid's sections", () => {
     expect(price.textContent).toBe("Buy $3.99");
     await act(async () => { price.click(); });
     await settle();
-    expect(plugin.purchase).toHaveBeenCalledWith({ id: GOAT, appAccountToken: "11111111-1111-4111-8111-111111111111" });
+    expect(plugin.purchase).toHaveBeenCalledWith({ id: LAMB, appAccountToken: "11111111-1111-4111-8111-111111111111" });
     const sent = fetches.find((f) => f.url === "/api/store/verify")!;
     expect(JSON.parse(String(sent.init?.body))).toEqual({ jws: "header.payload.sig", storefront: "USA" });
-    expect(updated).toHaveBeenCalledWith(expect.objectContaining({ products: [GOAT] }));
+    expect(updated).toHaveBeenCalledWith(expect.objectContaining({ products: [LAMB] }));
     await draw();       // the mocked useAuth does not subscribe: draw again to read the account
     expect(host.querySelector(".coll-use")?.textContent).toBe("Use");
     expect(host.querySelector(".char-stage svg.cmp.cmp-cheer")).not.toBeNull();
@@ -251,7 +251,7 @@ describe("delivery until the server has it", () => {
   it("finishes a purchase only after the server granted it", async () => {
     nativeShell();
     plugin.purchase.mockImplementationOnce(async () => (
-      { status: "purchased", jws: "header.payload.sig", productId: GOAT, transactionId: "2000000111" }) as never);
+      { status: "purchased", jws: "header.payload.sig", productId: LAMB, transactionId: "2000000111" }) as never);
     authState.current = { status: "in", clientId: "cid", user };
     await draw();
     await act(async () => { host.querySelectorAll<HTMLButtonElement>(".coll-more .coll-tile")[0].click(); });
@@ -264,7 +264,7 @@ describe("delivery until the server has it", () => {
   it("an interrupted grant stays unfinished and is recovered at the next open", async () => {
     nativeShell();
     plugin.purchase.mockImplementationOnce(async () => (
-      { status: "purchased", jws: "header.payload.sig", productId: GOAT, transactionId: "2000000111" }) as never);
+      { status: "purchased", jws: "header.payload.sig", productId: LAMB, transactionId: "2000000111" }) as never);
     authState.current = { status: "in", clientId: "cid", user };
     await draw();
     await act(async () => { host.querySelectorAll<HTMLButtonElement>(".coll-more .coll-tile")[0].click(); });
@@ -282,7 +282,7 @@ describe("delivery until the server has it", () => {
     // relaunch: the App Store still holds it unfinished, and no listener ever saw it
     globalThis.fetch = ok;
     plugin.pending.mockImplementation(async () => ({ transactions: [
-      { jws: "header.payload.sig", productId: GOAT, transactionId: "2000000111" }] }));
+      { jws: "header.payload.sig", productId: LAMB, transactionId: "2000000111" }] }));
     act(() => root.unmount());
     root = createRoot(host);
     await draw();
@@ -294,7 +294,7 @@ describe("delivery until the server has it", () => {
   it("a definitive refusal finishes it; a server it cannot reach does not", async () => {
     nativeShell();
     plugin.pending.mockImplementation(async () => ({ transactions: [
-      { jws: "x.y.z", productId: GOAT, transactionId: "9" }] }));
+      { jws: "x.y.z", productId: LAMB, transactionId: "9" }] }));
     globalThis.fetch = vi.fn(async (url: string) => (url === "/api/store/verify"
       ? { status: 409, json: async () => ({ detail: "held_by_other" }) }
       : { status: 200, json: async () => authState.current.user }) as Response) as unknown as typeof fetch;
@@ -329,7 +329,7 @@ describe("the payer, the order and the reasons", () => {
     plugin.purchase.mockImplementationOnce(() => new Promise((r) => { pay = r; }) as never);
     await openGoat();
     await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")!.click(); });
-    expect(plugin.purchase).toHaveBeenCalledWith({ id: GOAT, appAccountToken: "11111111-1111-4111-8111-111111111111" });
+    expect(plugin.purchase).toHaveBeenCalledWith({ id: LAMB, appAccountToken: "11111111-1111-4111-8111-111111111111" });
     // the sheet is up; the player switches account
     authState.current = { status: "in", clientId: "cid", user: other };
     globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
@@ -337,7 +337,7 @@ describe("the payer, the order and the reasons", () => {
       if (url === "/api/store/verify") return { status: 409, json: async () => ({ detail: "held_by_other" }) } as Response;
       return { status: 200, json: async () => authState.current.user } as Response;
     }) as unknown as typeof fetch;
-    await act(async () => { pay({ status: "purchased", jws: "a.b.c", productId: GOAT, transactionId: "7" }); });
+    await act(async () => { pay({ status: "purchased", jws: "a.b.c", productId: LAMB, transactionId: "7" }); });
     await settle();
     expect(host.querySelector(".coll-felt svg.cmp.cmp-cheer")).toBeNull();
     expect(host.querySelector(".coll-status")?.textContent).not.toMatch(/Purchase/);
@@ -353,7 +353,7 @@ describe("the payer, the order and the reasons", () => {
     await openGoat();
     await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")!.click(); });
     authState.current = { status: "out", clientId: "cid", user: null };
-    await act(async () => { pay({ status: "purchased", jws: "a.b.c", productId: GOAT, transactionId: "8" }); });
+    await act(async () => { pay({ status: "purchased", jws: "a.b.c", productId: LAMB, transactionId: "8" }); });
     await settle();
     expect(host.querySelector(".coll-felt svg.cmp.cmp-cheer")).toBeNull();
     expect(fetches.some((f) => f.url === "/api/store/verify")).toBe(false);
@@ -363,13 +363,13 @@ describe("the payer, the order and the reasons", () => {
   it("answers that come back out of order never replace a newer account", async () => {
     nativeShell();
     plugin.pending.mockImplementation(async () => ({ transactions: [
-      { jws: "slow.jws.sig", productId: GOAT, transactionId: "1" }] }));
+      { jws: "slow.jws.sig", productId: LAMB, transactionId: "1" }] }));
     let listen: ((d: unknown) => void) | null = null;
     plugin.addListener.mockImplementationOnce((async (_e: string, cb: (d: unknown) => void) => {
       listen = cb;
       return { remove: () => {} };
     }) as never);
-    const both = { ...user, products: [GOAT, PANDA] };
+    const both = { ...user, products: [LAMB, PANDA] };
     const starts: string[] = [];
     const done: string[] = [];
     globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
@@ -380,7 +380,7 @@ describe("the payer, the order and the reasons", () => {
         // the first answer is slow and carries only the Goat
         if (jws === "slow.jws.sig") await new Promise((r) => setTimeout(r, 30));
         done.push(jws);
-        return { status: 200, json: async () => (jws === "slow.jws.sig" ? { ...user, products: [GOAT] } : both) } as Response;
+        return { status: 200, json: async () => (jws === "slow.jws.sig" ? { ...user, products: [LAMB] } : both) } as Response;
       }
       return { status: 200, json: async () => (done.length === 2 ? both : authState.current.user) } as Response;
     }) as unknown as typeof fetch;
@@ -392,13 +392,13 @@ describe("the payer, the order and the reasons", () => {
     await settle();
     expect(starts).toEqual(["slow.jws.sig", "fast.jws.sig"]);        // one at a time, in order
     const last = updated.mock.calls.at(-1)?.[0] as AuthUser;
-    expect(last.products).toEqual([GOAT, PANDA]);
+    expect(last.products).toEqual([LAMB, PANDA]);
   });
 
   it("restore keeps a transient failure pending, says so, and acknowledges only a permanent refusal", async () => {
     nativeShell();
     plugin.restore.mockImplementation(async () => ({ transactions: [
-      { jws: "busy.jws.sig", productId: GOAT, transactionId: "31" },
+      { jws: "busy.jws.sig", productId: LAMB, transactionId: "31" },
       { jws: "china.jws.sig", productId: PANDA, transactionId: "32" },
       { jws: "taken.jws.sig", productId: PANDA, transactionId: "33" }] }));
     globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
@@ -446,13 +446,13 @@ describe("no payer token, no purchase", () => {
     expect(meReads).toBeGreaterThanOrEqual(2);
     // buy() itself refuses without a token
     const { buy } = await import("./shop");
-    await expect(buy(GOAT)).resolves.toBe("none");
+    await expect(buy(LAMB)).resolves.toBe("none");
     expect(plugin.purchase).not.toHaveBeenCalled();
   });
 
   it("unknown_token keeps the transaction pending", async () => {
     nativeShell();
-    plugin.pending.mockImplementation(async () => ({ transactions: [{ jws: "x.y.z", productId: GOAT, transactionId: "5" }] }));
+    plugin.pending.mockImplementation(async () => ({ transactions: [{ jws: "x.y.z", productId: LAMB, transactionId: "5" }] }));
     globalThis.fetch = vi.fn(async (url: string) => (url === "/api/store/verify"
       ? { status: 409, json: async () => ({ detail: "unknown_token" }) }
       : { status: 200, json: async () => authState.current.user }) as Response) as unknown as typeof fetch;
@@ -507,12 +507,12 @@ describe("buying needs an Apple or Google sign-in", () => {
     expect(price.textContent).toBe("Buy $3.99");
     await act(async () => { price.click(); });
     await settle();
-    expect(plugin.purchase).toHaveBeenCalledWith({ id: GOAT, appAccountToken: user.store_token });
+    expect(plugin.purchase).toHaveBeenCalledWith({ id: LAMB, appAccountToken: user.store_token });
   });
 
   it("sign_in_required keeps the transaction pending, and it is delivered once the account has signed in", async () => {
     nativeShell();
-    plugin.pending.mockImplementation(async () => ({ transactions: [{ jws: "p.q.r", productId: GOAT, transactionId: "44" }] }));
+    plugin.pending.mockImplementation(async () => ({ transactions: [{ jws: "p.q.r", productId: LAMB, transactionId: "44" }] }));
     globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
       fetches.push({ url, init });
       if (url === "/api/store/verify") {
@@ -541,7 +541,7 @@ describe("signing in on the item page", () => {
   it("delivers the pending purchase when the account becomes eligible, without leaving the page", async () => {
     nativeShell();
     const device: AuthUser = { ...user, linked: false, store_token: undefined, email: "", name_shown: "Gentle Draw" };
-    plugin.pending.mockImplementation(async () => ({ transactions: [{ jws: "ask.to.buy", productId: GOAT, transactionId: "61" }] }));
+    plugin.pending.mockImplementation(async () => ({ transactions: [{ jws: "ask.to.buy", productId: LAMB, transactionId: "61" }] }));
     let granted = false;
     globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
       fetches.push({ url, init });
@@ -569,7 +569,7 @@ describe("signing in on the item page", () => {
     expect(verifies()).toBe(2);
     expect(JSON.parse(String(fetches.filter((f) => f.url === "/api/store/verify")[1].init?.body)).jws).toBe("ask.to.buy");
     expect(plugin.finish).toHaveBeenCalledWith({ transactionId: "61" });
-    expect(updated).toHaveBeenCalledWith(expect.objectContaining({ products: [GOAT] }));
+    expect(updated).toHaveBeenCalledWith(expect.objectContaining({ products: [LAMB] }));
     // the page now reads the grant: Use in the price spot
     await act(async () => { root.render(<CollectionPage />); });
     expect(host.querySelector(".coll-use")?.textContent).toBe("Use");

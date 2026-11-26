@@ -56,8 +56,8 @@ describe("looks", () => {
   it("reads a look it can draw and falls back to the default otherwise", () => {
     expect(DEFAULT_LOOK).toBe("tractor/red");
     expect(parseLook("tractor/jade")).toEqual({ kind: "tractor", colour: "jade" });
-    expect(parseLook("goat/jade")).toEqual({ kind: "goat", colour: "jade" });
-    for (const raw of [null, undefined, "", "goat/mauve", "dragon/jade", "tractor/mauve", "tractor/red/x", 7]) {
+    expect(parseLook("lamb/jade")).toEqual({ kind: "lamb", colour: "jade" });
+    for (const raw of [null, undefined, "", "lamb/mauve", "goat/jade", "panda/bamboo", "dragon/jade", "tractor/mauve", "tractor/red/x", 7]) {
       expect(parseLook(raw)).toEqual({ kind: "tractor", colour: "red" });
     }
   });

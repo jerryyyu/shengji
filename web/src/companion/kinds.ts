@@ -73,6 +73,6 @@ export const DRAWINGS: Record<CompanionKind, Drawing> = {
     colourName: named(SPARROW_COLOURS, "tree"),
     char: true,
   },
-  goat: standIn("goat"),
+  lamb: standIn("lamb"),
   panda: standIn("panda"),
 };

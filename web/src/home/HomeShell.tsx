@@ -20,6 +20,7 @@ import GuestChip from "../components/GuestChip";
 import { Portrait } from "../companion/Companion";
 import { lookAccount, useNewLook } from "../companion/seen";
 import { useCollection } from "../companion/feature";
+import { refreshAccount } from "../companion/writes";
 
 export { WIDE };
 
@@ -219,7 +220,12 @@ export default function HomeShell({ active, section, seatedAt = null, children }
 }) {
   const wide = useMediaQuery(WIDE);
   const body = useRef<HTMLDivElement | null>(null);
-  useTabSwipe(body, active, !wide, tabOrder(useCollection()));
+  const companions = useCollection();
+  useTabSwipe(body, active, !wide, tabOrder(companions));
+  // back on the tabs after a game: read the counts a round may have moved
+  useEffect(() => {
+    if (companions) void refreshAccount();
+  }, [companions]);
   useTabFade(body, `${active}/${section ?? ""}`);
   useTabClearsError(active);
   return (

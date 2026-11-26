@@ -2,8 +2,8 @@
 // on the server, a guest on this device. Only this screen reads it; the
 // table placement that will read it is not built yet.
 import { useSyncExternalStore } from "react";
-import { auth, putLook } from "../auth";
 import type { AuthUser } from "../auth";
+import { writeMode } from "./writes";
 import { COMPANION_MODES } from "./look";
 import type { CompanionMode } from "./look";
 
@@ -33,13 +33,7 @@ export function useCompanionMode(user: AuthUser | null): CompanionMode {
 /** Store a new mode: on the account, or for a guest on this device. */
 export async function setCompanionMode(user: AuthUser | null, mode: CompanionMode): Promise<void> {
   if (user) {
-    auth.updated({ ...user, companions: mode });
-    try {
-      auth.updated(await putLook({ companions: mode }));
-    } catch (err) {
-      auth.updated(user);
-      throw err;
-    }
+    await writeMode(mode);
     return;
   }
   try {

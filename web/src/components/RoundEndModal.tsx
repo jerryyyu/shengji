@@ -18,6 +18,7 @@ import { displayName, t, useT } from "../i18n";
 import type { MessageKey } from "../i18n";
 import { Portrait } from "../companion/Companion";
 import { useCollection } from "../companion/feature";
+import { refreshAccount } from "../companion/writes";
 
 /** Leave beside Next round (Next game), the same in every room. It asks through the one
  *  leave sheet, like every other leave: the round is over and recorded, so
@@ -92,6 +93,10 @@ function teamTitle(team: 0 | 1, state: GameState, outcome: Outcome): string {
  *  the Collection is shown; a bot has no portrait and its name says it. */
 function TeamFaces({ team, state }: { team: 0 | 1; state: GameState }) {
   const companions = useCollection();
+  // a round just counted: what it unlocks shows on the Collection's dot
+  useEffect(() => {
+    if (companions) void refreshAccount();
+  }, [companions]);
   const people = state.players.filter((p) => p.team === team && !p.is_bot)
     .sort((a, b) => Number(b.seat === state.you) - Number(a.seat === state.you) || a.seat - b.seat);
   if (!companions || people.length === 0) return null;

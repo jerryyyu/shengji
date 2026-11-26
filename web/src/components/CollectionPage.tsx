@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { auth, putLook, useAuth } from "../auth";
+import { useAuth } from "../auth";
 import type { AuthUser } from "../auth";
 import { Companion, Portrait } from "../companion/Companion";
 import type { Pose } from "../companion/Companion";
@@ -8,6 +8,7 @@ import type { LookEntry } from "../companion/look";
 import { TRACTOR_COLOURS } from "../companion/palette";
 import { lookAccount, markLooksSeen } from "../companion/seen";
 import { setCompanionMode, useCompanionMode } from "../companion/mode";
+import { equip, refreshAccount } from "../companion/writes";
 import { Segmented } from "../home/HomeShell";
 import LargeTitlePage from "../home/LargeTitlePage";
 import { WIDE } from "../home/route";
@@ -71,13 +72,21 @@ export default function CollectionPage() {
   const shownEntry = looks.find((l) => l.id === shown) ?? looks[0];
   const status = shownEntry.unlocked ? "" : progressText(t, shownEntry, user);
 
+  // the counts that unlock a colour move with play: read them again on
+  // every open and every return to the app
+  useEffect(() => {
+    void refreshAccount();
+    const back = () => { if (document.visibilityState === "visible") void refreshAccount(); };
+    document.addEventListener("visibilitychange", back);
+    return () => document.removeEventListener("visibilitychange", back);
+  }, []);
+
   const pick = (entry: LookEntry) => {
     setShown(entry.id);
     setPose("hop");
-    if (!user || !entry.unlocked || entry.id === equipped || saving) return;
+    if (!user || entry.id === equipped || saving) return;
     setSaving(true);
-    putLook({ look: entry.id })
-      .then((next) => auth.updated(next))
+    equip(entry.id, entry.unlocked)
       .catch((err: unknown) => {
         setShown(equipped);
         showToast(err instanceof Error ? err.message : String(err));
@@ -86,7 +95,8 @@ export default function CollectionPage() {
   };
 
   return (
-    <LargeTitlePage className="coll-page" scroller={scroller} title={t("home.tabCollection")} phone={phone} onRefresh={reload}>
+    <LargeTitlePage className="coll-page" scroller={scroller} title={t("home.tabCollection")} phone={phone}
+                   onRefresh={() => Promise.all([reload(), refreshAccount()])}>
       <div className="coll-felt">
         <button type="button" className="coll-figure" aria-label={colourName(shown)}
                 onClick={() => setPose("hop")}>

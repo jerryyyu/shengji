@@ -10,7 +10,7 @@ const { authState, updated } = vi.hoisted(() => ({
 vi.mock("../ws", () => ({ conn: { send: () => {}, reconnect: () => {} } }));
 vi.mock("../auth", async (importOriginal) => {
   const real = await importOriginal<typeof import("../auth")>();
-  return { ...real, useAuth: () => authState.current, auth: { updated } };
+  return { ...real, useAuth: () => authState.current, auth: { updated, get state() { return authState.current; } } };
 });
 
 import { Companion, Portrait } from "./Companion";
@@ -20,7 +20,7 @@ import { hasNewLook, markLooksSeen } from "./seen";
 import { parseArt, tractorMarkup } from "./Tractor";
 import CollectionPage from "../components/CollectionPage";
 import { Row } from "../components/Leaderboard";
-import { forgetHomeSession } from "../home/session";
+import { forgetHomeSession, forgetPrivateSession } from "../home/session";
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -209,5 +209,107 @@ describe("other viewers", () => {
     authState.current = { status: "out", clientId: "cid", user: null, collection: true };
     await draw(<ul><Row row={{ ...row, look: "tractor/ink" }} /></ul>);
     expect(host.querySelector(".lb-row .portrait")?.getAttribute("data-look")).toBe("tractor/ink");
+  });
+});
+
+describe("entitlements and writes stay with their session and their order", () => {
+  type Reply = { status: number; body: unknown };
+  const base: AuthUser = {
+    name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry",
+    rounds_played: 9, ranked_wins: 0, look: "tractor/red", companions: "team", features: { collection: true },
+  };
+  let me: AuthUser;
+  let held: { url: string; body: unknown; reply: (r: Reply) => void }[];
+  let holdPuts: boolean;
+  beforeEach(() => {
+    me = { ...base };
+    held = [];
+    holdPuts = false;
+    updated.mockImplementation((u: AuthUser) => { authState.current = { ...authState.current, user: u }; });
+    globalThis.fetch = vi.fn((url: string, init?: RequestInit) => {
+      const answer = (r: Reply) => ({ status: r.status, json: async () => r.body }) as Response;
+      if (url.includes("/api/leaderboard")) return Promise.resolve(answer({ status: 200, body: { period: "all", players: [], me: null, anchor: { name: "x", rating: 1 }, anchors: {} } }));
+      if (url === "/api/me") return Promise.resolve(answer({ status: 200, body: me }));
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      if (holdPuts) return new Promise<Response>((res) => held.push({ url, body, reply: (r) => res(answer(r)) }));
+      return Promise.resolve(answer({ status: 200, body: { ...me, ...body } }));
+    }) as unknown as typeof fetch;
+    authState.current = { status: "in", clientId: "cid", user: { ...base } };
+  });
+  afterEach(() => updated.mockReset());
+
+  const swatch = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".coll-swatch")]
+    .find((s) => s.getAttribute("aria-label")!.startsWith(name))!;
+  const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+
+  it("a tenth round earned while signed in unlocks yellow without a reload", async () => {
+    await draw(<CollectionPage />);
+    expect(swatch("Imperial yellow").classList.contains("locked")).toBe(true);
+    // the round ends elsewhere: the server now counts ten
+    me = { ...base, rounds_played: 10 };
+    await act(async () => { swatch("Imperial yellow").click(); });
+    await flush();
+    await draw(<CollectionPage />);
+    expect(swatch("Imperial yellow").classList.contains("locked")).toBe(false);
+    expect(updated).toHaveBeenCalledWith(expect.objectContaining({ rounds_played: 10 }));
+    // the locked tap rechecked and, now unlocked, equipped it
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.some(([u, i]) =>
+      u === "/api/me/look" && JSON.parse(String((i as RequestInit).body)).look === "tractor/yellow")).toBe(true);
+  });
+
+  it("opening the Collection reads the account's counts again", async () => {
+    me = { ...base, rounds_played: 10 };
+    await draw(<CollectionPage />);
+    await flush();
+    expect(updated).toHaveBeenCalledWith(expect.objectContaining({ rounds_played: 10 }));
+  });
+
+  it("a save that lands after a switch to another account changes nothing", async () => {
+    await draw(<CollectionPage />);
+    await flush();
+    updated.mockClear();
+    holdPuts = true;
+    await act(async () => { swatch("Paddy green").click(); });
+    expect(held).toHaveLength(1);
+    // account B signs in while A's save is in flight
+    act(() => { forgetPrivateSession(); });
+    authState.current = { status: "in", clientId: "cid", user: { ...base, name: "Bo", email: "b@x", name_shown: "Bo" } };
+    await act(async () => { held[0].reply({ status: 200, body: { ...base, look: "tractor/green" } }); });
+    await flush();
+    expect(updated).not.toHaveBeenCalled();
+    // and a failed save from A does not roll B back either
+    holdPuts = true;
+    authState.current = { status: "in", clientId: "cid", user: { ...base } };
+    await draw(<CollectionPage />);
+    await flush();
+    updated.mockClear();
+    await act(async () => { swatch("Enamel blue").click(); });
+    act(() => { forgetPrivateSession(); });
+    await act(async () => { held[1].reply({ status: 500, body: {} }); });
+    await flush();
+    expect(updated).not.toHaveBeenCalled();
+  });
+
+  it("consecutive mode changes that complete out of order leave the last one", async () => {
+    await draw(<CollectionPage />);
+    await flush();
+    holdPuts = true;
+    const mode = (t: string) => [...host.querySelectorAll<HTMLButtonElement>(".coll-mode .segmented-btn")].find((b) => b.textContent === t)!;
+    await act(async () => { mode("Individual").click(); });
+    await draw(<CollectionPage />);
+    await act(async () => { mode("Off").click(); });
+    expect(held.map((h) => h.body)).toEqual([{ companions: "individual" }, { companions: "off" }]);
+    await act(async () => { held[1].reply({ status: 200, body: { ...base, companions: "off" } }); });
+    await act(async () => { held[0].reply({ status: 200, body: { ...base, companions: "individual" } }); });
+    await flush();
+    expect(authState.current.user?.companions).toBe("off");
+    // an earlier write failing after a later one landed does not roll it back
+    await act(async () => { mode("Team").click(); });
+    await draw(<CollectionPage />);
+    await act(async () => { mode("Individual").click(); });
+    await act(async () => { held[3].reply({ status: 200, body: { ...base, companions: "individual" } }); });
+    await act(async () => { held[2].reply({ status: 500, body: {} }); });
+    await flush();
+    expect(authState.current.user?.companions).toBe("individual");
   });
 });

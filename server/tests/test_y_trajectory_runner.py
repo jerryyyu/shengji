@@ -56,9 +56,10 @@ def test_recipe_refuses_budget_width_and_model_path_drift(tmp_path, old, new):
         runner.recipe_environment(changed, tmp_path)
 
 
-@pytest.mark.parametrize(("capture", "workers"), [(False, 1), (True, 1), (True, 2)],
-                         ids=["False", "True", "split-tail"])
-def test_runner_constructs_exact_served_bot(release50_packages, release55_pair, tmp_path, capture, workers):
+@pytest.mark.parametrize(("capture", "workers", "split"),
+                         [(False, 1, False), (True, 1, False), (True, 2, False), (True, 2, True)],
+                         ids=["False", "True", "whole-tail", "split-tail"])
+def test_runner_constructs_exact_served_bot(release50_packages, release55_pair, tmp_path, capture, workers, split):
     import json
     import os
     import subprocess
@@ -81,7 +82,7 @@ def test_runner_constructs_exact_served_bot(release50_packages, release55_pair, 
     registry.write_text(json.dumps({"schema": "shengji-seed-windows-v1", "windows": []}))
     options = (["--rounds", "2", "--workers", str(workers), "--seed", "4300000",
                 "--out", str(output), "--cap", "256"] if capture else ["--inspect"])
-    if workers > 1:
+    if split:
         options.append("--split-tail-mirrors")
     result = subprocess.run([
         sys.executable, str(_PATH), "--fly", str(fly), "--models", str(models),
@@ -103,7 +104,11 @@ def test_runner_constructs_exact_served_bot(release50_packages, release55_pair, 
         assert manifest["config"]["policy"] == env["SHENGJI_BOT"]
         if workers > 1:
             runtime = json.loads((output / "runtime.json").read_text())
-            assert runtime["split_tail_mirrors"] and runtime["per_cluster"]["0"]["worker_wall_secs"] > 0
+            assert runtime.get("split_tail_mirrors", False) is split
+            timing = runtime["per_cluster"]["0"]
+            assert ("worker_wall_secs" in timing) is split
+            if split:
+                assert timing["worker_wall_secs"] > 0
         shard = output / manifest["shards"][0]["path"]
         records = [json.loads(line) for line in shard.read_text().splitlines()]
         plays = [row for row in records if row["decision_kind"] == "play"]

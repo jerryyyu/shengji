@@ -5,7 +5,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PHONE_CLASS, PORTRAIT_PHONE, SHORT_VIEWPORT, TABLET_CLASS, TABLET_SCREEN, phoneLayout } from "./phoneLayout";
+import { PHONE_CLASS, PORTRAIT_PHONE, SHORT_VIEWPORT, TABLET_CLASS, TABLET_SCREEN, TABLET_UPRIGHT, phoneLayout } from "./phoneLayout";
 
 class FakeWS {
   static all: FakeWS[] = [];
@@ -160,8 +160,11 @@ it("sizes the table to the screen only on a screen large enough for the tablet t
   // a window under 810x740, touch or mouse, keeps the wide table's fixed sizes
   expect(phoneLayout(false, false, true, false).tablet).toBe(false);
   // below 740px tall or 810px wide the cross cannot keep a six-card trick at
-  // 52px cards; the query names no pointer, so an iPad matches as before
-  expect(TABLET_SCREEN).toBe("(min-width: 810px) and (min-height: 740px)");
+  // 52px cards; that part names no pointer, so an iPad matches as before. A
+  // touch screen held upright from 744x900 matches too: there each play lands
+  // at its seat, with no cross to fit.
+  expect(TABLET_SCREEN).toBe(`(min-width: 810px) and (min-height: 740px), ${TABLET_UPRIGHT}`);
+  expect(TABLET_UPRIGHT).toBe("(pointer: coarse) and (orientation: portrait) and (min-width: 744px) and (min-height: 900px)");
   // a sideways touch window under that height takes the phone table, which fits a short screen
   expect(SHORT_VIEWPORT).toBe("(max-height: 500px), (pointer: coarse) and (orientation: landscape) and (max-height: 739px)");
   // the phone table and the turned table are touch screens that are not tablets

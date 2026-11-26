@@ -166,6 +166,8 @@ function Walker({ player, team, level, size, px, pos, zone, layout, pose, you, o
   const box = useRef<HTMLSpanElement | null>(null);
   const cur = useRef<Spot | null>(null);
   const walking = useRef<Animation[]>([]);
+  // the walk in flight, from where to where; null at rest
+  const path = useRef<{ from: Spot; to: Spot } | null>(null);
   const ended = useRef(onEnd);
   ended.current = onEnd;
   const layoutNow = useRef(layout);
@@ -174,7 +176,7 @@ function Walker({ player, team, level, size, px, pos, zone, layout, pose, you, o
   const placed = zone.home !== null;
   useFidget(box, placed && move === "idle");
 
-  const stop = () => { for (const a of walking.current) a.cancel(); walking.current = []; };
+  const stop = () => { for (const a of walking.current) a.cancel(); walking.current = []; path.current = null; };
   const place = (s: Spot) => { cur.current = s; if (walk.current) walk.current.style.transform = at(s); };
   const goTo = (to: Spot) => {
     const from = cur.current;
@@ -183,6 +185,8 @@ function Walker({ player, team, level, size, px, pos, zone, layout, pose, you, o
     // outside its zone, goes there at once instead
     if (!from || !el || typeof el.animate !== "function" || prefersReducedMotion() || document.visibilityState === "hidden"
         || !pathClear(from, to, px, you, layoutNow.current)) {
+      // a walk still in flight would end over the new spot: it stops first
+      stop();
       place(to);
       return;
     }
@@ -196,17 +200,34 @@ function Walker({ player, team, level, size, px, pos, zone, layout, pose, you, o
       { transform: `scaleX(${dir}) translateY(0)` }, { transform: `scaleX(${dir}) translateY(-12%)`, offset: 0.45 },
       { transform: `scaleX(${dir}) translateY(0)` }], { duration: STEP_MS, iterations: Math.max(2, Math.round(ms / STEP_MS)) });
     walking.current = gait ? [a, gait] : [a];
+    path.current = { from, to };
     place(to);
-    void a.finished.then(() => { walking.current = walking.current.filter((x) => x !== a && x !== gait); }, () => {});
+    void a.finished.then(() => {
+      walking.current = walking.current.filter((x) => x !== a && x !== gait);
+      if (path.current?.to === to) path.current = null;
+    }, () => {});
   };
 
-  // stand on the home, or step off a spot cards have landed on
+  // stand on the home, or step off a spot cards have landed on. A figure with
+  // no clear spot is not drawn and forgets where it stood, so the next one
+  // drawn is placed afresh; a walk in flight whose way or end the cards now
+  // block stops where it was going and steps to the nearest clear spot.
   useLayoutEffect(() => {
-    if (!zone.home) return;
+    if (!zone.home) {
+      stop();
+      cur.current = null;
+      return;
+    }
     const now = cur.current;
-    if (!now) {
-      place(zone.home);
-      if (face.current) face.current.style.transform = `scaleX(${pos === "right" ? -1 : 1})`;
+    if (!now || !walk.current?.style.transform) {
+      place(now && clear(now, px, you, layout) ? now : zone.home);
+      if (face.current && !now) face.current.style.transform = `scaleX(${pos === "right" ? -1 : 1})`;
+      return;
+    }
+    const flight = path.current;
+    if (flight && !pathClear(flight.from, flight.to, px, you, layout)) {
+      stop();
+      place(clear(now, px, you, layout) ? now : nearest(zone, now) ?? zone.home);
       return;
     }
     const near = nearest(zone, now);

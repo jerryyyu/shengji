@@ -24,7 +24,7 @@ import { COMPANIONS, COMPANION_KINDS, lookCatalogue, parseLook } from "./look";
 import { companionSize, levelScale } from "./rig";
 import { parseArt } from "./Tractor";
 import TableCompanions, { SEAT_SIZE, levelIndex } from "./TableCompanions";
-import { clear } from "./seatZones";
+import { clear, zoneFor } from "./seatZones";
 import type { Layout, Rect } from "./seatZones";
 import { TABLES } from "./seatZones.fixtures";
 import CollectionPage from "../components/CollectionPage";
@@ -447,6 +447,53 @@ describe("the table", () => {
     const now = spotOf(1);
     expect(now).not.toEqual(was);
     expect(clear(now, 40, false, layout())).toBe(true);
+  });
+
+  it("a figure hidden while cards cover its whole zone is placed afresh when they clear", async () => {
+    const mm = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: q.includes("reduce"), addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
+    try {
+      await draw(table(state()));
+      const home = zoneFor("left", 40, layout(), false).home!;
+      expect(spotOf(1)).toEqual(home);
+      // cards over the whole of seat 1's corner: it has nowhere clear to stand
+      rects["trick-play"] = { x: 0, y: m.plates.left.y + m.plates.left.h, w: 260, h: 140 };
+      await draw(table(state({ trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>)));
+      expect(host.querySelector('.tc-seat[data-seat="1"]')).toBeNull();
+      rects["trick-play"] = { x: 0, y: 0, w: 0, h: 0 };
+      await draw(table(state({ trick: { leader: 2, plays: [] } } as Partial<GameState>)));
+      const w = host.querySelector<HTMLElement>('.tc-seat[data-seat="1"] .tc-walk')!;
+      expect(w.style.transform).toBe(`translate(${home.x}px, ${home.y}px)`);
+    } finally {
+      window.matchMedia = mm;
+    }
+  });
+
+  it("a card landing across a walk in flight stops the walk and its gait, and the figure ends clear", async () => {
+    vi.useFakeTimers();
+    const made: { el: Element; cancel: ReturnType<typeof vi.fn> }[] = [];
+    const proto = Element.prototype as unknown as { animate?: unknown };
+    const had = proto.animate;
+    proto.animate = function (this: Element) {
+      const cancel = vi.fn();
+      made.push({ el: this, cancel });
+      return { finished: new Promise(() => {}), cancel };
+    };
+    try {
+      await act(async () => { root.render(table(state())); });
+      const seat1 = () => made.filter((a) => a.el.closest('.tc-seat[data-seat="1"]') && !a.el.classList.contains("tc-move"));
+      for (let i = 0; i < 200 && seat1().length === 0; i++) act(() => { vi.advanceTimersByTime(100); });
+      const flight = seat1();
+      expect(flight.map((a) => a.el.className)).toEqual(["tc-walk", "tc-face"]);
+      const to = spotOf(1);
+      rects["trick-play"] = { x: to.x - 4, y: to.y - 4, w: 50, h: 50 };
+      await act(async () => { root.render(table(state({ trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>))); });
+      expect(flight.every((a) => a.cancel.mock.calls.length >= 1)).toBe(true);
+      expect(clear(spotOf(1), 40, false, layout())).toBe(true);
+    } finally {
+      proto.animate = had;
+      vi.useRealTimers();
+    }
   });
 
   it("under Reduce Motion it stands on its home and never walks", async () => {

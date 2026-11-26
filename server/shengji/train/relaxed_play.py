@@ -212,7 +212,6 @@ class RelaxedBot:
                                "relaxed_redrawn": pick != top, "top_margin": float(prefs[top] - prefs[pick])}
 
     def _search_free_play(self, rnd, seat):
-        from ..ai.belief_numpy import decision_inputs
         from ..ai.heuristic import HeuristicBot
         from . import search_free_play as SF
         p = self.player
@@ -230,13 +229,10 @@ class RelaxedBot:
         anchor = list(HeuristicBot.decide_play(p._heuristic, rnd, seat))
         try:
             refusals = p._ledger.observe(rnd)
-            inp = decision_inputs(rnd, seat, refusals)
-            states = p.model.trunk_states(inp)
-            prop = SF.propose(rnd, seat, anchor, states["card_logits"], candidates=p.candidates, cap=p.cap)
-            actions = prop.pop("actions")
+            prop, _, logits = p._scored_proposal(rnd, seat, anchor, refusals)
+            actions = prop["actions"]
             if len(actions) == 1:
                 return actions[0], {"candidates": 1, "relaxed_redrawn": False}
-            _, logits = p.model.score(inp, states, [SF.candidate_token(rnd, seat, a) for a in actions])
             top = int(np.argmax(logits))
             pick = near_best(logits, self.tau, self.delta, self.rng)
         except Exception as exc:

@@ -275,10 +275,14 @@ def propose(rnd, seat: int, anchor: Sequence[str], card_logits: np.ndarray, *,
     """The plays to score: ``anchor`` first, then legal plays by the mean of their cards' log-odds
     (ties in enumeration order), ``candidates`` in all.  On a lead, a play of two or more cards
     other than the anchor is kept only when no deal of the unseen cards refuses it."""
-    from ..ai.memory import Memory
     from ..harvest.legal import enumerate_legal
-    from ..rl.encode import CARD_INDEX
     legal = enumerate_legal(rnd, seat, cap=cap, must_include=[list(anchor)])
+    return _rank_proposal(rnd, seat, anchor, legal, card_logits, candidates, rank)
+
+
+def _rank_proposal(rnd, seat, anchor, legal, card_logits, candidates, rank):
+    from ..ai.memory import Memory
+    from ..rl.encode import CARD_INDEX
     actions = [list(a) for a in legal.actions]
     anchor_key = tuple(sorted(anchor))
     anchor_index = next(i for i, a in enumerate(actions) if tuple(sorted(a)) == anchor_key)
@@ -352,22 +356,35 @@ class SearchFreeBot:
     def decide_bury(self, rnd, seat):
         return self.base.decide_bury(rnd, seat)
 
-    def decide_play(self, rnd, seat):
+    def _scored_proposal(self, rnd, seat, anchor, refusals):
         from ..ai.belief_numpy import decision_inputs
+        from ..harvest.legal import enumerate_legal
+        legal = enumerate_legal(rnd, seat, cap=self.cap, must_include=[anchor])
+        if len(legal.actions) == 1:
+            prop = {"actions": legal.actions, "legal": 1, "legal_count": legal.count,
+                    "legal_complete": bool(legal.complete), "lead": not rnd.trick.plays, "unsafe_skipped": 0}
+            return prop, None, None
+        inp = decision_inputs(rnd, seat, refusals)
+        states = self.model.trunk_states(inp)
+        prop = _rank_proposal(rnd, seat, anchor, legal, states["card_logits"], self.candidates, RANK)
+        actions = prop["actions"]
+        if len(actions) == 1:
+            return prop, None, None
+        values, logits = self.model.score(inp, states, [candidate_token(rnd, seat, a) for a in actions])
+        return prop, values, logits
+
+    def decide_play(self, rnd, seat):
         from ..ai.heuristic import HeuristicBot
         started = time.perf_counter()
         self.last_decision_record = None
         anchor = list(HeuristicBot.decide_play(self._heuristic, rnd, seat))
         try:
             refusals = self._ledger.observe(rnd)
-            inp = decision_inputs(rnd, seat, refusals)
-            states = self.model.trunk_states(inp)
-            prop = propose(rnd, seat, anchor, states["card_logits"], candidates=self.candidates, cap=self.cap)
+            prop, values, logits = self._scored_proposal(rnd, seat, anchor, refusals)
             actions = prop.pop("actions")
             if len(actions) == 1:
-                pick, values, logits = 0, None, None
+                pick = 0
             else:
-                values, logits = self.model.score(inp, states, [candidate_token(rnd, seat, a) for a in actions])
                 if not (np.isfinite(values).all() and np.isfinite(logits).all()):
                     raise SearchFreeError("non-finite candidate scores")
                 pick = int(np.argmax(logits))

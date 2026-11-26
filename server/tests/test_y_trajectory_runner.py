@@ -162,6 +162,7 @@ def test_launcher_hold_then_guarded_resume_preserves_completed_shard(release50_p
                 rounds=4, seed=4300000, workers=1, max_seconds=120,
                 holds=[str(hold)], foreign_locks=[], output=str(out), admit_disk_gib=0, stop_disk_gib=0,
                 files={str(_PATH): launcher.sha256(_PATH)}, lock=str(tmp_path/'lock'), release=str(release))
+    spec['seal_policy'] = env['SHENGJI_BOT']
     # Test isolation substitutes the host census and allows an in-progress checkout.
     monkeypatch.setattr(launcher, '_census', lambda: None)
     real_output = subprocess.check_output
@@ -202,3 +203,15 @@ def test_launcher_hold_then_guarded_resume_preserves_completed_shard(release50_p
     manifest = json.loads((out/'manifest.json').read_text())
     assert manifest['run_id'] == spec['run_id'] and len(manifest['shards']) == 2
     assert not Path(spec['lock']).exists()
+
+    seal = json.loads(Path(str(out)+'.terminal.1.json').read_text())['leg_seal']
+    assert seal['manifest_sha256'] == launcher.sha256(out/'manifest.json')
+    assert seal['rounds'] == 4 and seal['run_id'] == spec['run_id']
+    with pytest.raises(launcher.Refused, match='leg identity'):
+        launcher.seal_leg(dict(spec, seed=spec['seed']+1), out)
+    shard = out / manifest['shards'][0]['path']
+    data = shard.read_bytes()
+    shard.chmod(0o600)
+    shard.write_bytes(b'X' + data[1:])
+    with pytest.raises(launcher.Refused, match='trajectory digest differs'):
+        launcher.seal_leg(spec, out)

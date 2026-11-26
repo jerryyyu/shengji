@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from collections import Counter
 import shutil
 import signal
 import socket
@@ -152,6 +153,71 @@ def progress(spec, pid, elapsed):
             'deadline_headroom_seconds': max(0, spec['max_seconds'] - elapsed)}
 
 
+def seal_leg(spec, out):
+    """Bind the reviewed leg to its published mirrored shards before reporting completion."""
+    def metadata(path):
+        if path.is_symlink() or not path.is_file():
+            raise Refused(f'missing or linked metadata: {path.name}')
+        raw = path.read_bytes()
+        return json.loads(raw), hashlib.sha256(raw).hexdigest()
+
+    if out.is_symlink() or (out/'shards').is_symlink():
+        raise Refused('linked store or shard directory')
+    manifest, manifest_sha = metadata(out/'manifest.json')
+    run, run_sha = metadata(out/'run.json')
+    runtime, runtime_sha = metadata(out/'runtime.json')
+    config = run['config']
+    seed, rounds = spec['seed'], spec['rounds']
+    clusters = rounds // 2
+    window = manifest['seed_window']
+    if (manifest['schema'] != 'shengji-trajectory-manifest-v1'
+            or run['config'] != manifest['config'] or run['identity'] != manifest['identity']
+            or run['identity']['git_sha'] != spec['source_git_head']
+            or config['run_id'] != run['run_id'] or run['run_id'] != manifest['run_id']
+            or ('run_id' in spec and run['run_id'] != spec['run_id'])
+            or config['cap'] != 256 or run['identity']['fast_engine'] is not True
+            or config['policy'] != spec['seal_policy'] or config['capture_served_budget'] is not True
+            or config['seed0'] != seed or config['round_mix'] != 'sampled'
+            or manifest['seed0'] != seed or manifest['rounds'] != rounds
+            or manifest['clusters'] != clusters or len(manifest['shards']) != clusters
+            or window['name'] != run['run_id'] or window['purpose'] != 'trajectory'
+            or window['conflicts'] or window['allow_seed_overlap'] is not False
+            or window['span'] != [seed, seed + clusters]):
+        raise Refused('leg identity or seed reservation differs')
+    work = runtime['clusters']
+    if (runtime['resume'] != spec.get('resume', False)
+            or runtime.get('split_tail_mirrors', False) != spec.get('split_tail_mirrors', False)
+            or Path(runtime['seed_window']['registry']).resolve() != Path(spec['seed_registry']).resolve()
+            or runtime['workers'] != spec['workers'] or work['requested'] != clusters or work['failed']
+            or sorted(work['generated'] + work['reused']) != list(range(clusters))):
+        raise Refused('incomplete worker coverage')
+    counts = Counter()
+    total_bytes = 0
+    for i, shard in enumerate(manifest['shards']):
+        prefix = f'shards/cluster-{i:06d}'
+        if shard['path'] != prefix + '.jsonl' or shard['sidecar'] != prefix + '.json':
+            raise Refused(f'wrong shard paths at cluster {i}')
+        side, digest = metadata(out/shard['sidecar'])
+        if (digest != shard['sidecar_sha256'] or side['run_id'] != run['run_id']
+                or shard['cluster'] != i or shard['seed'] != seed + i
+                or any(side[k] != shard[k] for k in ('path', 'cluster', 'seed', 'records', 'bytes', 'sha256'))
+                or side['counts']['rounds'] != 2 or side['records'] != side['counts']['records']
+                or [(r['mirror'], r['seed']) for r in side['rounds']] != [(0, seed+i), (1, seed+i)]):
+            raise Refused(f'invalid mirror pair at cluster {i}')
+        path = out/shard['path']
+        if path.is_symlink() or not path.is_file() or path.stat().st_size != shard['bytes']:
+            raise Refused(f'invalid trajectory file at cluster {i}')
+        with path.open('rb') as stream:
+            if hashlib.file_digest(stream, 'sha256').hexdigest() != shard['sha256']:
+                raise Refused(f'trajectory digest differs at cluster {i}')
+        total_bytes += shard['bytes']
+        counts.update(side['counts'])
+    if counts != Counter(manifest['counts']) or counts['rounds'] != rounds:
+        raise Refused('leg totals differ from published shards')
+    return dict(manifest_sha256=manifest_sha, run_sha256=run_sha, runtime_sha256=runtime_sha,
+                run_id=run['run_id'], seed0=seed, rounds=rounds, trajectory_bytes=total_bytes)
+
+
 def execute(spec, spec_sha, launcher):
     own_sha = sha256(launcher)
     _release(spec['release'], own_sha, spec_sha)
@@ -216,10 +282,20 @@ def execute(spec, spec_sha, launcher):
             status = 'completed' if rc == 0 and (out/'manifest.json').is_file() else 'failed'
         if not safe:
             status = 'containment-unresolved'
+        seal_fields = {}
+        if status == 'completed' and 'seal_policy' in spec:
+            try:
+                seal_fields['leg_seal'] = seal_leg(spec, out)
+            except (Refused, OSError, ValueError, KeyError, TypeError) as exc:
+                seal_fields['seal_error'] = str(exc)
+                status = 'invalid-store'
+            if requested or any(present(p) for p in spec['holds']):
+                status = requested[0] if requested else 'held'
+                seal_fields.pop('leg_seal', None)
         with terminal_path.open('x') as stream:
             json.dump({'attempt': attempt, 'resume': spec.get('resume', False), 'status': status, 'returncode': rc, 'pid': proc.pid,
                        'spec_sha256': spec_sha, 'elapsed': time.monotonic()-started,
-                       'lock_retained': not safe}, stream)
+                       'lock_retained': not safe, **seal_fields}, stream)
         print(status, flush=True)
         return 0 if status == 'completed' else 1
     finally:

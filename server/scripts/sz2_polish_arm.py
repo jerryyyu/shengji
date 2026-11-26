@@ -17,7 +17,7 @@ def polish_arm(joint, arm, cache_root, output, recipe_path, recipe_sha):
 
 
 def polish_checkpoint(checkpoint, cache, recipe, out, *, epochs, lr, expected_sample=None, expected_encode_rounds=None,
-                      finish_selection=False):
+                      finish_selection=False, device="cpu"):
     from shengji.train import unified_readout
 
     with ExitStack() as leases:
@@ -27,7 +27,7 @@ def polish_checkpoint(checkpoint, cache, recipe, out, *, epochs, lr, expected_sa
         argv = ["polish", "--ckpt", str(checkpoint), "--cache", str(cache),
                 "--out", str(out), "--epochs", str(epochs), "--lr", str(lr),
                 "--weight-decay", "0.01", "--reply-weight", "0.2", "--batch", "4096",
-                "--threads", "16", "--seed", "1", "--device", "cpu"]
+                "--threads", "16", "--seed", "1", "--device", device]
         if finish_selection:
             return finish_polish_selection(out, checkpoint, argv, epochs)
         if json.loads((cache / unified_readout.CACHE_DEVICE).read_text()) != {"device": "cpu"}:
@@ -83,7 +83,8 @@ def finish_polish_selection(out, checkpoint, argv, epochs):
         raise ValueError("best checkpoint differs from the polish terminal")
     _, saved = unified_readout.load_checkpoint(best)
     settings = vars(unified_readout.build_parser().parse_args(argv))
-    del settings["device"]  # CPU polish omits its default device from saved settings.
+    if settings["device"] == "cpu":
+        del settings["device"]  # CPU polish omits its default device from saved settings.
     epoch = int(done[1])
     if saved["run"]["polish"] != settings or saved["calib"]["polish_epoch"] != epoch:
         raise ValueError("completed polish settings or winning epoch differ")

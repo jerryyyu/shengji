@@ -979,11 +979,14 @@ class Matchmaker:
         """Refuse a tap sent against a panel the entry no longer shows. A
         message without ``panel_seq`` (an older client) is not checked,
         except a role-dependent one (Ready from a joiner, Start from an
-        owner) within ROLE_GRACE_SECS of the entry's role changing."""
+        owner) that an owner sends within ROLE_GRACE_SECS of gaining the
+        table or a new leader."""
         sent = msg.get("panel_seq")
         if sent is None or isinstance(sent, bool) or not isinstance(sent, int):
             self._panel_seq(e)                # refreshes the role
-            if role_dependent and e.role_at and self.clock() - e.role_at < ROLE_GRACE_SECS:
+            # only an owner's tap is a Start; a joiner's is a Ready either way
+            if (role_dependent and e.role and e.role[0] and e.role_at
+                    and self.clock() - e.role_at < ROLE_GRACE_SECS):
                 self._send_state(e)
                 raise QueueError("panel_changed", "Your table changed. Look again before you tap.")
             return

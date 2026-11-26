@@ -18,9 +18,10 @@ vi.mock("./ws", () => ({
 }));
 const saved = vi.hoisted(() => ({ room: null as string | null, token: null as string | null }));
 
-import { codes, panelShown } from "./codeJoin";
+import { CLOSED_LOOK_MS, codes, panelShown } from "./codeJoin";
+import { fromCode } from "./queue/tableModel";
 import { queue } from "./queue/store";
-import { clearToast, currentToast } from "./toast";
+import { clearToast, currentToast, subscribeToast } from "./toast";
 
 const say = (m: unknown) => { for (const fn of [...link.msg]) fn(m); };
 const status = (s: string) => { for (const fn of [...link.status]) fn(s); };
@@ -423,5 +424,133 @@ describe("older links", () => {
     status("open");
     expect(window.location.search).toBe("?code=ABCD");
     expect(codes.view?.code).toBe("ABCD");
+  });
+});
+
+describe("a panel whose table ends while it shows", () => {
+  it("looks again when the page comes back, and closes with the game-ended line", () => {
+    codes.setPlace(lobby);
+    codes.open("FG3K");
+    say(TABLE);
+    expect(codes.view?.step).toBe("panel");
+    sent.length = 0;
+    window.dispatchEvent(new Event("focus"));
+    expect(sent).toEqual([{ type: "table_peek", code: "FG3K" }]);
+    // the panel stays up while it looks
+    expect(panelShown(codes.view)).toBe(true);
+    say(MISS);
+    expect(codes.view).toBeNull();
+    expect(currentToast()?.text).toBe("That game has ended.");
+  });
+
+  it("a table closed for a moment keeps its panel, Join waiting, and Join comes back when it reopens", () => {
+    vi.useFakeTimers();
+    try {
+      codes.setPlace(lobby);
+      codes.open("FG3K");
+      say(TABLE);
+      codes.refresh();
+      say({ ...TABLE, closed: true });
+      expect(codes.view?.step).toBe("panel");
+      expect(panelShown(codes.view)).toBe(true);
+      expect(currentToast()).toBeNull();
+      expect(fromCode(codes.view!, false).primary?.disabled).toBe(true);
+      // Join does nothing while it waits
+      sent.length = 0;
+      codes.join("Mei");
+      expect(sent).toEqual([]);
+      // it looks again by itself, and the reopened table gives Join back
+      vi.advanceTimersByTime(CLOSED_LOOK_MS);
+      expect(sent).toEqual([{ type: "table_peek", code: "FG3K" }]);
+      say(TABLE);
+      expect(codes.view?.step).toBe("panel");
+      expect(fromCode(codes.view!, false).primary?.disabled).toBe(false);
+      expect(currentToast()).toBeNull();
+      // no more looks once it is open
+      sent.length = 0;
+      vi.advanceTimersByTime(CLOSED_LOOK_MS * 3);
+      expect(sent).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops looking at a closed table once its panel is gone", () => {
+    vi.useFakeTimers();
+    try {
+      codes.setPlace(lobby);
+      codes.open("FG3K");
+      say(TABLE);
+      codes.refresh();
+      say({ ...TABLE, closed: true });
+      codes.cancel();
+      sent.length = 0;
+      vi.advanceTimersByTime(CLOSED_LOOK_MS * 3);
+      expect(sent).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a table still there refreshes its seats, and the lookup limit leaves the panel as it was", () => {
+    codes.setPlace(lobby);
+    codes.open("FG3K");
+    say(TABLE);
+    codes.refresh();
+    say({ ...TABLE, seats: TABLE.seats.map((x) => (x.seat === 1 ? { ...x, state: "taken", name: "Bo" } : x)) });
+    expect(codes.view?.step).toBe("panel");
+    expect(currentToast()).toBeNull();
+    codes.refresh();
+    say(LIMITED);
+    expect(codes.view?.step).toBe("panel");
+    expect(currentToast()).toBeNull();
+  });
+
+  it("a fresh peek's refusal is still the server's line", () => {
+    codes.setPlace(lobby);
+    codes.open("FG3K");
+    say(MISS);
+    expect(currentToast()?.text).toBe("No table has that code.");
+  });
+});
+
+describe("a return to the page while the socket is down", () => {
+  it("is remembered: one peek once the lobby is ready again, and a missing code's reply is one toast", () => {
+    codes.setPlace(lobby);
+    codes.open("FG3K");
+    say(TABLE);
+    expect(codes.view?.step).toBe("panel");
+    status("closed");
+    codes.setPlace({ ready: false, seatedAt: null });
+    sent.length = 0;
+    window.dispatchEvent(new Event("focus"));
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(sent).toEqual([]);
+    status("open");
+    codes.setPlace(lobby);
+    expect(sent).toEqual([{ type: "table_peek", code: "FG3K" }]);
+    expect(codes.view?.step).toBe("peek");
+    // a second ready place sends nothing more
+    codes.setPlace(lobby);
+    expect(sent).toHaveLength(1);
+    const toasts: string[] = [];
+    const off = subscribeToast(() => { const t = currentToast(); if (t) toasts.push(t.text); });
+    say(MISS);
+    say(MISS);
+    off();
+    expect(codes.view).toBeNull();
+    expect(toasts).toEqual(["That game has ended."]);
+  });
+
+  it("is forgotten once the panel is gone", () => {
+    codes.setPlace(lobby);
+    codes.open("FG3K");
+    say(TABLE);
+    codes.setPlace({ ready: false, seatedAt: null });
+    window.dispatchEvent(new Event("focus"));
+    codes.cancel();
+    sent.length = 0;
+    codes.setPlace(lobby);
+    expect(sent).toEqual([]);
   });
 });

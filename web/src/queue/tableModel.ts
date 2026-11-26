@@ -439,7 +439,8 @@ export function fromCode(j: CodeJoin, busy: boolean): TableModel {
   const who = room ? hostName(room) : queued ? tableHostName(queued) : null;
   // a room's Join needs a seat to name; a Play table's is seated by the
   // server, which answers table_full when it is full
-  const canJoin = !j.full && !busy && j.peek !== null && (queued !== null || j.seat !== null);
+  // a table closed for a moment (its host claiming another seat) waits to reopen
+  const canJoin = !j.full && !busy && j.peek !== null && !queued?.closed && (queued !== null || j.seat !== null);
   // a room that is not ranked is casual; before the peek answers, no tag
   const casual = room ? !room.ranked : queued?.mode === "casual";
   return {

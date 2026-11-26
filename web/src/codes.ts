@@ -11,6 +11,19 @@ export function normalizeCode(raw: string): string {
   return raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, CODE_LEN);
 }
 
+/** The code in pasted text that is an invite link (`?code=`, or an older
+ *  `?room=` or `?party=`), from any host, so a link pasted into the code box
+ *  reads as its code; null for anything else, which pastes as typed. */
+export function codeFromLink(text: string): string | null {
+  const raw = text.trim();
+  if (!/^(https?:\/\/|[\w.-]+\.[a-z]{2,}\/)/i.test(raw)) return null;
+  let url: URL;
+  try { url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`); } catch { return null; }
+  const param = url.searchParams.get("code") ?? url.searchParams.get("room") ?? url.searchParams.get("party");
+  const code = normalizeCode(param ?? "");
+  return code.length === CODE_LEN ? code : null;
+}
+
 /** One link kind: an older `?room=CODE` or `?party=CODE` link reads as
  *  `?code=CODE`, and a `?name=` beside it is dropped (a guest joins under the
  *  name their chip shows). Old links, and the app's universal links, still open. */

@@ -2,6 +2,7 @@ import { defineMessages } from "../define";
 import type { Params } from "../define";
 
 const rounds = (p: Params) => `${p.n} round${Number(p.n) === 1 ? "" : "s"}`;
+const places = (p: Params) => `${p.n} place${Number(p.n) === 1 ? "" : "s"}`;
 
 export const me = defineMessages({
   "me.title": { en: "Me", zh: "我" },
@@ -52,8 +53,8 @@ export const me = defineMessages({
     en: (p) => `Rating over your last ${p.n} ${p.n === 1 ? "round" : "rounds"}, from ${p.from} to ${p.to}`,
     zh: (p) => `最近 ${p.n} 局的积分，从 ${p.from} 到 ${p.to}`,
   },
-  "me.board.moveUp": { en: "up {n} places this week", zh: "本周上升 {n} 名" },
-  "me.board.moveDown": { en: "down {n} places this week", zh: "本周下降 {n} 名" },
+  "me.board.moveUp": { en: (p: Params) => `up ${places(p)} this week`, zh: "本周上升 {n} 名" },
+  "me.board.moveDown": { en: (p: Params) => `down ${places(p)} this week`, zh: "本周下降 {n} 名" },
   "me.board.moveFlat": { en: "no change this week", zh: "本周没变" },
   "me.board.moveSpoken": { en: ", {move}", zh: "，{move}" },
   "me.board.signIn": { en: "Sign in to be ranked", zh: "登录后上榜" },

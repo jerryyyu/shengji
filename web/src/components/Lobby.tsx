@@ -16,7 +16,7 @@ import { useOffline } from "../offlineMode";
 import { codes, panelShown, useCodes } from "../codeJoin";
 import type { NearbyJoin } from "../nearbyJoin";
 import { useNearbyJoinView, useNearbyUi, type NearbyUi } from "../nearbyGate";
-import { normalizeCode } from "../codes";
+import { codeFromLink, normalizeCode } from "../codes";
 import { WIDE } from "../home/route";
 import { useMediaQuery } from "../phoneLayout";
 import { offlineGame, offlineOffered, useOfflineTable } from "./offlineGame";
@@ -96,6 +96,13 @@ export function CodeRow({ disabled, code = "", looking = false, onCode, onJoin, 
         spellCheck={false}
         enterKeyHint="go"
         onChange={(e) => onCode?.(e.target.value.toUpperCase())}
+        onPaste={(e) => {
+          // the box holds four characters, so a pasted link would keep only "HTTP"
+          const linked = codeFromLink(e.clipboardData.getData("text"));
+          if (linked === null) return;
+          e.preventDefault();
+          onCode?.(linked);
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter") onJoin?.();
         }}

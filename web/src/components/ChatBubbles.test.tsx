@@ -290,3 +290,25 @@ it("places a bubble beside its seat, never over a card", () => {
   const wall = { x: 0, y: 0, w: 800, h: 400 };
   expect(placeBubble(seat, size, ["right", "left"], bounds, [[wall]])).toBeNull();
 });
+
+it("the badge counts only what someone else wrote: no system line, no line of yours, no reconnect's replay", () => {
+  link.history = [line(1, 1, "before you sat")];
+  render();
+  const badge = () => host.querySelector(".chat-badge")?.textContent ?? null;
+  expect(badge()).toBeNull();
+  // someone drops and comes back, and the reconnect replays the scrollback
+  serverSays({ ...line(2, -1, "Bo disconnected"), event: "disconnected", actor: "Bo" });
+  serverSays({ ...line(3, -1, "Bo reconnected"), event: "reconnected", actor: "Bo" });
+  serverSays(line(4, 0, "mine"));
+  link.history = [line(1, 1, "before you sat"), line(2, -1, "Bo disconnected"), line(3, -1, "Bo reconnected"), line(4, 0, "mine")];
+  serverSays({ type: "chat_history", room: "T", through_id: 4, messages: link.history });
+  expect(badge()).toBeNull();
+  serverSays(line(5, 2, "hi"));
+  expect(badge()).toBe("1");
+  // opening the panel reads it; a replay after that adds nothing
+  act(() => host.querySelector<HTMLButtonElement>(".chat-launch")!.click());
+  act(() => host.querySelector<HTMLButtonElement>(".chat-launch")!.click());
+  expect(panelShut()).toBe(true);
+  serverSays({ type: "chat_history", room: "T", through_id: 5, messages: link.history });
+  expect(badge()).toBeNull();
+});

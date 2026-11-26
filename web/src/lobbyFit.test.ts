@@ -143,6 +143,19 @@ describe("the Play tab on a phone", () => {
     expect(acts.position).toBe("sticky");
     expect(acts.bottom).toBe("0");
     expect(rule(".home-narrow .home-body > .screen")["padding-bottom"]).toBe("var(--tabbar-clear)");
+    // stuck, the row's backing runs on through the 16px above the pill, so
+    // no setting shows between them; the panel clips it at rest
+    expect(rule(".home-narrow .play-table-up .tp").overflow).toBe("clip");
+    const below = rule(".home-narrow .play-table-up .tp-acts::after, .home-narrow .play-table-up .tp-led::after");
+    expect(below.background).toBe(acts.background);
+    expect(below.top).toBe("calc(100% - 16px)");
+    expect(below.height).toBe("32px");
+    expect(rule(".home-narrow")["--tabbar-clear"]).toBe("calc(var(--tabbar-h) + var(--tabbar-bottom) + 16px)");
+  });
+
+  it("held sideways in a browser, the preview gives way so Play and Duo sit clear of the tab bar", () => {
+    const sideways = /@media \(orientation: landscape\) and \(max-height: 500px\) \{\s*\.home-narrow \.play-tab \.lobby-preview \{ display: none; \}/;
+    expect(css).toMatch(sideways);
   });
 });
 

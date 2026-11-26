@@ -97,7 +97,8 @@ grouped list rows, Me's stat tiles and How to play's diagrams (Jerry 11-15).
 The phone lobby is portrait (Jerry 2026-11-15: "Yes let's lock lobby to portrait"): the app locks every lobby
 screen (Play and its panels and sheets, Leaderboard, Me, How to play, saved games, Support, Privacy, Terms of use) to portrait
 on an iPhone and the table to both landscapes; the web cannot lock, so a phone held sideways (under 501px tall)
-shows the same portrait column, centred under a capped tab bar, and scrolls. The lobby has no sideways design
+shows the same portrait column, centred under a capped tab bar, and scrolls; the Play tab's preview gives way
+there, so Play and Duo sit clear of the tab bar in the first view. The lobby has no sideways design
 of its own; the table keeps its landscape layout.
 
 **Section 6, settings.** One settings list (Coach, Sound, Haptics on native only, How to play) in both Me and
@@ -222,6 +223,12 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
      taken from an open table keep today's bar and cooldown: the ranked leaver's seat is not offered.
    - One step: the page peeks a code directly (`table_peek`; the old `code_lookup` → `code_kind` is
      retired), and the store in `codeJoin.ts` holds the whole join as one value.
+   - An invite link pasted into the code box reads as its code (`codeFromLink` in `codes.ts`): the box holds
+     four characters, so the link itself would keep only "HTTP".
+   - A Join panel looks again when the page comes back (focus or visibility; a return while the socket is
+     down looks once it is up): fresh seats, or, for a code that names nothing now, the panel closes with the
+     one line "That game has ended." A table closed for a moment (its host claiming another seat) keeps the
+     panel with Join disabled, looked at again every 2 s until it opens, when Join comes back.
    - The Join panel is a kind of the one panel (`join-code`): `fromCode` in `queue/tableModel.ts` builds it
      and `TablePanel.tsx` draws it, with the CASUAL tag on a casual table (the one queue-side panel that keeps
      its tag, since the Ranked / Casual switch shows your choice, not that table's mode) and Enter pressing Join.

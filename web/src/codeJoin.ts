@@ -17,6 +17,7 @@ import type { ConnStatus } from "./ws";
 import { conn, getResumeToken, getSavedName, getSavedRoom } from "./ws";
 import { beforeOnlineSetup } from "./deviceAccount";
 import { decideIntent, intentToJoin } from "./intent";
+import { t, tIn } from "./i18n";
 
 /** Where a code came from: the Play box or a link. */
 export type CodeFrom = "play" | "link";
@@ -58,6 +59,10 @@ export interface Place {
 
 /** If neither a seat nor a refusal has come back by then, Join wakes up again. */
 export const JOIN_TIMEOUT_MS = 15000;
+/** A table closed for a moment (its host claiming another seat) is looked
+ *  at again this often, at most CLOSED_LOOKS times, while its panel shows. */
+export const CLOSED_LOOK_MS = 2000;
+export const CLOSED_LOOKS = 15;
 
 /** Drop one query parameter from the address, keeping the rest. */
 export function dropParam(name: string): void {
@@ -90,6 +95,13 @@ export class CodeStore {
   private seenSeated = false;
   private place: Place = { ready: false, seatedAt: null };
   private timer: number | null = null;
+  /** The waiting peek re-reads a panel already showing, on the page's return. */
+  private refreshing = false;
+  /** The page came back while the lobby was not ready: look once it is. */
+  private refreshOwed = false;
+  /** The next look at a table closed for a moment, and how many are left. */
+  private closedTimer: number | null = null;
+  private closedLooks = 0;
 
   attach(): void {
     if (this.attached) return;
@@ -97,6 +109,27 @@ export class CodeStore {
     // a test may stand in a partial socket
     conn.subscribe?.((m) => this.onMessage(m));
     conn.subscribeStatus?.((s) => this.onStatus(s));
+    // a table can end while its panel shows: back on the page, look again
+    if (typeof window === "undefined") return;
+    window.addEventListener("focus", () => this.refresh());
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") this.refresh();
+    });
+  }
+
+  /** Peek a showing panel's code again: fresh seats, or, for a table that
+   *  ended meanwhile, the panel closes with its one line. */
+  refresh(): void {
+    const j = this.view;
+    if (!j || j.step !== "panel") return;
+    if (!this.place.ready) {
+      this.refreshOwed = true;
+      return;
+    }
+    this.refreshOwed = false;
+    this.refreshing = true;
+    this.set({ ...j, step: "peek" });
+    this.sendPeek(j.code);
   }
 
   subscribe = (fn: () => void): (() => void) => {
@@ -111,8 +144,19 @@ export class CodeStore {
       window.clearTimeout(this.timer);
       this.timer = null;
     }
+    if (next?.step !== "peek") this.refreshing = false;
+    if (next === null) {
+      this.refreshOwed = false;
+      this.stopClosedLooks();
+    }
     this.view = next;
     for (const fn of this.listeners) fn();
+  }
+
+  private stopClosedLooks(): void {
+    if (this.closedTimer !== null) window.clearTimeout(this.closedTimer);
+    this.closedTimer = null;
+    this.closedLooks = 0;
   }
 
   private patch(next: Partial<CodeJoin>): void {
@@ -200,6 +244,7 @@ export class CodeStore {
       return;
     }
     if (now.step === "peek" && !this.asked && p.ready) this.sendPeek(now.code);
+    if (now.step === "panel" && this.refreshOwed && p.ready) this.refresh();
   }
 
   /** The Play box's Join: peek `raw`; false when it is not a whole code or
@@ -219,6 +264,7 @@ export class CodeStore {
     }
     if (!conn.send({ type: "table_peek", code })) return false;
     this.asked = true;
+    this.refreshing = false;
     this.set({ code, from: "play", step: "peek", peek: null, full: false, seat: null });
     return true;
   }
@@ -242,7 +288,7 @@ export class CodeStore {
 
   private joinNow(name: string): void {
     const j = this.view;
-    if (!j || j.step !== "panel" || j.full || !j.peek) return;
+    if (!j || j.step !== "panel" || j.full || !j.peek || (j.peek.table && j.peek.closed)) return;
     if (j.peek.table) {
       queue.join(j.code, name);
     } else {
@@ -304,9 +350,25 @@ export class CodeStore {
     }
     if (msg.type === "room_seats") {
       if (msg.room !== j.code || j.step !== "peek") return;
+      const again = this.refreshing;
+      this.refreshing = false;
       if (msg.table && msg.closed) {
-        // a Join of the host's is in flight: as a table_closed answer
-        this.drop();
+        if (!again) {
+          // a Join of the host's is in flight: as a table_closed answer
+          this.drop();
+          return;
+        }
+        // a second look finds the table closed for a moment (its host is
+        // claiming another seat): the panel stays, Join waits, and the table
+        // is looked at again until it opens
+        this.set({ ...j, step: "panel", peek: msg, full: msg.full, seat: null });
+        if (this.closedTimer === null && this.closedLooks < CLOSED_LOOKS) {
+          this.closedLooks += 1;
+          this.closedTimer = window.setTimeout(() => {
+            this.closedTimer = null;
+            this.refresh();
+          }, CLOSED_LOOK_MS);
+        }
         return;
       }
       if (msg.table && msg.seats.some((sd) => sd.you)) {
@@ -314,6 +376,7 @@ export class CodeStore {
         this.drop();
         return;
       }
+      if (again) this.closedLooks = 0;
       if (msg.table) {
         this.set({ ...j, step: "panel", peek: msg, full: msg.full, seat: msg.full ? null : tableJoinSeat(msg) });
         return;
@@ -327,6 +390,15 @@ export class CodeStore {
     if (msg.peek !== undefined) {
       // the peek's own refusal: the code names nothing (or the limit is reached)
       if (msg.peek !== j.code || j.step !== "peek") return;
+      if (this.refreshing) {
+        // a second look: a code that names nothing now is a table that ended;
+        // any other refusal (the lookup limit) leaves the panel as it was
+        if (msg.message === tIn("en", "roundend.srvNoCode")) {
+          this.drop();
+          showToast(t("roundend.toastGameEnded"));
+        } else this.set({ ...j, step: "panel" });
+        return;
+      }
       this.drop();
       showToast(msg.message);
       return;
@@ -364,6 +436,9 @@ export class CodeStore {
     this.linkTaken = false;
     this.asked = false;
     this.seenSeated = false;
+    this.refreshing = false;
+    this.refreshOwed = false;
+    this.stopClosedLooks();
     this.place = { ready: false, seatedAt: null };
   }
 }

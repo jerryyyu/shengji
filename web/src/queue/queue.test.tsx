@@ -270,7 +270,8 @@ describe("Play", () => {
     expect(fresh.sent.filter((m) => m.type === "queue_join")).toEqual([]);
     click(findBtn());
     expect(fresh.sent.filter((m) => m.type === "queue_join")).toEqual([{ type: "queue_join", mode: "ranked" }]);
-    expect(old.sent.slice(oldSent)).toEqual([]);  // nothing more on the guest's socket
+    // nothing more on the guest's socket but its own buffered telemetry, handed over with it
+    expect(old.sent.slice(oldSent).filter((m) => m.type !== "client_event")).toEqual([]);
     say(queued());
     expect(panel()).not.toBeNull();
     expect(fresh.sent.filter((m) => m.type === "queue_join")).toHaveLength(1);
@@ -338,6 +339,21 @@ const ringSecs = () => panel()?.querySelector(".tp-primary .timer-ring, .tp-led 
 const confirmLeave = () => click(q("[role='alertdialog'] .leave-sheet-leave"));
 
 describe("your own table", () => {
+  it("telemetry: Play is a tap, your table the waiting_table screen, Start with bots a tap", async () => {
+    const { telemetry } = await import("../telemetry");
+    await renderApp();
+    telemetry.reset();
+    fakeClock();
+    click(findBtn());
+    say(queued());
+    tick(GUARD_MS + 10);
+    click(primary());
+    const evs = telemetry.pending();
+    expect(evs.filter((e) => e.e === "tap").map((e) => (e as { id: string }).id)).toEqual(["play", "start_with_bots"]);
+    expect(evs.filter((e) => e.e === "screen").map((e) => (e as { name: string }).name)).toContain("waiting_table");
+    telemetry.reset();
+  });
+
   it("Play turns into your table in Play's place: seats, Start with bots with the bots' ring, and Leave", async () => {
     await renderApp();
     fakeClock();

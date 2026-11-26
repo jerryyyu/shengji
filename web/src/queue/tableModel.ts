@@ -10,6 +10,7 @@ import type { ChatMsg, Rank, RoomSeats, TableSeats } from "../protocol";
 import { BOT_FILL_MS, isOpener, namesAt, partnerName, queue, tableDuo, yourReady } from "./store";
 import type { OfferView, QueueView, TableFrame } from "./store";
 import type { BotLevel } from "./messages";
+import { telemetry, type TapId } from "../telemetry";
 import {
   JUST_JOINED_MS, OFFER_SECS, duoStartLabel, joinTitle, labelList, moveTargets, ownBotsAt, ownTitle, panelKind,
   seatLabel, sharedStatusLine, sharedTitle, shortName, startLabel, stillHereLine, teamWord,
@@ -502,9 +503,18 @@ export function offlineModel({ ready, starting, bots, nearby = null }: {
   };
 }
 
+/** The panel's taps that telemetry names, by action. */
+const TAPS: Partial<Record<TableAction["type"], TapId | ((a: TableAction) => TapId)>> = {
+  start: "table_start", start_bots: "start_with_bots", leave: "leave_queue",
+  wait_players: (a) => (a.type === "wait_players" && a.on ? "wait_people_on" : "wait_people_off"),
+  offer_join: "offer_join", offer_wait: "offer_wait",
+};
+
 /** The queue's dispatcher: each action through the store, which keeps the
  *  pending state and adds the table's sequence and sitting tokens. */
 export function queueSend(a: TableAction): void {
+  const tap = TAPS[a.type];
+  if (tap) telemetry.tap(typeof tap === "function" ? tap(a) : tap);
   switch (a.type) {
     case "start": return queue.tableStart();
     case "unready": return queue.tableUnready();

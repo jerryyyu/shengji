@@ -270,6 +270,8 @@ export interface GameState {
   // play phase
   trick: Trick | null;
   last_trick: LastTrick | null;
+  /** Tricks resolved this round; absent from an older server or host. */
+  tricks_done?: number;
   attacker_points: number;
   kitty_count: number;
   // round_end

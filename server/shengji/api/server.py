@@ -1120,6 +1120,9 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
             if rnd.declaration else None),
         "trick": trick_json(rnd.trick, rnd.ordering),
         "last_trick": trick_json(rnd.last_trick, rnd.ordering),
+        # tricks resolved this round: two tricks can look alike in
+        # last_trick, and a reconnect skips some; older clients ignore it
+        "tricks_done": len(rnd.history),
         "attacker_points": rnd.attacker_points,
         "kitty_count": 8,
         "round_result": ({
@@ -1505,10 +1508,42 @@ def _unwatched(room: Room) -> bool:
     return bool(humans) and not any(s.connected for s in humans)
 
 
-def _close_room(room: Room) -> None:
+# Why a room closed, as its room log's ``room_closed`` records it: the
+# empty-room grace ran out, a closing room's owed round finished, a closing
+# room's round never finished within the grace, or anything else (the last
+# human's explicit Leave).
+CLOSE_REASONS = frozenset({"empty_ttl", "round_finished", "aborted", "other"})
+
+
+def _close_phase(room: Room) -> str:
+    """The round's phase at a close, in the room log's coarse words."""
+    rnd = room.round
+    if rnd is None:
+        return "lobby"
+    if rnd.phase in ("deal", "declare"):
+        return "declaring"
+    return rnd.phase if rnd.phase in ("bury", "play", "round_end") else "lobby"
+
+
+def _log_room_closed(room: Room, reason: str) -> None:
+    """One ``room_closed`` line in a room that has a log (a game began), so
+    a room closed after its humans went reads as closed, not as a stall."""
+    if room.game is None:
+        return
+    try:
+        rnd = room.round
+        room.log_event("room_closed", reason=reason if reason in CLOSE_REASONS else "other",
+                       phase=_close_phase(room),
+                       tricks_played=min(25, len(rnd.history)) if rnd is not None else 0)
+    except Exception:          # noqa: BLE001 - the record never stops a close
+        pass
+
+
+def _close_room(room: Room, reason: str = "other") -> None:
     """Unregister the room and cancel its tasks (caller holds the lock).
     The task running this call is left to return on its own."""
-    if rooms.get(room.code) is room:
+    closing_now = rooms.get(room.code) is room
+    if closing_now:
         del rooms[room.code]
     room.closing = False
     for seat in sorted(room.pending_joins):
@@ -1519,18 +1554,23 @@ def _close_room(room: Room) -> None:
     for task in (room.bot_task, room.deal_task, room.watchdog_task, room.cleanup_task):
         if task is not None and task is not current:
             task.cancel()
+    # recorded after the close is done, so the record can neither delay nor
+    # stop it; only the call that unregistered the room writes it
+    if closing_now:
+        _log_room_closed(room, reason)
 
 
-def _close_when_empty(room: Room) -> None:
+def _close_when_empty(room: Room, reason: str = "other") -> None:
     """No human is connected any more (caller holds the lock): close now,
-    or, while a round in play still owes a rating, finish it first."""
+    or, while a round in play still owes a rating, finish it first.
+    ``reason`` is the room log's close reason for a close now."""
     if ratings.pending(room):
         room.closing = True
         if room.cleanup_task is None or room.cleanup_task.done():
             room.cleanup_task = asyncio.create_task(cleanup_room(room))
         kick_bots(room)
     else:
-        _close_room(room)
+        _close_room(room, reason)
 
 
 def current_actor(room: Room) -> int | None:
@@ -1750,7 +1790,7 @@ def _log_round_end(room: Room) -> None:
     ratings.round_ended(room, r)
     _joined_round_ended(room)
     if room.closing:
-        _close_room(room)
+        _close_room(room, "round_finished")
 
 
 def bot_step(room: Room, seat: int) -> bool:
@@ -2274,9 +2314,9 @@ async def cleanup_room(room: Room) -> None:
         if room.cleanup_task is asyncio.current_task():
             room.cleanup_task = None
         if room.closing:
-            _close_room(room)       # the round it waited for never ended
+            _close_room(room, "aborted")       # the round it waited for never ended
         else:
-            _close_when_empty(room)
+            _close_when_empty(room, "empty_ttl")
 
 
 def kick_bots(room: Room) -> None:

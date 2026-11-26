@@ -1,15 +1,19 @@
 """UI telemetry: allow-listed client flow events in their own sink.
 
 The client batches ``{"type": "client_event", "v": 1, "form": …,
-"platform": …, "first_visit": …, "events": [{"e": …, "t": …, …}]}``. Every event is
+"platform": …, "first_visit": …, "days_since_first": …, "session_n": …,
+"lang": …, "events": [{"e": …, "t": …, …}]}``. The three later stamps are
+buckets the page computes from a first-seen date and a session counter it
+keeps on the device (``0|1|2-7|8-30|31+`` days, ``1|2|3-5|6+`` sessions,
+``en|zh``); a batch without them is still kept. Every event is
 checked against ``SCHEMA``: an unknown event name, an unknown field, or a
 value outside its enum or integer bound drops that field or event. Nothing
 free-form survives: no names, chat, room codes or card codes.
 
 Each socket gets a random ``sid`` minted here and kept only on the socket
 object, so no table maps it to an account, device or address. The server
-stamps ``sid``, ``who``, ``form``, ``platform``, ``build``, ``first_visit``
-and ``app_version`` onto each kept event. ``who`` is the socket's own kind as
+stamps ``sid``, ``who``, ``form``, ``platform``, ``build``, ``first_visit``,
+the three bucket stamps and ``app_version`` onto each kept event. ``who`` is the socket's own kind as
 the server read it at the handshake: ``guest``, ``device`` (an account with
 no Google or Apple identity, the iOS app's own) or ``linked`` (an account
 with one); never the account itself.
@@ -22,6 +26,26 @@ digits a part) is kept; any other token, and the rest of the User-Agent, is
 dropped, and the socket's ``app_version`` and queue events carry the same
 value. Apps up to 1.0.1 send no token: a ``platform`` ``ios_app`` row with no
 ``app_version`` is from 1.0.1 or earlier.
+
+What the page keeps to compute its stamps and round events lives in that
+page's own origin storage (web/src/telemetryStamps.ts, roundTelemetry.ts):
+the first-seen date, the session counter and the played-a-round flag in
+local storage, an open online round in the tab's session storage. Two
+origins never share them: a browser's site, and in the iOS app the hosted
+site and the bundled offline page, each count on their own. So
+``device_account.first_round_before`` says only whether this origin saw a
+round, never a round played on the app's other origin, and a device's
+``days_since_first`` restarts on cleared site data. Only the offline digest's
+counts are shared across the app's two origins (its native store). The
+digest's counts are read and written only under the origin's Web Lock, or
+on a page that is alone with its store (the iOS app); a browser without Web
+Locks counts no device rounds and sends no digest.
+
+``round_finish.tricks_played`` is the server's own ``tricks_done`` count; a
+round whose page saw any state without it sends no count. ``by: closed`` is
+said at a pagehide, or on the same tab's next load when the page went
+without one; a session that ended with the page (an app killed in the
+background) leaves no such record.
 
 A batch holding any event sent at a sign-in or identity change
 (``signin``, ``device_account`` or the ``signin_open`` tap) is an identity
@@ -129,6 +153,24 @@ DEVICE_STEPS = frozenset({"created", "restored", "fell_back_guest", "linked",
 # casual round win (web/src/reviewPrompt.ts).
 REVIEW_TRIGGERS = frozenset({"ranked2", "casual5"})
 QUEUE_EVENTS = frozenset({"join", "leave", "start", "start_failed"})
+QUEUE_MODES = frozenset({"ranked", "casual"})
+# The client's view of a round: a ranked (matched) table, a casual queue
+# table, a friends' table (a code, a Duo or a saved game's Continue), a
+# tutorial, or the device's own server (offline, nearby). Offline and nearby
+# rounds reach the server only as the counts of an ``offline_digest``.
+ROUND_MODES = frozenset({"ranked", "casual", "friend", "tutorial", "offline", "nearby"})
+# What ended a round as the page saw it: its round end, your Leave, or the
+# page closing mid-round (said on the next load).
+ROUND_BY = frozenset({"end", "left", "closed"})
+# Batch stamps, all buckets: days since the device was first seen, the
+# device's session (a new one after 30 idle minutes) and the page's language.
+DAYS_BUCKETS = frozenset({"0", "1", "2-7", "8-30", "31+"})
+SESSION_BUCKETS = frozenset({"1", "2", "3-5", "6+"})
+LANGS = frozenset({"en", "zh"})
+MAX_ROUNDS = 50          # nth_round_this_load
+MAX_DIGEST = 99          # each offline_digest count
+MAX_SOCKET_MS = 120_000  # app_open ms_to_socket
+MAX_HOWTO_STEP = 20
 APP_UA_TOKEN = re.compile(r"(?:^|\s)ShengjiApp/(\S{1,32})(?=\s|$)")
 APP_VERSION = re.compile(r"\d{1,4}\.\d{1,4}(?:\.\d{1,4})?")
 MAX_USER_AGENT = 512
@@ -163,7 +205,15 @@ SCHEMA: dict[str, dict[str, Any]] = {
                   "by": _enum(frozenset({"you", "timer", "bot"}))},
     "tap": {"id": _enum(TAPS), "from": _enum(SIGNIN_FROM)},
     "signin": {"step": _enum(SIGNIN_STEPS), "provider": _enum(PROVIDERS)},
-    "device_account": {"step": _enum(DEVICE_STEPS)},
+    "device_account": {"step": _enum(DEVICE_STEPS), "first_round_before": _bool},
+    "app_open": {"cold": _bool, "ms_to_socket": _int(0, MAX_SOCKET_MS)},
+    "round_start": {"mode": _enum(ROUND_MODES), "bots": _int(0, 3),
+                    "nth_round_this_load": _int(1, MAX_ROUNDS)},
+    "round_finish": {"mode": _enum(ROUND_MODES), "won": _bool, "by": _enum(ROUND_BY),
+                     "tricks_played": _int(0, 25)},
+    "offline_digest": {"rounds_started": _int(0, MAX_DIGEST), "rounds_finished": _int(0, MAX_DIGEST),
+                       "nearby_rounds": _int(0, MAX_DIGEST)},
+    "howto_step": {"step": _int(1, MAX_HOWTO_STEP), "done": _bool},
     "notice": {"code": _enum(NOTICE_CODES), "where": _enum(WHERE),
                # the connection notices: why the page dropped its socket, and
                # for how long it had none
@@ -173,7 +223,9 @@ SCHEMA: dict[str, dict[str, Any]] = {
 }
 # The field without which an event says nothing; missing or invalid drops it.
 REQUIRED = {"screen": "name", "turn_done": "phase", "tap": "id", "notice": "code",
-            "signin": "step", "device_account": "step", "review_prompt": "trigger"}
+            "signin": "step", "device_account": "step", "review_prompt": "trigger",
+            "app_open": "cold", "round_start": "mode", "round_finish": "by",
+            "offline_digest": "rounds_started", "howto_step": "step"}
 
 # Server-side queue events (``queue_event``): field -> check.
 QUEUE_FIELDS: dict[str, Any] = {
@@ -182,6 +234,7 @@ QUEUE_FIELDS: dict[str, Any] = {
     "table": _bool, "humans": _int(0, 4), "queued": _int(0, 100000),
     "reason": lambda v: v if isinstance(v, str) and re.fullmatch(r"[a-z_]{1,24}", v) else None,
     "max_wait": lambda v: round(float(v), 1) if type(v) in (int, float) and 0 <= v <= 86400 else None,
+    "mode": _enum(QUEUE_MODES),
 }
 
 
@@ -296,7 +349,8 @@ def clean_event(raw: Any) -> dict[str, Any] | None:
 
 def clean_message(msg: Any, raw_bytes: int | None = None) -> tuple[list[dict], dict[str, Any]]:
     """The kept events of one ``client_event`` message and its stamps
-    (``form``, ``platform``, ``first_visit``); nothing for a malformed or oversize one."""
+    (``form``, ``platform``, ``first_visit``, ``days_since_first``, ``session_n``,
+    ``lang``); nothing for a malformed or oversize one."""
     if not isinstance(msg, dict) or msg.get("v") != 1:
         return [], {}
     size = raw_bytes if raw_bytes is not None else len(
@@ -317,6 +371,11 @@ def clean_message(msg: Any, raw_bytes: int | None = None) -> tuple[list[dict], d
     first = _bool(msg.get("first_visit"))
     if first is not None:
         stamps["first_visit"] = first
+    for field, values in (("days_since_first", DAYS_BUCKETS), ("session_n", SESSION_BUCKETS),
+                          ("lang", LANGS)):
+        value = _enum(values)(msg.get(field))
+        if value is not None:
+            stamps[field] = value
     return kept, stamps
 
 

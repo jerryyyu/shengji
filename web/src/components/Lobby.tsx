@@ -21,7 +21,9 @@ import { WIDE } from "../home/route";
 import { useMediaQuery } from "../phoneLayout";
 import { offlineGame, offlineOffered, useOfflineTable } from "./offlineGame";
 import { isNative } from "../native";
-import { telemetry } from "../telemetry";
+import { telemetry, type Screen } from "../telemetry";
+import { rounds } from "../roundTelemetry";
+import { panelKind } from "../queue/tableText";
 import { APP_STORE_BADGE, appStoreUrl } from "../appStore";
 import { isZh, useT } from "../i18n";
 
@@ -155,7 +157,8 @@ export default function Lobby({ status, room = null }: LobbyProps) {
   // takes. Join is the player's tap; a full table shows the same panel with
   // Join disabled. This screen tells the store where it stands.
   const codeView = useCodes();
-  const { queued, frame, pending: queuePending } = useQueue();
+  const q = useQueue();
+  const { queued, frame, pending: queuePending } = q;
   const seated = room !== null || queued;
   const seatedAt = seated ? (room?.room ?? frame?.code ?? "") : null;
   const ready = status === "open";
@@ -185,6 +188,7 @@ export default function Lobby({ status, room = null }: LobbyProps) {
       return;
     }
     if (!ready || looking || normalizeCode(roomCode).length !== 4) return;
+    telemetry.tap("join_code");
     codes.open(roomCode);
   };
   const typeCode = (c: string) => {
@@ -205,6 +209,7 @@ export default function Lobby({ status, room = null }: LobbyProps) {
   const joinFromPanel = () => {
     const as = nameOrRandom();
     rememberName(as);
+    rounds.noteEntry("friend");
     codes.join(as);
   };
 
@@ -219,6 +224,13 @@ export default function Lobby({ status, room = null }: LobbyProps) {
   useEffect(() => {
     if (panelUp && screenRef.current) screenRef.current.scrollTop = 0;
   }, [panelUp]);
+
+  // The Play tab's screen: its buttons, a code's table panel, the queue's
+  // offer of a seat, or the table you wait at.
+  const kind = panelKind(q);
+  const screen: Screen = joinUp || nearbyPanel !== null ? "room" : kind === "join" ? "offer"
+    : kind !== "play" || room !== null ? "waiting_table" : "play";
+  useEffect(() => { telemetry.screenView(screen); }, [screen]);
 
   // A phone's panel sits right under the chip and the mode switch, with the
   // art gone, so its buttons are on screen; wide screens keep the art beside it.
@@ -268,13 +280,13 @@ export default function Lobby({ status, room = null }: LobbyProps) {
         )}
 
         <p className="howto-entry">
-          <button className="howto-link" onClick={() => openHowto()}>{t("home.howto")}</button>
+          <button className="howto-link" onClick={() => { telemetry.tap("howto_open"); openHowto(); }}>{t("home.howto")}</button>
           {/* the bots on this device, on purpose: a game started here stays
               offline when the network comes back */}
           {stalled || offline || seated || joinUp || !offlineOffered() ? null : (
             <>
               <span className="howto-sep" aria-hidden="true">·</span>
-              <button className="howto-link" onClick={() => offlineGame.startFromPlay()}>{t("home.playOffline")}</button>
+              <button className="howto-link" onClick={() => { telemetry.tap("play_bots"); offlineGame.startFromPlay(); }}>{t("home.playOffline")}</button>
             </>
           )}
         </p>

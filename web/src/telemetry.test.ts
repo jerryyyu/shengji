@@ -110,3 +110,72 @@ describe("turn telemetry", () => {
     expect(Object.values(done).every((v) => typeof v !== "string" || /^[a-z]+$/.test(v))).toBe(true);
   });
 });
+
+describe("funnel events and batch stamps", () => {
+  it("every batch carries the day, session and language buckets and nothing finer", () => {
+    localStorage.clear();
+    const t = new Telemetry(sender(), true);
+    t.appOpen(true, 812.6);
+    t.flush();
+    const m = sent[0] as unknown as Record<string, unknown>;
+    expect(m).toMatchObject({ days_since_first: "0", session_n: "1", lang: "en" });
+    expect(m.events).toEqual([{ e: "app_open", t: expect.any(Number), cold: true, ms_to_socket: 813 }]);
+    expect(JSON.stringify(m)).not.toMatch(/\d{4}-\d{2}-\d{2}/);    // never the first-seen date itself
+  });
+
+  it("caps app_open's time to the socket and each round count", () => {
+    const t = new Telemetry(sender(), true);
+    t.appOpen(true, 10 * 60_000);
+    t.appOpen(false);
+    t.roundStart("casual", 7, 900);
+    t.roundFinish("casual", "end", 40, true);
+    t.roundFinish("casual", "left", -2, true);
+    t.roundFinish("friend", "closed");
+    t.howtoStep(99, false);
+    expect(t.pending().map(({ t: _t, ...e }) => e)).toEqual([
+      { e: "app_open", cold: true, ms_to_socket: 120_000 },
+      { e: "app_open", cold: false },
+      { e: "round_start", mode: "casual", bots: 3, nth_round_this_load: 50 },
+      { e: "round_finish", mode: "casual", by: "end", tricks_played: 25, won: true },
+      { e: "round_finish", mode: "casual", by: "left", tricks_played: 0 },
+      { e: "round_finish", mode: "friend", by: "closed" },          // an unknown count is no count
+      { e: "howto_step", step: 20, done: false },
+    ]);
+  });
+
+  it("the offline digest goes in a batch of its own, only while collecting, and says whether it went", () => {
+    const t = new Telemetry(sender(), true);
+    expect(t.sendOfflineDigest({ rounds_started: 500, rounds_finished: 1, nearby_rounds: -1 })).toBe(true);
+    expect(t.pending()).toEqual([]);                                  // never buffered
+    expect(sent[0].events).toEqual([expect.objectContaining(
+      { e: "offline_digest", rounds_started: 99, rounds_finished: 1, nearby_rounds: 0 })]);
+    expect(new Telemetry(sender(false), true).sendOfflineDigest({ rounds_started: 1, rounds_finished: 0, nearby_rounds: 0 }))
+      .toBe(false);                                                   // the socket refused it
+    expect(new Telemetry(sender(), false).sendOfflineDigest({ rounds_started: 1, rounds_finished: 0, nearby_rounds: 0 }))
+      .toBe(false);                                                   // offline: not collecting
+    expect(sent).toHaveLength(1);
+  });
+
+  it("device_account says whether a round came first", () => {
+    localStorage.clear();
+    const t = new Telemetry(sender(), true);
+    t.deviceAccount("created");
+    localStorage.setItem("shengji.telemetry.played", "1");
+    t.deviceAccount("restored");
+    expect(t.pending().map((e) => (e as { first_round_before?: boolean }).first_round_before)).toEqual([false, true]);
+    localStorage.clear();
+  });
+
+  it("the language stamp follows the page", async () => {
+    const { setLanguageChoice } = await import("./i18n/locale");
+    const t = new Telemetry(sender(), true);
+    setLanguageChoice("zh-Hans");
+    try {
+      t.tap("play");
+      t.flush();
+      expect((sent[0] as unknown as { lang: string }).lang).toBe("zh");
+    } finally {
+      setLanguageChoice("system");
+    }
+  });
+});

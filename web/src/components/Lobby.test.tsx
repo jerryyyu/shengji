@@ -859,3 +859,44 @@ describe("an invite link opens the Join panel", () => {
     expect(types()).toEqual(["table_peek"]);
   });
 });
+
+
+describe("Play tab telemetry", () => {
+  const button = (text: RegExp) => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => text.test(b.textContent ?? ""))!;
+  const taps = () => telemetry.pending().filter((e) => e.e === "tap").map((e) => (e as { id: string }).id);
+  const screens = () => telemetry.pending().filter((e) => e.e === "screen").map((e) => (e as { name: string }).name);
+
+  it("Play is a screen, and Play, Duo, a code's Join and How to play are taps", async () => {
+    authState.current = { status: "off", clientId: null, user: null };
+    telemetry.reset();
+    await render();
+    expect(screens()).toEqual(["play"]);
+    act(() => button(/^Play$/).click());
+    answered();
+    act(() => button(/^Duo$/).click());
+    answered();
+    type(host.querySelector<HTMLInputElement>("input[aria-label='Table code']")!, "abcd");
+    act(() => button(/^Join$/).click());
+    try {
+      act(() => host.querySelector<HTMLButtonElement>(".howto-entry button")!.click());
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
+    expect(taps()).toEqual(["play", "duo", "join_code", "howto_open"]);
+    for (const e of telemetry.pending()) {
+      expect(Object.values(e).every((v) => typeof v !== "string" || /^[a-z_0-9-]+$/.test(v))).toBe(true);
+    }
+    telemetry.reset();
+  });
+
+  it("the guest's name sheet is a screen, and the one before it again when it shuts", async () => {
+    authState.current = { status: "off", clientId: null, user: null };
+    telemetry.reset();
+    await render();
+    nameInput();
+    expect(screens()).toEqual(["play", "name_sheet"]);
+    act(() => guestName.close());
+    expect(screens()).toEqual(["play", "name_sheet", "play"]);
+    telemetry.reset();
+  });
+});

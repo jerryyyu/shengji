@@ -5,6 +5,7 @@ import { OFFLINE } from "../offlineMode";
 import { COPIED_MS, shareInvite } from "../codes";
 import LeaveSheet from "./LeaveSheet";
 import { conn } from "../ws";
+import { rounds } from "../roundTelemetry";
 import { SettingsMenuRows } from "./SettingsList";
 import { useNearbySoakMarker, useNearbyUi } from "../nearbyGate";
 import { tapHandlers } from "../tap";
@@ -167,7 +168,7 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
       {asking ? (
         <LeaveSheet context={{ kind: "game", ranked, guest, practice: offline }}
                     onStay={() => setAsking(false)}
-                    onLeave={() => { conn.send({ type: "table_leave" }); setAsking(false); }} />
+                    onLeave={() => { rounds.left(); conn.send({ type: "table_leave" }); setAsking(false); }} />
       ) : null}
     </div>
   );

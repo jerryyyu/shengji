@@ -189,3 +189,22 @@ it("a swipe anywhere on the guide's screen turns the page, not only on the slide
   await swipe(screen, 10, 300, 200, 300);
   expect(counter()).toBe("3 of 10");
 });
+
+describe("How to play telemetry", () => {
+  it("each step in view is a howto_step; Start playing marks the last one done", async () => {
+    const { telemetry } = await import("../telemetry");
+    telemetry.reset();
+    await open("#/howto");
+    await click(button("Next"));
+    await click(button("Next"));
+    const last = Number(/of (\d+)/.exec(counter() ?? "")?.[1]);
+    act(() => { window.location.hash = `#/howto/${last}`; });
+    await tick();
+    await click(button("Start playing"));
+    const steps = telemetry.pending().filter((e) => e.e === "howto_step")
+      .map((e) => [(e as { step: number }).step, (e as { done: boolean }).done]);
+    expect(steps).toEqual([[1, false], [2, false], [3, false], [last, false], [last, true]]);
+    expect(telemetry.pending().some((e) => e.e === "screen" && (e as { name: string }).name === "howto")).toBe(true);
+    telemetry.reset();
+  });
+});

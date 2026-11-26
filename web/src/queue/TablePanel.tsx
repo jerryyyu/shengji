@@ -1,8 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { effectiveName, useAuth } from "../auth";
-import { ChatBody } from "../components/ChatPanel";
+import { Portrait } from "../companion/Companion";
+import { useCollection } from "../companion/feature";
 import { useGuestName } from "../guestName";
+import { ChatBody } from "../components/ChatPanel";
 import { TimerRing } from "../components/MoveClock";
 import LeaveSheet from "../components/LeaveSheet";
 import ConfirmSheet from "../components/ConfirmSheet";
@@ -28,24 +30,33 @@ import "./tablePanel.css";
 
 export type { SeatItem } from "./tableModel";
 
-/** The initial of the name you play under: the account's, or a guest's own. */
-function useMyInitial(): string {
+/** Your own initial (of the account's name, or a guest's) and look (the
+ *  account's, or the default for a guest). */
+function useMine(): { initial: string; look: string | null } {
   const account = useAuth();
   const guest = useGuestName();
-  const name = account.status === "in" && account.user ? effectiveName(account.user) : guest.name.trim();
-  return name.slice(0, 1).toUpperCase();
+  const user = account.status === "in" ? account.user : null;
+  const name = user ? effectiveName(user) : guest.name.trim();
+  return { initial: name.slice(0, 1).toUpperCase(), look: user?.look ?? null };
 }
 
 /** A seat's avatar and words; an open seat with no name is its "+" alone,
- *  and its `label` says what it is. */
+ *  and its `label` says what it is. A person's avatar is their portrait
+ *  where the Collection is shown, else their initials. */
 function SeatBody({ s }: { s: SeatItem }) {
-  const mine = useMyInitial();
+  const mine = useMine();
+  const companions = useCollection();
   if (s.look === "open" && !s.name) return <span className="tp-av" aria-hidden="true">+</span>;
+  const person = companions && (s.look === "you" || s.look === "friend" || s.look === "person");
   const av = s.look === "open" ? "+" : s.look === "bot" || s.look === "held" ? "·"
-    : s.look === "you" ? mine || "·" : s.name.slice(0, 2).toUpperCase();
+    : s.look === "you" ? mine.initial || "·" : s.name.slice(0, 2).toUpperCase();
   return (
     <>
-      <span className="tp-av" aria-hidden="true">{av}</span>
+      {person ? (
+        <span className="tp-av tp-av-portrait" aria-hidden="true">
+          <Portrait look={s.look === "you" ? mine.look : s.companion} size={24} />
+        </span>
+      ) : <span className="tp-av" aria-hidden="true">{av}</span>}
       <span className="tp-seat-text" aria-hidden="true">
         <span className="tp-seat-name">{s.name}{s.tick ? <span className="tp-tick"> ✓</span> : null}</span>
         {s.sub ? <span className="tp-seat-sub">{s.sub}</span> : null}

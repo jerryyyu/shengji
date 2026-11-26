@@ -36,6 +36,9 @@ export interface SeatItem {
   /** The person the opener tapped to move: the next empty seat tapped is
    *  where they go. */
   picked?: boolean;
+  /** A person's companion look, when the frame names one; their portrait
+   *  shows the default without it. */
+  companion?: string | null;
 }
 
 /** Everything a table does. */
@@ -242,6 +245,7 @@ function frameSeats(f: TableFrame, now: number, { alone = false, move = false, b
     const partner = s.pair && ours;
     const item: ModelSeat = {
       at, look: partner ? "friend" : "person", name: shortName(name), sub: status, tick: ready,
+      companion: s.look ?? null,
       label: labelList([name, ready && t("queue.seat.ready"), status,
                         partner ? t("queue.seat.duoPartner") : teamWord(ours)]),
     };

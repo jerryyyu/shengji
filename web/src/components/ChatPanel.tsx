@@ -9,10 +9,15 @@ import { useT } from "../i18n";
 import { formatChatLine, formatSystemLine } from "../messageCopy";
 import { QUICK_PHRASE_IDS, QUICK_PHRASE_KEY } from "../quickPhrases";
 import "./ChatPanel.css";
+import { Portrait } from "../companion/Companion";
+import { useCollection } from "../companion/feature";
 
 interface ChatProps {
   messages: ChatMsg[];
   you: number;
+  /** The companion look of the person at a seat, for each line's portrait;
+   *  without it every line shows the default. */
+  lookOf?: (seat: number) => string | null | undefined;
   /** Where a line goes: room chat unless a waiting table sends its own.
    *  `phrase`: the quick phrase `text` words in this player's language. */
   onSend?: (text: string, phrase?: string) => void;
@@ -25,7 +30,7 @@ interface BodyProps extends ChatProps {
 
 /** What chat holds, wherever it is drawn: the log, the quick phrases and the
  *  field, which takes focus when it opens and gives it back when it closes. */
-export function ChatBody({ messages, you, onSend, open = true }: BodyProps) {
+export function ChatBody({ messages, you, onSend, lookOf, open = true }: BodyProps) {
   const t = useT();
   const [draft, setDraft] = useState("");
   // On a touch screen the field's focus means the keyboard is up; the quick
@@ -35,6 +40,7 @@ export function ChatBody({ messages, you, onSend, open = true }: BodyProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   // a blocked seat's lines stay hidden for this viewer; system lines never block
   const isBlocked = useBlocks();
+  const companions = useCollection();
   const shown = messages.filter((m) => m.seat === -1 || !isBlocked(m.room, m.seat));
 
   useEffect(() => {
@@ -72,6 +78,11 @@ export function ChatBody({ messages, you, onSend, open = true }: BodyProps) {
             </div>
           ) : (
             <div key={i} className={"chat-msg" + (m.seat === you ? " mine" : "")}>
+              {companions ? (
+                <span className="chat-portrait" aria-hidden="true">
+                  <Portrait look={m.seat === null ? null : lookOf?.(m.seat)} size={20} />
+                </span>
+              ) : null}
               <span className="chat-name">{m.name}</span>
               <span className="chat-text">{formatChatLine(m)}</span>
             </div>
@@ -150,7 +161,7 @@ function useVisibleArea(open: boolean): VisibleArea | null {
  *  already fills the screen, so chat slides over it and closes again. Unread
  *  count lives on the launcher button. Off the felt, chat opens in the
  *  shared Sheet with the same body. */
-export default function ChatPanel({ messages, you, open, onClose, onSend }: ChatProps & {
+export default function ChatPanel({ messages, you, open, onClose, onSend, lookOf }: ChatProps & {
   open: boolean;
   onClose: () => void;
 }) {
@@ -179,7 +190,7 @@ export default function ChatPanel({ messages, you, open, onClose, onSend }: Chat
           ×
         </button>
       </div>
-      <ChatBody messages={messages} you={you} onSend={onSend} open={open} />
+      <ChatBody messages={messages} you={you} onSend={onSend} lookOf={lookOf} open={open} />
     </div>
   );
 }

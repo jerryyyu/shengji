@@ -54,12 +54,17 @@ function viewport(width: number | boolean, height = 800) {
 const BREAKPOINTS: [string, number][] = [["phone", 390], ["iPad portrait", 768], ["iPad", 1024], ["desktop", 1440]];
 
 let signedIn = true;
+// what the server adds to /api/me and /api/auth/config (the Collection's switches)
+let meExtra: Record<string, unknown> = {};
+let configExtra: Record<string, unknown> = {};
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 const realMatchMedia = window.matchMedia;
 beforeEach(() => {
   FakeWS.all = [];
   signedIn = true;
+  meExtra = {};
+  configExtra = {};
   localStorage.clear();
   viewport(false);
   (globalThis as unknown as { WebSocket: unknown }).WebSocket = FakeWS;
@@ -72,8 +77,8 @@ beforeEach(() => {
     if ((url === "/api/me" || url.startsWith("/api/me/")) && !signedIn) {
       return { status: 401, json: async () => ({}) } as Response;
     }
-    const body = url === "/api/auth/config" ? { google_client_id: "cid" }
-      : url === "/api/me" ? { name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" }
+    const body = url === "/api/auth/config" ? { google_client_id: "cid", ...configExtra }
+      : url === "/api/me" ? { name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry", ...meExtra }
       : url === "/api/me/stats" ? STATS
       : url.startsWith("/api/me/games?") ? { games: [], next_before: null }
       : url.startsWith("/api/leaderboard") ? { period: "week", players: [], me: null, anchor: { name: "Sheng Ji bot", rating: 1500 } }
@@ -466,5 +471,50 @@ describe("deep links", () => {
     await act(async () => { pill.click(); await new Promise((r) => setTimeout(r, 0)); });
     expect(host.querySelector(".table, .hand")).not.toBeNull();
     expect(host.querySelector(".table-pill")).toBeNull();
+  });
+});
+
+describe("the Collection, behind its allowlist", () => {
+  const tabs = () => [...host.querySelectorAll<HTMLButtonElement>(".tabbar .tabbar-item")].map((b) => b.textContent);
+
+  it("an allowlisted account gets the fourth tab, the page and portraits", async () => {
+    meExtra = { look: "tractor/jade", features: { collection: true } };
+    await renderApp();
+    expect(tabs()).toEqual(["Play", "Leaderboard", "Collection", "Me"]);
+    const me = host.querySelectorAll(".tabbar .tabbar-item")[3];
+    expect(me.querySelector(".portrait")?.getAttribute("data-look")).toBe("tractor/jade");
+    expect(host.querySelector<HTMLElement>(".tabbar")!.style.getPropertyValue("--tab-count")).toBe("4");
+    const { openTab } = await import("./home/route");
+    await act(async () => { openTab("collection"); await new Promise((r) => setTimeout(r, 0)); });
+    expect(host.querySelector(".large-title")?.textContent).toBe("Collection");
+    expect(host.querySelector(".coll-felt svg.cmp")).not.toBeNull();
+    expect(host.querySelector(".coll-mode")).not.toBeNull();
+  });
+
+  it("another account sees three tabs and its initial, and the Collection's hash opens Play", async () => {
+    meExtra = { look: "tractor/jade", features: { collection: false } };
+    window.history.replaceState(null, "", "/#/collection");
+    await renderApp();
+    expect(tabs()).toEqual(["Play", "Leaderboard", "Me"]);
+    expect(host.querySelector(".tabbar")!.querySelector(".portrait")).toBeNull();
+    expect(host.querySelector(".tabbar .avatar")?.getAttribute("data-initial")).toBe("J");
+    expect(host.querySelector(".coll-page")).toBeNull();
+    expect(host.querySelector(".lobby-panel")).not.toBeNull();
+  });
+
+  it("a guest sees three tabs and initials until the Collection is on for everyone", async () => {
+    signedIn = false;
+    await renderApp();
+    const { guestName } = await import("./guestName");
+    act(() => guestName.setName("Gentle Tractor"));
+    expect(tabs()).toEqual(["Play", "Leaderboard", "Me"]);
+    expect(host.querySelector(".portrait")).toBeNull();
+    act(() => root.unmount());
+    host.remove();
+    configExtra = { collection: true };
+    vi.resetModules();
+    await renderApp();
+    expect(tabs()).toEqual(["Play", "Leaderboard", "Collection", "Me"]);
+    expect(host.querySelector(".guest-pill .portrait")?.getAttribute("data-look")).toBe("tractor/red");
   });
 });

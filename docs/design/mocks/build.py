@@ -200,11 +200,13 @@ def tpanel(kicker, title, lines, ours, theirs, buttons, hint="", extra="", heads
 
 
 TABS = ("Play", "Leaderboard", "Me")
+# a viewer the Collection is shown to (allowlisted, or on for everyone)
+TABS_COLLECTION = ("Play", "Leaderboard", "Collection", "Me")
 
 
-def tabbar(active="Play", user="G"):
+def tabbar(active="Play", user="G", tabs=TABS):
     items = []
-    for t in TABS:
+    for t in tabs:
         on = t == active
         icon = (f'<span style="width:20px;height:20px;border-radius:10px;background:#2f3a4d;color:#fff;font-size:10px;font-weight:700;'
                 f'display:flex;align-items:center;justify-content:center">{user}</span>') if t == "Me" else \
@@ -215,13 +217,13 @@ def tabbar(active="Play", user="G"):
             f'border:1px solid #333b49;display:flex;align-items:center;padding:0 6px">{"".join(items)}</div>')
 
 
-def phone(body, active="Play", title=None, user="G", overlay=""):
+def phone(body, active="Play", title=None, user="G", overlay="", tabs=TABS):
     head = f'<div style="font-size:30px;font-weight:800">{title}</div>' if title else (
         f'<div style="text-align:center;color:{GOLD};font-size:30px;font-weight:800;letter-spacing:.04em;line-height:1">升级'
         '<div style="font-size:11px;letter-spacing:.32em;color:#c3cad6;margin-top:4px">SHENG JI</div></div>')
     return (f'<div style="width:390px;height:844px;box-sizing:border-box;background:#1b1f27;color:#e9ecf2;font-family:{FONT};'
             f'position:relative;overflow:hidden;padding:56px 16px 0;display:flex;flex-direction:column;gap:12px">{head}{body}'
-            f'{tabbar(active, user)}{overlay}</div>')
+            f'{tabbar(active, user, tabs)}{overlay}</div>')
 
 
 def chip(name, sub="Guest", initial="G", edit=False):

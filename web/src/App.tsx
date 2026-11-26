@@ -27,6 +27,7 @@ import { useInfoRoute } from "./support/route";
 import Leaderboard from "./components/Leaderboard";
 import MePage from "./components/MePage";
 import HomeShell from "./home/HomeShell";
+import CollectionPage from "./components/CollectionPage";
 import { IdentitySheet } from "./components/GuestChip";
 import { openTab, useHomeRoute } from "./home/route";
 import { noteReceipt } from "./stateReceipt";
@@ -50,6 +51,7 @@ import { setSeatSafe, startReloadGate } from "./reloadGate";
 import { rounds } from "./roundTelemetry";
 import WatchScreen from "./watch/WatchScreen";
 import { watch, useWatching } from "./watch/store";
+import { useCollection } from "./companion/feature";
 
 /** What leaving the seat you hold costs, for the sheet a link to another
  *  table opens: the game in play, else the Play table as its panel says it. */
@@ -98,7 +100,10 @@ export default function App() {
   const gamesRoute = gamesPage && gamesPage.page !== "list" ? gamesPage : null;
   const howtoRoute = useHowtoRoute();
   const infoRoute = useInfoRoute();
-  const homeRoute = useHomeRoute();
+  // the Collection's hash opens Play for a viewer it is not shown to
+  const routed = useHomeRoute();
+  const collection = useCollection();
+  const homeRoute = routed?.tab === "collection" && !collection ? null : routed;
 
   useEffect(() => {
     const showToast = (message: string, info = false) => {
@@ -368,6 +373,7 @@ export default function App() {
   // on them leads back to the game.
   const tabPage = homeRoute === null ? null
     : homeRoute.tab === "leaderboard" ? <Leaderboard />
+    : homeRoute.tab === "collection" ? <CollectionPage />
     : <MePage section={homeRoute.section} />;
 
   let screen: ReactNode;

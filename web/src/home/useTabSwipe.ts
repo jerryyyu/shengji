@@ -6,7 +6,12 @@ import { openTab } from "./route";
 import type { Tab } from "./route";
 
 /** The phone tab bar's order, which a swipe walks: left goes to the next. */
-export const TAB_ORDER: readonly Tab[] = ["play", "leaderboard", "me"];
+export const TAB_ORDER: readonly Tab[] = ["play", "leaderboard", "collection", "me"];
+
+/** The tabs a viewer has: Collection only where it is shown (`useCollection`). */
+export function tabOrder(collection: boolean): readonly Tab[] {
+  return collection ? TAB_ORDER : TAB_ORDER.filter((t) => t !== "collection");
+}
 /** A touch that starts this close to either screen edge is the app's own
  *  back or forward swipe. */
 export const SWIPE_EDGE = 24;
@@ -33,9 +38,9 @@ const OPEN_LAYER = ".q-layer, [aria-modal='true'], dialog[open]";
 
 /** The tab beside `tab` in the swipe's direction: a leftward drag (dx < 0)
  *  brings the next tab in, a rightward one the previous; null past either end. */
-export function neighbourTab(tab: Tab, dx: number): Tab | null {
-  const i = TAB_ORDER.indexOf(tab) + (dx < 0 ? 1 : -1);
-  return TAB_ORDER[i] ?? null;
+export function neighbourTab(tab: Tab, dx: number, order: readonly Tab[] = TAB_ORDER): Tab | null {
+  const i = order.indexOf(tab) + (dx < 0 ? 1 : -1);
+  return order[i] ?? null;
 }
 
 /** A drag past the first or last tab, with resistance: about half the finger's
@@ -71,9 +76,12 @@ const now = () => performance.now();
  *  springs back. Past the first or last tab it rubber-bands and never
  *  switches. Under Reduce Motion the page does not move and a swipe switches
  *  at once. */
-export function useTabSwipe(body: RefObject<HTMLElement | null>, active: Tab, enabled: boolean): void {
+export function useTabSwipe(body: RefObject<HTMLElement | null>, active: Tab, enabled: boolean,
+                            order: readonly Tab[] = TAB_ORDER): void {
   const activeRef = useRef(active);
   activeRef.current = active;
+  const orderRef = useRef(order);
+  orderRef.current = order;
   useEffect(() => {
     const el = body.current;
     if (!enabled || !el) return;
@@ -94,7 +102,7 @@ export function useTabSwipe(body: RefObject<HTMLElement | null>, active: Tab, en
       settleTimer = window.setTimeout(clear, SWIPE_SETTLE_MS);
     };
     const offset = (d: Drag) => {
-      if (neighbourTab(activeRef.current, d.dx) === null) return edgeBand(d.dx, d.width);
+      if (neighbourTab(activeRef.current, d.dx, orderRef.current) === null) return edgeBand(d.dx, d.width);
       return Math.max(-d.width, Math.min(d.width, d.dx));
     };
     const onStart = (e: TouchEvent) => {
@@ -158,7 +166,7 @@ export function useTabSwipe(body: RefObject<HTMLElement | null>, active: Tab, en
       const first = recent[0];
       const dt = at - first.t;
       const v = dt > 0 ? (endX - first.x) / dt : 0;
-      const to = neighbourTab(activeRef.current, d.dx);
+      const to = neighbourTab(activeRef.current, d.dx, orderRef.current);
       const go = to !== null && d.dx !== 0
         && (Math.abs(d.dx) >= SWIPE_COMMIT * d.width || (Math.abs(v) >= SWIPE_FLICK && Math.sign(v) === Math.sign(d.dx)));
       if (!go) {

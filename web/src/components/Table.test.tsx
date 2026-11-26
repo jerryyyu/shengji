@@ -2,7 +2,10 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 import type { GameState, StatePlayer } from "../protocol";
-import Table from "./Table";
+import Table, { OpponentPanel } from "./Table";
+
+// the viewer is shown the Collection: a person's seat draws their portrait
+vi.mock("../companion/feature", () => ({ useCollection: () => true }));
 
 function makePlayer(overrides: Partial<StatePlayer> = {}): StatePlayer {
   return {
@@ -201,5 +204,29 @@ describe("phase class", () => {
       expect(view.container.querySelector(".table-screen")!.classList.contains(`phase-${phase}`)).toBe(true);
       view.unmount();
     }
+  });
+});
+
+describe("companion portraits at the seats", () => {
+  it("a live table draws a person's portrait in their colour and none for a bot", () => {
+    const state = makeState({ phase: "play", target: { look: "tractor/green" } });
+    state.players.push(makePlayer({ seat: 3, name: "Bot 3", is_bot: true, controller: "bot", look: null }));
+    const { container, unmount } = renderTable(state);
+    const pill = [...container.querySelectorAll(".opponent")].find((o) => o.textContent?.includes("Opponent"))!;
+    expect(pill.querySelector(".opp-portrait .portrait")?.getAttribute("data-look")).toBe("tractor/green");
+    const bot = [...container.querySelectorAll(".opponent")].find((o) => o.textContent?.includes("Bot 3"))!;
+    expect(bot.querySelector(".portrait")).toBeNull();
+    unmount();
+  });
+
+  it("a read-only seat (a watcher's table) draws no portrait", () => {
+    const state = makeState({ phase: "play", target: { look: "tractor/green" } });
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => root.render(<OpponentPanel player={state.players[1]} state={state} readOnly />));
+    expect(container.querySelector(".portrait")).toBeNull();
+    act(() => root.unmount());
+    container.remove();
   });
 });

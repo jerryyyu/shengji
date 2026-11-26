@@ -1,0 +1,60 @@
+/* The Collection tab. The felt is a static corner of the table (the
+   companion's place on the real table is not built yet). */
+.coll-felt {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 8px 16px 0;
+  padding: 20px 16px 12px;
+  border-radius: 18px;
+  background: radial-gradient(ellipse at 50% 35%, #2f7a52 0%, #1d5638 60%, #123a26 100%);
+  box-shadow: inset 0 0 0 1px rgba(233, 207, 138, 0.35);
+}
+.coll-figure {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.coll-status { min-height: 1.4em; margin: 4px 0 0; color: #e8ede8; font-size: var(--fs-15); text-align: center; }
+.coll-row { margin-top: 16px; }
+.coll-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 16px 16px 24px;
+}
+.coll-swatch {
+  appearance: none;
+  position: relative;
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+/* the colour shown on the felt carries the gold outline; the equipped one keeps it when none other is shown */
+.coll-swatch.on { box-shadow: 0 0 0 2px var(--gold); }
+.coll-lock {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  padding: 2px;
+  border-radius: 50%;
+  background: #14171e;
+  fill: none;
+  stroke: #e8ede8;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+.coll-mode { margin: 0 16px 32px; }

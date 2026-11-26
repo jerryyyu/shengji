@@ -80,10 +80,11 @@ the next socket takes this page's own seat back by its token and leaves it (`ws.
 sockets, also after a reload or relaunch within 90 s),
 so the bot covers the seat at once instead of after a dropped seat's 30 s and a ranked Leave counts as one.
 
-**Section 5, tabs.** The same three tabs (Play / Leaderboard / Me) on phone, iPad and desktop. Stats and
+**Section 5, tabs.** The same three tabs (Play / Leaderboard / Me) on phone, iPad and desktop; a viewer the
+Collection is shown to has four, Collection third (Jerry 2026-11-26, below). Stats and
 Games become a switch inside Me. The Leaderboard is the phone's column at every width, centred and capped like
 Me; your own row keeps "(you)" in view when a long name truncates (Jerry 11-15).
-The wide layout (700px and up) has no top bar strip: the three tabs float as the glass pill group centred at the top
+The wide layout (700px and up) has no top bar strip: the tabs float as the glass pill group centred at the top
 and the account chip at the top right, over the page background, and no tab shows a corner wordmark (Play's page
 carries the 升级 SHENG JI title). Jerry 2026-11-26: "can we just remove the top bar entirely? and we can keep the pills".
 It opens on This week, or on All time when nobody has played a ranked round this week yet, until the viewer
@@ -524,6 +525,33 @@ buried cards, dismissed by a tap. The round end is the game's own card (Details 
 trick) with the watcher's buttons: Take a seat (a casual table seating joiners: the code's own Join) or Play (a
 ranked table: the queue's Play), and Leave; under it the one line "Round N in play" until that round finishes,
 then its replay plays.
+
+## Collection and companions (Jerry 2026-11-26: "I like the Collection tab. Can we first build it with the default Tractor… do the character building with the Tractor first, before the store"; "let's add more colour schemes for free too")
+
+- **Behind an allowlist first** (Jerry 2026-11-26: he tries it before anyone else sees it): the Collection tab,
+  its pill, every portrait, the Team · Individual · Off control and the unlock dot draw only for a viewer whose
+  `/api/me` says `features.collection` (an account listed in the `COLLECTION_ACCOUNTS` secret), or for everyone
+  when `COLLECTION_ENABLED=1` (`/api/auth/config` `collection`). Everyone else, guests and offline/Nearby
+  included, sees the three tabs and the initials. `PUT /api/me/look` is 404 for an account not shown it. The
+  look still travels on seats and leaderboard rows, and only a viewer shown the Collection draws it.
+- **A person's picture is their companion's portrait** wherever a person is shown: the leaderboard rows, the Me
+  header, the account chip, the Me tab icon, the waiting-table seats, the seat labels at the table, the round-end
+  title and chat lines. A bot keeps its initial (or no picture where it had none). No ring on a portrait: the ring
+  is the move clock. The portrait replaces the Google picture too, so every player looks the same way to everyone.
+- **The Collection tab** is the third of four, its icon four small tiles with one filled when selected. It holds a
+  corner of felt with your companion (idle; a tap makes it hop), your leaderboard row as others see it (signed in
+  and ranked only, no caption), the colour swatches, and one control, Team · Individual · Off, where companions
+  are drawn on your own screen (stored on the account, on the device for a guest; read by the table once its
+  placement is built). No Shop, no prices, no silhouettes or empty slots for what is coming.
+- **Colours** are a palette swap of the one Tractor: Icon red (the default), Paddy green and Enamel blue from the
+  start; Imperial yellow at 10 rounds, Lantern orange at 25, Jade at 50, Blue and white at 100, Ink black for a
+  ranked win. A tap on an unlocked colour equips it at once; a tap on a locked one shows it on the felt with its
+  count ("14 of 25 rounds", or "A ranked win") as the page's one status line. The server refuses a locked colour.
+  A gold dot on the tab marks a colour unlocked since the Collection was last opened on this device.
+- **A guest** sees the default and the same swatches; a tap only shows a colour (a guest's look is not stored).
+- Offline and Nearby tables know no account, so they show the initials until the Collection is on for
+  everyone; then every person there has the default portrait.
+- Not yet: the companion on the table, the Goat, the Shop, rating finishes.
 
 ## Polish checklist (UI review)
 A UI review ask walks this list after the copy rule and the flow-map row. This file, `COPY_CUTS.md` and the felt (the hand and the table, where reading a card beats a uniform press) win over any item here. Adapted from `jakubkrehel/make-interfaces-feel-better` at `6d9f2f1df10e8ce2ae1708598a73b0506fb98794` (MIT, copyright Jakub Krehel); its framework snippets, image outlines, RTL rules and shadow-for-border swap do not apply here.

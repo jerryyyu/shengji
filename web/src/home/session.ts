@@ -42,10 +42,19 @@ export function viewerScope(state: AuthState): string {
 /** The session changed: forget every page's data and scroll position (both
  *  belong to the previous viewer) and start a new generation. The tab
  *  choices (Me's section, the board's period) are not personal and stay. */
+const sessionEnded = new Set<() => void>();
+
+/** Calls `fn` each time the session changes (`forgetPrivateSession`). */
+export function onSessionChange(fn: () => void): () => void {
+  sessionEnded.add(fn);
+  return () => sessionEnded.delete(fn);
+}
+
 export function forgetPrivateSession(): void {
   generation += 1;
   data.clear();
   scrolls.clear();
+  for (const fn of [...sessionEnded]) fn();
 }
 
 /** Loads a page's data under `key` (which carries the viewer scope): the

@@ -1,0 +1,83 @@
+/* Companion poses: transform and opacity only, so each runs on the
+   compositor. Every moving part sets its own transform origin on its own
+   box. Reduce Motion stills them all. */
+.cmp { display: block; overflow: visible; }
+.cmp .cmp-body,
+.cmp .cmp-eye,
+.cmp .cmp-puff,
+.cmp .cmp-shadow,
+.cmp .cmp-z { transform-box: fill-box; }
+.cmp .cmp-body { transform-origin: 50% 100%; }
+.cmp .cmp-eye { transform-origin: 50% 50%; }
+.cmp .cmp-shadow { transform-origin: 50% 50%; }
+.cmp .cmp-puff { transform-origin: 50% 100%; opacity: 0; }
+
+/* idle: a slow bob on the springs, a puff from the stack now and then */
+.cmp-idle .cmp-body { animation: cmp-bob 2.6s ease-in-out infinite; }
+.cmp-idle .cmp-puff { animation: cmp-puff 7s ease-out infinite; }
+.cmp-idle .cmp-puff2 { animation-delay: 0.25s; }
+.cmp-idle .cmp-puff3 { animation-delay: 0.5s; }
+@keyframes cmp-bob {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  50% { transform: translateY(1.2%) scale(1.01, 0.985); }
+}
+@keyframes cmp-puff {
+  0%, 70% { opacity: 0; transform: translate(0, 0) scale(0.4); }
+  76% { opacity: 0.9; transform: translate(0, -4%) scale(1); }
+  90% { opacity: 0; transform: translate(6%, -22%) scale(1.5); }
+  100% { opacity: 0; transform: translate(6%, -22%) scale(1.5); }
+}
+
+/* hop: one short jump, squash on take-off and landing */
+.cmp-hop .cmp-body { animation: cmp-hop 0.6s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
+.cmp-hop .cmp-shadow { animation: cmp-shadow 0.6s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
+@keyframes cmp-hop {
+  0% { transform: translateY(0) scale(1, 1); }
+  12% { transform: translateY(0) scale(1.05, 0.92); }
+  40% { transform: translateY(-16%) scale(0.97, 1.04); }
+  70% { transform: translateY(0) scale(1.04, 0.95); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes cmp-shadow {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  40% { transform: scale(0.7); opacity: 0.5; }
+}
+
+/* cheer: two bounces and a double headlight blink */
+.cmp-cheer .cmp-body { animation: cmp-cheer 1.2s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
+.cmp-cheer .cmp-eye { animation: cmp-blink 1.2s ease-in-out 1; }
+.cmp-cheer .cmp-puff { animation: cmp-puff 1.2s ease-out 1; animation-delay: -0.85s; }
+@keyframes cmp-cheer {
+  0%, 100% { transform: translateY(0) rotate(0) scale(1); }
+  15% { transform: translateY(-9%) rotate(-3deg) scale(1.04); }
+  30% { transform: translateY(0) rotate(0) scale(1.03, 0.96); }
+  45% { transform: translateY(-9%) rotate(3deg) scale(1.04); }
+  60% { transform: translateY(0) rotate(0) scale(1.03, 0.96); }
+  75% { transform: translateY(0) scale(1); }
+}
+@keyframes cmp-blink {
+  0%, 20%, 30%, 50%, 60%, 100% { transform: scaleY(1); }
+  25%, 55% { transform: scaleY(0.1); }
+}
+
+/* sleep: dimmed and still, a slow z rising from the stack */
+.cmp-sleep { opacity: 0.6; }
+.cmp-sleep .cmp-z { animation: cmp-z 3.2s ease-in-out infinite; transform-origin: 50% 50%; }
+@keyframes cmp-z {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.6); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: translate(10%, -40%) scale(1.2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cmp .cmp-body,
+  .cmp .cmp-eye,
+  .cmp .cmp-puff,
+  .cmp .cmp-shadow,
+  .cmp .cmp-z { animation: none; }
+  .cmp-sleep .cmp-z { opacity: 1; }
+}
+
+/* the portrait takes an avatar's place: a disc, no ring (the ring is the move clock) */
+.portrait { display: block; flex: none; border-radius: 50%; }
+.portrait-bot { background: #2a303c; color: #8a929f; box-shadow: none; }

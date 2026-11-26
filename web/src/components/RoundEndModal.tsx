@@ -16,6 +16,9 @@ import { useAuth } from "../auth";
 import { guestName } from "../guestName";
 import { displayName, t, useT } from "../i18n";
 import type { MessageKey } from "../i18n";
+import { Portrait } from "../companion/Companion";
+import { useCollection } from "../companion/feature";
+import { refreshAccount } from "../companion/writes";
 
 /** Leave beside Next round (Next game), the same in every room. It asks through the one
  *  leave sheet, like every other leave: the round is over and recorded, so
@@ -84,6 +87,26 @@ function teamTitle(team: 0 | 1, state: GameState, outcome: Outcome): string {
       : t(`roundend.youAnd${outcome}` as MessageKey, { name: listed });
   }
   return t(`roundend.names${outcome}` as MessageKey, { name: listed });
+}
+
+/** The titled team's people as portraits, ahead of the title's names, where
+ *  the Collection is shown; a bot has no portrait and its name says it. */
+function TeamFaces({ team, state, replay }: { team: 0 | 1; state: GameState; replay: boolean }) {
+  // a watched replay is another table's round: it carries no looks and says
+  // nothing about the watcher's own counts
+  const companions = useCollection() && !replay;
+  // a round just counted: what it unlocks shows on the Collection's dot
+  useEffect(() => {
+    if (companions) void refreshAccount();
+  }, [companions]);
+  const people = state.players.filter((p) => p.team === team && !p.is_bot)
+    .sort((a, b) => Number(b.seat === state.you) - Number(a.seat === state.you) || a.seat - b.seat);
+  if (!companions || people.length === 0) return null;
+  return (
+    <span className="re-faces" aria-hidden="true">
+      {people.map((p) => <Portrait key={p.seat} look={p.look} size={28} />)}
+    </span>
+  );
 }
 
 /** The viewer's team when it lost the round, else null (a win, or a viewer
@@ -333,6 +356,7 @@ export default function RoundEndModal({ state, result, clock = null, clockEnd = 
       <div className={`panel modal round-end${gameWon ? " game-won" : ""}`}>
         {gameWon ? <div className={`game-won-crown${live ? " flash" : ""}`} aria-hidden="true">👑</div> : null}
         <h2 id={titleId} tabIndex={-1} className={`modal-title team${lostTeam ?? result.winner_team}`}>
+          <TeamFaces team={lostTeam ?? result.winner_team} state={state} replay={watch !== undefined} />
           {lostTeam !== null
             ? teamTitle(lostTeam, state, gameWon ? "LoseGame" : "LoseRound")
             : teamTitle(result.winner_team, state, gameWon ? "WinGame" : "WinRound")}

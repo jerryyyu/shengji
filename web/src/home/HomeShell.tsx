@@ -6,7 +6,7 @@ import { canAnimate } from "../motion";
 import { useMediaQuery } from "../phoneLayout";
 import { WIDE, openTab } from "./route";
 import { scrollActiveTabToTop } from "./session";
-import { useTabSwipe } from "./useTabSwipe";
+import { tabOrder, useTabSwipe } from "./useTabSwipe";
 import { clearErrorToast } from "../toast";
 import type { MeSection, Tab } from "./route";
 import { useGuestName } from "../guestName";
@@ -17,15 +17,25 @@ import AccountChip from "../components/AccountChip";
 import { useT } from "../i18n";
 import type { MessageKey } from "../i18n";
 import GuestChip from "../components/GuestChip";
+import { Portrait } from "../companion/Companion";
+import { lookAccount, useNewLook } from "../companion/seen";
+import { useCollection } from "../companion/feature";
+import { refreshAccount } from "../companion/writes";
 
 export { WIDE };
 
-/** The account's picture, or its initial on a plain disc; a guest's disc
- *  carries the initial of the name they play under. */
+/** A person's picture: where the Collection is shown, the portrait of their
+ *  equipped companion (a guest's is the default); elsewhere the account's
+ *  picture, or its initial on a plain disc, and a guest's disc carries the
+ *  initial of the name they play under. */
 export function Avatar({ user, size = "sm", guestName = "" }: {
   user: AuthUser | null; size?: "sm" | "lg"; guestName?: string;
 }) {
+  const companions = useCollection();
   const cls = `avatar avatar-${size}`;
+  if (companions) {
+    return <span className={`${cls} avatar-portrait`}><Portrait look={user?.look} size={size === "lg" ? 64 : 28} /></span>;
+  }
   if (!user) {
     const initial = guestName.trim().slice(0, 1).toUpperCase();
     return <span className={`${cls} avatar-guest`} aria-hidden="true">{initial || "?"}</span>;
@@ -57,6 +67,18 @@ function PodiumIcon() {
   );
 }
 
+/** Collection: four small tiles; the selected tab fills one of them. */
+function TilesIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="tiles-icon">
+      <rect className="tile-on" x="3.5" y="3.5" width="7.5" height="7.5" rx="2" />
+      <rect className="nofill" x="13" y="3.5" width="7.5" height="7.5" rx="2" />
+      <rect className="nofill" x="3.5" y="13" width="7.5" height="7.5" rx="2" />
+      <rect className="nofill" x="13" y="13" width="7.5" height="7.5" rx="2" />
+    </svg>
+  );
+}
+
 function PersonIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -69,6 +91,7 @@ function PersonIcon() {
 const TABS: { tab: Tab; name: MessageKey; icon: () => ReactNode }[] = [
   { tab: "play", name: "home.tabPlay", icon: PlayIcon },
   { tab: "leaderboard", name: "home.tabLeaderboard", icon: PodiumIcon },
+  { tab: "collection", name: "home.tabCollection", icon: TilesIcon },
   { tab: "me", name: "home.tabMe", icon: PersonIcon },
 ];
 
@@ -78,32 +101,49 @@ function goTab(tab: Tab, active: Tab): void {
   else openTab(tab);
 }
 
-/** The Me tab's icon: the account's picture, or the initial of the name
- *  played under (an account's or a guest's), drawn by CSS so the tab's text
- *  stays "Me". */
-function TabAvatar({ user, guest }: { user: AuthUser | null; guest: string }) {
+/** The Me tab's icon: the player's portrait where the Collection is shown;
+ *  elsewhere the account's picture, or the initial of the name played under
+ *  (an account's or a guest's), drawn by CSS so the tab's text stays "Me". */
+function TabAvatar({ user, guest, companions }: { user: AuthUser | null; guest: string; companions: boolean }) {
+  if (companions) return <span className="avatar avatar-portrait"><Portrait look={user?.look} size={26} /></span>;
   if (user?.picture) return <img className="avatar" src={user.picture} alt="" referrerPolicy="no-referrer" />;
   const shown = user ? effectiveName(user) || user.email : guest.trim();
   return <span className="avatar tabbar-initial" aria-hidden="true" data-initial={shown.slice(0, 1).toUpperCase()} />;
 }
 
+/** The tabs this viewer has, in order. */
+function useTabs() {
+  const companions = useCollection();
+  const order = tabOrder(companions);
+  return { companions, order, tabs: TABS.filter((x) => order.includes(x.tab)) };
+}
+
+/** The gold dot a tab carries while it holds something new. */
+function NewDot() {
+  return <span className="tab-dot" aria-hidden="true" />;
+}
+
 /** A phone's tab bar: a floating glass pill over the page, above the home
  *  indicator, with a lighter capsule under the active tab that slides to the
- *  tab tapped. Me shows the player's picture or initial once there is one. */
+ *  tab tapped. Me shows the player's portrait once there is a player. */
 export function TabBar({ active }: { active: Tab }) {
   const t = useT();
   const account = useAuth();
   const { name: guest } = useGuestName();
   const user = account.status === "in" ? account.user : null;
   const known = user !== null || (account.status !== "loading" && guest.trim() !== "");
-  const index = TABS.findIndex((x) => x.tab === active);
+  const { companions, tabs } = useTabs();
+  const fresh = useNewLook(companions ? lookAccount(user) : null, user?.looks) && active !== "collection";
+  const index = tabs.findIndex((x) => x.tab === active);
   return (
-    <nav className="tabbar" aria-label={t("home.navMain")} style={{ "--tab-index": index } as CSSProperties}>
+    <nav className="tabbar" aria-label={t("home.navMain")}
+         style={{ "--tab-index": index, "--tab-count": tabs.length } as CSSProperties}>
       <span className="tabbar-capsule" aria-hidden="true" />
-      {TABS.map(({ tab, name, icon: Icon }) => (
+      {tabs.map(({ tab, name, icon: Icon }) => (
         <button key={tab} type="button" className={`tabbar-item${tab === active ? " on" : ""}`}
                 aria-current={tab === active ? "page" : undefined} onClick={() => goTab(tab, active)}>
-          {tab === "me" && known ? <TabAvatar user={user} guest={guest} /> : <Icon />}
+          {tab === "me" && known ? <TabAvatar user={user} guest={guest} companions={companions} /> : <Icon />}
+          {tab === "collection" && fresh ? <NewDot /> : null}
           <span>{t(name)}</span>
         </button>
       ))}
@@ -111,7 +151,7 @@ export function TabBar({ active }: { active: Tab }) {
   );
 }
 
-/** The wide layout's top bar: no strip of its own, only the phone's three
+/** The wide layout's top bar: no strip of its own, only the phone's
  *  tabs as a glass pill centred over the page and the account chip
  *  at the end (a guest's opens the identity sheet), after the Your table
  *  pill on a tab other than Play. */
@@ -119,6 +159,8 @@ export function TopBar({ active }: { active: Tab }) {
   const t = useT();
   const account = useAuth();
   const user = account.status === "in" ? account.user : null;
+  const { companions, tabs } = useTabs();
+  const fresh = useNewLook(companions ? lookAccount(user) : null, user?.looks) && active !== "collection";
   let end: ReactNode = null;
   if (user) {
     end = <AccountChip user={user} compact />;
@@ -128,10 +170,11 @@ export function TopBar({ active }: { active: Tab }) {
   return (
     <header className="topbar">
       <nav className="topbar-tabs" aria-label={t("home.navMain")}>
-        {TABS.map((x) => (
+        {tabs.map((x) => (
           <button key={x.tab} type="button" className={`topbar-tab${x.tab === active ? " on" : ""}`}
                   aria-current={x.tab === active ? "page" : undefined} onClick={() => goTab(x.tab, active)}>
             {t(x.name)}
+            {x.tab === "collection" && fresh ? <NewDot /> : null}
           </button>
         ))}
       </nav>
@@ -177,7 +220,12 @@ export default function HomeShell({ active, section, seatedAt = null, children }
 }) {
   const wide = useMediaQuery(WIDE);
   const body = useRef<HTMLDivElement | null>(null);
-  useTabSwipe(body, active, !wide);
+  const companions = useCollection();
+  useTabSwipe(body, active, !wide, tabOrder(companions));
+  // back on the tabs after a game: read the counts a round may have moved
+  useEffect(() => {
+    if (companions) void refreshAccount();
+  }, [companions]);
   useTabFade(body, `${active}/${section ?? ""}`);
   useTabClearsError(active);
   return (

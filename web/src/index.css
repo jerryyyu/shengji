@@ -5502,13 +5502,13 @@ button.games-row { cursor: pointer; }
   .tabbar,
   .topbar-tabs { background: #1c2129; }
 }
-/* The active tab's capsule: one third of the pill, moved to the tab. */
+/* The active tab's capsule: one tab's share of the pill, moved to the tab. */
 .tabbar-capsule {
   position: absolute;
   top: 6px;
   bottom: 6px;
   left: 6px;
-  width: calc((100% - 12px) / 3);
+  width: calc((100% - 12px) / var(--tab-count, 3));
   border-radius: 26px;
   background: rgba(255, 255, 255, 0.1);
   transform: translateX(calc(var(--tab-index, 0) * 100%));
@@ -5952,7 +5952,7 @@ body.keyboard-open .tabbar { display: none; }
   color: #eef1f6;
 }
 /* Me and the Leaderboard are the phone's column at every width, centred */
-.me-page .home-col, .lb-page .home-col { max-width: 560px; }
+.me-page .home-col, .lb-page .home-col, .coll-page .home-col { max-width: 560px; }
 /* A large desktop window draws every page off the table larger, whole: the
    home column, its top bar and each sheet or dialog over them keep the phone
    column's design, read from further away. A mouse only, so a touch screen
@@ -6538,8 +6538,10 @@ button[role="switch"]:active .ios-switch {
   width: 24px; height: 24px; flex: none; display: inline-flex; align-items: center; justify-content: center;
   border-radius: 50%; font-size: 10px; font-weight: 700; color: #fff;
 }
-.tp-seat.team0 .tp-av { background: var(--team0); }
-.tp-seat.team1 .tp-av { background: var(--team1); }
+.tp-seat .tp-av.tp-av-portrait { background: none; overflow: hidden; }
+.tp-av-portrait > .portrait { width: 100%; height: 100%; }
+.tp-seat.team0 .tp-av:not(.tp-av-portrait) { background: var(--team0); }
+.tp-seat.team1 .tp-av:not(.tp-av-portrait) { background: var(--team1); }
 .tp-seat-text { display: flex; flex-direction: column; min-width: 0; }
 /* a seat's words stay on one line and end in an ellipsis when the seat is
    narrower than them; they never break inside a word */
@@ -7254,3 +7256,17 @@ dialog.leave-sheet-backdrop {
   color: var(--gold);
   font-weight: 600;
 }
+
+/* A portrait in an avatar's place: the disc is the portrait's own, so the
+   slot drops its fill and initial styles. No ring: the ring is the move clock. */
+.avatar.avatar-portrait { background: none; box-shadow: none; overflow: hidden; }
+.avatar.avatar-portrait > .portrait { width: 100%; height: 100%; }
+.tabbar-item.on .avatar.avatar-portrait { box-shadow: 0 0 0 1.5px var(--gold); }
+.tab-dot { position: absolute; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); pointer-events: none; }
+.tabbar-item .tab-dot { top: 7px; left: calc(50% + 12px); }
+.topbar-tab .tab-dot { top: 4px; right: 6px; }
+.opp-portrait { display: inline-flex; flex: none; width: 20px; height: 20px; }
+.opp-portrait > .portrait { width: 100%; height: 100%; }
+.chat-portrait { display: inline-flex; flex: none; width: 20px; height: 20px; margin-right: 6px; vertical-align: -5px; }
+.chat-portrait > .portrait { width: 100%; height: 100%; }
+.re-faces { display: inline-flex; gap: 4px; margin-right: 8px; vertical-align: -6px; }

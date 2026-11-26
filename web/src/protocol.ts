@@ -90,6 +90,8 @@ export interface RoomPlayer {
   name: string;
   is_bot: boolean;
   connected: boolean;
+  /** A person's companion, `"<companion>/<colour>"`; null for a bot, absent from older servers. */
+  look?: string | null;
 }
 
 /** The room you sit in, sent once as its game starts (a room has no lobby),
@@ -124,6 +126,8 @@ export interface StatePlayer {
   seat: number;
   name: string;
   is_bot: boolean;
+  /** A person's companion, `"<companion>/<colour>"`; null for a bot, absent from older servers. */
+  look?: string | null;
   connected: boolean;
   team: 0 | 1; // seat % 2
   cards_left: number;

@@ -16,6 +16,8 @@ export interface LeaderRow {
   you: boolean;
   /** Only on the viewer's own row: whether they show to others. */
   visible?: boolean;
+  /** The player's companion, `"<companion>/<colour>"`; absent from older servers. */
+  look?: string;
 }
 
 export type Period = "week" | "all";

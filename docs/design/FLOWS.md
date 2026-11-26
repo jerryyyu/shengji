@@ -343,6 +343,12 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
   its "their turn" line) and your row; the side seats stand level with its centre. A play longer than four cards
   packs tighter so it never spans more than four would. Seat panels keep their card counts; a side seat ends before
   its trick slot, and a long name there ends in an ellipsis, shown whole on a long press as on the phone.
+- **One row above the hand (L2; Jerry 2026-11-26, "Desktop / tablet — L2 looks good", decision mocks section 1).** Your name, the hint and
+  Play / Clear (or Declare / Pass, Bury) share one row that spans the hand: your name at its start, the controls at its end, the hint
+  between them, so the hint showing never moves a control; a short hand keeps the row at a set width. The card sizes are unchanged
+  (sized as if your name still had a row of its own); the height the one row frees goes to the cross, which stretches down into it
+  (at 1440×900 the top play to your play goes from 34 px to 87 px). "Joining after this trick" stands in that row. An iPad held
+  upright takes the same row for now; its own layout (each play in front of its seat) is a follow-up. The phone table is unchanged.
 - The round's result dialog grows with the screen, whole (×1.15 from 1100×700, ×1.35 on a 13" iPad).
 - A laptop or desktop window takes the same rule (Jerry 2026-11-25, "do we want to apply the iPad view?"): from
   810×740 the tablet table, below it the wide table at its fixed sizes. A mouse clicks a card (no slide), and the

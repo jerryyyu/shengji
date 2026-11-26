@@ -5282,6 +5282,27 @@
    "hi": 0.003954081632653061,
    "takeaway": "FAIL (inconclusive) +0.0011 [-0.0018, +0.0040], LB80 0 (bar +0.005, LB80 > 0); CI spans zero; confirmation does not open.",
    "note": "Read once 2026-11-26 by Codex (PR #1847 comment 7189854638), validity passed: 249,690 search decisions and 3,920 buries per arm, 0 play/belief/bury fallbacks, 0 declare abandons. n 3920, mean 0.0011479591836734695, CI95 [-0.0017857142857142857, 0.003954081632653061], LB80 0.0, LB95 -0.0012755102040816326; decision FAIL. Seal 3f1a55f3, result.json sha256 7fd6fb51; archived at readouts/overruff-1847-screen. The generalized successor (#1875) runs separately behind its own RELEASE. Recorded by the Claude tick."
+  },
+  {
+   "status": "sealed",
+   "box": "mini",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "confidence": 0.95,
+   "date": "2026-11-26",
+   "id": "ovr1875",
+   "title": "#1875 generalized overruff finder vs release 55 (screen)",
+   "candidate": "Release 55 with the generalized winning-overruff finder (114fca0e)",
+   "comparator": "release 55 as served (3e00a55a); head to head",
+   "vs": 55,
+   "vs_group": "release 55 as served, head to head: the formal seat-swapped screen (two-stage duel bar, screen stage), not a common-control screen",
+   "instrument": "3,920 seat-swapped deal pairs [2674020000, 2674023920), 7,840 rounds on Mini. Screen requires mean ≥ +0.005 levels/round and one-sided 80% lower bound > 0.",
+   "seeds": "2674020000 (mini)",
+   "point": -0.0010204081632653062,
+   "lo": -0.004081632653061225,
+   "hi": 0.0017857142857142857,
+   "takeaway": "FAIL at −0.00102 levels/round (LB80 −0.00230), with the full 95% interval below the required +0.005 gain.",
+   "note": "Both arms recorded 249,342 play decisions and 3,920 buries. The candidate had one play fallback and the control had one bury fallback. Validity passed. Saved readout at readouts/overruff-1875-screen, result SHA-256 0296ad2215ac6b9dcfe15743c2868b7f56ecdbf3b8edccfe97e31f238a8c543f. https://github.com/jerryyyu/shengji/pull/1875#issuecomment-7198765444"
   }
  ],
  "context_screens": [

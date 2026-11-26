@@ -926,6 +926,9 @@ describe("the round-end card on a phone", () => {
     expect(hidden.position).toBe("absolute");
     expect(hidden.visibility).toBe("hidden");
     expect(rule(css, ".round-end-swap").position).toBe("relative");
+    // the title's gap gets a little more air, one value for both views
+    expect(rule(css, ".round-end-swap")["margin-top"]).toBe("10px");
+    expect(rule(phoneBlock(), ".modal.round-end .round-end-swap")["margin-top"]).toBe("6px");
     // Details sits straight on the card, like the lanes: no box of its own
     expect(rule(css, ".round-end-details").background).toBeUndefined();
     expect(rule(css, ".round-end-details").padding).toBeUndefined();

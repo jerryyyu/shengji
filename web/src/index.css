@@ -2420,10 +2420,13 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   visibility: hidden;
 }
 
+/* a little more air under the title than the card's gap, the same for
+   the lanes and for Details */
 .round-end-swap {
   position: relative;
   display: grid;
   min-width: 0;
+  margin-top: 10px;
 }
 
 .round-end-swap > * {
@@ -3617,6 +3620,10 @@ dialog.modal-backdrop::backdrop { background: transparent; }
      and four seats' fans in the ladder's width */
   .modal.round-end {
     width: min(440px, 100%);
+  }
+
+  .modal.round-end .round-end-swap {
+    margin-top: 6px;
   }
 
   .modal-title {

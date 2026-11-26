@@ -170,7 +170,9 @@ function Walker({ player, team, level, size, px, pos, zone, layout, pose, you, o
   ended.current = onEnd;
   const layoutNow = useRef(layout);
   layoutNow.current = layout;
-  useFidget(box, move === "idle");
+  // a figure with nowhere clear to stand is not drawn, and keeps no clock
+  const placed = zone.home !== null;
+  useFidget(box, placed && move === "idle");
 
   const stop = () => { for (const a of walking.current) a.cancel(); walking.current = []; };
   const place = (s: Spot) => { cur.current = s; if (walk.current) walk.current.style.transform = at(s); };
@@ -215,7 +217,7 @@ function Walker({ player, team, level, size, px, pos, zone, layout, pose, you, o
   // a walk now and then, on its own clock, while the page is shown
   const zoneNow = useRef(zone);
   zoneNow.current = zone;
-  const idle = move === "idle";
+  const idle = placed && move === "idle";
   useEffect(() => {
     if (!idle || prefersReducedMotion()) return;
     let timer = 0;
@@ -300,7 +302,9 @@ export default function TableCompanions({ state }: { state: GameState }) {
     prev.current = state;
     if (Object.keys(moves).length) setPoses((p) => ({ ...p, ...moves }));
   }, [state]);
-  const on = shown && shownAtTable(mode);
+  // a table you only watch (an open table's newcomer until the next trick)
+  // draws none, as the watch feed and a replay draw none
+  const on = shown && shownAtTable(mode) && state.joining_you !== true;
   const key = JSON.stringify([state.phase, state.trick, state.last_trick?.winner, state.players.map((p) => [p.seat, p.is_bot, p.left]), tablet]);
   const layout = useLayout(root, on, key);
   if (!on) return null;

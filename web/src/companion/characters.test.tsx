@@ -344,6 +344,11 @@ describe("the table", () => {
     expect([...host.querySelectorAll(".tc-seat")].map((s) => s.getAttribute("data-seat"))).toEqual(["0", "1", "2"]);
   });
 
+  it("a table only being watched draws none", async () => {
+    await draw(table(state({ joining_you: true } as Partial<GameState>)));
+    expect(host.querySelector(".table-companions")).toBeNull();
+  });
+
   it("a team hops for a trick it takes and cheers for one worth 10 or more; an absent person's companion sleeps", async () => {
     await draw(table(state()));
     const box = (seat: number) => host.querySelector(`.tc-seat[data-seat="${seat}"] .tc-move`)!;

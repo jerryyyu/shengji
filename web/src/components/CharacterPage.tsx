@@ -7,7 +7,7 @@ import { DRAWINGS } from "../companion/kinds";
 import { parseLook } from "../companion/look";
 import type { Colour, CompanionKind, LookEntry } from "../companion/look";
 import { guestName } from "../guestName";
-import { isZh, useT } from "../i18n";
+import { locale, useT } from "../i18n";
 import type { MessageKey } from "../i18n";
 import { prefersReducedMotion } from "../motion";
 
@@ -24,7 +24,8 @@ export const kindName = (t: ReturnType<typeof useT>, kind: CompanionKind): strin
 /** The spoken name of a companion's colour, in the app's language. */
 export function colourName(kind: CompanionKind, colour: Colour): string {
   const name = DRAWINGS[kind].colourName(colour);
-  return isZh() ? name.zh : name.en;
+  const lang = locale();
+  return lang === "zh-Hant" ? name.hant : lang === "zh-Hans" ? name.zh : name.en;
 }
 
 /** A look's one status line: its companion and its colour. */

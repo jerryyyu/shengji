@@ -254,7 +254,7 @@ export class HeuristicBot {
       if (leadSuit === TRUMP || hLead.length) return null;
       const trumps = suitCards(hand, TRUMP, o);
       if (trumps.length < lead.length) return null;
-      const play = this.trumpShapeMatch(trumps, leadDec, o);
+      const play = this.trumpShapeMatch(trumps, leadDec, o, incSuit === TRUMP ? incTop : null);
       if (play !== null) {
         const [won] = beats(play, lead, incSuit, incTop, o);
         if (won) return play;
@@ -292,13 +292,20 @@ export class HeuristicBot {
     return null;
   }
 
-  /** Cheapest all-trump set matching a throw's shape (runs + singles). */
-  protected trumpShapeMatch(trumps: readonly Card[], leadDec: Decomposition, o: Ordering): Card[] | null {
+  /** Fill the throw shape with trumps, clearing the incumbent when possible. */
+  protected trumpShapeMatch(trumps: readonly Card[], leadDec: Decomposition, o: Ordering, incumbentTop: number | null): Card[] | null {
     const runs = leadDec.components
       .filter((c: Component) => c.pairLen)
       .map((c) => c.pairLen)
       .sort((a, b) => b - a);
     const nSingles = leadDec.components.filter((c) => !c.pairLen).length;
+    if (incumbentTop !== null && runs.length === 1 && nSingles === 1) {
+      const run = findTractorRuns(trumps, o, runs[0]).find((cards) => o.level(cards[cards.length - 1]) > incumbentTop);
+      if (!run) return null;
+      const remaining = [...trumps];
+      take(remaining, run);
+      return [...run, this.lowest(remaining, o, { avoidPoints: true })];
+    }
     const pool = [...trumps];
     const picked: Card[] = [];
     for (const k of runs) {
@@ -322,6 +329,11 @@ export class HeuristicBot {
       const c = this.lowest(pool, o, { avoidPoints: true });
       picked.push(c);
       take(pool, [c]);
+    }
+    if (!runs.length && incumbentTop !== null && picked.every((card) => o.level(card) <= incumbentTop)) {
+      const winning = sortedBy(pool.filter((card) => o.level(card) > incumbentTop), (card) => [o.level(card)]);
+      if (!winning.length) return null;
+      picked[picked.length - 1] = winning[0];
     }
     return picked;
   }

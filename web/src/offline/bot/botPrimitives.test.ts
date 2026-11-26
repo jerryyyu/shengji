@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type Card, type EffSuit, type TrumpSuit, Ordering } from "../engine/cards";
+import { type Card, type EffSuit, type TrumpSuit, Ordering, TRUMP } from "../engine/cards";
 import { EngineAssertion, IllegalPlay } from "../engine/legal";
 import { HeuristicBot } from "./heuristic";
 
@@ -71,6 +71,17 @@ describe("HeuristicBot policy leaves vs Python", () => {
     }
     expect(prim.forced.length).toBeGreaterThanOrEqual(1000);
     expect(bad.slice(0, 5)).toEqual([]);
+  });
+
+  it("overruffs a throw with the cheapest winning shape and rejects a tie", () => {
+    const o = new Ordering("H", "7");
+    const bot = new HeuristicBot();
+    const win = (hand: Card[], lead: Card[], top: Card) => bot.cheapestWinning(hand, lead, TRUMP, o.level(top), o);
+    expect(win(["H2", "H3", "H9"], ["CA", "CK"], "H8")).toEqual(["H2", "H9"]);
+    expect(win(["H2", "H3", "H8"], ["CA", "CK"], "H8")).toBeNull();
+    expect(win(["H2", "H2", "H8", "H8"], ["CA", "CA", "CK"], "H6")).toEqual(["H8", "H8", "H2"]);
+    expect(win(["H2", "H2", "H3", "H3", "H8", "H8", "H9", "H9"], ["CQ", "CQ", "CK", "CK", "CA"], "H5"))
+      .toEqual(["H8", "H8", "H9", "H9", "H2"]);
   });
 
   it("_cheapest_winning", () => {

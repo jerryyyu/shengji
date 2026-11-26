@@ -507,9 +507,10 @@ def mps_worker_recipe(host):
     return supervisor, directory, log, recipe, SCRATCH
 
 
-@pytest.mark.parametrize("interruption", ["clean-stop", "trainer-abort", "trainer-killed"])
+@pytest.mark.parametrize("interruption", ["clean-stop", "trainer-abort", "trainer-abort-mps-polish", "trainer-killed"])
 def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_recipe, monkeypatch, interruption, capsys):
-    interrupt = interruption == "trainer-abort"
+    interrupt = interruption.startswith("trainer-abort")
+    polish_device = "mps" if interruption == "trainer-abort-mps-polish" else "cpu"
     killed = interruption == "trainer-killed"
     supervisor, directory, log, recipe, scratch = mps_worker_recipe
     settings = json.loads(recipe.read_bytes())
@@ -651,10 +652,15 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
                 raise InterruptedError("interrupted winner publication")
             return original_link(source, target)
 
+        monkeypatch.setattr(rt4m_joint, "RECIPE", recipe)
+        polish_argv = ["rt4m_cache.py", "--root", str(directory / "reserved"), "--cache-root", str(cache_root),
+                       "--encode-rounds-per-batch", "4", "--polish-device", polish_device]
+        monkeypatch.setattr(sys, "argv", [*polish_argv, "--polish"])
         with monkeypatch.context() as fault:
             fault.setattr(sz2_polish_arm.os, "link", interrupt_selection)
-            with pytest.raises(InterruptedError, match="winner publication"):
-                rt4m_cache.polish(directory / "reserved", cache_root, recipe, **cache_options)
+            with pytest.raises(SystemExit) as err:
+                rt4m_cache.main()
+            assert err.value.code == 2 and "winner publication" in capsys.readouterr().err
         out_dir = directory / "reserved/A/polish"
         log_path = out_dir / "status.log"
         saved_log = log_path.read_bytes()
@@ -667,10 +673,11 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
             rt4m_cache.polish(directory / "reserved", cache_root, recipe, finish_selection=True, **cache_options)
         assert not (out_dir / "selected.pt").exists()
         log_path.write_bytes(saved_log)
-        monkeypatch.setattr(rt4m_joint, "RECIPE", recipe)
-        monkeypatch.setattr(sys, "argv", ["rt4m_cache.py", "--root", str(directory / "reserved"),
-                                          "--cache-root", str(cache_root), "--encode-rounds-per-batch", "4",
-                                          "--finish-selection"])
+        other_device = "cpu" if polish_device == "mps" else "mps"
+        with pytest.raises(ValueError, match="completed polish settings"):
+            rt4m_cache.polish(directory / "reserved", cache_root, recipe, device=other_device,
+                              finish_selection=True, **cache_options)
+        monkeypatch.setattr(sys, "argv", [*polish_argv, "--finish-selection"])
         assert rt4m_cache.main() == 0
         assert log_path.read_bytes() == saved_log
     else:

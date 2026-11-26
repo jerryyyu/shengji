@@ -35,11 +35,12 @@ def partition(root, output, worker, recipe_path, *, encode_rounds=CACHE_DEFAULT_
                            sample_rows=RT4_SAMPLE["cap_rows"])
 
 
-def polish(root, output, recipe_path, *, encode_rounds=CACHE_DEFAULT_ENCODE_ROUNDS, finish_selection=False):
+def polish(root, output, recipe_path, *, encode_rounds=CACHE_DEFAULT_ENCODE_ROUNDS, finish_selection=False,
+           device="cpu"):
     checkpoint, cache, recipe = inputs(root, output, recipe_path, encode_rounds)
     return polish_checkpoint(checkpoint, cache, recipe, root / "A/polish", epochs=8, lr=1e-3,
                              expected_sample=RT4_SAMPLE, expected_encode_rounds=encode_rounds,
-                             finish_selection=finish_selection)
+                             finish_selection=finish_selection, device=device)
 
 
 def check_cache_storage(root, cache_root, volume_uuid, cache_gib, internal_gib):
@@ -82,19 +83,24 @@ def main():
     parser.add_argument("--cache-volume-uuid", help="expected mounted macOS volume for a split-volume stage")
     parser.add_argument("--min-cache-free-gib", type=int)
     parser.add_argument("--min-internal-free-gib", type=int)
+    parser.add_argument("--polish-device", choices=("cpu", "mps"),
+                        help="device for readout polish or selection recovery (default: cpu)")
     stage = parser.add_mutually_exclusive_group(required=True)
     stage.add_argument("--worker", type=int, choices=range(WORKERS))
     stage.add_argument("--polish", action="store_true")
     stage.add_argument("--finish-selection", action="store_true",
                        help="publish the missing winner link from a completed polish")
     args = parser.parse_args()
+    if args.worker is not None and args.polish_device is not None:
+        parser.error("--polish-device applies only to polish or selection recovery")
     try:
         root, cache_root = args.root.resolve(), args.cache_root.resolve()
         check_cache_storage(root, args.cache_root, args.cache_volume_uuid, args.min_cache_free_gib,
                             args.min_internal_free_gib)
         if args.polish or args.finish_selection:
             return polish(root, cache_root, rt4m_joint.RECIPE,
-                          encode_rounds=args.encode_rounds_per_batch, finish_selection=args.finish_selection)
+                          encode_rounds=args.encode_rounds_per_batch, finish_selection=args.finish_selection,
+                          device=args.polish_device or "cpu")
         return partition(root, cache_root, args.worker, rt4m_joint.RECIPE,
                          encode_rounds=args.encode_rounds_per_batch)
     except (OSError, ValueError) as exc:

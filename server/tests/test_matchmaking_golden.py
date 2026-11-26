@@ -282,7 +282,6 @@ async def lone_start_bots_single_and_pair(env: Env) -> None:
     await env.send(2, "table_chat", text="leader says")
     env.peek(env.code(2))
     await env.send(3, "queue_start_bots")
-    await env.send(2, "queue_start_bots")
     await env.send(3, "table_start")
     await env.send(2, "queue_start_bots")
 
@@ -306,7 +305,6 @@ async def two_lone_entries_meet_at_the_openers_table(env: Env) -> None:
     await env.send(2, "queue_status")
     await env.advance(40.0)
     await env.send(2, "table_start_now")
-    await env.send(1, "table_start_now")
     await env.send(2, "table_start")
     await env.send(1, "table_start_now")
 
@@ -320,8 +318,8 @@ async def four_singles_fill_by_seat_order_and_start(env: Env) -> None:
     await env.send(2, "table_unready")
     await env.send(3, "table_start")
     await env.join(4, 1000.0)
-    await env.send(1, "table_start_now")   # four people wait for every joiner's Ready
-    await env.start_full()
+    await env.advance(2.0)                 # four people wait for the owner
+    await env.send(1, "table_start_now")   # Ready or not
 
 
 @scenario
@@ -350,11 +348,9 @@ async def pairs_meet_and_a_pair_leaves(env: Env) -> None:
     await env.send(7, "queue_leave")
     await env.pair(5, 6)
     await env.send(5, "queue_join")
-    await env.send(1, "table_start")
     await env.send(2, "table_start")
     await env.send(5, "table_start")
-    await env.send(6, "table_start")
-    await env.send(1, "table_start")       # an older page's owner Start, the joiners Ready
+    await env.send(1, "table_start")       # an older page's owner Start: 6 is not Ready
 
 
 @scenario
@@ -404,13 +400,10 @@ async def a_duo_table_holds_its_seat_and_pairs_its_code_joiner(env: Env) -> None
     await env.send(1, "table_chat", text="waiting for my friend")
     await env.join(3, 1000.0)
     env.peek(code)
-    await env.send(1, "table_start")
     await env.join(2, 1100.0, code=code)
     env.peek(code)
     await env.send(2, "table_chat", text="friend arrived")
-    await env.send(1, "table_start")
     await env.send(1, "table_unready")
-    await env.send(1, "table_start")
     await env.send(2, "table_start")
     await env.send(3, "table_start")
     await env.send(1, "table_start_now")
@@ -445,7 +438,7 @@ async def a_duo_partner_leaving_holds_the_seat_again(env: Env) -> None:
     code = env.code(1)
     await env.join(3)
     await env.join(2, code=code)
-    await env.send(1, "table_start")
+    await env.send(2, "table_start")
     await env.send(2, "queue_leave")
     env.peek(code)
     await env.join(5, code=code)
@@ -467,7 +460,6 @@ async def a_duo_starts_with_its_seat_held(env: Env) -> None:
     await env.join(2, duo=True)
     await env.join(3)
     await env.advance(31.0)
-    await env.send(2, "table_start_now")
     await env.send(3, "table_start")
     await env.send(2, "table_start_now")
 
@@ -564,20 +556,16 @@ async def idle_at_a_timed_table_leaves(env: Env) -> None:
 
 
 @scenario
-async def the_owners_start_waits_for_every_joiners_ready(env: Env) -> None:
+async def the_owners_start_takes_everyone_seated_ready_or_not(env: Env) -> None:
     await env.join(1)
     await env.advance(10.0)
     await env.join(2)
-    await env.send(1, "table_start_now")
-    await env.send(1, "table_start")
     await env.send(2, "table_start_now")
     await env.send(2, "table_start")
     await env.advance(5.0)
     await env.join(3)
-    await env.send(1, "table_start_now")
     await env.send(3, "table_start")
     await env.send(3, "table_unready")
-    await env.send(3, "table_start")
     await env.send(1, "table_start_now", panel_seq=1)
     await env.send(1, "table_start_now")
 

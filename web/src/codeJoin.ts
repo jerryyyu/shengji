@@ -59,6 +59,10 @@ export interface Place {
 
 /** If neither a seat nor a refusal has come back by then, Join wakes up again. */
 export const JOIN_TIMEOUT_MS = 15000;
+/** A table closed for a moment (its host claiming another seat) is looked
+ *  at again this often, at most CLOSED_LOOKS times, while its panel shows. */
+export const CLOSED_LOOK_MS = 2000;
+export const CLOSED_LOOKS = 15;
 
 /** Drop one query parameter from the address, keeping the rest. */
 export function dropParam(name: string): void {
@@ -95,6 +99,9 @@ export class CodeStore {
   private refreshing = false;
   /** The page came back while the lobby was not ready: look once it is. */
   private refreshOwed = false;
+  /** The next look at a table closed for a moment, and how many are left. */
+  private closedTimer: number | null = null;
+  private closedLooks = 0;
 
   attach(): void {
     if (this.attached) return;
@@ -138,9 +145,18 @@ export class CodeStore {
       this.timer = null;
     }
     if (next?.step !== "peek") this.refreshing = false;
-    if (next === null) this.refreshOwed = false;
+    if (next === null) {
+      this.refreshOwed = false;
+      this.stopClosedLooks();
+    }
     this.view = next;
     for (const fn of this.listeners) fn();
+  }
+
+  private stopClosedLooks(): void {
+    if (this.closedTimer !== null) window.clearTimeout(this.closedTimer);
+    this.closedTimer = null;
+    this.closedLooks = 0;
   }
 
   private patch(next: Partial<CodeJoin>): void {
@@ -272,7 +288,7 @@ export class CodeStore {
 
   private joinNow(name: string): void {
     const j = this.view;
-    if (!j || j.step !== "panel" || j.full || !j.peek) return;
+    if (!j || j.step !== "panel" || j.full || !j.peek || (j.peek.table && j.peek.closed)) return;
     if (j.peek.table) {
       queue.join(j.code, name);
     } else {
@@ -337,10 +353,22 @@ export class CodeStore {
       const again = this.refreshing;
       this.refreshing = false;
       if (msg.table && msg.closed) {
-        // a Join of the host's is in flight: as a table_closed answer; a
-        // second look at a showing panel finds its table ended
-        this.drop();
-        if (again) showToast(t("roundend.toastGameEnded"));
+        if (!again) {
+          // a Join of the host's is in flight: as a table_closed answer
+          this.drop();
+          return;
+        }
+        // a second look finds the table closed for a moment (its host is
+        // claiming another seat): the panel stays, Join waits, and the table
+        // is looked at again until it opens
+        this.set({ ...j, step: "panel", peek: msg, full: msg.full, seat: null });
+        if (this.closedTimer === null && this.closedLooks < CLOSED_LOOKS) {
+          this.closedLooks += 1;
+          this.closedTimer = window.setTimeout(() => {
+            this.closedTimer = null;
+            this.refresh();
+          }, CLOSED_LOOK_MS);
+        }
         return;
       }
       if (msg.table && msg.seats.some((sd) => sd.you)) {
@@ -348,6 +376,7 @@ export class CodeStore {
         this.drop();
         return;
       }
+      if (again) this.closedLooks = 0;
       if (msg.table) {
         this.set({ ...j, step: "panel", peek: msg, full: msg.full, seat: msg.full ? null : tableJoinSeat(msg) });
         return;
@@ -409,6 +438,7 @@ export class CodeStore {
     this.seenSeated = false;
     this.refreshing = false;
     this.refreshOwed = false;
+    this.stopClosedLooks();
     this.place = { ready: false, seatedAt: null };
   }
 }

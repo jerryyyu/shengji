@@ -45,8 +45,10 @@ A table starts (``tick``, and at once after the event that makes it due):
   whose switch is on ("Only tables with people", ``queue_wait_players``)
   has no ``bots_at`` and rides another entry's timer; with every switch on
   the table has no timer;
-* on its owner's Start (``table_start_now``, or ``queue_start_bots`` from
-  the owner), bots taking the empty seats. The owner is the opener's
+* on its owner's Start (``table_start_now``, or ``queue_start_bots`` or an
+  older page's ``table_start`` from the owner), bots taking the empty
+  seats. A Start held at the room cap is judged again when it is
+  dispatched (``Table.forced_by``). The owner is the opener's
   leader and has no Ready of its own; everyone else at the table is a
   joiner, a Duo opener's partner too, and taps Ready (``table_start``;
   each member of a Duo for itself; ``table_unready`` takes it back). The

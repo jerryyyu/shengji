@@ -257,15 +257,15 @@ def test_every_error_code_has_a_client_route():
         f"rows no server sends: {sorted(client - server)}")
 
 
-def test_the_ranked_bots_refusal_has_its_zh_twin_and_names_no_one_level():
-    """The client translates a server refusal by its exact English, and a
-    ranked table's opponents follow the people's rating, so the text names
-    no single level."""
+def test_the_ranked_bots_refusal_has_its_zh_twins_and_names_no_one_level():
+    """The client translates a server refusal by its exact English into
+    Simplified and Traditional Chinese, and a ranked table's opponents follow
+    the people's rating, so no text names a single level."""
     from shengji.api import matchmaking
 
     table = (WEB_SRC / "i18n" / "messages" / "roundend.ts").read_text()
-    m = re.search(r'"roundend\.srvRankedBots": \{ en: "([^"]*)", zh: "([^"]*)" \}', table)
+    m = re.search(r'"roundend\.srvRankedBots": \{ en: "([^"]*)", zh: "([^"]*)", hant: "([^"]*)" \}', table)
     assert m and m.group(1) == matchmaking.RANKED_BOTS
-    assert m.group(2)
-    for stale in ("full-strength", "Advanced", "高级"):
-        assert stale not in m.group(1) + m.group(2)
+    assert m.group(2) and m.group(3)
+    for stale in ("full-strength", "Advanced", "高级", "高級"):
+        assert stale not in m.group(1) + m.group(2) + m.group(3)

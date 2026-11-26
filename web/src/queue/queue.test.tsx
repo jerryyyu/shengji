@@ -625,12 +625,12 @@ describe("a Duo is a table", () => {
     expect(document.body.textContent).not.toContain("Duo code");
   });
 
-  it("the friend who opened the link sits in the held seat: You and Jerry, the wait for Jerry, Ready and Leave, no switch", async () => {
+  it("the friend who opened the link sits in the held seat: Your Duo, the wait for Jerry, Ready and Leave, no switch", async () => {
     await renderApp();
     say(duoParty(false));
     say(duoState(false, 0, false));
     const p = panel()!;
-    expect(p.querySelector(".tp-title")?.textContent).toBe("You and Jerry");
+    expect(p.querySelector(".tp-title")?.textContent).toBe("Your Duo");
     expect(lines()).toEqual(["Waiting for Jerry to start"]);
     expect(p.querySelector(".tp-seat.friend")?.getAttribute("aria-label")).toBe("Jerry, your Duo partner");
     expect(p.querySelector(".tp-seat.held")).toBeNull();
@@ -675,7 +675,7 @@ describe("a Duo is a table", () => {
     say(duoState(true, 0, false));
     await pastGuard();
     const p = panel()!;
-    expect(p.querySelector(".tp-title")?.textContent).toBe("You and Alice");
+    expect(p.querySelector(".tp-title")?.textContent).toBe("Your Duo");
     expect(lines()).toEqual([]);
     expect(words(primary()!)).toBe("Start with bots");
     expect(primary()!.disabled).toBe(false);
@@ -864,6 +864,8 @@ describe("the panel's primary button", () => {
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null]));
     expect(live()).toBe(region);
     expect(region.textContent).toBe("Table. You and Alice. 0 of 1 ready.");
+    // the title says whose table it is; the live region still names the people
+    expect(panel()!.querySelector(".tp-title")?.textContent).toBe("Your table");
     // the clocks themselves are not in any live region
     expect(panel()?.closest("[aria-live]")).toBeNull();
   });
@@ -890,7 +892,7 @@ describe("a shared table", () => {
                 { timer: { at: nowSecs() + 42, name: "Alice", you: false } }));
     const p = panel()!;
     expect(p.classList.contains("tp-shared")).toBe(true);
-    expect(p.querySelector(".tp-title")?.textContent).toBe("You and Alice");
+    expect(p.querySelector(".tp-title")?.textContent).toBe("Your table");
     // one status, the joiners' ready count; the bots' countdown is the ring on Start
     expect(lines()).toEqual(["0 of 1 ready"]);
     expect(ringSecs()).toBe("42");
@@ -961,7 +963,7 @@ describe("a shared table", () => {
                  seat("Bobby Tables The Third", { since: nowSecs() }), null],
                 { you: 1, timer: { at: nowSecs() + 18, name: "Jerry", you: false } }, { opener: false }));
     expect(button("Ready", panel()!)?.disabled).toBe(false);
-    expect(panel()!.querySelector(".tp-title")?.textContent).toBe("You, Jerry and Bobby Tabl…");
+    expect(panel()!.querySelector(".tp-title")?.textContent).toBe("Your table");
     expect(lines()).toEqual(["Waiting for Jerry to start"]);
     // the ring stays on the pressed Ready: the bots still come
     expect(ringSecs()).toMatch(/^1[789]$/);
@@ -1032,7 +1034,7 @@ describe("a shared table", () => {
     say(atTable([seat("Alice"), seat("Sam", { pair: true }), null, seat("Jerry", { you: true, pair: true, leader: false })],
                 { you: 3 }, { party_id: "p1", leader: false }));
     const p = panel()!;
-    expect(p.querySelector(".tp-title")?.textContent).toBe("You, Alice and Sam");
+    expect(p.querySelector(".tp-title")?.textContent).toBe("Your table");
     const [ours] = [...p.querySelectorAll(".tp-col")];
     expect([...ours.querySelectorAll(".tp-seat")].map((s) => s.getAttribute("aria-label")))
       .toEqual(["Sam, your Duo partner", "You"]);
@@ -2553,7 +2555,8 @@ describe("the table frame is the table", () => {
     raw(stale);
     expect(panel()).toBeNull();                     // nothing until its table frame
     raw(tableFrameFor(state));
-    expect(title()).toBe("You and Alice");
+    expect(title()).toBe("Your table");
+    expect(panel()!.textContent).toContain("Alice");
     expect(panel()!.querySelector(".tp-code")?.textContent).toBe("4N5Z");
     expect(panel()!.textContent).not.toContain("Ghost");
   });
@@ -2575,6 +2578,7 @@ describe("the table frame is the table", () => {
     await renderApp();
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null]));
     raw({ ...tableFrameFor(queued()), phase: "playing" });
-    expect(title()).toBe("You and Alice");
+    expect(title()).toBe("Your table");
+    expect(panel()!.textContent).toContain("Alice");
   });
 });

@@ -93,7 +93,7 @@ describe("the table panel in zh-Hans", () => {
 
   it("draws a shared table's ready line, title, the owner's Start, and a joiner's wait for the owner with Ready", () => {
     draw(<TablePanel q={view(shared())} guarded={false} />);
-    expect(host.querySelector(".tp-title")?.textContent).toBe("我和 Alice");
+    expect(host.querySelector(".tp-title")?.textContent).toBe("我的牌桌");
     expect(host.querySelector(".tp-line")?.textContent).toBe("已准备 1/1");
     expect(buttons()).toContain("机器人补位开始");
     expect(labels()).toEqual(expect.arrayContaining(["Alice，已准备，对方。换座", "空位，对方。换到这里"]));

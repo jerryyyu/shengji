@@ -364,7 +364,7 @@ export default function App() {
       </HomeShell>
     );
   } else if (game) {
-    // the table draws the one toast in its own spot, under the top seat
+    // the table draws the one toast in its own spot (Toast.tsx)
     screenIsTable = true;
     screen = <Table state={game} />;
   } else {

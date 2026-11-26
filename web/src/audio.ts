@@ -320,6 +320,8 @@ function fetchClip(name: string, speculative: boolean): Promise<AudioBuffer | nu
 async function playBuffer(buffer: AudioBuffer, reqEpoch: number): Promise<boolean> {
   const c = await runningFor(reqEpoch);
   if (c === null || live.size >= MAX_VOICES) return false;
+  // rechecked after the await: a recovery in between makes the request stale
+  if (reqEpoch !== epoch || ctx !== c || c.state !== "running") return false;
   await new Promise<void>((resolve) => {
     const src = c.createBufferSource();
     src.buffer = buffer;
@@ -361,6 +363,13 @@ function playTick(): void {
 /** Enqueue a sequence of clip names (played in order, never overlapping). */
 export function play(names: string[]): void {
   if (muted || names.length === 0) return;
+  // A context that has run and is held now: the request is dropped here, so a
+  // recovery landing while its clip loads cannot carry it through.
+  if (ctx !== null && ranOnce.has(ctx) && ctx.state !== "running") {
+    void ctx.resume().catch(() => {});
+    armUnlock();
+    return;
+  }
   queue.push({ names, at: now(), epoch });
   while (queue.length > MAX_QUEUE) queue.shift();
   void pump();

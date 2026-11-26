@@ -474,3 +474,27 @@ describe("review recovery ordering and live sources", () => {
     expect(nodes).toHaveLength(0);
   });
 });
+
+it("drops an announcement requested during an interruption", async () => {
+  const audio = await freshModule();
+  const started = vi.fn();
+  const proto = FakeAudioContext.prototype as unknown as Record<string, unknown>;
+  proto.decodeAudioData = async () => ({ duration: 0.05 });
+  proto.createBufferSource = () => ({
+    start: started, connect() {}, disconnect() {}, stop() {},
+  });
+  Object.assign(globalThis, { fetch: async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }) });
+  FakeAudioContext.allowResume = true;
+  dispatch("click");
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const c = FakeAudioContext.last!;
+  c.onstatechange?.();
+  c.state = "interrupted";
+  c.resume = () => new Promise<void>(() => {});
+  c.onstatechange?.();
+  audio.play(["pair"]);
+  c.state = "running";
+  await new Promise(resolve => setTimeout(resolve, 0));
+  c.onstatechange?.();
+  expect(started).toHaveBeenCalledTimes(0);
+});

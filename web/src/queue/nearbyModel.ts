@@ -46,11 +46,8 @@ export function nearbyRoomModel(room: RoomMsg, { now, botsAt }: { now: number; b
     return { at, look: "person", name: shortName(p.name), sub, tick,
              label: labelList([p.name, tick && t("queue.seat.ready"), sub, teamWord(ours)]) };
   });
-  const names = others.map((p) => shortName(p.name));
-  const title = names.length === 0 ? t("queue.title.yourTable")
-    : names.length === 1 ? t("queue.title.youAnd", { name: names[0] })
-    : t("queue.title.youAndMany", {
-      name: `${names.slice(0, -1).join(t("queue.list.comma"))}${t("queue.list.and")}${names[names.length - 1]}` });
+  // every table you sit at is "Your table"; the seats name the people
+  const title = t("queue.title.yourTable");
   const hostName = room.players.find((p) => p.seat === room.host)?.name ?? "";
   const ring: Ring | null = botsAt !== null && botsAt > now ? { left: (botsAt - now) / 1000, total: BOT_FILL_MS / 1000 } : null;
   return {

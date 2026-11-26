@@ -789,27 +789,27 @@ describe("the table's frame", () => {
 
 describe("the one toast at the table", () => {
   const t = rule(block, ".table-screen .toast.at-table");
-  it("passes just under the header, under the top seat, centred, inside the cross's width", () => {
-    expect(t.top).toBe("calc(var(--safe-t) + 6px + var(--header-h) + var(--space-xs))");
-    expect(t.bottom).toBe("auto");
+  it("stands just above your action row, centred, inside the cross's width", () => {
+    expect(t.top).toBe("auto");
+    expect(t.bottom).toBe("calc(var(--zone-bottom) + var(--row-h) + var(--space-s))");
     expect(t["max-width"]).toBe("calc(2 * var(--side-out) - 2 * var(--space-s))");
   });
 
   for (const [name, vp] of FRAMES) {
-    it(`covers no side seat's label, your row, the hand line or the hand: ${name}`, () => {
+    it(`covers no side seat's label, your row, the hand or the top seat's play: ${name}`, () => {
       for (const phase of ["play", "setup"] as const) {
         const g = geometry(vp, tokens, phase);
         const vars = phase === "play" ? { ...tokens, ...rule(block, ".table-screen.phase-play") } : tokens;
         const L = (e: string) => evalLength(e, vp, vars);
-        const y0 = L(t.top);
+        const y1 = vp.h - L(t.bottom);
         // two lines at most: 2 x 17 + 12 of padding
-        const toast: Rect = { x0: g.cx - L(t["max-width"]) / 2, x1: g.cx + L(t["max-width"]) / 2, y0, y1: y0 + 46 };
+        const toast: Rect = { x0: g.cx - L(t["max-width"]) / 2, x1: g.cx + L(t["max-width"]) / 2, y0: y1 - 46, y1 };
         expect(toast.y0).toBeGreaterThanOrEqual(g.header);
-        // the hand line stands just above your row: two of its lines fit under the toast
-        expect(toast.y1).toBeLessThanOrEqual(vp.h - L("var(--zone-bottom)") - L("var(--row-h)") - 2 * 17);
         expect(toast.y1).toBeLessThanOrEqual(g.handTop);
         expect(overlaps(toast, g.row)).toBe(false);
         for (const p of [g.pills.left, g.pills.right]) expect(overlaps(toast, p)).toBe(false);
+        // a one-line toast (17 + 12 of padding) clears the top seat's play
+        expect(overlaps({ ...toast, y0: y1 - 29 }, g.cards.top)).toBe(false);
       }
     });
   }

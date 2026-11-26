@@ -2,7 +2,8 @@ import type { CSSProperties } from "react";
 import { TOAST_MS, useToast } from "../toast";
 
 /** The app's one toast, in one fixed spot: at the top of the page, or at the
- *  table centred under the top seat. Exactly one is mounted at a time (the
+ *  table centred under the top seat (on a phone table, just above your
+ *  action row). Exactly one is mounted at a time (the
  *  table's, else the app's), and it draws whatever `showToast` last showed.
  *  An error is read at once, a notice politely. Each showing is keyed by its
  *  id, so a new one mounts a new element and its fade runs from the start;

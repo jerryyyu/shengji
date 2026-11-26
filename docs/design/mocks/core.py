@@ -314,13 +314,13 @@ def table_rows(mode="Ranked", opener=True, code="4N5Z", settings_open=False, wai
 def f3_own_table():
     alone = play_tab(SIGNED, panel=tpanel("", "Your table", [], [opn(), you()], [opn(O), opn(O)],
                                            rbtn("Start with bots", 40, 1) + LEAVE, extra=table_rows(wait=False) + chat_row()))
-    joined = play_tab(SIGNED, panel=tpanel("", "You and Alice", ["0 of 1 ready"], [seat("Alice", ""), you()], [opn(O), opn(O)],
+    joined = play_tab(SIGNED, panel=tpanel("", "Your table", ["0 of 1 ready"], [seat("Alice", ""), you()], [opn(O), opn(O)],
                                             rbtn("Start with bots", 31, .52) + LEAVE, extra=table_rows() + chat_row("Alice: hi!", 1)))
-    ready = play_tab(SIGNED, panel=tpanel("", "You and Alice", ["1 of 1 ready"], [seat("Alice", "", tick=True), you()], [opn(O), opn(O)],
+    ready = play_tab(SIGNED, panel=tpanel("", "Your table", ["1 of 1 ready"], [seat("Alice", "", tick=True), you()], [opn(O), opn(O)],
                                            rbtn("Start with bots", 29, .48) + LEAVE, extra=table_rows() + chat_row("Alice: hi!")))
     game = felt(top=pill("Alice", B), left=pill("Bot 1", O), right=pill("Bot 3", O))
     S_ = lambda nm, kind="person", team=B, tick=False: seat(nm, "", kind, team, tick)
-    desk = wide_play(b.desk_panel("", "You and Alice", ["0 of 1 ready"],
+    desk = wide_play(b.desk_panel("", "Your table", ["0 of 1 ready"],
                                   narrow_table({"bottom": S_("You", "you"), "top": S_("Alice"), "left": opn(O), "right": opn(O)}),
                                   "Start with bots", "Leave", extra=table_rows() + chat_row()))
     return [
@@ -357,9 +357,9 @@ def f4_room():
            '<div style="align-self:flex-start;width:270px;border-radius:16px;overflow:hidden;background:#2a2f38">'
            '<div style="height:110px;background:radial-gradient(ellipse at 50% 45%,#35845a,#1d5638 62%,#123a26);display:flex;align-items:center;justify-content:center;color:#f2c14e;font-size:30px;font-weight:800">升级</div>'
            '<div style="padding:8px 12px;font-size:13px"><b>Join my table · 4N5Z</b><div style="color:#9aa3b2">…/?room=4N5Z</div></div></div></div>')
-    alice = play_tab(("Alice", "Guest", "A"), "Casual", panel=tpanel("", "You and Jerry", ["Waiting for Jerry to start"], [seat("Jerry", ""), you()], [opn(O), opn(O)],
+    alice = play_tab(("Alice", "Guest", "A"), "Casual", panel=tpanel("", "Your table", ["Waiting for Jerry to start"], [seat("Jerry", ""), you()], [opn(O), opn(O)],
                                                                       btn("Ready") + LEAVE, extra=table_rows("Casual", opener=False) + chat_row()))
-    alice_r = play_tab(("Alice", "Guest", "A"), "Casual", panel=tpanel("", "You and Jerry", ["Waiting for Jerry to start"], [seat("Jerry", ""), you(tick=True)], [opn(O), opn(O)],
+    alice_r = play_tab(("Alice", "Guest", "A"), "Casual", panel=tpanel("", "Your table", ["Waiting for Jerry to start"], [seat("Jerry", ""), you(tick=True)], [opn(O), opn(O)],
                                                                         btn("Ready", "ghost") + LEAVE, extra=table_rows("Casual", opener=False) + chat_row("Jerry: yay")))
     game = felt(mode="Casual", top=pill("Jerry", B), left=pill("Bot 1", O), right=pill("Bot 3", O))
     return [
@@ -499,7 +499,7 @@ def f6_leave():
     menu = ('<div style="position:absolute;right:10px;top:44px;width:240px;border-radius:14px;overflow:hidden;background:#232832;border:1px solid #333b49;font:600 14px ' + FONT + '">'
             + "".join(f'<div style="padding:9px 14px;{"border-top:1px solid #2b323e;" if i else ""}{"color:#f08a96" if r == "Leave game" else ""}">{r}</div>'
                       for i, r in enumerate(("Coach", "Sound", "Haptics", "How to play", "Copy invite link", "Allow joiners", "Leave game"))) + '</div>')
-    wait = play_tab(SIGNED, panel=tpanel("", "You and Alice", ["0 of 1 ready"], [seat("Alice", ""), you()], [opn(O), opn(O)],
+    wait = play_tab(SIGNED, panel=tpanel("", "Your table", ["0 of 1 ready"], [seat("Alice", ""), you()], [opn(O), opn(O)],
                                           rbtn("Start with bots", 31, .52) + LEAVE, extra=chat_row()),
                     overlay=sheet("Leave the table?", "", STAYLEAVE))
     return [
@@ -636,14 +636,14 @@ def f_duo():
     start = play_tab(SIGNED)
     own = play_tab(SIGNED, panel=tpanel("", "Your Duo", [], [held(), you()], [opn(O), opn(O)],
                                          rbtn("Start with bots", 60, 1) + LEAVE, extra=table_rows() + chat_row()))
-    alice = play_tab(("Alice", "1,018", "A"), panel=tpanel("", "You and Jerry", ["Waiting for Jerry to start"], [seat("Jerry", ""), you()], [opn(O), opn(O)],
+    alice = play_tab(("Alice", "1,018", "A"), panel=tpanel("", "Your Duo", ["Waiting for Jerry to start"], [seat("Jerry", ""), you()], [opn(O), opn(O)],
                                                             rbtn("Ready", 44, .73) + LEAVE, extra=table_rows(opener=False) + chat_row()))
-    paired = play_tab(SIGNED, panel=tpanel("", "You and Alice", [], [seat("Alice", "", tick=True), you()], [opn(O), opn(O)],
+    paired = play_tab(SIGNED, panel=tpanel("", "Your Duo", [], [seat("Alice", "", tick=True), you()], [opn(O), opn(O)],
                                             rbtn("Start with bots", 38, .6) + LEAVE, extra=table_rows() + chat_row("Alice: ready")))
     matched = play_tab(SIGNED, panel=tpanel("", "Join Mei &amp; Sam", [], [seat("Alice", ""), you()], [seat("Mei", "", team=O), seat("Sam", "", team=O)],
                                              rbtn("Join", 16, .8) + btn("Keep looking", "ghost", grow=False)))
     game = felt(top=pill("Alice", B), left=pill("Mei", O), right=pill("Sam", O))
-    leave = play_tab(SIGNED, panel=tpanel("", "You and Alice", [], [seat("Alice", ""), you()], [opn(O), opn(O)],
+    leave = play_tab(SIGNED, panel=tpanel("", "Your Duo", [], [seat("Alice", ""), you()], [opn(O), opn(O)],
                                            rbtn("Start with bots", 40, .7) + LEAVE, extra=table_rows() + chat_row()),
                      overlay=sheet("Leave the Duo?", "Alice keeps the table.", STAYLEAVE))
     return [

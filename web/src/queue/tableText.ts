@@ -88,11 +88,16 @@ function holdsSeat(q: QueueView): boolean {
   return q.frame?.seats.some((s) => s.state === "held") === true;
 }
 
-/** Your own table's title: "Your table", "Your Duo" while the partner
- *  seat is held, or "You and Alice" once your Duo partner sits. */
+/** Your own table's title: "Your Duo" for a Duo, formed or still holding
+ *  the partner seat, else "Your table". The seats name the people. */
 export function ownTitle(q: QueueView, partner: string | null): string {
-  if (partner) return t("queue.title.youAnd", { name: shortName(partner) });
-  return t(q.duo && holdsSeat(q) ? "queue.title.yourDuo" : "queue.title.yourTable");
+  return t(partner || (q.duo && holdsSeat(q)) ? "queue.title.yourDuo" : "queue.title.yourTable");
+}
+
+/** Your own table as the live region names it: "You and Alice" once your
+ *  Duo partner sits, else the title. */
+function ownSpoken(q: QueueView, partner: string | null): string {
+  return partner ? t("queue.title.youAnd", { name: shortName(partner) }) : ownTitle(q, partner);
 }
 
 /** A joiner's one status line: the owner starts the table, Ready or not. */
@@ -113,8 +118,15 @@ export function sharedStatusLine(f: TableFrame): string {
   return t("queue.status.ready", { n: joiners.filter((s) => s.ready).length, count: joiners.length });
 }
 
-/** "You and Alice", "You, Alice and Li". */
-export function sharedTitle(f: TableFrame): string {
+/** A shared table's title: "Your table", whoever opened it; the seats
+ *  name the people. */
+export function sharedTitle(_f: TableFrame): string {
+  return t("queue.title.yourTable");
+}
+
+/** A shared table as the live region names it: "You and Alice", "You,
+ *  Alice and Li". */
+function sharedSpoken(f: TableFrame): string {
   const others = namesAt(f).map(shortName);
   if (others.length === 0) return t("queue.title.yourTable");
   if (others.length === 1) return t("queue.title.youAnd", { name: others[0] });
@@ -147,7 +159,7 @@ export function announcement(q: QueueView): string {
     const partner = q.party?.members.find((m) => !m.you)?.name ?? "";
     const words = q.leader ? t("queue.btn.startBots")
       : `${waitingLine(partner)}${yourReady(q) ? `${isZh() ? "，" : ", "}${t("queue.seat.ready")}` : ""}`;
-    return sentence(ownTitle(q, partner), words);
+    return sentence(ownSpoken(q, partner), words);
   }
   if (kind === "own") {
     const who = t(q.partyId ? "queue.say.duoTable" : q.duo && holdsSeat(q) ? "queue.title.yourDuo" : "queue.title.yourTable");
@@ -159,7 +171,7 @@ export function announcement(q: QueueView): string {
   if (kind === "shared" && q.frame) {
     const f = q.frame;
     const joiners = f.seats.filter((s) => s.state === "taken" && s.seat !== f.opener);
-    const said = t("queue.say.shared", { name: sharedTitle(f), n: joiners.filter((s) => s.ready).length,
+    const said = t("queue.say.shared", { name: sharedSpoken(f), n: joiners.filter((s) => s.ready).length,
                                          count: joiners.length });
     const words = q.leader && f.opener === f.you ? "" : waitingLine(ownerName(f));
     return words ? `${said}${isZh() ? "" : " "}${words}${isZh() ? "。" : "."}` : said;

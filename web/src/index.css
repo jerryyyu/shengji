@@ -3642,12 +3642,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-size: 30px;
   }
 
-  /* At the table the toast passes just under the header, where the top
-     seat's label sits: never over a side seat's label, your row, the hand
-     line or the hand. It stays inside the cross's width. */
+  /* At the table the toast stands just above your action row, clear of
+     the top seat's play: never over a side seat's label, your row or the
+     hand. It stays inside the cross's width. */
   .table-screen .toast.at-table {
-    top: calc(var(--safe-t) + 6px + var(--header-h) + var(--space-xs));
-    bottom: auto;
+    top: auto;
+    bottom: calc(var(--zone-bottom) + var(--row-h) + var(--space-s));
     max-width: calc(2 * var(--side-out) - 2 * var(--space-s));
     font-size: var(--fs-13);
     line-height: 17px;

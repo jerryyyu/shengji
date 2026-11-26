@@ -152,6 +152,7 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
 - No explanatory notes under controls on the Play page. At most one short status line per panel, and only when it changes what the player does next (a timer, "1 of 2 ready", the leave cost).
 - Drop kickers, hints and repeated context where the layout already says it (e.g. "Tap a green seat to move" once at most, "Others can join as they arrive" not at all).
 - Explanations belong in How to play and the coach, not under controls.
+- **The panel title (Jerry 2026-11-26, decision mocks section 2).** Every panel you sit at is titled "Your table" (我的牌桌), a Duo, formed or still holding the partner seat, "Your Duo" (我的组队); this replaces "You and Alice" / "You, Alice and Li", which named the seated people the seats already name. The Join panel keeps "Join Alice", where the name is the news; the offline table keeps "You and 3 bots". The live region's sentence still names the people (`tableText.ts` `announcement`).
 - Jerry's examples of too much subtext (cut entirely): "Tap a green seat to move", "Jerry opened this table", "Invite by link or code", "Bots sit in empty seats". A panel is its title + seats + at most one live status (a timer / "1 of 2 ready") + buttons.
 
 ## Every table has a code (Jerry 2026-11-14: "for Play → your own table on ranked, i think we can also show the room code and the create room settings similar to what we do for casual rooms")
@@ -244,8 +245,9 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
      account in the iOS app").
 5. **One toast and one line above the hand.** Every message that comes and goes is the one toast
    (`components/Toast.tsx`, shown through `showToast` in `toast.ts`): one at a time, the newest replacing the
-   one showing, gone after 4 s. It has one spot per layout: at the top of the page off the table, and at the
-   table centred under the top seat, just under the header. An error is red and read at once
+   one showing, gone after 4 s. It has one spot per layout: at the top of the page off the table; at a
+   tablet or desktop table centred under the top seat, just under the header; at a phone table centred just
+   above your action row, clear of the top seat's play (Jerry 2026-11-26, the 11-10 spot). An error is red and read at once
    (`aria-live="assertive"`); a notice is gold-outlined and read politely. Its sources: the server's errors
    and notices, a link's table that is gone or a code that names nothing (the lobby's error box and the line
    under the code box are gone), the queue's notices (`q-toast` is gone), a failed throw (the header notice

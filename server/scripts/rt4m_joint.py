@@ -15,10 +15,11 @@ RECIPE_SHA256 = "d7778348cce3aead7f991c1683577af3f9760bab795ef4d548b721ea8bfacb4
 
 SMOKE = "RT4-M-A-smoke"
 MICROBATCH_SMOKE = "RT4-M-A-micro4-smoke"
+SMOKE_MICROBATCHES = {MICROBATCH_SMOKE: 4, "RT4-M-A-micro8-smoke": 8}
 
 
 def recipe_inputs(root, recipe_path, *, phase="RT4-M-A"):
-    if phase not in ("RT4-M-A", SMOKE, MICROBATCH_SMOKE):
+    if phase not in ("RT4-M-A", SMOKE, *SMOKE_MICROBATCHES):
         raise ValueError("unknown RT4-M phase")
     smoke = phase != "RT4-M-A"
     raw = recipe_path.read_bytes()
@@ -38,9 +39,10 @@ def recipe_inputs(root, recipe_path, *, phase="RT4-M-A"):
     if smoke:
         args.extend(["--max-train-rows", "120000", "--report-buffer", "1", "--capacity-stats"])
         expected.update(max_train_rows=120000, report_buffer=1)
-    if phase in ("RT4-M-A", MICROBATCH_SMOKE):
-        args.extend(["--microbatch-rounds", "4"])
-        expected["microbatch_rounds"] = 4
+    if phase == "RT4-M-A" or phase in SMOKE_MICROBATCHES:
+        micro = SMOKE_MICROBATCHES.get(phase, 4)
+        args.extend(["--microbatch-rounds", str(micro)])
+        expected["microbatch_rounds"] = micro
     if _run_identity(build_parser().parse_args(args)) != expected:
         raise ValueError("the trainer settings differ from the expected RT4-M scratch recipe")
     return recipe, args, expected
@@ -115,7 +117,7 @@ def completed_inputs(root, recipe_path):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("phase", choices=("RT4-M-A", SMOKE, MICROBATCH_SMOKE))
+    parser.add_argument("phase", choices=("RT4-M-A", SMOKE, *SMOKE_MICROBATCHES))
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--recipe", type=Path, default=RECIPE)
     parser.add_argument("--recover-checkpoint-sha256")

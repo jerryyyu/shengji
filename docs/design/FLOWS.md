@@ -561,9 +561,11 @@ then its replay plays.
   hue alone: its corner, the shape under each figure (a disc for Us, a diamond for Them) and the scarf in its
   colour. Your partner faces you; theirs face the table. A team's companions grow 2.5% a level from 2, to 1.3
   times at A, capped at 56 px on a phone and 72 px on a tablet; the size changes only when the level does (round
-  end), with a 0.4 s pop. A companion cheers when its person takes a trick and when its team climbs, and sleeps
-  while its person is away. A bot, and a seat its owner left, has none. They sit under the cards and controls
-  and take no taps. Individual draws none yet (its placement is not designed); Off draws none.
+  end), with a 0.4 s pop. A team's companions hop when it takes a trick, and cheer when the trick is worth 10
+  points or more or the team climbs (Jerry may tune this); a companion sleeps while its person is away. Between
+  moves they stand still, each with a short sway every 6 to 10 s on its own clock, and nothing moves while the
+  page is hidden or under Reduce Motion. A bot, and a seat its owner left, has none. They sit under the cards
+  and controls and take no taps. Individual draws none yet (its placement is pending design); Off draws none.
 - **Colours** are a palette swap of the one Tractor: Icon red (the default), Paddy green and Enamel blue from the
   start; Imperial yellow at 10 rounds, Lantern orange at 25, Jade at 50, Blue and white at 100, Ink black for a
   ranked win. A tap on an unlocked colour equips it at once; a tap on a locked one shows it on the felt with its

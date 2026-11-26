@@ -69,6 +69,10 @@
   100% { opacity: 0; transform: translate(10%, -40%) scale(1.2); }
 }
 
+/* at rest (the table): nothing loops, so a table at rest draws no frames */
+.cmp-rest:not(.cmp-grow),
+.cmp-rest * { animation: none !important; }
+
 @media (prefers-reduced-motion: reduce) {
   .cmp .cmp-body,
   .cmp .cmp-eye,

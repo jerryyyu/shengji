@@ -27,10 +27,12 @@ const STILL_MS = 1000;
  *  At the table, `team` stands it on its team's pad in its team's scarf, and
  *  `level` (the team's level index, 2 is 0) grows it from `size` toward
  *  `max`; a level gained pops it from its old size. `still` draws the pose at
- *  its peak with nothing moving; it is on by itself under Reduce Motion. */
-export function Companion({ kind = "tractor", colour, size, state = "idle", team, level, max, still, onPoseEnd }: {
+ *  its peak with nothing moving; it is on by itself under Reduce Motion.
+ *  `idle` says how idle and sleep move: `loop` (their own endless loops) or
+ *  `rest` (still, so a page at rest draws no frames). */
+export function Companion({ kind = "tractor", colour, size, state = "idle", team, level, max, still, idle = "loop", onPoseEnd }: {
   kind?: CompanionKind; colour: Colour; size: number; state?: Pose; team?: Team; level?: number; max?: number;
-  still?: boolean; onPoseEnd?: () => void;
+  still?: boolean; idle?: "loop" | "rest"; onPoseEnd?: () => void;
 }) {
   const id = useId().replace(/[^a-zA-Z0-9]/g, "");
   const drawing = DRAWINGS[kind];
@@ -44,9 +46,9 @@ export function Companion({ kind = "tractor", colour, size, state = "idle", team
   const was = useRef(px);
   const [from, setFrom] = useState<number | null>(null);
   useLayoutEffect(() => {
-    if (px > was.current && !calm) setFrom(was.current / px);
+    if (px > was.current && !prefersReducedMotion()) setFrom(was.current / px);
     was.current = px;
-  }, [px, calm]);
+  }, [px]);
 
   // a still pose plays no animation, so it ends on a timer
   useEffect(() => {
@@ -55,7 +57,9 @@ export function Companion({ kind = "tractor", colour, size, state = "idle", team
     return () => window.clearTimeout(timer);
   }, [state, calm, onPoseEnd]);
 
-  const cls = ["cmp", drawing.char ? "cmp-char" : "", `cmp-${kind}`, calm && ONCE.has(state) ? "" : `cmp-${state}`,
+  const resting = !ONCE.has(state);
+  const poseCls = calm && ONCE.has(state) ? "" : resting && idle === "rest" ? `cmp-${state} cmp-rest` : `cmp-${state}`;
+  const cls = ["cmp", drawing.char ? "cmp-char" : "", `cmp-${kind}`, poseCls,
     team ? `cmp-${team}` : "", from !== null ? "cmp-grow" : ""].filter(Boolean).join(" ");
   const [zx, zy] = drawing.z;
   return (

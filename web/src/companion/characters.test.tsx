@@ -270,15 +270,67 @@ describe("the table, in Team view", () => {
     expect(host.querySelector(".table-companions")).toBeNull();
   });
 
-  it("the taker of a trick cheers, and an absent person's companion sleeps", async () => {
+  it("a team hops for a trick it takes and cheers for one worth 10 or more; an absent person's companion sleeps", async () => {
     shownTo();
     await draw(<TableCompanions state={state()} />);
-    const trick = { leader: 0, winner: 2, points: 10, plays: [{ seat: 0, cards: ["HA"] }] };
-    await draw(<TableCompanions state={state({ last_trick: trick, players: [player(0), player(1, { connected: false }), player(2), player(3)] } as Partial<GameState>)} />);
     const fig = (seat: number) => host.querySelector(`.tc-fig[data-seat="${seat}"] svg`)!;
-    expect(fig(2).classList.contains("cmp-cheer")).toBe(true);
-    expect(fig(0).classList.contains("cmp-idle")).toBe(true);
+    const players = [player(0), player(1, { connected: false }), player(2), player(3)];
+    const small = { leader: 0, winner: 2, points: 5, plays: [{ seat: 0, cards: ["HA"] }] };
+    await draw(<TableCompanions state={state({ last_trick: small, players } as Partial<GameState>)} />);
+    const box = (seat: number) => host.querySelector(`.tc-fig[data-seat="${seat}"] .tc-move`)!;
+    expect([box(0), box(2)].map((b) => b.getAttribute("data-move"))).toEqual(["hop", "hop"]);
+    // the drawing stays still at the table: only its box moves
+    expect([fig(0), fig(2)].every((f) => f.classList.contains("cmp-rest"))).toBe(true);
     expect(fig(1).classList.contains("cmp-sleep")).toBe(true);
+    const big = { leader: 2, winner: 0, points: 10, plays: [{ seat: 2, cards: ["HK"] }] };
+    await draw(<TableCompanions state={state({ last_trick: big, players } as Partial<GameState>)} />);
+    expect([box(0), box(2)].map((b) => b.getAttribute("data-move"))).toEqual(["cheer", "cheer"]);
+    // a cheer swaps in the cheer's peak, confetti and all
+    expect([fig(0), fig(2)].every((f) => f.querySelector(".cmp-confetti") !== null)).toBe(true);
+    const theirs = { leader: 1, winner: 1, points: 20, plays: [{ seat: 1, cards: ["SA"] }] };
+    await draw(<TableCompanions state={state({ last_trick: theirs, players } as Partial<GameState>)} />);
+    // the absent taker's companion sleeps through it
+    expect(fig(1).classList.contains("cmp-sleep")).toBe(true);
+  });
+
+  it("at rest nothing loops; each companion fidgets once every 6 to 10 s as a Web Animation, and not while the page is hidden", async () => {
+    vi.useFakeTimers();
+    let hidden = false;
+    const vis = vi.spyOn(document, "visibilityState", "get").mockImplementation(() => (hidden ? "hidden" : "visible"));
+    const played: Element[] = [];
+    const proto = Element.prototype as unknown as { animate?: unknown };
+    const had = proto.animate;
+    proto.animate = function (this: Element) {
+      played.push(this);
+      return { finished: new Promise(() => {}), cancel: () => {} };
+    };
+    try {
+      shownTo();
+      await act(async () => { root.render(<TableCompanions state={state()} />); });
+      expect([...host.querySelectorAll(".tc-fig svg")].every((f) => f.classList.contains("cmp-rest"))).toBe(true);
+      act(() => { vi.advanceTimersByTime(5900); });
+      expect(played).toHaveLength(0);
+      act(() => { vi.advanceTimersByTime(4200); });
+      // by 10.1 s each seat has fidgeted once, on its box
+      expect(played.map((e) => e.closest(".tc-fig")!.getAttribute("data-seat")).sort()).toEqual(["0", "1", "2"]);
+      expect(played.every((e) => e.classList.contains("tc-move"))).toBe(true);
+      hidden = true;
+      act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+      const before = played.length;
+      act(() => { vi.advanceTimersByTime(30000); });
+      expect(played).toHaveLength(before);
+    } finally {
+      proto.animate = had;
+      vis.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("Individual draws nothing until it is designed", async () => {
+    shownTo();
+    window.localStorage.setItem("shengji.companions", "individual");
+    await draw(<TableCompanions state={state()} />);
+    expect(host.querySelector(".table-companions")).toBeNull();
   });
 
   it("a team that climbs at round end cheers", async () => {
@@ -287,7 +339,7 @@ describe("the table, in Team view", () => {
     await draw(<TableCompanions state={before} />);
     const result = { winner_team: 0, level_change: 2, new_levels: ["4", "A"] };
     await draw(<TableCompanions state={state({ phase: "round_end", levels: ["4", "A"], round_result: result } as unknown as Partial<GameState>)} />);
-    const figs = [...host.querySelectorAll(".tc-us svg")];
-    expect(figs.every((f) => f.classList.contains("cmp-cheer") && f.classList.contains("cmp-grow"))).toBe(true);
+    expect([...host.querySelectorAll(".tc-us .tc-move")].map((b) => b.getAttribute("data-move"))).toEqual(["cheer", "cheer"]);
+    expect([...host.querySelectorAll(".tc-us svg")].every((f) => f.classList.contains("cmp-grow"))).toBe(true);
   });
 });

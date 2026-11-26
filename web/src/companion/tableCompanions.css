@@ -10,3 +10,10 @@
 .tc-them { right: 56px; top: 44px; }
 .tablet-table .tc-us { left: 40px; bottom: 236px; }
 .tablet-table .tc-them { right: 40px; top: 24px; }
+
+/* The moves at the table are Web Animations of this box (`MOVES` in
+   TableCompanions.tsx) round a still drawing. It is its own layer from the
+   start, so a move repaints nothing as it starts or ends; a jump and its
+   confetti may leave the box, so nothing clips it. */
+.tc-fig { contain: layout; }
+.tc-move { display: block; line-height: 0; transform-origin: 50% 100%; will-change: transform; }

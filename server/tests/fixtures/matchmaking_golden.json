@@ -1,4 +1,4 @@
-{"header": {"format":1,"normalized":["token_hex ids","table codes"],"source_sha":"bf4d7239d4b44fd1a8640ebd96c4fa8f59937b4f"},
+{"header": {"format":1,"normalized":["token_hex ids","table codes"],"source_sha":"400be32d977122b528a982fbdcc8cfaf631c76a8"},
 "scenarios": {
  "a_duo_paired_alone_chats_and_splits": [
   ["send",1,"queue_join",{"duo":true,"mode":"casual"}],
@@ -542,9 +542,13 @@
   ["frame","3",{"id":1,"name":"P3","seat":0,"t":10013.650000000001,"table":null,"text":"alone again","type":"table_chat"}],
   ["send",3,"queue_status",{}],
   ["frame","3",{"allow_joiners":true,"bot_level":"standard","bots_at":10073.650000000001,"bots_paused":false,"code":"<code0>","count":1,"duo":false,"duo_ready":null,"front":false,"held_seat":null,"leader":true,"mode":"casual","offer":null,"open_tables":0,"opener":true,"panel_seq":7,"party_id":null,"queued":true,"since":10013.650000000001,"start_level":"2","still_here_until":null,"table":null,"type":"queue_state","wait_players":false,"you_ready":false}],
+  ["clock",10018.650000000001],
+  ["frame","1",{"casual":0,"playing":0,"ranked":0,"tables":0,"type":"presence","waiting":1}],
+  ["frame","2",{"casual":0,"playing":0,"ranked":0,"tables":0,"type":"presence","waiting":1}],
+  ["frame","3",{"casual":0,"playing":0,"ranked":0,"tables":0,"type":"presence","waiting":1}],
   ["send",3,"queue_start_bots",{}],
-  ["qlog",{"queue":"leave","queued":0,"reason":"bots","size":1,"t":10013.7,"wait":0.0,"who":"account"}],
-  ["qlog",{"humans":1,"max_wait":0.0,"queue":"start","queued":0,"t":10013.7,"table":false}],
+  ["qlog",{"queue":"leave","queued":0,"reason":"bots","size":1,"t":10018.7,"wait":5.0,"who":"account"}],
+  ["qlog",{"humans":1,"max_wait":5.0,"queue":"start","queued":0,"t":10018.7,"table":false}],
   ["start_room",{"chat":[{"id":1,"name":"P3","seat":0,"t":10013.650000000001,"text":"alone again"}],"conns":[3],"mode":"casual","room":{"allow_joiners":true,"bot_level":"standard","code":"<code0>","start_level":"2"},"slots":[{"group":"<id4>","name":"P3","rating":1000.0,"user_id":3},{"group":null,"name":"","rating":1000.0,"user_id":null},{"group":null,"name":"","rating":1000.0,"user_id":null},{"group":null,"name":"","rating":1000.0,"user_id":null}],"table_id":null}]
  ],
  "a_pair_sits_across_two_singles": [
@@ -1160,9 +1164,13 @@
   ["peek","<code0>",{"allow_joiners":false,"closed":false,"full":false,"in_game":false,"mode":"casual","room":"<code0>","seats":[{"name":"P2","ready":false,"seat":0,"state":"taken","team":0},{"name":null,"ready":false,"seat":1,"state":"open","team":1},{"name":null,"ready":false,"seat":2,"state":"open","team":0},{"name":null,"ready":false,"seat":3,"state":"open","team":1}],"table":true,"type":"room_seats"}],
   ["send",2,"table_start_level",{"start_level":"4"}],
   ["frame","2",{"allow_joiners":false,"bot_level":"standard","bots_at":10060.0,"bots_paused":false,"code":"<code0>","count":1,"duo":false,"duo_ready":null,"front":false,"held_seat":null,"leader":true,"mode":"casual","offer":null,"open_tables":0,"opener":true,"panel_seq":7,"party_id":null,"queued":true,"since":10000.0,"start_level":"4","still_here_until":null,"table":null,"type":"queue_state","wait_players":false,"you_ready":false}],
+  ["clock",10005.0],
+  ["frame","1",{"casual":0,"playing":0,"ranked":0,"tables":0,"type":"presence","waiting":1}],
+  ["frame","2",{"casual":0,"playing":0,"ranked":0,"tables":0,"type":"presence","waiting":1}],
+  ["frame","3",{"casual":0,"playing":0,"ranked":0,"tables":0,"type":"presence","waiting":1}],
   ["send",2,"queue_start_bots",{}],
-  ["qlog",{"queue":"leave","queued":0,"reason":"bots","size":1,"t":10000.0,"wait":0.0,"who":"account"}],
-  ["qlog",{"humans":1,"max_wait":0.0,"queue":"start","queued":0,"t":10000.0,"table":false}],
+  ["qlog",{"queue":"leave","queued":0,"reason":"bots","size":1,"t":10005.0,"wait":5.0,"who":"account"}],
+  ["qlog",{"humans":1,"max_wait":5.0,"queue":"start","queued":0,"t":10005.0,"table":false}],
   ["start_room",{"chat":[],"conns":[2],"mode":"casual","room":{"allow_joiners":false,"bot_level":"standard","code":"<code0>","start_level":"4"},"slots":[{"group":"<id4>","name":"P2","rating":1000.0,"user_id":2},{"group":null,"name":"","rating":1000.0,"user_id":null},{"group":null,"name":"","rating":1000.0,"user_id":null},{"group":null,"name":"","rating":1000.0,"user_id":null}],"table_id":null}]
  ],
  "still_here_at_a_table_with_no_timer": [

@@ -115,15 +115,17 @@ describe("the watch screen", () => {
     const card = document.querySelector(".round-end")!;
     expect(card).not.toBeNull();
     expect(card.textContent).toContain("Round 4 in play");
-    const labels = [...card.querySelectorAll(".round-end-actions button")].map((b) => b.textContent);
+    const labels = [...card.querySelectorAll(".round-end-actions button:not(.round-end-view-btn)")].map((b) => b.textContent);
     expect(labels).toEqual(["Take a seat", "Leave"]);
-    await act(async () => { (card.querySelectorAll(".round-end-actions button")[0] as HTMLButtonElement).click(); });
+    await act(async () => { (card.querySelectorAll(".round-end-actions button:not(.round-end-view-btn)")[0] as HTMLButtonElement).click(); });
     expect(joined).toContain("CSUL");
     expect(card.textContent).not.toContain("Next round");
+    // Details swaps the lanes for the kitty and the last trick, as for a player
+    expect(card.querySelector(".round-end-view-btn")).not.toBeNull();
     // caught up: it follows the table for the round after this one
     expect(urls.some((u) => u.startsWith("/api/watch/abc123?after=3"))).toBe(true);
     watch.open("casual");
-    await act(async () => { (card.querySelectorAll(".round-end-actions button")[1] as HTMLButtonElement).click(); });
+    await act(async () => { (card.querySelectorAll(".round-end-actions button:not(.round-end-view-btn)")[1] as HTMLButtonElement).click(); });
     expect(watch.get()).toBeNull();
   });
 });
@@ -181,7 +183,7 @@ describe("caught up", () => {
     await toEnd(h);
     const card = document.querySelector(".round-end")!;
     expect(card.textContent).toContain("Round 5 in play");
-    expect([...card.querySelectorAll(".round-end-actions button")].map((b) => b.textContent)).toEqual(["Play", "Leave"]);
+    expect([...card.querySelectorAll(".round-end-actions button:not(.round-end-view-btn)")].map((b) => b.textContent)).toEqual(["Play", "Leave"]);
   });
 
   it("polls on one timer: two viewers behind one address stay well under its 30 reads a minute", async () => {
@@ -242,7 +244,7 @@ describe("caught up", () => {
     expect(h.querySelector(".watch-round")!.textContent).toContain("Round 8");
   });
 
-  const actions = () => [...document.querySelectorAll(".round-end .round-end-actions button")].map((b) => b.textContent);
+  const actions = () => [...document.querySelectorAll(".round-end .round-end-actions button:not(.round-end-view-btn)")].map((b) => b.textContent);
 
   it("a table that is gone and no replacement leaves no seat offer for it", async () => {
     reply = (url) => (url.startsWith("/api/watch/") || url.includes("skip=") ? GONE : feed);

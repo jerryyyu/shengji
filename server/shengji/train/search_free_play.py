@@ -139,7 +139,7 @@ class SearchFreeModel:
         card_logits = (x @ h["p_head.3.weight"].T + h["p_head.3.bias"])[:, 0]
         return {"enc": enc, "q": q, "g": g, "ce": u.trunk._card_table(inp), "card_logits": card_logits}
 
-    def _mha(self, prefix: str, x: np.ndarray) -> np.ndarray:
+    def _mha(self, prefix: str, x: np.ndarray, *, first_only: bool = False) -> np.ndarray:
         c = self.c
         K, L, d = x.shape
         dh = d // CAND_HEADS
@@ -148,11 +148,13 @@ class SearchFreeModel:
         def split(a):
             return a.reshape(K, L, CAND_HEADS, dh).transpose(0, 2, 1, 3)
         qh, kh, vh = split(qkv[..., :d]), split(qkv[..., d:2 * d]), split(qkv[..., 2 * d:])
+        if first_only:
+            qh = qh[:, :, :1]
         s = qh @ kh.transpose(0, 1, 3, 2) / math.sqrt(dh)
         s = s - s.max(-1, keepdims=True)
         e = np.exp(s)
         a = (e / e.sum(-1, keepdims=True)) @ vh
-        a = a.transpose(0, 2, 1, 3).reshape(K, L, d)
+        a = a.transpose(0, 2, 1, 3).reshape(K, qh.shape[2], d)
         return a @ c[prefix + "out_proj.weight"].T + c[prefix + "out_proj.bias"]
 
     def score(self, inp: Mapping[str, Any], states: Mapping[str, np.ndarray],
@@ -192,11 +194,13 @@ class SearchFreeModel:
                             np.broadcast_to(cx, (K, 1, cx.shape[-1])), cards], 1).astype(f, copy=False)
         for i in range(CAND_LAYERS):
             p = f"layers.{i}."
-            x = x + self._mha(p + "self_attn.", _ln(x, c[p + "norm1.weight"], c[p + "norm1.bias"]))
-            # The output head reads token zero. After the last attention pass
-            # the feed-forward network acts independently on each token.
-            if i == CAND_LAYERS - 1:
+            # The head reads token zero, whose query still attends to every key and value.
+            last = i == CAND_LAYERS - 1
+            attended = self._mha(p + "self_attn.", _ln(x, c[p + "norm1.weight"], c[p + "norm1.bias"]),
+                                 first_only=last)
+            if last:
                 x = x[:, :1]
+            x = x + attended
             y = _ln(x, c[p + "norm2.weight"], c[p + "norm2.bias"])
             y = _gelu(y @ c[p + "linear1.weight"].T + c[p + "linear1.bias"])
             x = x + y @ c[p + "linear2.weight"].T + c[p + "linear2.bias"]

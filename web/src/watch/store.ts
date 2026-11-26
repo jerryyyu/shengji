@@ -29,8 +29,9 @@ export function useWatching(): Watching | null {
 }
 
 /** Whether the presence line may lead to the watch screen: the server sends
- *  `watch` only with its feed on, and `rerun` when a finished ranked round
- *  can be replayed with nobody playing. */
+ *  `watch` only to a socket that may watch (its feed on for everyone, or this
+ *  account on its allowlist), and `rerun` when a finished ranked round can be
+ *  replayed with nobody playing. The page checks no account itself. */
 export function canWatch(p: { watch?: number; rerun?: boolean } | null): boolean {
   return p !== null && typeof p.watch === "number" && (p.watch > 0 || p.rerun === true);
 }

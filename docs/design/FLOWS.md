@@ -483,7 +483,8 @@ switch between accounts included, and goes once as whoever that leaves signed in
   Sign in; no new surface or copy.
 
 ## Watching a table (Jerry 2026-11-26: "The spectate flow looks great in the video, let's build it")
-Behind the server's `SPECTATE_ENABLED`; off, nothing below shows. The way in is the Play tab's presence line: its
+Behind the server's `SPECTATE_ENABLED`, or for the accounts its `SPECTATE_ACCOUNTS` lists (a tester before
+everyone; such an account may watch any live table); for anyone else nothing below shows. The way in is the Play tab's presence line: its
 "N playing" part (or, with nobody playing and a rerun to show, the nobody line) is a gold link with a chevron,
 and one tap goes to a table the server picks (the selected mode first, then the table furthest into its game),
 with no list. A watcher sees the table's last FINISHED round, one round behind: it never opens the table's socket,

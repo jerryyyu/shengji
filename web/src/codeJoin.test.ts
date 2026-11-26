@@ -609,7 +609,7 @@ describe("an invite link's funnel", () => {
     expect(steps).toEqual([["opened", undefined, "0123456789ab"], ["seated", undefined, "0123456789ab"]]);
   });
 
-  it("keeps a queued table Join's claim through its waiting seat, until that table's state", () => {
+  it("keeps a queued table Join's claim through the lobby's seat, until the server's own table settles it", () => {
     window.history.replaceState(null, "", "/?code=FG3K&h=0123456789ab");
     status("open");
     codes.setPlace(lobby);

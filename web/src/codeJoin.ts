@@ -257,7 +257,7 @@ export class CodeStore {
     }
     if (p.seatedAt !== null) {
       // a seat at the link's table keeps the Join's claim: the server's
-      // confirmed table for that code settles it (a handover's comes later)
+      // table frame or confirmed game state for that code settles it
       const keep = this.invite !== null && p.seatedAt === this.invite.code ? this.invite : null;
       // a seat taken before the link's Join (the queue's table, back on a
       // fresh page) asks first, as a seat held before it would have
@@ -379,9 +379,14 @@ export class CodeStore {
   }
 
   private onMessage(msg: ServerMsg): void {
-    // the server's own table for this socket; the Join's screen may be gone
-    // by then, and a newcomer waiting for its handover is not seated yet
+    // the server's own table for this socket settles the link's Join, once:
+    // the Join's screen may be gone by then, and a newcomer waiting for its
+    // handover is not seated yet
     if (msg.type === "state" && !msg.joining_you) this.settleInvite(msg.room);
+    // a waiting table's own frame with your seat taken at it: you sit there,
+    // whether or not its game ever starts
+    if (msg.type === "table" && msg.phase === "open"
+        && msg.seats.some((st) => st.you && st.seat === msg.you && st.state === "taken")) this.settleInvite(msg.code);
     const j = this.view;
     if (!j) return;
     if (j.step === "resume" && (msg.type === "room" || msg.type === "state") && msg.room === j.code) {

@@ -405,7 +405,7 @@ _RATINGS_V4 = """
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         created_at INTEGER NOT NULL,
         team INTEGER NOT NULL,
-        banker_team INTEGER NOT NULL,
+        banker_team INTEGER NOT NULL,  -- 1 if this player's team was the banker team, else 0
         won INTEGER NOT NULL,
         levels INTEGER NOT NULL,
         game_won INTEGER NOT NULL DEFAULT 0,
@@ -505,7 +505,7 @@ _CHILDREN_V6 = {
             user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             created_at INTEGER NOT NULL,
             team INTEGER NOT NULL,
-            banker_team INTEGER NOT NULL,
+            banker_team INTEGER NOT NULL,  -- 1 if this player's team was the banker team, else 0
             won INTEGER NOT NULL,
             levels INTEGER NOT NULL,
             game_won INTEGER NOT NULL DEFAULT 0,

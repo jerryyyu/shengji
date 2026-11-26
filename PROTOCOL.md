@@ -461,6 +461,9 @@ other socket with `account_in_game`.
   connected), ranked or casual; `ranked` and `casual` split `tables` by mode;
   `playing`: connected people seated at those tables. Counts only, no names
   or codes.
+  With the watch feed on (`SPECTATE_ENABLED=1`) it also carries `watch` (tables
+  that can be watched) and `rerun` (a finished ranked round can be replayed);
+  an older client ignores both, and without them the line is not a link.
 - `table_chat {table, id, seat, name, text, t}`: a line of your table's
   chat, to everyone there, the sender included; `table` is the waiting
   table's id, or null while you wait alone; `id` counts up per table, `seat`
@@ -701,6 +704,26 @@ name). Its player keeps it by tapping I'm back until the newcomer is seated
 the front of the queue); once seated, the away player gets `left {reason:
 "seat_given", message}`. A game that ends before the handover sends `left
 {reason: "table_closed"}`.
+
+## Watching a table
+
+A watcher never opens a room's socket: it reads finished rounds over HTTP
+(`server/shengji/api/spectate.py`), off unless `SPECTATE_ENABLED=1`.
+
+- `GET /api/watch?mode=&skip=&w=` picks a table (the `mode` first, then the
+  table furthest into its game, never `skip`) and answers with its latest
+  finished round: `{table, watcher, mode, live_round, code, rerun, waiting,
+  round, seat, players, finished, events}`. `events` are the saved games'
+  allow-listed records with every card shown; `seat` is the banker. With no
+  table it answers the latest finished ranked round with `rerun: true`; with
+  neither, 404.
+- `GET /api/watch/{table}?after=N&w=` follows that table: its round after `N`
+  once finished, else `{waiting: true, live_round}`. 404 once the table cannot
+  be watched.
+- `w` is the watcher token the first answer gave; a table counts at most 8
+  watchers, each until 90 s pass without a read. 30 reads a minute per
+  address. `code` is set only for a casual table seating joiners now.
+- Only a round whose `round_end` is logged is ever served.
 
 ## Reconnect & lifecycle
 

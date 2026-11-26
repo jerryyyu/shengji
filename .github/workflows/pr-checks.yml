@@ -158,6 +158,7 @@ jobs:
           tests/test_ios_privacy_manifests.py
           tests/test_saved_games_api.py
           tests/test_saved_games_resume.py
+          tests/test_spectate.py
           tests/test_support.py
           tests/test_nearby_logs.py
           tests/test_chat_filter.py

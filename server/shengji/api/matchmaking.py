@@ -597,6 +597,7 @@ class Matchmaker:
                  join_table: JoinTable | None = None,
                  join_pair: JoinPair | None = None,
                  presence: Callable[[], tuple[int, int, int, int]] | None = None,
+                 watch: Callable[[], dict | None] | None = None,
                  autorun: bool = True) -> None:
         self.clock = clock
         self.rating_of = rating_of or _store_rating
@@ -619,6 +620,9 @@ class Matchmaker:
         # casual tables) for the presence line; by default read off
         # ``open_tables`` (seats neither bot nor open count as people).
         self.presence = presence or self._presence_from_open_tables
+        # The watch keys (``spectate.presence``: tables that can be watched,
+        # whether a rerun exists), or None to send none.
+        self.watch = watch or (lambda: None)
         self.autorun = autorun
         self._task: asyncio.Task | None = None
         self.reset()
@@ -657,7 +661,7 @@ class Matchmaker:
         self.chat_limiter = accounts.RateLimiter(*CHAT_LIMIT)
         self._seq = count(1)
         self._panel = count(1)
-        self._presence_sent: tuple[int, ...] = (0, 0, 0, 0, 0)
+        self._presence_sent: tuple = (0, 0, 0, 0, 0, None, None)
         self._presence_sent_at = -math.inf
         self._last_tick = -math.inf
 
@@ -793,8 +797,13 @@ class Matchmaker:
         except Exception:      # noqa: BLE001 - the line is cosmetic; the queue goes on
             log.exception("presence count failed")
             tables, playing, ranked, casual = 0, 0, 0, 0
-        return {"type": "presence", "tables": tables, "playing": playing,
-                "waiting": self.count(), "ranked": ranked, "casual": casual}
+        out = {"type": "presence", "tables": tables, "playing": playing,
+               "waiting": self.count(), "ranked": ranked, "casual": casual}
+        try:
+            out.update(self.watch() or {})
+        except Exception:      # noqa: BLE001 - the line is cosmetic
+            log.exception("watch count failed")
+        return out
 
     def _flush_presence(self) -> None:
         """Every lobby socket hears the presence counts when they change, at
@@ -803,7 +812,8 @@ class Matchmaker:
         if now - self._presence_sent_at < COUNT_DEBOUNCE:
             return
         p = self.presence_payload()
-        key = (p["tables"], p["playing"], p["waiting"], p["ranked"], p["casual"])
+        key = (p["tables"], p["playing"], p["waiting"], p["ranked"], p["casual"],
+               p.get("watch"), p.get("rerun"))
         if key == self._presence_sent:
             return
         self._presence_sent, self._presence_sent_at = key, now
@@ -1113,7 +1123,7 @@ class Matchmaker:
         """A socket arriving in the lobby hears the counts at once, unless
         they are all zero (the line then reads as nobody playing)."""
         p = self.presence_payload()
-        if p["tables"] or p["playing"] or p["waiting"]:
+        if p["tables"] or p["playing"] or p["waiting"] or p.get("watch") or p.get("rerun"):
             conn.push(p)
 
     # ------------------------------------------------------- connections

@@ -149,3 +149,37 @@ it("signing out at a ranked table asks for the seat back, then leaves the table 
   expect(host.querySelector(".toast")?.textContent).toBe("Sign in again to return to your game.");
   expect(getSavedRoom()).toBe("ABCD");
 });
+
+it("your own table's link while this device holds its seat resumes the seat, with no Join panel", async () => {
+  Object.defineProperty(window, "location", { configurable: true, value: { ...realLocation, reload, search: "?code=ABCD" } });
+  const { default: App } = await import("./App");
+  const { saveRoom, saveName } = await import("./ws");
+  saveName("Me");
+  saveRoom("ABCD");
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+  act(() => root.render(<App />));
+  const ws = FakeWS.all[0];
+  act(() => ws.onopen?.());
+  // the seat is asked back; the code is not peeked as a stranger's
+  expect(ws.sent).toEqual([{ type: "table_join", code: "ABCD", name: "Me", expect: "room" }]);
+  expect(host.querySelector(".tp-acts")).toBeNull();
+  expect(host.textContent).not.toContain("Not now");
+});
+
+it("your own table's link whose seat is refused goes on to the code's peek", async () => {
+  Object.defineProperty(window, "location", { configurable: true, value: { ...realLocation, reload, search: "?code=ABCD" } });
+  const { default: App } = await import("./App");
+  const { saveRoom, saveName } = await import("./ws");
+  saveName("Me");
+  saveRoom("ABCD");
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+  act(() => root.render(<App />));
+  const ws = FakeWS.all[0];
+  act(() => ws.onopen?.());
+  act(() => ws.deliver({ type: "error", code: "room_not_found", message: "Room not found" }));
+  expect(ws.sent.map((m) => m.type)).toEqual(["table_join", "table_peek"]);
+});

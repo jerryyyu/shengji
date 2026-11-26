@@ -144,12 +144,12 @@ export default function App() {
       const params = new URLSearchParams(window.location.search);
       // One link kind: an older ?room= or ?party= link already reads as ?code=.
       const link = params.get("code")?.toUpperCase() ?? null;
-      // A link to another table while this device holds a room seat goes back
-      // to that seat first; the code store asks before leaving it.
+      // A link while this device holds a room seat goes back to that seat
+      // first: its own table's link is that seat, and the code store asks
+      // before leaving it for another table's.
       const saved = getSavedRoom()?.toUpperCase() ?? null;
-      const elsewhere = link !== null && link.length === 4 && saved !== null && saved !== link;
       const intent = decideIntent({
-        invite: link && !elsewhere ? { room: link } : null,
+        invite: link && saved === null ? { room: link } : null,
         savedRoom: getSavedRoom(),
         // A signed-in player keeps no name on the device, and a socket that
         // has just signed out must still ask for its seat back, so the server
@@ -191,6 +191,8 @@ export default function App() {
           if (msg.code === "no_room" && resumingRef.current) break;
           const wasResuming = resumingRef.current;
           resumingRef.current = false;
+          // a link to the seat this answer refused goes on to its peek
+          if (wasResuming) codes.resumeRefused();
           // the one ask for a lost seat was refused: the table it showed is
           // gone, so it goes now, not on the next refused move
           if (wasResuming && reaskedRef.current && msg.code !== "ranked_queue_only") {

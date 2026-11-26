@@ -12,10 +12,11 @@ vi.mock("./ws", () => ({
     subscribe: (fn: (m: unknown) => void) => { link.msg.add(fn); return () => link.msg.delete(fn); },
     subscribeStatus: (fn: (s: string) => void) => { link.status.add(fn); return () => link.status.delete(fn); },
   },
-  getResumeToken: () => null,
+  getResumeToken: () => saved.token,
+  getSavedName: () => "Bo",
   getSavedRoom: () => saved.room,
 }));
-const saved = vi.hoisted(() => ({ room: null as string | null }));
+const saved = vi.hoisted(() => ({ room: null as string | null, token: null as string | null }));
 
 import { codes, panelShown } from "./codeJoin";
 import { queue } from "./queue/store";
@@ -46,6 +47,7 @@ const TABLE = { type: "room_seats", room: "FG3K", table: true, mode: "casual", i
 beforeEach(() => {
   sent.length = 0;
   saved.room = null;
+  saved.token = null;
   codes.reset();
   queue.reset();
   clearToast();
@@ -312,6 +314,61 @@ describe("a ?code= link", () => {
     status("open");
     codes.setPlace(lobby);
     say({ ...TABLE, closed: true });
+    expect(codes.view).toBeNull();
+  });
+});
+
+describe("your own table's link or code", () => {
+  it("to the room this device holds a seat at opens no panel: the seat comes back by its resume", () => {
+    saved.room = "WXYZ";
+    window.history.replaceState(null, "", "/?code=WXYZ");
+    status("open");
+    expect(codes.view?.step).toBe("resume");
+    // not seated yet: App's resume is on its way, and nothing is peeked
+    codes.setPlace(lobby);
+    expect(sent).toEqual([]);
+    expect(panelShown(codes.view)).toBe(false);
+    codes.setPlace({ ready: true, seatedAt: "WXYZ" });
+    expect(codes.view).toBeNull();
+    expect(window.location.search).toBe("");
+    expect(sent).toEqual([]);
+  });
+
+  it("whose resume is refused goes on to its peek", () => {
+    saved.room = "WXYZ";
+    window.history.replaceState(null, "", "/?code=WXYZ");
+    status("open");
+    codes.setPlace(lobby);
+    codes.resumeRefused();
+    codes.setPlace(lobby);
+    expect(sent).toEqual([{ type: "table_peek", code: "WXYZ" }]);
+  });
+
+  it("to your waiting table, answered as yours, opens no panel", () => {
+    window.history.replaceState(null, "", "/?code=FG3K");
+    status("open");
+    codes.setPlace(lobby);
+    const mine = { ...TABLE, seats: TABLE.seats.map((sd) => (sd.seat === 1 ? { ...sd, state: "taken", name: "Bo", you: true } : sd)) };
+    say(mine);
+    expect(codes.view).toBeNull();
+    expect(window.location.search).toBe("");
+  });
+
+  it("typed for the room this device holds a seat at asks for that seat back, not for a panel", () => {
+    saved.room = "WXYZ";
+    saved.token = "tok";
+    codes.setPlace(lobby);
+    expect(codes.open("wxyz")).toBe(true);
+    expect(sent).toEqual([{ type: "table_join", code: "WXYZ", name: "Bo", expect: "room", token: "tok" }]);
+    expect(panelShown(codes.view)).toBe(false);
+    codes.setPlace({ ready: true, seatedAt: "WXYZ" });
+    expect(codes.view).toBeNull();
+  });
+
+  it("typed for the table you sit at changes nothing", () => {
+    codes.setPlace({ ready: true, seatedAt: "FG3K" });
+    expect(codes.open("FG3K")).toBe(true);
+    expect(sent).toEqual([]);
     expect(codes.view).toBeNull();
   });
 });

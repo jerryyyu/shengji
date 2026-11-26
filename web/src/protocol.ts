@@ -418,5 +418,7 @@ export interface TableSeats {
   full: boolean;
   /** The host's Join is in flight: a code join meets table_closed. */
   closed: boolean;
-  seats: { seat: number; team: number; state: "taken" | "open" | "held"; name: string | null; ready: boolean }[];
+  /** `you`: the asker's own seat; its own table's code opens no Join. */
+  seats: { seat: number; team: number; state: "taken" | "open" | "held"; name: string | null; ready: boolean;
+           you?: true }[];
 }

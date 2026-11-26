@@ -1198,38 +1198,51 @@ def room_json(room: Room, seat: int) -> dict:
     }
 
 
-def room_seats_json(room: Room) -> dict:
+def room_seats_json(room: Room, device: str | None = None,
+                    user_id: int | None = None) -> dict:
     """Who sits where in ``room``, for a peek: each seat's name, whether a
-    joiner may claim it and what plays it now. Never a token or an account."""
+    joiner may claim it and what plays it now. Never a token or an account.
+
+    A seat its owner left by choice is the bot's (the bot plays it at once),
+    so it shows as a bot seat under the bot's name, never the leaver's. The
+    peeking ``device`` or account that left it may take it again at a casual
+    table (``_join_room``'s left-seat rule), so for them it is claimable; for
+    anyone else its claim follows the reservation as for a drop."""
     # A ranked table's invite: its open seats only, and
     # whether there is none.
     ranked_open = (_open_seats(room, invite=True)
                    if room.matched else None)
+    own_left = (_left_seat_of(room, device, user_id)
+                if not room.matched else None)
+
+    def seat_json(i: int, sd: Seat) -> dict:
+        claimable = (i in ranked_open if ranked_open is not None
+                     else i not in room.pending_joins
+                     and (sd is own_left or sd.is_bot or (
+                         not sd.connected and not _reserved(room, i))))
+        gone = not sd.is_bot and sd.left_by_choice and not sd.connected
+        return {"seat": i,
+                "name": (sd.bot_name or f"Bot {i}") if gone else sd.name,
+                "is_bot": sd.is_bot or gone,
+                "connected": sd.connected,
+                "team": i % 2,
+                # What the lobby actually needs to know:
+                # a dropped human's seat can be taken too.
+                "claimable": claimable,
+                "reserved_secs": (_takeover_in(room, i)
+                                  if _reserved(room, i) and not gone
+                                  else None),
+                "controller": ("bot" if sd.is_bot or gone else
+                               "human" if sd.connected
+                               else "bot_cover")}
+
     return {
         "type": "room_seats",
         "room": room.code,
         "in_game": room.game is not None,
         **({"ranked": True, "full": not ranked_open}
            if room.matched else {}),
-        "seats": [{"seat": i, "name": sd.name,
-                   "is_bot": sd.is_bot,
-                   "connected": sd.connected,
-                   "team": i % 2,
-                   # What the lobby actually needs to know:
-                   # a dropped human's seat can be taken too.
-                   "claimable": (i in ranked_open
-                                 if ranked_open is not None
-                                 else i not in room.pending_joins
-                                 and (sd.is_bot or (
-                       not sd.connected
-                       and not _reserved(room, i)))),
-                   "reserved_secs": (_takeover_in(room, i)
-                                     if _reserved(room, i)
-                                     else None),
-                   "controller": ("bot" if sd.is_bot else
-                                  "human" if sd.connected
-                                  else "bot_cover")}
-                  for i, sd in enumerate(room.seats)
+        "seats": [seat_json(i, sd) for i, sd in enumerate(room.seats)
                   if sd is not None],
     }
 
@@ -2945,7 +2958,7 @@ async def _peek_room(caller: _Caller, msg: dict) -> None:
                             "message": "Too many requests; wait a minute."})
             return
         # a room wins a code both could hold
-        seats = MATCHMAKER.peek(asked)
+        seats = MATCHMAKER.peek(asked, caller.queue_id())
         if seats is not None:
             await send(ws, seats)
             return
@@ -2953,7 +2966,7 @@ async def _peek_room(caller: _Caller, msg: dict) -> None:
         await send(ws, {"type": "error", "code": "room_not_found",
                         "peek": echo, "message": PEEK_NOT_FOUND})
         return
-    await send(ws, room_seats_json(target))
+    await send(ws, room_seats_json(target, caller.device, account_id()))
 
 
 async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | None:

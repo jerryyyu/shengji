@@ -73,13 +73,16 @@ def comparable_config(manifest):
 
 
 def comparable_row(line, run_id):
-    row = json.loads(line)
+    return normalize_row(json.loads(line), run_id)
+
+
+def normalize_row(row, run_id):
     validate_record(row)
     prefix, sep, ref = row["source_ref"].partition(":")
     require(prefix == run_id and sep and ref, "unexpected source_ref")
     row["source_ref"] = ref
     del row["record_sha256"]
-    serving = row["allocation"].get("serving_decision", {})
+    serving = row["allocation"].get("serving_decision") or {}
     for key in ("seconds", "belief_ms", "bury_belief_ms", "exact_lead_seconds"):
         if key in serving:
             serving[key] = None

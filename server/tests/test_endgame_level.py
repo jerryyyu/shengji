@@ -29,7 +29,7 @@ from shengji.rl.value_afterstate import category_signed_level, signed_level_cate
 from shengji.train import pv_exact_deep, pv_search_policy as pv
 from shengji.train.cwv_prior_admission import root_clone
 from test_encoder_round_compat import pinned_production_package  # noqa: F401
-from test_endgame_compact import _random_position, _session_roots, _worlds
+from test_endgame_compact import _play_round, _random_position, _session_roots, _worlds
 
 BACKENDS = ["python"] + (["compiled"] if HAVE_FAST else [])
 
@@ -129,6 +129,25 @@ def test_exact_root_means_match_reference(monkeypatch, backend):
             assert stats["worlds_completed"] == len(worlds)
         checked += 1
     assert checked >= 6
+
+
+@pytest.mark.skipif(not HAVE_FAST, reason="requires the native transposition table")
+def test_level_search_preserves_colliding_child_entries_for_points_tiebreak():
+    from shengji.ai import _endgame_fast as fast
+
+    rnd = _play_round("H", "A", 0, [
+        "H10 H8 S3 D8 CK C10 C4".split(),
+        "H4 C6 D10 S2 SA C10 C7".split(),
+        "H6 S4 SQ LJ C3 H5 S7".split(),
+        "CA BJ H9 D2 H6 S2 C6".split(),
+    ], "C9 DA H8 HQ D9 SQ D6 H2".split(), leader=3, attacker_points=5)
+    rnd.play(3, ["C6"])
+    rnd.play(0, ["C4"])
+    session = CompactWorldSession(rnd, max_hand_cards=7, max_nodes=10**7,
+                                  backend="compiled", level=True,
+                                  level_opts=fast.LEVEL_LEGACY)
+    assert session.solve_level(rnd) == level_points(50)
+    assert session.solve_points(rnd) == 50
 
 
 def _option_sets():

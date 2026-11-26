@@ -50,6 +50,7 @@ cdef enum:
     NONE_EFF = -1
     TRUMP_EFF = 4
     MAXMOVES = 256
+    NO_WINNER = 4
 
 cdef enum:
     NEG = -1000000000
@@ -498,9 +499,7 @@ cdef class FastWorld:
     cdef uint32_t eq_multi[4][NMASK][5]
     cdef uint8_t occ_ok[4][NMASK]
     cdef uint32_t occ_c[4][NMASK][5]
-    # level mode caches per (seat, mask): card points (-1 unknown) and the
-    # largest count of one effective suit (``_rem_max``)
-    cdef int16_t hpts[4][NMASK]
+    # Largest count of one effective suit per hand mask, or -1 if unknown.
     cdef int8_t hmsc[4][NMASK]
     cdef PInfo pinfo[4][NMASK]
     # ``L_CANON`` groups per seat: slots of codes the seat's table holds once,
@@ -552,7 +551,7 @@ cdef class FastWorld:
         self.opts = LEVEL_DEFAULT if level_opts is None else int(level_opts)
         memset(self.eq_n, 0xff, sizeof(self.eq_n))
         memset(self.occ_ok, 0, sizeof(self.occ_ok))
-        memset(self.hpts, 0xff, sizeof(self.hpts))
+        memset(self.hmsc, 0xff, sizeof(self.hmsc))
         memset(self.pinfo, 0, sizeof(self.pinfo))
         memset(self.g_built, 0xff, sizeof(self.g_built))
         memset(self.cgen, 0xff, sizeof(self.cgen))
@@ -1018,15 +1017,13 @@ cdef class FastWorld:
                 return e
             i = (i + 1) & mask
 
-    cdef inline LEnt* _llookup(self, uint64_t key) noexcept:
+    cdef inline LEnt* _lprobe(self, uint64_t key) noexcept:
         cdef uint64_t mask = self.tt_cap - 1
         cdef uint64_t i = _mix(key, 0) & mask
         cdef LEnt* e
         while True:
             e = &self.ltt[i]
-            if e.key == 0:
-                return NULL
-            if e.key == key:
+            if e.key == 0 or e.key == key:
                 return e
             i = (i + 1) & mask
 
@@ -1239,57 +1236,42 @@ cdef class FastWorld:
     # interval (``tests/test_endgame_level.py`` checks every option against
     # the reference minimax).
 
-    cdef int _hfill(self, int seat, int mask) except -1:
-        """Fill ``hpts`` / ``hmsc`` for (seat, mask)."""
-        cdef int e, k, c = 0
-        for e in range(5):
-            k = _popc(mask & self.suitmask[seat][e])
-            if k > c:
-                c = k
-        self.hmsc[seat][mask] = c
-        self.hpts[seat][mask] = self._ms(seat, mask).pts
-        return 0
-
-    cdef int _rem_max(self, uint8_t* hands, int leader, uint8_t* plays,
-                      int nplays) except? RAISED:
-        """An upper bound on the attacker points still to be scored.
-
-        The kitty bonus is paid on the final trick, whose lead is the leader's
-        whole last hand in one effective suit: with ``L_KIT`` its card count is
-        bounded by the longest one-suit holding of any seat (or is the current
-        lead's size when the current trick is the last); otherwise by the
-        largest hand."""
-        cdef int s, i, h, pts = 0, size, most = 0
-        if self.opts & L_KIT:
-            for s in range(4):
-                h = hands[s]
-                if h:
-                    if self.hpts[s][h] < 0:
-                        self._hfill(s, h)
-                    pts += self.hpts[s][h]
-                    if self.hmsc[s][h] > most:
-                        most = self.hmsc[s][h]
-            for i in range(nplays):
-                s = (leader + i) % 4
-                h = plays[i]
-                if self.hpts[s][h] < 0:
-                    self._hfill(s, h)
-                pts += self.hpts[s][h]
-            if nplays and hands[leader] == 0:
-                most = self._ms(leader, plays[0]).size
-            return pts + self.kitty_bonus * most
+    cdef int _raw_points(self, uint8_t* hands, int leader, uint8_t* plays,
+                         int nplays) except? RAISED:
+        """Points in held cards and the open trick, before any kitty multiplier."""
+        cdef int s, i, pts = 0
         for s in range(4):
             if hands[s]:
                 pts += self._ms(s, hands[s]).pts
-                size = self._ms(s, hands[s]).size
-                if size > most:
-                    most = size
         for i in range(nplays):
             pts += self._ms((leader + i) % 4, plays[i]).pts
-        return pts + self.kitty_bonus * most
+        return pts
+
+    cdef int _rem_max(self, uint8_t* hands, int leader, uint8_t* plays,
+                      int nplays, int raw_points) noexcept:
+        """Bound the final kitty multiplier; raw points decrease only on trick closure."""
+        cdef int s, e, h, size, most = 0
+        if not self.kitty_bonus:
+            return raw_points
+        if self.opts & L_KIT and nplays and hands[leader] == 0:
+            return raw_points + self.kitty_bonus * _popc(plays[0])
+        for s in range(4):
+            h = hands[s]
+            if self.opts & L_KIT:
+                size = self.hmsc[s][h]
+                if size < 0:
+                    size = 0
+                    for e in range(5):
+                        size = max(size, _popc(h & self.suitmask[s][e]))
+                    self.hmsc[s][h] = size
+            else:
+                size = _popc(h)
+            most = max(most, size)
+        return raw_points + self.kitty_bonus * most
 
     cdef int _lorder(self, uint8_t* hands, int turn, int leader, uint8_t* plays,
-                     int nplays, uint8_t* played, int n, int hint, TState* pre) except -1:
+                     int nplays, uint8_t* played, int n, int hint, TState* pre,
+                     uint8_t* fourth_winners) except -1:
         """Move ordering (values never depend on it): the table's best move;
         then in a trick, plays after which our side holds the trick (most
         points first) before the others (fewest points first), and with
@@ -1309,12 +1291,16 @@ cdef class FastWorld:
         for i in range(n):
             if hint and played[i] == hint:
                 score[i] = 1 << 30
+                if fourth_winners != NULL:
+                    fourth_winners[played[i]] = NO_WINNER
                 continue
             sc = self.hist[turn][played[i]]
             if nplays:
                 st = pre[0]
                 self._tstep(lead, turn, played[i], &st)
                 winner = st.winner
+                if fourth_winners != NULL:
+                    fourth_winners[played[i]] = winner
                 pi = &self.pinfo[turn][played[i]]       # filled by _tstep
                 tpts = st.pts if nplays == 3 else pi.pts
                 if order:
@@ -1346,37 +1332,47 @@ cdef class FastWorld:
             score[j + 1] = sc
         return 0
 
+    cdef inline int _lfinish(self, int turn, int leader, uint8_t first_play, int played,
+                             TState* pre, uint8_t* fourth_winners, int* tpts) except -1:
+        cdef int winner
+        cdef TState st
+        if fourth_winners != NULL:
+            winner = fourth_winners[played]
+            if winner != NO_WINNER:
+                tpts[0] = pre.pts + self.pinfo[turn][played].pts
+                return winner
+        st = pre[0]
+        self._tstep(self._ms(leader, first_play), turn, played, &st)
+        tpts[0] = st.pts
+        return st.winner
+
     cdef int _lchild(self, uint8_t* hands, int turn, int leader, uint8_t* plays,
                      int nplays, int played, int alpha, int beta,
-                     TState* pre) except? RAISED:
+                     int raw_points, TState* pre, uint8_t* fourth_winners) except? RAISED:
         """Attacker points from playing ``played`` on, relative to now
         (``pre``: the trick state before this play, when it is the fourth)."""
         cdef uint8_t ch[4]
         cdef uint8_t cp[4]
         cdef int winner, tpts, gain = 0
-        cdef TState st
         ch[0] = hands[0]; ch[1] = hands[1]; ch[2] = hands[2]; ch[3] = hands[3]
         cp[0] = plays[0]; cp[1] = plays[1]; cp[2] = plays[2]; cp[3] = 0
         ch[turn] = hands[turn] & ~played
         cp[nplays] = played
         if nplays < 3:
-            return self.lval(ch, (turn + 1) % 4, leader, cp, nplays + 1, alpha, beta)
-        st = pre[0]
-        self._tstep(self._ms(leader, cp[0]), turn, played, &st)
-        winner = st.winner
-        tpts = st.pts
+            return self.lval(ch, (turn + 1) % 4, leader, cp, nplays + 1, alpha, beta, raw_points)
+        winner = self._lfinish(turn, leader, cp[0], played, pre, fourth_winners, &tpts)
         if winner % 2 != self.banker_parity:
             gain = tpts
         if (ch[0] | ch[1] | ch[2] | ch[3]) == 0:
             if winner % 2 != self.banker_parity:
                 gain += self.kitty_bonus * self._ms(leader, cp[0]).size
             return gain
-        return gain + self.lval(ch, winner, winner, cp, 0, alpha - gain, beta - gain)
+        return gain + self.lval(ch, winner, winner, cp, 0, alpha - gain, beta - gain, raw_points - tpts)
 
     cdef int lval(self, uint8_t* hands, int turn, int leader, uint8_t* plays,
-                  int nplays, int alpha, int beta) except? RAISED:
+                  int nplays, int alpha, int beta, int raw_points) except? RAISED:
         """Fail-soft alpha-beta on attacker points still to come."""
-        cdef uint64_t key
+        cdef uint64_t key, lookup_capacity = self.tt_cap, slot = 0
         cdef LEnt* e
         cdef int lower = 0, upper, original_alpha = alpha
         cdef int original_beta = beta, answer, v, i, n, rem, left
@@ -1386,13 +1382,14 @@ cdef class FastWorld:
         cdef uint8_t actions[MAXMOVES]
         cdef uint8_t played[MAXMOVES]
         cdef TState pre
+        cdef uint8_t* fourth_winners = NULL
         if self.check_budget is not None:
             if self.calls % self.budget_every == 0:
                 self.check_budget()
             self.calls += 1
         if beta <= 0:
             return 0
-        rem = self._rem_max(hands, leader, plays, nplays)
+        rem = self._rem_max(hands, leader, plays, nplays, raw_points)
         if rem <= alpha:
             return rem
         upper = rem
@@ -1401,8 +1398,11 @@ cdef class FastWorld:
             key = self._ckey0(hands, turn)
         else:
             key = _lkey(hands, turn, leader, plays, nplays)
-        e = self._llookup(key) if use_tt else NULL
-        if e != NULL:
+        e = NULL
+        if use_tt:
+            e = self._lprobe(key)
+            slot = e - self.ltt
+        if e != NULL and e.key:
             hint = e.best
             if e.lo == e.hi:
                 self.cache_hits += 1
@@ -1433,16 +1433,22 @@ cdef class FastWorld:
         if nplays:
             self._tprefix(leader, plays, nplays, &pre)
         if n > 1:
-            self._lorder(hands, turn, leader, plays, nplays, played, n, hint, &pre)
+            # The action scratch is dead after move reduction. Key the fourth-play
+            # winner by the played mask so sorting leaves it attached to its move.
+            if nplays == 3:
+                fourth_winners = actions
+            self._lorder(hands, turn, leader, plays, nplays, played, n, hint, &pre,
+                         fourth_winners)
         maximize = (turn % 2) != self.banker_parity
         if n > 1 and self.opts & L_ETC:
             v = self._etc(hands, turn, leader, plays, nplays, played, n, maximize,
-                          alpha, beta, &pre)
+                          alpha, beta, &pre, fourth_winners)
             if v != RAISED:
                 return v
         answer = NEG if maximize else POS
         for i in range(n):
-            v = self._lchild(hands, turn, leader, plays, nplays, played[i], alpha, beta, &pre)
+            v = self._lchild(hands, turn, leader, plays, nplays, played[i],
+                             alpha, beta, raw_points, &pre, fourth_winners)
             if maximize:
                 if v > answer:
                     answer = v
@@ -1468,7 +1474,14 @@ cdef class FastWorld:
         self.st[nplays][4] += n
         if not use_tt:
             return answer
-        e = self._lslot(key)
+        # Recursion may grow the table or occupy the bucket we probed.
+        e = &self.ltt[slot]
+        if self.tt_cap != lookup_capacity or (e.key != key and
+                (e.key != 0 or (self.tt_used + 1) * 2 > self.tt_cap)):
+            e = self._lslot(key)
+        elif e.key == 0:
+            e.key = key
+            self.tt_used += 1
         e.best = best
         if original_alpha < answer < original_beta:
             e.lo = answer
@@ -1494,7 +1507,8 @@ cdef class FastWorld:
         nplays = self._import(rnd, hands, plays, &turn, &points, &leader)
         if (hands[0] | hands[1] | hands[2] | hands[3]) == 0 and nplays == 0:
             return points
-        rem = self._rem_max(hands, leader, plays, nplays)
+        cdef int raw_points = self._raw_points(hands, leader, plays, nplays)
+        rem = self._rem_max(hands, leader, plays, nplays, raw_points)
         rel = [c - points for c in cuts if points < c <= points + rem]
         lo = 0
         hi = len(rel)
@@ -1516,7 +1530,7 @@ cdef class FastWorld:
                 mid = (lo + hi + 1) // 2
             step += 1
             c = rel[mid - 1]
-            v = self.lval(hands, turn, leader, plays, nplays, c - 1, c)
+            v = self.lval(hands, turn, leader, plays, nplays, c - 1, c, raw_points)
             self.probes += 1
             up = v >= c
             if up:
@@ -1543,8 +1557,9 @@ cdef class FastWorld:
         nplays = self._import(rnd, hands, plays, &turn, &points, &leader)
         if (hands[0] | hands[1] | hands[2] | hands[3]) == 0 and nplays == 0:
             return points
-        rem = self._rem_max(hands, leader, plays, nplays)
-        return points + self.lval(hands, turn, leader, plays, nplays, -1, rem + 1)
+        cdef int raw_points = self._raw_points(hands, leader, plays, nplays)
+        rem = self._rem_max(hands, leader, plays, nplays, raw_points)
+        return points + self.lval(hands, turn, leader, plays, nplays, -1, rem + 1, raw_points)
 
     cdef int _eqv_own(self, int seat, int hand) except -1:
         """Cache the singles of ``hand`` in (suit, level) order and its
@@ -1767,7 +1782,7 @@ cdef class FastWorld:
 
     cdef int _etc(self, uint8_t* hands, int turn, int leader, uint8_t* plays,
                   int nplays, uint8_t* played, int n, bint maximize,
-                  int alpha, int beta, TState* pre) except? -2147483646:
+                  int alpha, int beta, TState* pre, uint8_t* fourth_winners) except? -2147483646:
         """Enhanced transposition cutoff: a child whose stored bound already
         decides this node's window returns that bound (fail-soft); else RAISED."""
         cdef int i, gain, winner, tpts, h
@@ -1775,7 +1790,6 @@ cdef class FastWorld:
         cdef uint8_t cp[4]
         cdef uint64_t key
         cdef LEnt* e
-        cdef TState st
         for i in range(n):
             ch[0] = hands[0]; ch[1] = hands[1]; ch[2] = hands[2]; ch[3] = hands[3]
             ch[turn] = hands[turn] & ~played[i]
@@ -1787,18 +1801,15 @@ cdef class FastWorld:
             else:
                 if (ch[0] | ch[1] | ch[2] | ch[3]) == 0:
                     continue
-                st = pre[0]
-                self._tstep(self._ms(leader, plays[0]), turn, played[i], &st)
-                winner = st.winner
-                tpts = st.pts
+                winner = self._lfinish(turn, leader, plays[0], played[i], pre, fourth_winners, &tpts)
                 if winner % 2 != self.banker_parity:
                     gain = tpts
                 if self.opts & L_CANON:
                     key = self._ckey0(ch, winner)
                 else:
                     key = _lkey(ch, winner, winner, cp, 0)
-            e = self._llookup(key)
-            if e == NULL:
+            e = self._lprobe(key)
+            if e.key == 0:
                 continue
             if maximize:
                 h = e.lo

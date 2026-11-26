@@ -396,6 +396,8 @@ export interface RoomSeats {
     claimable: boolean;
     controller: Controller;
     reserved_secs: number | null;
+    /** The seat this device left by choice at a casual table: Join takes it back. */
+    yours?: true;
   }[];
   /** A ranked table: `claimable` marks the seats its invite may take (bot
    *  seats, away seats from a round boundary); signed-in players only. */
@@ -421,5 +423,7 @@ export interface TableSeats {
   full: boolean;
   /** The host's Join is in flight: a code join meets table_closed. */
   closed: boolean;
-  seats: { seat: number; team: number; state: "taken" | "open" | "held"; name: string | null; ready: boolean }[];
+  /** `you`: the asker's own seat; its own table's code opens no Join. */
+  seats: { seat: number; team: number; state: "taken" | "open" | "held"; name: string | null; ready: boolean;
+           you?: true }[];
 }

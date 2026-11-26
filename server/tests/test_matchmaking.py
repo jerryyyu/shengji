@@ -663,6 +663,49 @@ def test_a_seated_socket_that_closes_holds_its_seat_sixty_seconds_reconnecting()
     run(go())
 
 
+def test_a_reload_at_a_waiting_table_keeps_the_name_and_tells_nobody_it_left():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.send(1, "queue_wait_players")
+        await env.join(-5, name="Wise Clubs")       # a guest joined, under its name
+        env.conns[-5].name = "Wise Clubs"
+        env.mm.disconnect(env.conns[-5])
+        env.conns[1].clear()
+        back = FakeConn(-5, "")                      # the reloaded page: no name yet
+        env.mm.connect(back)
+        seen = env.conns[1].of("queue_state")
+        assert seen
+        for frame in seen:
+            names = [s["name"] for s in frame["table"]["seats"] if s is not None and not s["you"]]
+            assert names == ["Wise Clubs"]
+        mine = back.last("queue_state")["table"]
+        assert mine["seats"][mine["you"]]["name"] == "Wise Clubs"
+        # a half-open old socket on the same device hands over the same way
+        other = FakeConn(-5, "")
+        other.device = back.device = "d" * 22
+        env.mm.connect(other)
+        await env.send(-5, "table_here", conn=other)
+        assert other.name == "Wise Clubs"
+    run(go())
+
+
+def test_a_peek_of_your_own_waiting_table_marks_your_seat():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.send(1, "queue_wait_players")
+        await env.join(2)
+        code = env.mm._entry(1).table.code
+        table = env.mm._entry(1).table
+        mine = env.mm.peek(code, 2)
+        assert [s.get("you", False) for s in mine["seats"]] == [u == 2 for u in table.seats]
+        assert sum(1 for s in mine["seats"] if s.get("you")) == 1
+        assert not any("you" in s for s in env.mm.peek(code, 3)["seats"])
+        assert not any("you" in s for s in env.mm.peek(code)["seats"])
+    run(go())
+
+
 def test_at_a_full_table_a_reconnecting_joiner_does_not_hold_the_owners_start_or_the_timer():
     async def go():
         env = Env()
@@ -2940,6 +2983,37 @@ def test_ws_a_guest_reconnecting_as_a_guest_keeps_its_waiting_table_seat(wsenv):
             assert srv.MATCHMAKER.entry_of.keys() == {-1, other}
             [t] = srv.MATCHMAKER.tables.values()
             assert -1 in t.seats and other in t.seats
+
+
+def test_ws_a_guest_back_at_its_waiting_table_by_reload_link_or_code_keeps_its_seat_and_name(wsenv):
+    srv, store, client, clock = wsenv
+    with client.websocket_connect(f"/ws?device={DEVICE_A}") as a:
+        a.send_json({"type": "queue_join", "mode": "casual", "name": "Crafty Diamonds"})
+        code = _drain(a, "queue_state")["code"]
+        a.send_json({"type": "queue_wait_players"})
+        with client.websocket_connect(f"/ws?device={DEVICE_B}") as b:
+            b.send_json({"type": "table_join", "code": code, "name": "Wise Clubs"})
+            _next_where(a, "queue_state", lambda m: m["table"] is not None
+                        and len([x for x in m["table"]["seats"] if x]) == 2)
+        # the reload: a socket that has sent nothing yet
+        with client.websocket_connect(f"/ws?device={DEVICE_B}") as again:
+            back = _next_where(again, "queue_state", lambda m: m["table"] is not None)["table"]
+            assert back["seats"][back["you"]]["name"] == "Wise Clubs"
+            _next_where(a, "queue_state", lambda m: m["table"] is not None and any(
+                x and x["reconnecting"] for x in m["table"]["seats"]))
+            seen = _next_where(a, "queue_state", lambda m: m["table"] is not None and not any(
+                x and x["reconnecting"] for x in m["table"]["seats"]))["table"]
+            assert [x["name"] for x in seen["seats"] if x and not x["you"]] == ["Wise Clubs"]
+            # its own table's code (a link or the code box) peeks as its own seat
+            again.send_json({"type": "table_peek", "code": code})
+            peek = _drain(again, "room_seats")
+            assert [x["name"] for x in peek["seats"] if x.get("you")] == ["Wise Clubs"]
+            # and a code join there keeps the seat it holds
+            again.send_json({"type": "table_join", "code": code})
+            kept = _next_where(again, "queue_state", lambda m: m["table"] is not None)["table"]
+            assert kept["seats"][kept["you"]]["name"] == "Wise Clubs"
+            [t] = srv.MATCHMAKER.tables.values()
+            assert sorted(u for u in t.seats if u is not None) == [-2, -1]
 
 
 def test_a_ranked_start_with_two_players_on_one_device_is_refused(wsenv):

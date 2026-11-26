@@ -111,7 +111,12 @@ The voice announcer inferred it and called a two-pair 甩牌 a 拖拉机.
 Reply to `table_peek`. Read-only: it does not seat the asker and reveals no
 private information. The lobby uses it to show a seat picker when a game is in
 progress and more than one bot seat is open — which bot you replace decides
-who your partner is.
+who your partner is. A seat its owner left by choice is the bot's: it reads as
+a bot seat under the bot's name (`is_bot: true`, `controller: "bot"`), never
+the leaver's. At a casual table it is `claimable` and marked `yours: true` for
+the device or account that left it, whose Join takes that seat back (the Join
+panel glows it); a ranked table offers no leaver its seat. For anyone else it
+is claimable as a dropped seat is.
 
 A queued table's code is answered with the table form instead; a room wins a
 code both could hold, and a code that names neither is
@@ -126,7 +131,8 @@ matches a refusal to its peek by code as it matches `room_seats` by `room`
   the table shows and `ready` whether that person's Start is in; an open or
   held seat has `name: null`, `ready: false`. A lone entry's seats are where
   its game would put it: one person at seat 0, a pair (or a Duo opener and
-  its held seat) at 0 and 2.
+  its held seat) at 0 and 2. The asker's own seat carries `you: true`: its
+  own table's code changes nothing, so the client opens no Join panel.
 - `mode`: `"ranked"` or `"casual"`, the mode a code join sits in.
 - `full`: a code join by one person meets `table_full`. The first single by
   a Duo opener's code takes the held seat, so that code is not full.

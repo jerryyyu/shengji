@@ -1146,6 +1146,7 @@ class Matchmaker:
         self.socks.setdefault(uid, {})[conn] = None
         holder = self._live(uid)
         if holder is None:
+            self._keep_name(conn, uid)
             self.conns[uid] = conn
             self._resync(uid)
         elif (uid in self.entry_of and uid not in self.joining and not holder.in_room
@@ -1232,6 +1233,7 @@ class Matchmaker:
         self.ensure_running()
         uid = conn.queue_id
         if uid is not None and self._live(uid) is None:
+            self._keep_name(conn, uid)
             self.conns[uid] = conn
             self._resync(uid)
         elif uid is not None and self.conns.get(uid) is not conn and uid in self.entry_of:
@@ -1247,6 +1249,7 @@ class Matchmaker:
         old = self.conns.get(uid)
         if old is conn:
             return
+        self._keep_name(conn, uid)
         self.conns[uid] = conn
         if old is not None and not old.closed and uid in self.entry_of:
             same = old.device is not None and old.device == conn.device
@@ -1254,6 +1257,15 @@ class Matchmaker:
                       "count": self.count(), "replaced": True,
                       "by": "window" if same else "device",
                       **({"stopped": True} if stopping else {})})
+
+    def _keep_name(self, conn: Conn, uid: int) -> None:
+        """A guest's name lives on its socket and arrives with its next queue
+        message; a reloaded page's socket carries none yet, so it keeps the
+        name the person's table already shows rather than reading as
+        "Player"."""
+        old = self.conns.get(uid)
+        if not conn.name and old is not None and old.name:
+            conn.name = old.name
 
     def _resync(self, uid: int) -> None:
         p = self._party(uid)
@@ -2499,7 +2511,7 @@ class Matchmaker:
         key = str(user_id) if user_id is not None else f"socket:{id(conn)}"
         return self.lookup_limiter.allow(key, self.clock())
 
-    def peek(self, code: str) -> dict | None:
+    def peek(self, code: str, uid: int | None = None) -> dict | None:
         """Who sits at the queued table ``code`` names, as a ``room_seats``
         frame with ``table: true``; None when no queued table has it.
         Read-only. A seat shows its state and, when taken, the name its
@@ -2512,7 +2524,9 @@ class Matchmaker:
         single by a Duo opener's code takes its held seat. ``closed``: a Join
         of the host's is in flight and the code join refuses
         (``table_closed``). ``allow_joiners`` is the opener's switch, which
-        keeps strangers' Play away but never a code join."""
+        keeps strangers' Play away but never a code join. ``you`` marks
+        the seat queue id ``uid`` holds there: its own table's link or code
+        returns it to that seat, so it is no Join."""
         host = self._code_entry(code)
         if host is None:
             return None
@@ -2524,7 +2538,8 @@ class Matchmaker:
             state = "taken" if u is not None else "held" if i in held else "open"
             seats.append({"seat": i, "team": i % 2, "state": state,
                           "name": self._name(u) if u is not None else None,
-                          "ready": u is not None and self._tapped(t, by_user[u], u)})
+                          "ready": u is not None and self._tapped(t, by_user[u], u),
+                          **({"you": True} if uid is not None and u == uid else {})})
         free = any(s["state"] == "open" for s in seats)
         return {"type": "room_seats", "room": code, "table": True, "mode": t.mode,
                 "in_game": False, "allow_joiners": t.allow_joiners,

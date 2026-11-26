@@ -14,21 +14,25 @@ import type { RoomSeats, ServerMsg, TableSeats } from "./protocol";
 import { queue } from "./queue/store";
 import { showToast } from "./toast";
 import type { ConnStatus } from "./ws";
-import { conn, getResumeToken, getSavedRoom } from "./ws";
+import { conn, getResumeToken, getSavedName, getSavedRoom } from "./ws";
 import { beforeOnlineSetup } from "./deviceAccount";
+import { decideIntent, intentToJoin } from "./intent";
 
 /** Where a code came from: the Play box or a link. */
 export type CodeFrom = "play" | "link";
 
 /** Where a code's join stands.
  *  - `link`: a `?code=` link waiting for the Play screen (a game may be on).
+ *  - `resume`: the code of the room this device holds a seat at: the seat
+ *    comes back by its resume token, with no panel; a refused resume lets a
+ *    link go on to its peek.
  *  - `ask`: a link while you sit at another table: App asks whether to leave it.
  *  - `leaving`: Leave was tapped; the link opens once that seat is gone.
  *  - `peek`: table_peek sent; the panel waits for the seats (or, already
  *    showing them, for fresh ones).
  *  - `panel`: the panel shows the seats; Join is the player's.
  *  - `joining`: Join sent; the seat, or a refusal, is on its way. */
-export type JoinStep = "link" | "ask" | "leaving" | "peek" | "panel" | "joining";
+export type JoinStep = "link" | "resume" | "ask" | "leaving" | "peek" | "panel" | "joining";
 
 export interface CodeJoin {
   code: string;
@@ -142,9 +146,10 @@ export class CodeStore {
     if (code.length !== CODE_LEN || (j && j.from === "play")) return;
     // a link to another table while this device holds a room seat goes back
     // to that seat first and asks before leaving it
+    // and its own room's link is that seat, which App's resume brings back
     const saved = getSavedRoom()?.toUpperCase() ?? null;
     this.seenSeated = false;
-    this.set({ code, from: "link", step: saved !== null && saved !== code ? "ask" : "link",
+    this.set({ code, from: "link", step: saved === null ? "link" : saved === code ? "resume" : "ask",
                peek: null, full: false, seat: null });
   }
 
@@ -155,6 +160,11 @@ export class CodeStore {
     this.place = p;
     const j = this.view;
     if (!j) return;
+    if (j.step === "resume") {
+      // the seat is back: your own table's code changes nothing
+      if (p.seatedAt === j.code) this.drop();
+      return;
+    }
     if (j.step === "ask" || j.step === "leaving") {
       if (p.seatedAt !== null) {
         this.seenSeated = true;
@@ -197,6 +207,16 @@ export class CodeStore {
   open(raw: string): boolean {
     const code = normalizeCode(raw);
     if (code.length !== CODE_LEN || !this.place.ready) return false;
+    // your own table's code changes nothing
+    if (code === this.place.seatedAt) return true;
+    if (code === getSavedRoom()?.toUpperCase()) {
+      // the room this device holds a seat at: the seat comes back, no panel
+      const join = intentToJoin(decideIntent({ savedRoom: code, savedName: getSavedName() || "Player",
+                                               savedToken: getResumeToken() }));
+      if (!join || !conn.send(join)) return false;
+      this.set({ code, from: "play", step: "resume", peek: null, full: false, seat: null });
+      return true;
+    }
     if (!conn.send({ type: "table_peek", code })) return false;
     this.asked = true;
     this.set({ code, from: "play", step: "peek", peek: null, full: false, seat: null });
@@ -253,19 +273,44 @@ export class CodeStore {
   /** The table the link's question was about is gone: the link goes ahead. */
   release(): void {
     const j = this.view;
+    if (j?.step === "resume") {
+      this.resumeRefused();
+      return;
+    }
     if (j && (j.step === "ask" || j.step === "leaving")) {
       // Lobby's next place opens it, with where you sit now
       this.set({ ...j, step: "link" });
     }
   }
 
+  /** The seat a `resume` waited for was refused: a link goes on to its
+   *  peek (it may name a table you can join); a typed code is done, as App
+   *  has said why. */
+  resumeRefused(): void {
+    const j = this.view;
+    if (j?.step !== "resume") return;
+    if (j.from === "link") this.set({ ...j, step: "link" });
+    else this.drop();
+  }
+
   private onMessage(msg: ServerMsg): void {
     const j = this.view;
     if (!j) return;
+    if (j.step === "resume" && (msg.type === "room" || msg.type === "state") && msg.room === j.code) {
+      // the seat is back (a game in progress answers with its state alone,
+      // and the Table, not the Play screen, shows it): the link is spent
+      this.drop();
+      return;
+    }
     if (msg.type === "room_seats") {
       if (msg.room !== j.code || j.step !== "peek") return;
       if (msg.table && msg.closed) {
         // a Join of the host's is in flight: as a table_closed answer
+        this.drop();
+        return;
+      }
+      if (msg.table && msg.seats.some((sd) => sd.you)) {
+        // your own waiting table: the queue's frame brings you back to it
         this.drop();
         return;
       }

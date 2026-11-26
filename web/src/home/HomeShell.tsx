@@ -1,12 +1,12 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { useAuth } from "../auth";
+import { effectiveName, useAuth } from "../auth";
 import type { AuthUser } from "../auth";
 import { canAnimate } from "../motion";
 import { useMediaQuery } from "../phoneLayout";
 import { WIDE, openTab } from "./route";
 import { scrollActiveTabToTop } from "./session";
-import { useTabSwipe } from "./useTabSwipe";
+import { tabOrder, useTabSwipe } from "./useTabSwipe";
 import { clearErrorToast } from "../toast";
 import type { MeSection, Tab } from "./route";
 import { useGuestName } from "../guestName";
@@ -19,13 +19,31 @@ import type { MessageKey } from "../i18n";
 import GuestChip from "../components/GuestChip";
 import { Portrait } from "../companion/Companion";
 import { lookAccount, useNewLook } from "../companion/seen";
+import { useCollection } from "../companion/feature";
 
 export { WIDE };
 
-/** A person's picture: the portrait of their equipped companion (a guest's
- *  is the default). */
-export function Avatar({ user, size = "sm" }: { user: AuthUser | null; size?: "sm" | "lg" }) {
-  return <span className={`avatar avatar-${size} avatar-portrait`}><Portrait look={user?.look} size={size === "lg" ? 64 : 28} /></span>;
+/** A person's picture: where the Collection is shown, the portrait of their
+ *  equipped companion (a guest's is the default); elsewhere the account's
+ *  picture, or its initial on a plain disc, and a guest's disc carries the
+ *  initial of the name they play under. */
+export function Avatar({ user, size = "sm", guestName = "" }: {
+  user: AuthUser | null; size?: "sm" | "lg"; guestName?: string;
+}) {
+  const companions = useCollection();
+  const cls = `avatar avatar-${size}`;
+  if (companions) {
+    return <span className={`${cls} avatar-portrait`}><Portrait look={user?.look} size={size === "lg" ? 64 : 28} /></span>;
+  }
+  if (!user) {
+    const initial = guestName.trim().slice(0, 1).toUpperCase();
+    return <span className={`${cls} avatar-guest`} aria-hidden="true">{initial || "?"}</span>;
+  }
+  if (user.picture) {
+    return <img className={cls} src={user.picture} alt="" referrerPolicy="no-referrer" />;
+  }
+  const shown = effectiveName(user) || user.email;
+  return <span className={cls} aria-hidden="true">{shown.slice(0, 1).toUpperCase()}</span>;
 }
 
 function PlayIcon() {
@@ -82,9 +100,21 @@ function goTab(tab: Tab, active: Tab): void {
   else openTab(tab);
 }
 
-/** The Me tab's icon: the player's portrait, so the tab's text stays "Me". */
-function TabAvatar({ user }: { user: AuthUser | null }) {
-  return <span className="avatar avatar-portrait"><Portrait look={user?.look} size={26} /></span>;
+/** The Me tab's icon: the player's portrait where the Collection is shown;
+ *  elsewhere the account's picture, or the initial of the name played under
+ *  (an account's or a guest's), drawn by CSS so the tab's text stays "Me". */
+function TabAvatar({ user, guest, companions }: { user: AuthUser | null; guest: string; companions: boolean }) {
+  if (companions) return <span className="avatar avatar-portrait"><Portrait look={user?.look} size={26} /></span>;
+  if (user?.picture) return <img className="avatar" src={user.picture} alt="" referrerPolicy="no-referrer" />;
+  const shown = user ? effectiveName(user) || user.email : guest.trim();
+  return <span className="avatar tabbar-initial" aria-hidden="true" data-initial={shown.slice(0, 1).toUpperCase()} />;
+}
+
+/** The tabs this viewer has, in order. */
+function useTabs() {
+  const companions = useCollection();
+  const order = tabOrder(companions);
+  return { companions, order, tabs: TABS.filter((x) => order.includes(x.tab)) };
 }
 
 /** The gold dot a tab carries while it holds something new. */
@@ -101,15 +131,17 @@ export function TabBar({ active }: { active: Tab }) {
   const { name: guest } = useGuestName();
   const user = account.status === "in" ? account.user : null;
   const known = user !== null || (account.status !== "loading" && guest.trim() !== "");
-  const fresh = useNewLook(lookAccount(user), user?.looks) && active !== "collection";
-  const index = TABS.findIndex((x) => x.tab === active);
+  const { companions, tabs } = useTabs();
+  const fresh = useNewLook(companions ? lookAccount(user) : null, user?.looks) && active !== "collection";
+  const index = tabs.findIndex((x) => x.tab === active);
   return (
-    <nav className="tabbar" aria-label={t("home.navMain")} style={{ "--tab-index": index } as CSSProperties}>
+    <nav className="tabbar" aria-label={t("home.navMain")}
+         style={{ "--tab-index": index, "--tab-count": tabs.length } as CSSProperties}>
       <span className="tabbar-capsule" aria-hidden="true" />
-      {TABS.map(({ tab, name, icon: Icon }) => (
+      {tabs.map(({ tab, name, icon: Icon }) => (
         <button key={tab} type="button" className={`tabbar-item${tab === active ? " on" : ""}`}
                 aria-current={tab === active ? "page" : undefined} onClick={() => goTab(tab, active)}>
-          {tab === "me" && known ? <TabAvatar user={user} /> : <Icon />}
+          {tab === "me" && known ? <TabAvatar user={user} guest={guest} companions={companions} /> : <Icon />}
           {tab === "collection" && fresh ? <NewDot /> : null}
           <span>{t(name)}</span>
         </button>
@@ -118,7 +150,7 @@ export function TabBar({ active }: { active: Tab }) {
   );
 }
 
-/** The wide layout's top bar: no strip of its own, only the phone's four
+/** The wide layout's top bar: no strip of its own, only the phone's
  *  tabs as a glass pill centred over the page and the account chip
  *  at the end (a guest's opens the identity sheet), after the Your table
  *  pill on a tab other than Play. */
@@ -126,7 +158,8 @@ export function TopBar({ active }: { active: Tab }) {
   const t = useT();
   const account = useAuth();
   const user = account.status === "in" ? account.user : null;
-  const fresh = useNewLook(lookAccount(user), user?.looks) && active !== "collection";
+  const { companions, tabs } = useTabs();
+  const fresh = useNewLook(companions ? lookAccount(user) : null, user?.looks) && active !== "collection";
   let end: ReactNode = null;
   if (user) {
     end = <AccountChip user={user} compact />;
@@ -136,7 +169,7 @@ export function TopBar({ active }: { active: Tab }) {
   return (
     <header className="topbar">
       <nav className="topbar-tabs" aria-label={t("home.navMain")}>
-        {TABS.map((x) => (
+        {tabs.map((x) => (
           <button key={x.tab} type="button" className={`topbar-tab${x.tab === active ? " on" : ""}`}
                   aria-current={x.tab === active ? "page" : undefined} onClick={() => goTab(x.tab, active)}>
             {t(x.name)}
@@ -186,7 +219,7 @@ export default function HomeShell({ active, section, seatedAt = null, children }
 }) {
   const wide = useMediaQuery(WIDE);
   const body = useRef<HTMLDivElement | null>(null);
-  useTabSwipe(body, active, !wide);
+  useTabSwipe(body, active, !wide, tabOrder(useCollection()));
   useTabFade(body, `${active}/${section ?? ""}`);
   useTabClearsError(active);
   return (

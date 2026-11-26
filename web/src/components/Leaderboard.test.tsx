@@ -349,7 +349,7 @@ describe("this week's movement and the top three", () => {
     expect(listed[0].querySelector(".lb-move .sr-only")?.textContent).toBe(", up 2 places this week");
     expect(listed[3].querySelector(".lb-move .sr-only")?.textContent).toBe(", down 3 places this week");
     // no rating-points movement: each row's figures are its rank, rating and places moved only
-    expect(listed[0].textContent).toBe("1Shrewd1,712▲2, up 2 places this week");
+    expect(listed[0].textContent).toBe("1SShrewd1,712▲2, up 2 places this week");
     // the pinned own row too
     expect(host.querySelector(".lb-pin .lb-move [aria-hidden]")?.textContent).toBe("▼1");
     // one place is singular when read aloud; Chinese has no plural

@@ -92,8 +92,11 @@ it("the surfaces a player can open are exactly the listed ones", () => {
 });
 
 /** The home screen's tabs, in order, at every width. A tab is the largest
- *  surface there is: a new one needs its row in docs/design/FLOWS.md first. */
+ *  surface there is: a new one needs its row in docs/design/FLOWS.md first.
+ *  Collection is conditional: only a viewer the server shows it to
+ *  (`useCollection`, `tabOrder`) has it; everyone else has the other three. */
 const HOME_TABS = ["play", "leaderboard", "collection", "me"];
+const CONDITIONAL_TABS = ["collection"];
 
 it("the home tabs are exactly the listed ones", () => {
   const route = files.find((f) => f.rel === "home/route.ts")!.code;
@@ -105,6 +108,9 @@ it("the home tabs are exactly the listed ones", () => {
   expect([...order.matchAll(/"(\w+)"/g)].map((m) => m[1])).toEqual(HOME_TABS);
   const shell = files.find((f) => f.rel === "home/HomeShell.tsx")!.code;
   expect([...shell.matchAll(/\{ tab: "(\w+)", name: "home\.tab\w+"/g)].map((m) => m[1])).toEqual(HOME_TABS);
+  // the conditional tab is the one `tabOrder` drops when the Collection is not shown
+  expect(swipe).toMatch(/collection \? TAB_ORDER : TAB_ORDER\.filter\(\(t\) => t !== "collection"\)/);
+  expect(CONDITIONAL_TABS).toEqual(["collection"]);
 });
 
 it("leave paths are exactly the listed ones", () => {

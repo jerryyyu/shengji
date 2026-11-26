@@ -80,11 +80,11 @@ the next socket takes this page's own seat back by its token and leaves it (`ws.
 sockets, also after a reload or relaunch within 90 s),
 so the bot covers the seat at once instead of after a dropped seat's 30 s and a ranked Leave counts as one.
 
-**Section 5, tabs.** The same four tabs (Play / Leaderboard / Collection / Me) on phone, iPad and desktop
-(Collection added by Jerry 2026-11-26, below). Stats and
+**Section 5, tabs.** The same three tabs (Play / Leaderboard / Me) on phone, iPad and desktop; a viewer the
+Collection is shown to has four, Collection third (Jerry 2026-11-26, below). Stats and
 Games become a switch inside Me. The Leaderboard is the phone's column at every width, centred and capped like
 Me; your own row keeps "(you)" in view when a long name truncates (Jerry 11-15).
-The wide layout (700px and up) has no top bar strip: the four tabs float as the glass pill group centred at the top
+The wide layout (700px and up) has no top bar strip: the tabs float as the glass pill group centred at the top
 and the account chip at the top right, over the page background, and no tab shows a corner wordmark (Play's page
 carries the 升级 SHENG JI title). Jerry 2026-11-26: "can we just remove the top bar entirely? and we can keep the pills".
 It opens on This week, or on All time when nobody has played a ranked round this week yet, until the viewer
@@ -528,6 +528,12 @@ then its replay plays.
 
 ## Collection and companions (Jerry 2026-11-26: "I like the Collection tab. Can we first build it with the default Tractor… do the character building with the Tractor first, before the store"; "let's add more colour schemes for free too")
 
+- **Behind an allowlist first** (Jerry 2026-11-26: he tries it before anyone else sees it): the Collection tab,
+  its pill, every portrait, the Team · Individual · Off control and the unlock dot draw only for a viewer whose
+  `/api/me` says `features.collection` (an account listed in the `COLLECTION_ACCOUNTS` secret), or for everyone
+  when `COLLECTION_ENABLED=1` (`/api/auth/config` `collection`). Everyone else, guests and offline/Nearby
+  included, sees the three tabs and the initials. `PUT /api/me/look` is 404 for an account not shown it. The
+  look still travels on seats and leaderboard rows, and only a viewer shown the Collection draws it.
 - **A person's picture is their companion's portrait** wherever a person is shown: the leaderboard rows, the Me
   header, the account chip, the Me tab icon, the waiting-table seats, the seat labels at the table, the round-end
   title and chat lines. A bot keeps its initial (or no picture where it had none). No ring on a portrait: the ring
@@ -543,7 +549,8 @@ then its replay plays.
   count ("14 of 25 rounds", or "A ranked win") as the page's one status line. The server refuses a locked colour.
   A gold dot on the tab marks a colour unlocked since the Collection was last opened on this device.
 - **A guest** sees the default and the same swatches; a tap only shows a colour (a guest's look is not stored).
-- Offline and Nearby tables show every person with the default portrait; no device there knows an account.
+- Offline and Nearby tables know no account, so they show the initials until the Collection is on for
+  everyone; then every person there has the default portrait.
 - Not yet: the companion on the table, the Goat, the Shop, rating finishes.
 
 ## Polish checklist (UI review)

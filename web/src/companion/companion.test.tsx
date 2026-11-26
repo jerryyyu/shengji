@@ -19,6 +19,7 @@ import { TRACTOR_COLOURS } from "./palette";
 import { hasNewLook, markLooksSeen } from "./seen";
 import { parseArt, tractorMarkup } from "./Tractor";
 import CollectionPage from "../components/CollectionPage";
+import { Row } from "../components/Leaderboard";
 import { forgetHomeSession } from "../home/session";
 
 let host: HTMLDivElement;
@@ -129,7 +130,7 @@ describe("the gold dot", () => {
 describe("the Collection tab", () => {
   const user: AuthUser = {
     name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry",
-    rounds_played: 14, ranked_wins: 0, look: "tractor/red", companions: "team",
+    rounds_played: 14, ranked_wins: 0, look: "tractor/red", companions: "team", features: { collection: true },
   };
   const fetches: { url: string; init?: RequestInit }[] = [];
   beforeEach(() => {
@@ -190,5 +191,23 @@ describe("the Collection tab", () => {
     expect(off.getAttribute("aria-pressed")).toBe("true");
     expect(window.localStorage.getItem("shengji.companions")).toBe("off");
     expect(fetches.some((f) => f.url === "/api/me/look")).toBe(false);
+  });
+});
+
+describe("other viewers", () => {
+  const row = { rank: 2, name: "Mei", rating: 950, rounds: 30, levels_per_round: 0.4, week_rank_move: null,
+                provisional: false, you: false, look: "tractor/jade" };
+  it("a leaderboard row shows the initial unless the Collection is shown to this viewer", async () => {
+    authState.current = { status: "in", clientId: "cid", user: { name: "A", email: "a@x", picture: null, display_name: null, name_shown: "A" } };
+    await draw(<ul><Row row={row} /></ul>);
+    expect(host.querySelector(".lb-row .avatar")?.textContent).toBe("M");
+    expect(host.querySelector(".portrait")).toBeNull();
+    authState.current = { status: "in", clientId: "cid", user: { name: "A", email: "a@x", picture: null, display_name: null, name_shown: "A",
+                                                                 features: { collection: true } } };
+    await draw(<ul><Row row={{ ...row }} /></ul>);
+    expect(host.querySelector(".lb-row .portrait")?.getAttribute("data-look")).toBe("tractor/jade");
+    authState.current = { status: "out", clientId: "cid", user: null, collection: true };
+    await draw(<ul><Row row={{ ...row, look: "tractor/ink" }} /></ul>);
+    expect(host.querySelector(".lb-row .portrait")?.getAttribute("data-look")).toBe("tractor/ink");
   });
 });

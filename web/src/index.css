@@ -5502,13 +5502,13 @@ button.games-row { cursor: pointer; }
   .tabbar,
   .topbar-tabs { background: #1c2129; }
 }
-/* The active tab's capsule: one quarter of the pill, moved to the tab. */
+/* The active tab's capsule: one tab's share of the pill, moved to the tab. */
 .tabbar-capsule {
   position: absolute;
   top: 6px;
   bottom: 6px;
   left: 6px;
-  width: calc((100% - 12px) / 4);
+  width: calc((100% - 12px) / var(--tab-count, 3));
   border-radius: 26px;
   background: rgba(255, 255, 255, 0.1);
   transform: translateX(calc(var(--tab-index, 0) * 100%));
@@ -5555,6 +5555,7 @@ body.keyboard-open .tabbar { display: none; }
 .tabbar-item.on svg .nofill { fill: none; }
 .tabbar-item.on svg .pip { fill: #161a22; stroke: none; }
 .tabbar-item .avatar { width: 26px; height: 26px; font-size: 12px; }
+.tabbar-initial::before { content: attr(data-initial); }
 .tabbar-item.on .avatar { box-shadow: 0 0 0 1.5px var(--gold); }
 
 /* The sides share what the tabs leave but never get less than their content

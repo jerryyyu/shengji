@@ -17,6 +17,7 @@ import { guestName } from "../guestName";
 import { displayName, t, useT } from "../i18n";
 import type { MessageKey } from "../i18n";
 import { Portrait } from "../companion/Companion";
+import { useCollection } from "../companion/feature";
 
 /** Leave beside Next round (Next game), the same in every room. It asks through the one
  *  leave sheet, like every other leave: the round is over and recorded, so
@@ -87,12 +88,13 @@ function teamTitle(team: 0 | 1, state: GameState, outcome: Outcome): string {
   return t(`roundend.names${outcome}` as MessageKey, { name: listed });
 }
 
-/** The titled team's people as portraits, ahead of the title's names; a bot
- *  has no portrait and its name says it. */
+/** The titled team's people as portraits, ahead of the title's names, where
+ *  the Collection is shown; a bot has no portrait and its name says it. */
 function TeamFaces({ team, state }: { team: 0 | 1; state: GameState }) {
+  const companions = useCollection();
   const people = state.players.filter((p) => p.team === team && !p.is_bot)
     .sort((a, b) => Number(b.seat === state.you) - Number(a.seat === state.you) || a.seat - b.seat);
-  if (people.length === 0) return null;
+  if (!companions || people.length === 0) return null;
   return (
     <span className="re-faces" aria-hidden="true">
       {people.map((p) => <Portrait key={p.seat} look={p.look} size={28} />)}

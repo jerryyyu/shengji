@@ -35,9 +35,7 @@ exports[`the offline Play block and its table, as drawn 2`] = `
 </span>
 </div>
 <div class="tp-seat you team0" role="group" aria-label="You, your team">
-<span class="tp-av tp-av-portrait" aria-hidden="true">
-<img class="portrait" data-look="tractor/red" width="24" height="24" alt="" aria-hidden="true" draggable="false">
-</span>
+<span class="tp-av" aria-hidden="true">C</span>
 <span class="tp-seat-text" aria-hidden="true">
 <span class="tp-seat-name">You</span>
 </span>
@@ -91,9 +89,7 @@ exports[`the offline Play block and its table, as drawn 3`] = `
 </span>
 </div>
 <div class="tp-seat you team0" role="group" aria-label="You, your team">
-<span class="tp-av tp-av-portrait" aria-hidden="true">
-<img class="portrait" data-look="tractor/red" width="24" height="24" alt="" aria-hidden="true" draggable="false">
-</span>
+<span class="tp-av" aria-hidden="true">C</span>
 <span class="tp-seat-text" aria-hidden="true">
 <span class="tp-seat-name">You</span>
 </span>

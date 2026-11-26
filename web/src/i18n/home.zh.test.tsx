@@ -141,15 +141,15 @@ describe("the Play tab in Chinese", () => {
 });
 
 describe("the home shell in Chinese", () => {
-  it("the tab bar reads 打牌 · 排行榜 · 收藏 · 我", async () => {
+  it("the tab bar reads 打牌 · 排行榜 · 我", async () => {
     await render(<TabBar active="play" />);
-    expect(texts(".tabbar-item span:last-child")).toEqual(["打牌", "排行榜", "收藏", "我"]);
+    expect(texts(".tabbar-item span:last-child")).toEqual(["打牌", "排行榜", "我"]);
     expect(host.querySelector(".tabbar")?.getAttribute("aria-label")).toBe("主导航");
   });
 
-  it("the top bar's tabs read 打牌 · 排行榜 · 收藏 · 我", async () => {
+  it("the top bar's tabs read 打牌 · 排行榜 · 我", async () => {
     await render(<TopBar active="leaderboard" />);
-    expect(texts(".topbar-tab")).toEqual(["打牌", "排行榜", "收藏", "我"]);
+    expect(texts(".topbar-tab")).toEqual(["打牌", "排行榜", "我"]);
   });
 
   it("the Your game pill reads 我的牌局", async () => {

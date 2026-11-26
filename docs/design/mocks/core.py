@@ -212,7 +212,7 @@ LEAVE = btn("Leave", "ghost", grow=False)
 
 def wide(body, active="Play", w=1280, h=800, u=SIGNED):
     tabs = "".join(f'<span style="padding:6px 14px;border-radius:999px;font-size:14px;font-weight:600;'
-                   f'{"background:rgba(255,255,255,.1);color:#fff" if t == active else "color:#9aa3b2"}">{t}</span>' for t in ("Play", "Leaderboard", "Collection", "Me"))
+                   f'{"background:rgba(255,255,255,.1);color:#fff" if t == active else "color:#9aa3b2"}">{t}</span>' for t in ("Play", "Leaderboard", "Me"))
     return (f'<div style="width:{w}px;height:{h}px;box-sizing:border-box;background:#1b1f27;color:#e9ecf2;font-family:{FONT};overflow:hidden;display:flex;flex-direction:column">'
             f'<header style="height:60px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #2b323e">'
             f'<span style="color:{GOLD};font-weight:800;letter-spacing:.2em;font-size:13px">升级 SHENG JI</span>'
@@ -618,8 +618,9 @@ def f9_me():
 
 
 def f11_collection():
-    """The Collection tab (Jerry 2026-11-26): the Tractor on a corner of felt, your leaderboard row as others see
-    it, the colours, and the one Team · Individual · Off control. No shop, no prices, nothing 'coming'."""
+    """The Collection tab (Jerry 2026-11-26), for a viewer it is shown to (an allowlisted account until it is on
+    for everyone): the Tractor on a corner of felt, your leaderboard row as others see it, the colours, and the
+    one Team · Individual · Off control. No shop, no prices, nothing 'coming'."""
     felt_box = ('<div style="border-radius:18px;background:radial-gradient(ellipse at 50% 35%,#2f7a52,#123a26);padding:18px 0 10px;'
                 'display:flex;flex-direction:column;align-items:center;gap:4px"><span style="font-size:96px;line-height:1">🚜</span>'
                 '<span style="font-size:14px;color:#e8ede8;min-height:18px">{status}</span></div>')
@@ -638,8 +639,8 @@ def f11_collection():
             + "".join(f'<span style="flex:1;text-align:center;padding:7px 0;border-radius:9px;font-size:14px;font-weight:700;'
                       f'{"background:#2f3a4d" if i == 0 else "color:#9aa3b2"}">{t}</span>' for i, t in enumerate(("Team", "Individual", "Off")))
             + '</div>')
-    page = phone(felt_box.format(status="") + row + swatches() + mode, active="Collection", title="Collection", user="CT")
-    locked = phone(felt_box.format(status="14 of 25 rounds") + row + swatches(on=4) + mode, active="Collection", title="Collection", user="CT")
+    page = phone(felt_box.format(status="") + row + swatches() + mode, active="Collection", title="Collection", user="CT", tabs=b.TABS_COLLECTION)
+    locked = phone(felt_box.format(status="14 of 25 rounds") + row + swatches(on=4) + mode, active="Collection", title="Collection", user="CT", tabs=b.TABS_COLLECTION)
     return [
         ("Collection: the Tractor and its colours", [
             shot(page, 390, 844, "Tap Collection", "The Tractor idles on the felt; tap it and it hops. One tap on a colour equips it."),

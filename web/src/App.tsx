@@ -51,6 +51,7 @@ import { setSeatSafe, startReloadGate } from "./reloadGate";
 import { rounds } from "./roundTelemetry";
 import WatchScreen from "./watch/WatchScreen";
 import { watch, useWatching } from "./watch/store";
+import { useCollection } from "./companion/feature";
 
 /** What leaving the seat you hold costs, for the sheet a link to another
  *  table opens: the game in play, else the Play table as its panel says it. */
@@ -99,7 +100,10 @@ export default function App() {
   const gamesRoute = gamesPage && gamesPage.page !== "list" ? gamesPage : null;
   const howtoRoute = useHowtoRoute();
   const infoRoute = useInfoRoute();
-  const homeRoute = useHomeRoute();
+  // the Collection's hash opens Play for a viewer it is not shown to
+  const routed = useHomeRoute();
+  const collection = useCollection();
+  const homeRoute = routed?.tab === "collection" && !collection ? null : routed;
 
   useEffect(() => {
     const showToast = (message: string, info = false) => {

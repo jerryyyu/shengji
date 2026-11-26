@@ -10,6 +10,7 @@ import { formatChatLine, formatSystemLine } from "../messageCopy";
 import { QUICK_PHRASE_IDS, QUICK_PHRASE_KEY } from "../quickPhrases";
 import "./ChatPanel.css";
 import { Portrait } from "../companion/Companion";
+import { useCollection } from "../companion/feature";
 
 interface ChatProps {
   messages: ChatMsg[];
@@ -39,6 +40,7 @@ export function ChatBody({ messages, you, onSend, lookOf, open = true }: BodyPro
   const inputRef = useRef<HTMLInputElement>(null);
   // a blocked seat's lines stay hidden for this viewer; system lines never block
   const isBlocked = useBlocks();
+  const companions = useCollection();
   const shown = messages.filter((m) => m.seat === -1 || !isBlocked(m.room, m.seat));
 
   useEffect(() => {
@@ -76,9 +78,11 @@ export function ChatBody({ messages, you, onSend, lookOf, open = true }: BodyPro
             </div>
           ) : (
             <div key={i} className={"chat-msg" + (m.seat === you ? " mine" : "")}>
-              <span className="chat-portrait" aria-hidden="true">
-                <Portrait look={m.seat === null ? null : lookOf?.(m.seat)} size={20} />
-              </span>
+              {companions ? (
+                <span className="chat-portrait" aria-hidden="true">
+                  <Portrait look={m.seat === null ? null : lookOf?.(m.seat)} size={20} />
+                </span>
+              ) : null}
               <span className="chat-name">{m.name}</span>
               <span className="chat-text">{formatChatLine(m)}</span>
             </div>

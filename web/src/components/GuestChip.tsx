@@ -12,8 +12,10 @@ import { Portrait } from "../companion/Companion";
 import GoogleSignIn, { SignInUnavailable } from "./GoogleSignIn";
 import { followInfoLink } from "../support/route";
 import { useScreen } from "../telemetry";
+import { useCollection } from "../companion/feature";
 
-/** A guest's chip, in the signed-in chip's place: the default portrait, the
+/** A guest's chip, in the signed-in chip's place: the name's initial (the
+ *  default portrait where the Collection is shown), the
  *  name, the guest line where a rating would be, and a pencil, since a tap
  *  opens the identity sheet on every tab. `compact` (the wide top bar) has no
  *  pencil. */
@@ -23,10 +25,13 @@ export default function GuestChip({ compact = false }: { compact?: boolean }) {
   // in the app, before its first Play makes the account: the name alone
   const pending = deviceAccountPending(useAuth());
   const shown = name.trim() || t("common.guest");
+  const companions = useCollection();
   return (
     <button type="button" className="account-pill guest-pill" onClick={() => guestName.open("chip")}
             aria-label={t(pending ? "home.guestChipAriaPending" : "home.guestChipAria", { name: shown })}>
-      <span className="avatar avatar-sm avatar-portrait" aria-hidden="true"><Portrait look={null} size={28} /></span>
+      {companions
+        ? <span className="avatar avatar-sm avatar-portrait" aria-hidden="true"><Portrait look={null} size={28} /></span>
+        : <span className="avatar avatar-sm" aria-hidden="true">{shown.slice(0, 1).toUpperCase()}</span>}
       <span className="account-pill-name">{shown}</span>
       {pending ? null : <span className="account-pill-rating">{guestLine()}</span>}
       {compact ? null : <span className="guest-pill-edit" aria-hidden="true">✎</span>}

@@ -12,6 +12,7 @@ import { SkeletonRows } from "./GamesList";
 import { useScreen } from "../telemetry";
 import { t, useT } from "../i18n";
 import { Portrait } from "../companion/Companion";
+import { useCollection } from "../companion/feature";
 
 /** A rating as read aloud: 1,042, with the thousands separator. */
 export function ratingText(rating: number): string {
@@ -34,10 +35,13 @@ export function Row({ row, week = false }: { row: LeaderRow; week?: boolean }) {
   const t = useT();
   const top = row.rank !== null && row.rank <= 3;
   const move = week ? weekMove(row.week_rank_move) : null;
+  const companions = useCollection();
   return (
     <li className={`lb-row${row.you ? " me" : ""}`}>
       <span className={`lb-rank${top ? ` top medal-${row.rank}` : ""}`}>{row.rank ?? "—"}</span>
-      <span className="avatar avatar-sm avatar-portrait" aria-hidden="true"><Portrait look={row.look} size={28} /></span>
+      {companions
+        ? <span className="avatar avatar-sm avatar-portrait" aria-hidden="true"><Portrait look={row.look} size={28} /></span>
+        : <span className="avatar avatar-sm" aria-hidden="true">{row.name.slice(0, 1).toUpperCase()}</span>}
       <span className="lb-name">
         <span className="lb-name-text" title={row.name}>{row.name}</span>
         {/* its own box, so a long name truncates before it */}

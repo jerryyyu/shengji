@@ -37,6 +37,8 @@ export interface AuthUser {
   looks?: LookEntry[];
   /** Where this account's own screen draws companions. */
   companions?: CompanionMode;
+  /** What the server has turned on for this account. */
+  features?: { collection?: boolean };
 }
 
 /** The `/api/me` body as the server sends it; older servers lack the two
@@ -54,6 +56,7 @@ function toUser(body: Partial<AuthUser> & { name: string; email: string }): Auth
     ...(typeof body.ranked_wins === "number" ? { ranked_wins: body.ranked_wins } : {}),
     ...(Array.isArray(body.looks) ? { looks: body.looks } : {}),
     ...(COMPANION_MODES.includes(body.companions as CompanionMode) ? { companions: body.companions } : {}),
+    ...(body.features?.collection === true ? { features: { collection: true } } : {}),
   };
 }
 
@@ -69,6 +72,8 @@ export interface AuthState {
   /** Set only in the iOS app with the Keychain, when the server has device
    *  accounts on: the first online Play makes this device's account. */
   deviceAccounts?: true;
+  /** The server shows the Collection to everyone, guests included. */
+  collection?: true;
 }
 
 const GIS_SRC = "https://accounts.google.com/gsi/client";
@@ -109,17 +114,18 @@ async function api<T>(path: string, init?: RequestInit): Promise<{ status: numbe
  *  5xx. A server without the route (404) has no sign-in, which is "off". */
 export class AuthConfigUnavailable extends Error {}
 
-export async function fetchAuthConfig(): Promise<{ google_client_id: string | null; device_accounts?: true }> {
-  let got: { status: number; body: { google_client_id: string | null; device_accounts?: unknown } | null };
+export async function fetchAuthConfig(): Promise<{ google_client_id: string | null; device_accounts?: true; collection?: true }> {
+  let got: { status: number; body: { google_client_id: string | null; device_accounts?: unknown; collection?: unknown } | null };
   try {
-    got = await api<{ google_client_id: string | null; device_accounts?: unknown }>("/api/auth/config");
+    got = await api<{ google_client_id: string | null; device_accounts?: unknown; collection?: unknown }>("/api/auth/config");
   } catch {
     throw new AuthConfigUnavailable("no connection");
   }
   const { status, body } = got;
   if (status >= 500) throw new AuthConfigUnavailable(`status ${status}`);
   if (status !== 200 || !body) return { google_client_id: null };
-  return { google_client_id: body.google_client_id ?? null, ...(body.device_accounts === true ? { device_accounts: true as const } : {}) };
+  return { google_client_id: body.google_client_id ?? null, ...(body.device_accounts === true ? { device_accounts: true as const } : {}),
+           ...(body.collection === true ? { collection: true as const } : {}) };
 }
 
 export async function fetchMe(): Promise<AuthUser | null> {
@@ -197,6 +203,13 @@ export async function putLook(change: { look?: string; companions?: CompanionMod
   if (status === 429) throw new Error(t("home.tooManyChanges"));
   if (status !== 200 || !body) throw new Error(t("home.lookNotSaved", { n: status }));
   return toUser(body);
+}
+
+/** Whether this viewer is shown the Collection tab and the companion
+ *  portraits: the server has it on for everyone, or for this account. Off,
+ *  the home screen and every avatar are as they were before companions. */
+export function collectionShown(state: AuthState): boolean {
+  return state.collection === true || (state.status === "in" && state.user?.features?.collection === true);
 }
 
 /** What a signed-in player is called by default. */
@@ -621,7 +634,10 @@ class AuthStore {
       const cfg = await fetchAuthConfig();
       // the app's device account signs in again at every launch
       const relaunched = deviceAccountsApply() ? await reauthFromKeychain() : null;
-      const device = cfg.device_accounts === true && deviceAccountsAvailable() ? { deviceAccounts: true as const } : {};
+      const device = {
+        ...(cfg.device_accounts === true && deviceAccountsAvailable() ? { deviceAccounts: true as const } : {}),
+        ...(cfg.collection === true ? { collection: true as const } : {}),
+      };
       if (!cfg.google_client_id) {
         this.set(relaunched ? { status: "in", clientId: null, user: relaunched, ...device }
           : { status: "off", clientId: null, user: null, ...device });

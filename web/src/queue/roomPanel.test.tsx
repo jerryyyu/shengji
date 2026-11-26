@@ -318,8 +318,8 @@ describe("every Play table has a code", () => {
     await renderApp();
     say(own());
     const p = q(".tp-own")!;
-    // your seat shows your own portrait, not the first letters of "You"
-    expect(p.querySelector(".tp-seat.you .tp-av .portrait")?.getAttribute("data-look")).toBe("tractor/red");
+    // your seat shows your own initial, not the first letters of "You"
+    expect(p.querySelector(".tp-seat.you .tp-av")?.textContent).toBe("J");
     // the code and Invite are one control: a tap copies the link where there is no share sheet
     const invite = p.querySelector<HTMLButtonElement>("button.tp-invite")!;
     expect(invite.querySelector(".tp-code")?.textContent).toBe("4N5Z");

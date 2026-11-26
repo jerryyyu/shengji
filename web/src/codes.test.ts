@@ -1,10 +1,11 @@
 // The invite's message: what the table still needs, in the app's language,
 // with the code in the text and the link after it in the share sheet.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { inviteAskOf, inviteText, shareInvite } from "./codes";
+import { HOST_KEY, codeLink, hostToken, inviteAskOf, inviteText, setInviteReporter, shareInvite } from "./codes";
 import { reloadLanguage, setLanguageChoice } from "./i18n";
 
 afterEach(() => {
+  setInviteReporter(null);
   localStorage.clear();
   reloadLanguage();
   vi.unstubAllGlobals();
@@ -50,7 +51,47 @@ describe("the invite's message", () => {
     vi.stubGlobal("navigator", { ...navigator, share });
     await shareInvite("FW4X", "one");
     expect(share).toHaveBeenCalledWith({
-      title: "升级", text: "三缺一，来打升级！房间码 FW4X", url: `${window.location.origin}/?code=FW4X`,
+      title: "升级", text: "三缺一，来打升级！房间码 FW4X", url: `${window.location.origin}/?code=FW4X&h=${hostToken()}`,
     });
+  });
+});
+
+describe("the invite link's sender token", () => {
+  it("is minted once per device and rides the link beside the code, which still reads", () => {
+    const token = hostToken();
+    expect(token).toMatch(/^[0-9a-f]{12}$/);
+    expect(hostToken()).toBe(token);
+    expect(localStorage.getItem(HOST_KEY)).toBe(token);
+    const url = new URL(codeLink("FW4X"));
+    expect(url.pathname).toBe("/");
+    expect(url.searchParams.get("code")).toBe("FW4X");
+    expect(url.searchParams.get("h")).toBe(token);
+  });
+
+  it("is minted again over a kept value off its pattern", () => {
+    localStorage.setItem(HOST_KEY, "Mei");
+    expect(hostToken()).toMatch(/^[0-9a-f]{12}$/);
+  });
+
+  it("goes with a completed share as created via share, and a copy as created via copy", async () => {
+    const steps: unknown[][] = [];
+    setInviteReporter((...args) => { steps.push(args); });
+    vi.stubGlobal("navigator", { ...navigator, share: vi.fn(() => Promise.resolve()) });
+    await shareInvite("FW4X", "one");
+    const writeText = vi.fn(() => Promise.resolve());
+    vi.stubGlobal("navigator", { ...navigator, share: undefined, clipboard: { writeText } });
+    expect(await shareInvite("FW4X", "one")).toBe(true);
+    expect(steps).toEqual([["created", "share", hostToken()], ["created", "copy", hostToken()]]);
+  });
+
+  it("says nothing for a dismissed share sheet or a refused copy", async () => {
+    const steps: unknown[][] = [];
+    setInviteReporter((...args) => { steps.push(args); });
+    vi.stubGlobal("navigator", { ...navigator, share: vi.fn(() => Promise.reject(new Error("AbortError"))) });
+    await shareInvite("FW4X", "one");
+    vi.stubGlobal("navigator", { ...navigator, share: undefined,
+                                 clipboard: { writeText: vi.fn(() => Promise.reject(new Error("denied"))) } });
+    expect(await shareInvite("FW4X", "one")).toBe(false);
+    expect(steps).toEqual([]);
   });
 });

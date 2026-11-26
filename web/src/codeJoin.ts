@@ -8,7 +8,7 @@
 // matched by code and one for a code nobody waits on does nothing.
 
 import { useSyncExternalStore } from "react";
-import { CODE_LEN, aliasInviteLink, normalizeCode } from "./codes";
+import { CODE_LEN, HOST_PARAM, aliasInviteLink, isHostToken, normalizeCode, reportInvite } from "./codes";
 import { roomChoices, roomDefaultSeat, tableFull, tableJoinSeat } from "./joinSeats";
 import type { RoomSeats, ServerMsg, TableSeats } from "./protocol";
 import { queue } from "./queue/store";
@@ -102,6 +102,10 @@ export class CodeStore {
   /** The next look at a table closed for a moment, and how many are left. */
   private closedTimer: number | null = null;
   private closedLooks = 0;
+  /** This page loaded from an invite link (its sender's token, or null for
+   *  a link without one), until its visitor is seated by the link's Join;
+   *  undefined when it did not, or once that seat was reported. */
+  private landing: string | null | undefined = undefined;
 
   attach(): void {
     if (this.attached) return;
@@ -186,7 +190,14 @@ export class CodeStore {
     if (this.linkTaken) return;
     this.linkTaken = true;
     aliasInviteLink();
-    const code = normalizeCode(new URLSearchParams(window.location.search).get("code") ?? "");
+    const params = new URLSearchParams(window.location.search);
+    const code = normalizeCode(params.get("code") ?? "");
+    const host = params.get(HOST_PARAM);
+    dropParam(HOST_PARAM);
+    if (code.length === CODE_LEN) {
+      this.landing = isHostToken(host) ? host : null;
+      reportInvite("opened", undefined, this.landing);
+    }
     if (code.length !== CODE_LEN || (j && j.from === "play")) return;
     // a link to another table while this device holds a room seat goes back
     // to that seat first and asks before leaving it
@@ -235,6 +246,10 @@ export class CodeStore {
       return;
     }
     if (p.seatedAt !== null) {
+      if (now.from === "link" && now.step === "joining" && this.landing !== undefined) {
+        reportInvite("seated", undefined, this.landing);
+        this.landing = undefined;
+      }
       // a seat taken before the link's Join (the queue's table, back on a
       // fresh page) asks first, as a seat held before it would have
       if (now.from === "link" && now.step !== "joining" && p.seatedAt !== now.code) {
@@ -440,6 +455,7 @@ export class CodeStore {
     this.refreshOwed = false;
     this.stopClosedLooks();
     this.place = { ready: false, seatedAt: null };
+    this.landing = undefined;
   }
 }
 

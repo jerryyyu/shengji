@@ -40,9 +40,60 @@ export function aliasInviteLink(): void {
     `${window.location.pathname}${rest ? `?${rest}` : ""}${window.location.hash}`);
 }
 
-/** The invite link for a room or a table: one parameter for either kind. */
+/** The link token's query parameter, beside `code`. */
+export const HOST_PARAM = "h";
+export const HOST_KEY = "shengji.invite.host";
+const HOST_TOKEN = /^[0-9a-f]{12}$/;
+
+/** Whether `raw` is a link token as this device mints them. */
+export function isHostToken(raw: unknown): raw is string {
+  return typeof raw === "string" && HOST_TOKEN.test(raw);
+}
+
+/** This device's link token: twelve random hex, minted once and kept in the
+ *  origin's storage. It names no account and no table, and telemetry keeps
+ *  only the server's hash of it, so the opens and seats a sender's links
+ *  lead to group by sender. Null where storage or randomness is missing:
+ *  the link then goes without it. */
+export function hostToken(): string | null {
+  try {
+    const kept = localStorage.getItem(HOST_KEY);
+    if (isHostToken(kept)) return kept;
+    const bytes = new Uint8Array(6);
+    crypto.getRandomValues(bytes);
+    const token = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    localStorage.setItem(HOST_KEY, token);
+    return token;
+  } catch {
+    return null;
+  }
+}
+
+/** The invite link for a room or a table: one parameter for either kind,
+ *  and the sender's link token after it. */
 export function codeLink(code: string): string {
-  return `${window.location.origin}/?code=${code}`;
+  const token = hostToken();
+  return `${window.location.origin}/?code=${code}${token ? `&${HOST_PARAM}=${token}` : ""}`;
+}
+
+/** A step of an invite's funnel: the link sent, a page loaded from it, that
+ *  page's visitor seated by its Join. */
+export type InviteStep = "created" | "opened" | "seated";
+export type InviteVia = "share" | "copy";
+type InviteReporter = (step: InviteStep, via: InviteVia | undefined, host: string | null) => void;
+let inviteReporter: InviteReporter | null = null;
+
+/** Where invite steps go (telemetry.ts sets it); none goes nowhere. */
+export function setInviteReporter(fn: InviteReporter | null): void {
+  inviteReporter = fn;
+}
+
+export function reportInvite(step: InviteStep, via: InviteVia | undefined, host: string | null): void {
+  try {
+    inviteReporter?.(step, via, host);
+  } catch {
+    /* telemetry never breaks an invite */
+  }
 }
 
 /** How long an Invite button reads "Link copied" after a copy. */
@@ -81,10 +132,15 @@ export function inviteText(code: string, ask: InviteAsk): string {
  *  true when the link was copied. */
 export function shareInvite(code: string, ask: InviteAsk): Promise<boolean> {
   const url = codeLink(code);
+  const host = hostToken();
   if (typeof navigator.share === "function") {
     return navigator.share({ title: t("home.shareTitle"), text: inviteText(code, ask), url })
-      .then(() => false, () => false);   // a dismissed share sheet is not an error
+      .then(() => { reportInvite("created", "share", host); return false; },
+            () => false);   // a dismissed share sheet is not an error, and sent nothing
   }
   if (!navigator.clipboard) return Promise.resolve(false);
-  return navigator.clipboard.writeText(url).then(() => true, () => false);
+  return navigator.clipboard.writeText(url).then(() => {
+    reportInvite("created", "copy", host);
+    return true;
+  }, () => false);
 }

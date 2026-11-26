@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WIDE } from "../home/HomeShell";
 import { SHORT_VIEWPORT } from "../phoneLayout";
 import { framer } from "./testFrames";
+import { hostToken } from "../codes";
 
 class FakeWS {
   static OPEN = 1;
@@ -327,7 +328,7 @@ describe("every Play table has a code", () => {
     expect(p.querySelectorAll("button.tp-invite, .tp-code")).toHaveLength(2);
     click(invite);
     await settle();
-    expect(clipboard).toEqual([`${window.location.origin}/?code=4N5Z`]);
+    expect(clipboard).toEqual([`${window.location.origin}/?code=4N5Z&h=${hostToken()}`]);
     expect(invite.getAttribute("aria-label")).toBe("Link copied, table code 4 N 5 Z");
     // ranked starts at 2: no level row; Allow joiners and Wait for people
     // fold into Table settings, which shows no values (both are switches)

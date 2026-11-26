@@ -66,7 +66,11 @@ The host role passes on, and a ranked leave keeps "at best a draw".
   - copy: "Stay until this round ends, or wait 1 minute to play again."
 
 **Section 4, connection.** One "Reconnecting…" pill, Retry after 10 s, a full-screen state after 30 s (when the bot takes a dropped seat), and a
-bad code shown inline under the code box. One wording. The same pill, in the same place, says "A bot holds your
+bad code shown inline under the code box. The 30 s is one window on both sides (Jerry 2026-11-26, option B):
+`LOST_AFTER_MS` in `ConnectionPill.tsx` equals the server's `TAKEOVER_AFTER`, pinned by
+`server/tests/test_client_server_constants.py`. Each side counts from when it sees the drop; at a table this device
+sees a silent drop within one missed pong (`TABLE_PING_MS` + `TABLE_PONG_MS`, 14 s at most), so the full screen
+comes 30 to 44 s after the network goes. One wording. The same pill, in the same place, says "A bot holds your
 seat · I'm back" once the socket is open again while a bot still plays your seat (simplification 4, below).
 The pill shows at a table or in a game. On the Play tab with no table the presence line is the one status:
 "Connecting…" until the socket opens, then the counts, or "Offline" once the app's Play plays on this device

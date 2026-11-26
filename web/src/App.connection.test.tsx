@@ -91,6 +91,27 @@ const recover = () => {
   act(() => latest().open());
 };
 
+it("at the table the full screen comes 30 s after the drop, when the server's seat hold ends: the pill alone at 29 s", async () => {
+  const { LOST_AFTER_MS } = await mount();
+  // the same window as server.py TAKEOVER_AFTER (pinned by test_client_server_constants.py)
+  expect(LOST_AFTER_MS).toBe(30_000);
+  act(() => latest().open());
+  act(() => latest().deliver({ type: "resume", room: "ABCD", token: "tok-1" }));
+  act(() => latest().deliver(playing));
+  act(() => latest().close());
+  act(() => { vi.advanceTimersByTime(29_000); });
+  expect(lost()).toBeNull();
+  expect(banner()?.textContent).toContain("Reconnecting…");
+  expect(retryIn()?.textContent).toBe("Retry");
+  expect(host.querySelector(".table-screen")).not.toBeNull();
+  act(() => { vi.advanceTimersByTime(999); });
+  expect(lost()).toBeNull();
+  act(() => { vi.advanceTimersByTime(1); });
+  expect(banner()).toBeNull();
+  expect(lost()?.querySelector("h1")?.textContent).toBe("No connection");
+  expect(lost()?.textContent).toContain("A bot holds your seat.");
+});
+
 it("at the table a drop shows the pill, Retry at 10 s, the full screen at 30 s, and a reconnect resumes the seat and clears it", async () => {
   const { ws, RETRY_AFTER_MS, LOST_AFTER_MS } = await mount();
   ws.saveName("Me");

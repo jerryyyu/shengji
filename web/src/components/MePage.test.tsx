@@ -49,9 +49,11 @@ beforeAll(() => {
 
 let calls: { url: string; method: string }[];
 let deleteStatus = 204;
+let games: (typeof GAME)[];
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
+  games = [GAME];
   forgetHomeSession();
   guestName.reset();
   calls = [];
@@ -67,7 +69,7 @@ beforeEach(() => {
       return { status: 200, json: async () => JSON.parse(String(init?.body)) } as Response;
     }
     const body = url === "/api/me/stats" ? STATS
-      : url.startsWith("/api/me/games?") ? { games: [GAME], next_before: null } : null;
+      : url.startsWith("/api/me/games?") ? { games, next_before: null } : null;
     return { status: body ? 200 : 404, json: async () => body ?? {} } as Response;
   }) as typeof fetch;
 });
@@ -143,6 +145,14 @@ describe("signed in", () => {
     expect(row.querySelector(".games-row-title")?.textContent).toBe("You & Mei vs Sam, Wen");
     expect(row.parentElement!.querySelectorAll("button")).toHaveLength(1);
     expect(host.querySelector(".me-tile")).toBeNull();
+  });
+
+  it("a minute past local midnight, the game before midnight heads Yesterday and the one after it Today", async () => {
+    const midnight = new Date(2026, 5, 16, 0, 0, 0).getTime();
+    vi.setSystemTime(midnight + 60_000);
+    games = [{ ...GAME, id: "g2", started_at: midnight / 1000 + 10 }, { ...GAME, id: "g1", started_at: midnight / 1000 - 30 }];
+    await render("games");
+    expect([...host.querySelectorAll(".grp-head")].map((h) => h.textContent)).toEqual(["Today", "Yesterday", "Settings"]);
   });
 
   it("the account's settings and help rows sit under Games too, below the games", async () => {

@@ -5816,6 +5816,12 @@ body.keyboard-open .tabbar { display: none; }
   width: calc(var(--u) * 1200);
   height: calc(var(--u) * 630);
 }
+/* A phone held sideways in a browser (the app locks the lobby upright) has
+   no room for the preview: without it Play and Duo sit clear of the tab bar
+   in the first view. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .home-narrow .play-tab .lobby-preview { display: none; }
+}
 /* short phones give the title a little less room */
 @media (max-height: 740px) {
   .home-narrow .play-tab .game-title { font-size: 38px; }
@@ -5851,6 +5857,21 @@ body.keyboard-open .tabbar { display: none; }
   padding: 6px;
   border-radius: 16px;
   background: #1b2729;
+}
+/* Stuck, the row's backing runs on down to the tab bar, so no setting shows
+   in the 16px between them. The panel clips it: at rest it covers only the
+   panel's own bottom padding, the same colour. */
+.home-narrow .play-table-up .tp { overflow: clip; }
+.home-narrow .play-table-up .tp-acts::after,
+.home-narrow .play-table-up .tp-led::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% - 16px);
+  height: 32px;
+  background: #1b2729;
+  z-index: -1;
 }
 
 /* The Play tab starts at the top like the other tabs, at every width. */

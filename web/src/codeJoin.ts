@@ -17,6 +17,7 @@ import type { ConnStatus } from "./ws";
 import { conn, getResumeToken, getSavedName, getSavedRoom } from "./ws";
 import { beforeOnlineSetup } from "./deviceAccount";
 import { decideIntent, intentToJoin } from "./intent";
+import { t, tIn } from "./i18n";
 
 /** Where a code came from: the Play box or a link. */
 export type CodeFrom = "play" | "link";
@@ -90,6 +91,8 @@ export class CodeStore {
   private seenSeated = false;
   private place: Place = { ready: false, seatedAt: null };
   private timer: number | null = null;
+  /** The waiting peek re-reads a panel already showing, on the page's return. */
+  private refreshing = false;
 
   attach(): void {
     if (this.attached) return;
@@ -97,6 +100,22 @@ export class CodeStore {
     // a test may stand in a partial socket
     conn.subscribe?.((m) => this.onMessage(m));
     conn.subscribeStatus?.((s) => this.onStatus(s));
+    // a table can end while its panel shows: back on the page, look again
+    if (typeof window === "undefined") return;
+    window.addEventListener("focus", () => this.refresh());
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") this.refresh();
+    });
+  }
+
+  /** Peek a showing panel's code again: fresh seats, or, for a table that
+   *  ended meanwhile, the panel closes with its one line. */
+  refresh(): void {
+    const j = this.view;
+    if (!j || j.step !== "panel" || !this.place.ready) return;
+    this.refreshing = true;
+    this.set({ ...j, step: "peek" });
+    this.sendPeek(j.code);
   }
 
   subscribe = (fn: () => void): (() => void) => {
@@ -111,6 +130,7 @@ export class CodeStore {
       window.clearTimeout(this.timer);
       this.timer = null;
     }
+    if (next?.step !== "peek") this.refreshing = false;
     this.view = next;
     for (const fn of this.listeners) fn();
   }
@@ -219,6 +239,7 @@ export class CodeStore {
     }
     if (!conn.send({ type: "table_peek", code })) return false;
     this.asked = true;
+    this.refreshing = false;
     this.set({ code, from: "play", step: "peek", peek: null, full: false, seat: null });
     return true;
   }
@@ -304,9 +325,13 @@ export class CodeStore {
     }
     if (msg.type === "room_seats") {
       if (msg.room !== j.code || j.step !== "peek") return;
+      const again = this.refreshing;
+      this.refreshing = false;
       if (msg.table && msg.closed) {
-        // a Join of the host's is in flight: as a table_closed answer
+        // a Join of the host's is in flight: as a table_closed answer; a
+        // second look at a showing panel finds its table ended
         this.drop();
+        if (again) showToast(t("roundend.toastGameEnded"));
         return;
       }
       if (msg.table && msg.seats.some((sd) => sd.you)) {
@@ -327,6 +352,15 @@ export class CodeStore {
     if (msg.peek !== undefined) {
       // the peek's own refusal: the code names nothing (or the limit is reached)
       if (msg.peek !== j.code || j.step !== "peek") return;
+      if (this.refreshing) {
+        // a second look: a code that names nothing now is a table that ended;
+        // any other refusal (the lookup limit) leaves the panel as it was
+        if (msg.message === tIn("en", "roundend.srvNoCode")) {
+          this.drop();
+          showToast(t("roundend.toastGameEnded"));
+        } else this.set({ ...j, step: "panel" });
+        return;
+      }
       this.drop();
       showToast(msg.message);
       return;
@@ -364,6 +398,7 @@ export class CodeStore {
     this.linkTaken = false;
     this.asked = false;
     this.seenSeated = false;
+    this.refreshing = false;
     this.place = { ready: false, seatedAt: null };
   }
 }

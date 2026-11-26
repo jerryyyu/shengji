@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Leaderboard from "./Leaderboard";
+import { tIn } from "../i18n";
 import { IdentitySheet } from "./GuestChip";
 import { guestName } from "../guestName";
 import { auth } from "../auth";
@@ -351,6 +352,11 @@ describe("this week's movement and the top three", () => {
     expect(listed[0].textContent).toBe("1SShrewd1,712▲2, up 2 places this week");
     // the pinned own row too
     expect(host.querySelector(".lb-pin .lb-move [aria-hidden]")?.textContent).toBe("▼1");
+    // one place is singular when read aloud; Chinese has no plural
+    expect(host.querySelector(".lb-pin .lb-move .sr-only")?.textContent).toBe(", down 1 place this week");
+    expect(tIn("en", "me.board.moveUp", { n: 1 })).toBe("up 1 place this week");
+    expect(tIn("zh-Hans", "me.board.moveDown", { n: 1 })).toBe("本周下降 1 名");
+    expect(tIn("zh-Hans", "me.board.moveUp", { n: 3 })).toBe("本周上升 3 名");
   });
 
   it("puts the top three's ranks on gold, silver and bronze discs", async () => {

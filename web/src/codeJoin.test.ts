@@ -425,3 +425,51 @@ describe("older links", () => {
     expect(codes.view?.code).toBe("ABCD");
   });
 });
+
+describe("a panel whose table ends while it shows", () => {
+  it("looks again when the page comes back, and closes with the game-ended line", () => {
+    codes.setPlace(lobby);
+    codes.open("FG3K");
+    say(TABLE);
+    expect(codes.view?.step).toBe("panel");
+    sent.length = 0;
+    window.dispatchEvent(new Event("focus"));
+    expect(sent).toEqual([{ type: "table_peek", code: "FG3K" }]);
+    // the panel stays up while it looks
+    expect(panelShown(codes.view)).toBe(true);
+    say(MISS);
+    expect(codes.view).toBeNull();
+    expect(currentToast()?.text).toBe("That game has ended.");
+  });
+
+  it("a closed table's answer closes it the same way", () => {
+    codes.setPlace(lobby);
+    codes.open("FG3K");
+    say(TABLE);
+    codes.refresh();
+    say({ ...TABLE, closed: true });
+    expect(codes.view).toBeNull();
+    expect(currentToast()?.text).toBe("That game has ended.");
+  });
+
+  it("a table still there refreshes its seats, and the lookup limit leaves the panel as it was", () => {
+    codes.setPlace(lobby);
+    codes.open("FG3K");
+    say(TABLE);
+    codes.refresh();
+    say({ ...TABLE, seats: TABLE.seats.map((x) => (x.seat === 1 ? { ...x, state: "taken", name: "Bo" } : x)) });
+    expect(codes.view?.step).toBe("panel");
+    expect(currentToast()).toBeNull();
+    codes.refresh();
+    say(LIMITED);
+    expect(codes.view?.step).toBe("panel");
+    expect(currentToast()).toBeNull();
+  });
+
+  it("a fresh peek's refusal is still the server's line", () => {
+    codes.setPlace(lobby);
+    codes.open("FG3K");
+    say(MISS);
+    expect(currentToast()?.text).toBe("No table has that code.");
+  });
+});

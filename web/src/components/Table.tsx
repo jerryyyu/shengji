@@ -309,6 +309,9 @@ function JoinPillLeave({ ranked, guest }: { ranked: boolean; guest: boolean }) {
   );
 }
 
+/** The id of the newest line in a chat log; 0 for an empty one. */
+const lastChatId = (log: readonly ChatMsg[]) => log.reduce((m, l) => Math.max(m, l.id), 0);
+
 export default function Table({ state }: { state: GameState }) {
   const t = useT();
   // The last state without a result, and the socket that delivered it (as
@@ -331,16 +334,19 @@ export default function Table({ state }: { state: GameState }) {
   // Seed from the connection's buffer: scrollback for a joiner arrives before
   // this component exists, so subscribing alone loses it.
   const [chat, setChat] = useState<ChatMsg[]>(() => conn.chatHistory() as ChatMsg[]);
-  const [unread, setUnread] = useState(0);
   useEffect(() => conn.subscribe((msg: ServerMsg) => {
     // chat and chat_history both mutate the log; read it back from the
     // connection rather than reconstructing it here.
     if (msg.type !== "chat" && msg.type !== "chat_history") return;
     setChat(() => conn.chatHistory() as ChatMsg[]);
-    setUnread((u) => (chatOpenRef.current ? 0 : u + 1));
   }), []);
-  const chatOpenRef = useRef(false);
-  useEffect(() => { chatOpenRef.current = chatOpen; if (chatOpen) setUnread(0); }, [chatOpen]);
+  // Unread is what someone else wrote after the last line seen, as the
+  // panel's chat row counts it: system lines (joined, left, reconnected),
+  // your own lines and a reconnect's replayed scrollback never count.
+  const [seenId, setSeenId] = useState(() => lastChatId(chat));
+  useEffect(() => { if (chatOpen) setSeenId(lastChatId(chat)); }, [chatOpen, chat]);
+  const unread = chatOpen ? 0
+    : chat.filter((m) => m.id > seenId && m.seat !== -1 && m.seat !== state.you).length;
   // the server marks the seats this viewer blocked, in this game and every later one
   useEffect(() => syncBlocked(state.room, state.players), [state.room, state.players]);
   const [prevState, setPrevState] = useState(state);

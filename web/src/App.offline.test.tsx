@@ -539,3 +539,29 @@ it("in the app the on-device server loads once the page is connected and idle", 
     vi.doUnmock("./offline/server");
   }
 });
+
+it("How to play's practice round offline deals under a signed-in account's own name, as Start does", async () => {
+  // the app with no network, How to play's last step in view
+  at("", "capacitor:");
+  netUp = false;
+  Object.defineProperty(window, "location", { configurable: true, value: { ...window.location, hash: "#/howto/10" } });
+  const { auth } = await import("./auth");
+  auth.state = { status: "in", clientId: "cid", user: {
+    name: "Jerry Yu", email: "j@x", picture: null, display_name: "Jerry", name_shown: "Jerry" } };
+  // an old guest name is still saved on this device
+  await mount("Old Guest");
+  const { conn } = await import("./ws");
+  const send = vi.spyOn(conn, "send");
+  const practice = () => button("Play a practice round");
+  await until(() => practice() !== undefined && conn.status === "open");
+  act(() => practice()!.click());
+  // this test's location is a plain object, so the guide's close is told by hand
+  act(() => {
+    (window.location as { hash: string }).hash = "";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  });
+  await until(() => host.querySelector(".table-screen") !== null);
+  const sent = send.mock.calls.map(([m]) => m).filter((m) => m.type === "create_room");
+  expect(sent).toEqual([{ type: "create_room", name: "Jerry", start: true, bot_level: "beginner" }]);
+  send.mockRestore();
+});

@@ -1,8 +1,10 @@
 // The How to play guide is a hash route: `#/howto` and `#/howto/<n>` pick the
 // step, Next/Back and the dots move the hash, and any other hash is no guide.
 import { act } from "react";
+import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { GameState, StatePlayer } from "../protocol";
 import HowTo from "./HowTo";
 import { parseHowto, useHowtoRoute } from "./route";
 
@@ -97,12 +99,14 @@ describe("the stepped guide", () => {
     expect(counter()).toBe("9 of 10");
   });
 
-  it("an out-of-range step clamps to the last step, which offers Start playing", async () => {
+  it("an out-of-range step clamps to the last step, which offers Done alone where no round can start", async () => {
     await open("#/howto/99");
     expect(title()).toBe("Win a game");
     expect(counter()).toBe("10 of 10");
     expect(button("Next")).toBeUndefined();
-    await click(button("Start playing"));
+    expect(button("Play a practice round")).toBeUndefined();
+    expect(button("Done")?.className).toContain("gold");
+    await click(button("Done"));
     expect(window.location.hash).toBe("");
     expect(host.querySelector(".no-guide")).not.toBeNull();
   });
@@ -191,7 +195,7 @@ it("a swipe anywhere on the guide's screen turns the page, not only on the slide
 });
 
 describe("How to play telemetry", () => {
-  it("each step in view is a howto_step; Start playing marks the last one done", async () => {
+  it("each step in view is a howto_step; Done marks the last one done", async () => {
     const { telemetry } = await import("../telemetry");
     telemetry.reset();
     await open("#/howto");
@@ -200,11 +204,78 @@ describe("How to play telemetry", () => {
     const last = Number(/of (\d+)/.exec(counter() ?? "")?.[1]);
     act(() => { window.location.hash = `#/howto/${last}`; });
     await tick();
-    await click(button("Start playing"));
+    await click(button("Done"));
     const steps = telemetry.pending().filter((e) => e.e === "howto_step")
       .map((e) => [(e as { step: number }).step, (e as { done: boolean }).done]);
     expect(steps).toEqual([[1, false], [2, false], [3, false], [last, false], [last, true]]);
     expect(telemetry.pending().some((e) => e.e === "screen" && (e as { name: string }).name === "howto")).toBe(true);
     telemetry.reset();
+  });
+});
+
+function game(deadline: number | null): GameState {
+  const players = [0, 1, 2, 3].map((seat): StatePlayer => ({
+    seat, name: seat ? `Bot ${seat}` : "You", is_bot: seat !== 0, connected: true,
+    team: (seat % 2) as 0 | 1, cards_left: 25, is_banker: false, takeover_in: null,
+    controller: seat ? "bot" : "human", reserved_for: null, reserved_secs: null,
+    turn_deadline: seat === 0 ? deadline : null,
+  }));
+  return {
+    type: "state", room: "T", you: 0, phase: "play", players, hand: [], levels: ["2", "2"],
+    games_won: [0, 0], banker: 1, trump: null, turn: 0, declare_options: [], current_declaration: null,
+    passed: [], trick: null, last_trick: null, attacker_points: 0, kitty_count: 8, round_result: null,
+    message: null, notice: null,
+  };
+}
+
+async function render(node: ReactNode, hash: string) {
+  window.history.replaceState(null, "", "/" + hash);
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+  await act(async () => root.render(node));
+}
+
+describe("the last step's practice round", () => {
+  it("offers a practice round in gold and Done beside it where a round can start", async () => {
+    const practice = vi.fn();
+    await render(<HowTo route={{ step: 10 }} onPractice={practice} />, "#/howto/10");
+    const gold = button("Play a practice round");
+    expect(gold?.className).toContain("gold");
+    expect(button("Done")?.className).not.toContain("gold");
+    await click(gold);
+    expect(practice).toHaveBeenCalledTimes(1);
+  });
+
+  it("Done goes back without a round", async () => {
+    const practice = vi.fn();
+    await render(<Guided onPractice={practice} />, "#/howto/10");
+    await click(button("Done"));
+    expect(practice).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe("");
+  });
+});
+
+function Guided({ onPractice }: { onPractice: () => void }) {
+  const route = useHowtoRoute();
+  return route ? <HowTo route={route} onPractice={onPractice} /> : <p className="no-guide">lobby</p>;
+}
+
+describe("How to play over a timed game", () => {
+  it("shows your turn and its ring in the header while a decision is yours", async () => {
+    await render(<HowTo route={{ step: 6 }} game={game(41)} />, "#/howto/6");
+    const clock = host.querySelector(".howto-head .howto-clock");
+    expect(clock?.textContent).toBe("41Your turn");
+    expect(clock?.querySelector("[role=timer]")?.getAttribute("aria-label")).toBe("41 seconds left");
+    expect(counter()).toBe("6 of 10");
+  });
+
+  it("shows no clock with no move timer, or with no game", async () => {
+    await render(<HowTo route={{ step: 6 }} game={game(null)} />, "#/howto/6");
+    expect(host.querySelector(".howto-clock")).toBeNull();
+    act(() => root.unmount());
+    host.remove();
+    await render(<HowTo route={{ step: 6 }} />, "#/howto/6");
+    expect(host.querySelector(".howto-clock")).toBeNull();
   });
 });

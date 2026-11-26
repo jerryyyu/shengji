@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
 import { OFFLINE, setOffline } from "../offlineMode";
-import { conn } from "../ws";
+import { conn, getSavedName } from "../ws";
+import { effectiveName } from "../auth";
+import type { AuthState } from "../auth";
 import { queue } from "../queue/store";
 import { clearToast } from "../toast";
 import { isNative } from "../native";
@@ -110,6 +112,14 @@ export const offlineGame = {
     else window.setTimeout(load, 2000);
   },
 };
+
+/** The name a created room seats you under: a signed-in account's own,
+ *  else the guest name kept on this device, else "Player". Play offline's
+ *  Start and How to play's practice round both send it. */
+export function startName(account: AuthState): string {
+  const signedIn = account.status === "in" && account.user ? account.user : null;
+  return (signedIn ? effectiveName(signedIn) : getSavedName()).trim() || "Player";
+}
 
 /** The offline table's Bots. */
 export function useOfflineBotLevel(): BotLevel {

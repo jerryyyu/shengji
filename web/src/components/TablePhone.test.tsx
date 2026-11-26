@@ -735,6 +735,38 @@ describe("move timer", () => {
     [player(0, over), player(1), player(2), player(3)];
   afterEach(() => { vi.useRealTimers(); });
 
+  it("keeps your deadline from the table into How to play and back, with no frame between", async () => {
+    const { default: HowTo } = await import("../howto/HowTo");
+    vi.useFakeTimers();
+    const s = state({ turn: 0, players: mine({ turn_deadline: 60 }) });
+    render(s);
+    expect(host.querySelector(".action-bar .timer-ring")!.textContent).toBe("60");
+    act(() => { vi.advanceTimersByTime(40_000); });
+    // the guide opens over the same frame: 20 s are left, not the frame's 60
+    act(() => root.render(<HowTo route={{ step: 6 }} game={s} />));
+    expect(host.querySelector(".howto-clock .timer-ring")!.textContent).toBe("20");
+    act(() => { vi.advanceTimersByTime(10_000); });
+    expect(host.querySelector(".howto-clock .timer-ring")!.textContent).toBe("10");
+    act(() => { vi.advanceTimersByTime(3000); });
+    // back to the table, still no new frame: 7 s left
+    render(s);
+    expect(host.querySelector(".action-bar .timer-ring")!.textContent).toBe("7");
+  });
+
+  it("a guide opened before the table first draws a frame counts from that frame too", async () => {
+    const { default: HowTo } = await import("../howto/HowTo");
+    vi.useFakeTimers();
+    const s = state({ turn: 0, players: mine({ turn_deadline: 45 }) });
+    act(() => root.render(<HowTo route={{ step: 6 }} game={s} />));
+    expect(host.querySelector(".howto-clock .timer-ring")!.textContent).toBe("45");
+    act(() => { vi.advanceTimersByTime(30_000); });
+    render(s);
+    expect(host.querySelector(".action-bar .timer-ring")!.textContent).toBe("15");
+    // a new frame restarts the count from its own figure
+    render(state({ turn: 0, players: mine({ turn_deadline: 50 }) }));
+    expect(host.querySelector(".action-bar .timer-ring")!.textContent).toBe("50");
+  });
+
   it("shows your ring from the first second, with the seconds counting down, red in the last ten", () => {
     vi.useFakeTimers();
     render(state({ turn: 0, players: mine({ turn_deadline: 60 }) }));

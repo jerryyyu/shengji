@@ -2870,6 +2870,16 @@ async def _create_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | N
         await send(ws, {"type": "error", "code": "bad_start_level",
                         "message": "Unknown starting level."})
         return None
+    # Bots: absent (or null) means the served bot; present and not one of
+    # ``matchmaking.BOT_LEVELS`` is refused, as a wrong level is. A saved
+    # game keeps the served bot.
+    bot_level = msg.get("bot_level")
+    if bot_level is None:
+        bot_level = "advanced"
+    elif bot_level not in matchmaking.BOT_LEVELS:
+        await send(ws, {"type": "error", "code": "bad_setting",
+                        "message": "Bots is Beginner, Standard or Advanced."})
+        return None
     resume = None
     if "resume_from" in msg:
         resume = await _resume_point(account_id(), msg.get("resume_from"))
@@ -2891,7 +2901,8 @@ async def _create_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | N
     # joins.
     ranked = bool(resume is not None and resume.get("ranked"))
     room = Room(code=new_code(), start_level=start_level, resume=resume,
-                origin_ip=caller.ip, matched=ranked, move_timer=ranked, queued=ranked)
+                origin_ip=caller.ip, matched=ranked, move_timer=ranked, queued=ranked,
+                bot_level=bot_level if resume is None else "advanced")
     rooms[room.code] = room
     # Through _attach, as every seat: it bumps the generation and issues
     # the resume token, so the creator has an identity and an overlapping

@@ -1575,6 +1575,38 @@ def test_refused_start_level_leaves_the_socket_usable(client):
         assert _drain(a, "room")["start_level"] == "2"
 
 
+def test_create_room_seats_the_chosen_bots(client, monkeypatch):
+    """How to play's practice round: ``bot_level`` picks the bots of a
+    created room, which stays casual; absent, the served bot plays."""
+    import copy
+    from shengji.api import server as srv
+
+    built = []
+    monkeypatch.setattr(srv, "make_beginner_bot",
+                        lambda served, seed: built.append(seed) or copy.copy(served))
+    with client.websocket_connect("/ws") as a:
+        m, _ = _created_room(a, bot_level="beginner", start=True)
+        assert m["bot_level"] == "beginner" and m["matched"] is False
+        room = srv.rooms[m["room"]]
+        assert room.bot_level == "beginner" and room.move_timer is False and len(built) == 1
+    with client.websocket_connect("/ws") as b:
+        m, _ = _created_room(b, name="mei")
+        assert m["bot_level"] == "advanced"
+
+
+@pytest.mark.parametrize("bad", ["expert", "", 1, True, ["beginner"], {"b": 1}])
+def test_unknown_bot_levels_are_refused_and_create_no_room(client, bad):
+    from shengji.api import server as srv
+
+    before = set(srv.rooms)
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry", "bot_level": bad})
+        assert _drain(a, "error")["code"] == "bad_setting"
+        a.send_json({"type": "create_room", "name": "jerry"})
+        assert _drain(a, "room")["bot_level"] == "advanced"
+    assert len(set(srv.rooms) - before) <= 1
+
+
 @pytest.mark.parametrize("bad", [1, 8, None, ["8"], {"r": "8"}, True])
 def test_non_string_start_levels_are_refused(client, bad):
     """`None` is the one value that means "unspecified" -- everything else

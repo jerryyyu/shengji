@@ -94,6 +94,7 @@ Code sources for the live strings: `web/src/queue/tableText.ts` (join lines :59-
 | round_end_ladder | hand edit | They took 35 of 80. We go up 1, to 3. (the round end's result sentence; zh 闲家得 35 分（满 80 上台）。我们升 1 级，打 3。) | cut (a rank lane per team and the attackers' points bar show it; the status line keeps Next banker; Jerry 2026-11-24, design B) |
 | lobby_owner_starts | hand edit | Waiting for Alice / Waiting for 2 players (the owner's button while a joiner was not Ready; zh 等 Alice / 等 2 位玩家), and a joiner's "Waiting for Alice" after its Ready | cut (Jerry 2026-11-26: the owner's Start with bots is always enabled; a joiner's Ready stays Ready, pressed, and its line reads "Waiting for Alice to start") |
 | round_end_ladder | hand edit | Levels restart at 2. (a won game's result line; zh 双方从 2 重新打起。) | cut (the winners' lane ends past A on the crown and the button says Next game; Jerry 2026-11-24: "We don't need level restart at 2") |
+| howto_end | hand edit | Start playing (How to play's last button; zh 开始玩) | Play a practice round, then Done (where no table is open: a Casual round against Beginner bots; elsewhere Done alone; Jerry 2026-11-26, decision mocks section 5 B) |
 
 ## Kept, and why
 

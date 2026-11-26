@@ -50,7 +50,7 @@ describe("the timer ring", () => {
 
   it("keeps the widest number inside the band with 2px clear at every size", () => {
     const all = rings();
-    // the table's ring, the thin seat ring, and the small ring on buttons and the strip
+    // the table's ring, the thin seat ring, and the small ring on buttons, the strip and How to play's header
     expect(new Set(all.map((r) => `${r.size}/${r.band}`))).toEqual(new Set(["44/4", "26/1.5", "32/2.5"]));
     for (const r of all) {
       const font = (r.size - 4 * r.band - 4) / 1.4;

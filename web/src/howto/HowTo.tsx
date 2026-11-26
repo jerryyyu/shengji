@@ -9,6 +9,8 @@ import type { HowtoRoute } from "./route";
 import Picture from "./Picture";
 import type { Frame } from "./useTimeline";
 import { telemetry, useScreen } from "../telemetry";
+import { TimerRing } from "../components/MoveClock";
+import { MOVE_SECS, useMoveClockSample } from "../useMoveClock";
 import { t, tx, useT } from "../i18n";
 import type { MessageKey } from "../i18n";
 
@@ -536,31 +538,53 @@ const STEPS: Step[] = [
   },
 ];
 
-function Head({ count }: { count: ReactNode }) {
+/** Your move timer while the guide covers a timed game: the table's ring
+ *  and "Your turn", in the header, for as long as a decision is yours. The
+ *  game runs on; Back is the way to it. */
+function Clock({ game }: { game: GameState }) {
+  const t = useT();
+  const me = game.players.find((p) => p.seat === game.you) ?? null;
+  const clock = useMoveClockSample(me?.turn_deadline, game);
+  if (clock.left === null) return null;
+  return (
+    <span className="howto-clock">
+      <TimerRing left={clock.left} end={clock.end} total={MOVE_SECS} />
+      {t("table.yourTurn")}
+    </span>
+  );
+}
+
+function Head({ count, game }: { count: ReactNode; game: GameState | null }) {
   const t = useT();
   return (
     <header className="howto-head">
       <button className="btn subtle games-back" onClick={closeHowto}>{t("howto.back")}</button>
       <h1 className="howto-page">{t("howto.page")}</h1>
+      {game ? <Clock game={game} /> : null}
       <span className="howto-count">{count}</span>
     </header>
   );
 }
 
-function Stepper({ step }: { step: number }) {
+function Stepper({ step, game, onPractice }: { step: number; game: GameState | null; onPractice: (() => void) | null }) {
   const t = useT();
   const n = STEPS.length;
   const i = Math.min(Math.max(step, 1), n) - 1;
   const s = STEPS[i];
   const go = (to: number) => openHowto(Math.min(Math.max(to, 1), n));
   useEffect(() => { telemetry.howtoStep(i + 1, false); }, [i]);
-  const startPlaying = () => {
+  const done = () => {
     telemetry.howtoStep(n, true);
     closeHowto();
   };
+  const practice = () => {
+    telemetry.howtoStep(n, true);
+    telemetry.tap("play_bots");
+    onPractice?.();
+  };
   return (
     <div className="panel games-panel howto-panel">
-      <Head count={t("howto.count", { n: i + 1, count: n })} />
+      <Head count={t("howto.count", { n: i + 1, count: n })} game={game} />
       {/* Keyed by step, so a slide's picture starts afresh each time it is entered. */}
       <section key={i} className="howto-step" aria-roledescription="slide">
         <h2 className="howto-title">{t(s.titleKey)}</h2>
@@ -580,9 +604,16 @@ function Stepper({ step }: { step: number }) {
         {/* One way forward: a step back is a swipe or the browser's own back,
             and the header's ‹ Back is the one way out. */}
         <div className="howto-buttons">
+          {/* the last step deals a practice round against Beginner bots
+              when you sit nowhere; Done goes back */}
           {i < n - 1
             ? <button className="btn primary big" onClick={() => go(i + 2)}>{t("howto.next")}</button>
-            : <button className="btn gold big" onClick={startPlaying}>{t("howto.startPlaying")}</button>}
+            : onPractice ? (
+              <>
+                <button className="btn gold big" onClick={practice}>{t("howto.practice")}</button>
+                <button className="btn big" onClick={done}>{t("common.done")}</button>
+              </>
+            ) : <button className="btn gold big" onClick={done}>{t("common.done")}</button>}
         </div>
       </nav>
     </div>
@@ -620,12 +651,16 @@ function useSwipe(step: number) {
   };
 }
 
-export default function HowTo({ route }: { route: HowtoRoute }) {
+/** `game`: the game the guide was opened over, whose move timer its header
+ *  shows; `onPractice`: deals a practice round (null where none can start). */
+export default function HowTo({ route, game = null, onPractice = null }: {
+  route: HowtoRoute; game?: GameState | null; onPractice?: (() => void) | null;
+}) {
   useScreen("howto");
   const swipe = useSwipe(route.step);
   return (
     <div className="screen lobby-screen howto-screen" {...swipe}>
-      <Stepper step={route.step} />
+      <Stepper step={route.step} game={game} onPractice={onPractice} />
     </div>
   );
 }

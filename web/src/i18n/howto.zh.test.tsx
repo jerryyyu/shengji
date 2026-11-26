@@ -75,7 +75,7 @@ describe("How to play in zh-Hans", () => {
     ]);
   });
 
-  it("explains the last-trick multiplier and ends on 开始玩", async () => {
+  it("explains the last-trick multiplier and ends on 完成, or 打一局练习 then 完成 where a round can start", async () => {
     await open(8);
     expect(text(".howto-kitty-head")).toBe("最后一轮抠底");
     expect(text(".howto-kitty-mult")).toBe("×2 单张 · ×4 对子 · ×8 两对的拖拉机");
@@ -85,7 +85,14 @@ describe("How to play in zh-Hans", () => {
     expect(text(".howto-caption")).toBe("顶栏记着盘数，我方在前。牌桌继续打。");
     expect(all()).toContain("盘数 1–0");
     expect(all()).toContain("打 A");
-    expect(text(".howto-nav button")).toBe("开始玩");
+    expect(text(".howto-nav button")).toBe("完成");
+    act(() => root.unmount());
+    host.remove();
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () => root.render(<HowTo route={{ step: 10 }} onPractice={() => {}} />));
+    expect([...host.querySelectorAll(".howto-nav button")].map((b) => b.textContent)).toEqual(["打一局练习", "完成"]);
   });
 
   it("redraws the open step and its picture when the language changes", async () => {

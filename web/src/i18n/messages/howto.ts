@@ -6,7 +6,7 @@ export const howto = defineMessages({
   "howto.count": { en: "{n} of {count}", zh: "{n}/{count}" },
   "howto.steps": { en: "Steps", zh: "步骤" },
   "howto.next": { en: "Next", zh: "下一步" },
-  "howto.startPlaying": { en: "Start playing", zh: "开始玩" },
+  "howto.practice": { en: "Play a practice round", zh: "打一局练习" },
 
   "howto.anim.pause": { en: "Pause animation", zh: "暂停动画" },
   "howto.anim.play": { en: "Play animation", zh: "播放动画" },

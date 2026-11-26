@@ -714,6 +714,7 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
     ("L-smoke", "sz3_joint_recipe", "RECIPE_SHA", 8),
     ("RT4-M-A-smoke", "rt4m_joint", "RECIPE_SHA256", 6),
     ("RT4-M-A-micro4-smoke", "rt4m_joint", "RECIPE_SHA256", 6),
+    ("RT4-M-A-micro8-smoke", "rt4m_joint", "RECIPE_SHA256", 6),
 ])
 def test_split_smoke_resumes_the_real_trainer_and_consumes_its_capacity(
         mps_worker_recipe, phase, module, pin, depth):
@@ -753,7 +754,7 @@ def test_split_smoke_resumes_the_real_trainer_and_consumes_its_capacity(
     if module == "rt4m_joint":
         actual = json.loads((training / "run.json").read_bytes())
         assert (actual["lr"], actual["head_lr"], actual["readout_lr"]) == (3e-4, 1e-3, 1e-3)
-        assert actual.get("microbatch_rounds") == (4 if phase == "RT4-M-A-micro4-smoke" else None)
+        assert actual.get("microbatch_rounds") == {"RT4-M-A-micro4-smoke": 4, "RT4-M-A-micro8-smoke": 8}.get(phase)
     status = (training / "status.log").read_text()
     assert " UTR PAUSED at epoch 1 buffer 1/" in status
     assert " RESUME epoch 0 buffer 1 device=mps" in status
@@ -937,3 +938,33 @@ def test_partition_refuses_redirected_arm_cache(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="escapes the cache root"):
         arm.partition(tmp_path, cache_root, 0, None)
     assert not list(elsewhere.iterdir())
+
+
+def test_microbatch_comparison_rejects_mismatched_work_or_recipe(tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(str(WORKER.parent))
+    import rt4m_microbatch_compare as reader
+
+    legs = []
+    results = {}
+    for i, micro in enumerate((4, 8, 4, 8)):
+        path = tmp_path / str(i)
+        path.mkdir()
+        (path / "run.json").write_text(json.dumps(dict(microbatch_rounds=micro, rounds_per_batch=16,
+                                                       device="mps", seed=1)))
+        seconds = 10 if micro == 4 else 8
+        legs.append((path, seconds + 5))
+        results[path] = dict(capacity=dict(steps=2, rows=30, train_seconds=seconds),
+                             calibration=dict.fromkeys(reader.METRICS, 1.0))
+    monkeypatch.setattr(reader, "smoke_result", lambda directory, required_batch_rounds: results[directory])
+    summary = reader.compare(legs)
+    assert summary["pooled_train_speedup"] == 1.25
+    assert summary["pooled_worker_speedup"] == pytest.approx(15/13)
+    assert summary["paired_calibration_delta"] == [0, 0]
+    results[path]["capacity"]["steps"] += 1
+    with pytest.raises(ValueError, match="completed work"):
+        reader.compare(legs)
+    results[path]["capacity"]["steps"] -= 1
+    identity = json.loads((path / "run.json").read_text())
+    (path / "run.json").write_text(json.dumps(dict(identity, seed=2)))
+    with pytest.raises(ValueError, match="settings"):
+        reader.compare(legs)

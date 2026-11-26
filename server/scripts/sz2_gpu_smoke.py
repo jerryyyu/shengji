@@ -263,7 +263,7 @@ def monitor(child, baseline, check_signal, verify_stopped, *, pressure_limit=4, 
 def run_segment(root, phase, check_signal, expected_sha=None, min_free_gib=None, recover_checkpoint_sha256=None):
     expected_sha = provider_digest(expected_sha)
     root = root.resolve(strict=True)
-    rt4_smoke = phase in ("RT4-M-A-smoke", "RT4-M-A-micro4-smoke")
+    rt4_smoke = phase in ("RT4-M-A-smoke", "RT4-M-A-micro4-smoke", "RT4-M-A-micro8-smoke")
     sz3 = phase in ("L-smoke", "M", "L-prefix", "L-finish")
     split_smoke = phase == "L-smoke" or rt4_smoke
     smoke = phase == "smoke" or split_smoke
@@ -348,7 +348,7 @@ def run_segment(root, phase, check_signal, expected_sha=None, min_free_gib=None,
         if rt4_smoke:
             from shengji.train.unified_readout import _run_identity, build_parser
             parsed = build_parser().parse_args(argv[4:])
-            expected_micro = 4 if phase == "RT4-M-A-micro4-smoke" else None
+            expected_micro = {"RT4-M-A-micro4-smoke": 4, "RT4-M-A-micro8-smoke": 8}.get(phase)
             if (parsed.microbatch_rounds != expected_micro or
                     json.loads((output / "train/run.json").read_bytes()) != _run_identity(parsed)):
                 raise ValueError("capacity smoke must match the requested trainer recipe")
@@ -364,7 +364,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
     parser.add_argument("--phase", choices=("smoke", "L-smoke", "M", "L-prefix", "L-finish", "RT4-M-A-smoke",
-                                            "RT4-M-A-micro4-smoke", "RT4-M-A", "small", "medium-prefix",
+                                            "RT4-M-A-micro4-smoke", "RT4-M-A-micro8-smoke", "RT4-M-A", "small", "medium-prefix",
                                             "medium-finish"), default="smoke")
     parser.add_argument("--min-free-gib", type=int, help="minimum free space on the training volume")
     parser.add_argument("--provider-sha256", help="reviewed SHA256 of the provider configuration")

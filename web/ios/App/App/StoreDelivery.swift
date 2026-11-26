@@ -47,3 +47,21 @@ final class StoreDelivery {
         return await ledger.finish(id: id)
     }
 }
+
+/// Hands each update to the page on the queue the bridge adds and removes
+/// listeners on, so a delivery never races a listener's registration or
+/// removal (StoreKit's update stream runs on its own task).
+final class UpdateForwarder {
+    private let queue: DispatchQueue
+    private let send: ([String: Any]) -> Void
+
+    init(queue: DispatchQueue, send: @escaping ([String: Any]) -> Void) {
+        self.queue = queue
+        self.send = send
+    }
+
+    func forward(_ transaction: DeliveredTransaction) {
+        let payload = transaction.payload
+        queue.async { self.send(payload) }
+    }
+}

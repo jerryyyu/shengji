@@ -11,7 +11,8 @@ import os
 /// `pending()` hands it over again, at this launch or the next.
 /// - `products({ids})` resolves `{products: [{id, displayName, displayPrice}]}`
 ///   in the order asked; an id the App Store does not know is left out.
-/// - `purchase({id})` resolves `{status: "purchased", jws, productId, transactionId}`,
+/// - `purchase({id, appAccountToken})` passes the account's token (a UUID
+///   from the server) to StoreKit, so Apple signs which account paid, and resolves `{status: "purchased", jws, productId, transactionId}`,
 ///   `{status: "cancelled"}`, `{status: "pending"}` or `{status: "unverified"}`.
 ///   Nothing is finished here.
 /// - `pending()` resolves `{transactions: [{jws, productId, transactionId}]}`:
@@ -45,6 +46,14 @@ public class ShengjiStorePlugin: CAPPlugin, CAPBridgedPlugin {
 
     private let delivery = StoreDelivery(ledger: StoreKitLedger())
 
+    /// Delivers updates on the bridge's queue, where listeners are added and
+    /// removed.
+    private lazy var forwarder = UpdateForwarder(
+        queue: (bridge as? CapacitorBridge)?.dispatchQueue ?? DispatchQueue.main
+    ) { [weak self] payload in
+        self?.notifyListeners("transaction", data: payload, retainUntilConsumed: true)
+    }
+
     private static let log = Logger(subsystem: "com.jerryyu.shengji", category: "store")
 
     /// Listens for the whole life of the plugin and forwards each update to
@@ -52,6 +61,7 @@ public class ShengjiStorePlugin: CAPPlugin, CAPBridgedPlugin {
     private var updatesTask: Task<Void, Never>?
 
     override public func load() {
+        _ = forwarder
         updatesTask = Task.detached { [weak self] in
             for await result in Transaction.updates {
                 guard case .verified(let transaction) = result else {
@@ -64,7 +74,7 @@ public class ShengjiStorePlugin: CAPPlugin, CAPBridgedPlugin {
                 // date, and the server decides what it removes.
                 let delivered = DeliveredTransaction(id: transaction.id, productId: productId,
                                                      jws: result.jwsRepresentation)
-                self.notifyListeners("transaction", data: delivered.payload, retainUntilConsumed: true)
+                self.forwarder.forward(delivered)
                 ShengjiStorePlugin.log.info("update forwarded \(productId, privacy: .public)")
             }
         }
@@ -104,6 +114,14 @@ public class ShengjiStorePlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("id must be a non-empty string", "bad_request")
             return
         }
+        var options: Set<Product.PurchaseOption> = []
+        if let raw = call.getString("appAccountToken") {
+            guard let token = UUID(uuidString: raw) else {
+                call.reject("appAccountToken must be a UUID", "bad_request")
+                return
+            }
+            options.insert(.appAccountToken(token))
+        }
         Task {
             do {
                 guard let product = try await Product.products(for: [id]).first else {
@@ -111,7 +129,7 @@ public class ShengjiStorePlugin: CAPPlugin, CAPBridgedPlugin {
                     call.reject("product not found", "product_not_found")
                     return
                 }
-                switch try await product.purchase() {
+                switch try await product.purchase(options: options) {
                 case .success(let result):
                     switch result {
                     case .verified(let transaction):

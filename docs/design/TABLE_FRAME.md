@@ -15,7 +15,7 @@ to the others since 2026-11-26 (Jerry): the owner's Start never waits for
 it, and nothing starts because every Ready is in.
 
 - `phase`: `"open"` | `"playing"`. `mode`: `"ranked"` | `"casual"`.
-- `seats`: four, in seat order, each `{seat, team, state, name, you, ready, reconnecting, since, sit, pair, leader, left}`;
+- `seats`: four, in seat order, each `{seat, team, state, name, you, ready, reconnecting, since, sit, pair, leader, left, look}`;
   `state` is `taken` | `open` | `held` (kept for a Duo opener's friend) | `bot` (a bot plays it in a game).
 - `settings`: `{allow_joiners, start_level}`. `timers`: `{bots: {at, name, you} | null}`.
 - `chat_log`: the key the table's chat frames carry (`table_chat.table`, or the room code for `chat`).
@@ -57,6 +57,7 @@ fresh socket always gets it. `queue_state {queued: false}`, `queue_removed`,
 | `seats[i].reconnecting` | `table.seats[i].reconnecting` | a person's seat with `connected: false` |
 | `seats[i].since, sit, pair, leader` | `table.seats[i]` same names | null / false |
 | `seats[i].left` | false | `players[i].left` |
+| `seats[i].look` | the person's companion (`"tractor/red"`), null for an open or held seat | `players[i].look`; null for a bot or a seat left by choice |
 | `settings.allow_joiners` | `allow_joiners` | `allow_joiners`, null where absent (a test room) |
 | `settings.start_level` | `start_level` | `start_level` |
 | `timers.bots` | `table.timer`; alone: `{at: bots_at, ...}` or null | null |

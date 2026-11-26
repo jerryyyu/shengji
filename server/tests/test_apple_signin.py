@@ -34,6 +34,15 @@ def _b64(n: int) -> str:
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
 
 
+
+def _without_look(body: dict) -> dict:
+    """``/api/me`` without the companion fields (``tests/test_look.py``
+    holds those), which an account with no look shows as the defaults."""
+    look = {k: body.pop(k) for k in ("look", "ranked_wins", "looks", "companions", "features")}
+    assert look["look"] == "tractor/red" and look["companions"] == "team"
+    assert look["features"] == {"collection": False}
+    return body
+
 @pytest.fixture(scope="module")
 def rsa_key():
     return rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -219,8 +228,9 @@ def test_a_valid_token_creates_the_user_and_a_session(apple_on, rsa_key, client)
     resp = _post(client, _sign(rsa_key, _claims()), authorization_code="code-1",
                  given_name="Ann", family_name="Lee")
     assert resp.status_code == 200
-    assert resp.json() == {"name": "Ann Lee", "email": "x7k2@privaterelay.appleid.com",
-                           "picture": None, "display_name": None, "name_shown": "Ann", "rounds_played": 0, "linked": True}
+    body = _without_look(resp.json())
+    assert body == {"name": "Ann Lee", "email": "x7k2@privaterelay.appleid.com",
+                    "picture": None, "display_name": None, "name_shown": "Ann", "rounds_played": 0, "linked": True}
     cookie = resp.headers["set-cookie"]
     low = cookie.lower()
     assert cookie.startswith("sj_session=") and "httponly" in low and "samesite=lax" in low
@@ -402,7 +412,7 @@ def test_a_v5_database_upgrades_to_v6_and_keeps_every_row(apple_on, tmp_path, rs
         before_links = sorted(db.execute("SELECT * FROM game_players"))
         before_events = sorted(db.execute("SELECT * FROM rating_events"))
     store = accounts.Store(path)
-    assert store.schema_version() == len(accounts.SCHEMA) == 10
+    assert store.schema_version() == len(accounts.SCHEMA)
     with closing(sqlite3.connect(path)) as db:
         after_users = db.execute(
             f"SELECT {accounts._USER_COLUMNS_V5} FROM users ORDER BY id").fetchall()
@@ -481,10 +491,10 @@ def test_google_sign_in_is_unchanged_after_the_migration(apple_on, tmp_path, mon
         "credential": ga._sign(_pem(key), ga._claims(sub="g-1", nonce="n"), kid=ga.KID),
         "nonce": "n"})
     assert resp.status_code == 200
-    assert resp.json() == {"name": "Jerry Yu", "email": "jerry@example.com",
-                           "picture": "https://img.example/jy.png",
-                           "display_name": "Champ", "name_shown": "Champ",
-                           "rounds_played": 1, "linked": True}   # its v5 saved game's one round
+    assert _without_look(resp.json()) == {"name": "Jerry Yu", "email": "jerry@example.com",
+                                          "picture": "https://img.example/jy.png",
+                                          "display_name": "Champ", "name_shown": "Champ",
+                                          "rounds_played": 1, "linked": True}   # its v5 saved game's one round
     assert accounts.STORE.user(1)["google_sub"] == "g-1"
 
 

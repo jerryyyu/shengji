@@ -796,6 +796,10 @@ class Matchmaker:
         c = self.conns.get(uid)
         return (c.name if c is not None else "") or "Player"
 
+    def _look(self, uid: int) -> str:
+        c = self.conns.get(uid)
+        return accounts.account_look(c.user_id if c is not None else None)
+
     def count(self) -> int:
         return sum(e.size for e in self.entries.values())
 
@@ -895,10 +899,11 @@ class Matchmaker:
         for s, u in enumerate(t.seats):
             seat = {"seat": s, "team": s % 2, "state": "held" if s in held else "open",
                     "name": None, "you": False, "ready": False, "reconnecting": False,
-                    "since": None, "sit": None, "pair": False, "leader": False, "left": False}
+                    "since": None, "sit": None, "pair": False, "leader": False, "left": False,
+                    "look": None}
             if u is not None:
                 e = by_user[u]
-                seat.update(state="taken", name=self._name(u), you=u == uid,
+                seat.update(state="taken", name=self._name(u), look=self._look(u), you=u == uid,
                             ready=self._tapped(t, e, u), reconnecting=self._live(u) is None,
                             since=t.seated_at.get(u), sit=t.sit_ids.get(u),
                             pair=e.size == 2, leader=e.leader == u)

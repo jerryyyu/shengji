@@ -1078,6 +1078,7 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
         "phase": phase,
         "players": [{
             "seat": s, "name": room.seats[s].name, "is_bot": room.seats[s].is_bot,
+            "look": seat_look(room.seats[s]),
             "connected": room.seats[s].connected or room.seats[s].is_bot,
             "team": s % 2, "cards_left": len(rnd.hands[s]),
             "is_banker": banker == s,
@@ -1197,9 +1198,16 @@ def room_json(room: Room, seat: int) -> dict:
         "allow_joiners": room.allow_joiners,
         "bot_level": room.bot_level,
         "players": [{"seat": i, "name": s.name, "is_bot": s.is_bot,
-                     "connected": s.connected or s.is_bot}
+                     "connected": s.connected or s.is_bot, "look": seat_look(s)}
                     for i, s in enumerate(room.seats) if s is not None],
     }
+
+
+def seat_look(sd: Seat) -> str | None:
+    """The companion look a person's seat shows (``accounts.account_look``);
+    None for a bot seat, which shows an initial, and for a seat its person
+    left by choice, which the bot plays now."""
+    return None if sd.is_bot or sd.left_by_choice else accounts.account_look(sd.user_id)
 
 
 def room_seats_json(room: Room, device: str | None = None,
@@ -1263,10 +1271,12 @@ def room_table_frame(room: Room, seat: int) -> dict:
         sd = room.seats[i] if i < len(room.seats) else None
         seat_out = {"seat": i, "team": i % 2, "state": "open", "name": None,
                     "you": i == seat, "ready": None, "reconnecting": False, "since": None,
-                    "sit": None, "pair": False, "leader": False, "left": False}
+                    "sit": None, "pair": False, "leader": False, "left": False,
+                    "look": None}
         if sd is not None:
             gone = not sd.is_bot and sd.left_by_choice
             seat_out.update(state="bot" if sd.is_bot or gone else "taken", name=sd.name,
+                            look=None if gone else seat_look(sd),
                             reconnecting=not sd.is_bot and not gone and not sd.connected,
                             left=gone)
         seats.append(seat_out)

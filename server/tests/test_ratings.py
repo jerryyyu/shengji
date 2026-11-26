@@ -1578,7 +1578,7 @@ def test_api_leaderboard_stats_and_visibility(env, monkeypatch):
     assert row["you"] is True and row["rounds"] == 3 and row["provisional"] is True
     assert board["me"]["rank"] == 1
     assert set(row) == {"rank", "name", "rating", "rounds", "levels_per_round",
-                        "week_rank_move", "provisional", "you"}
+                        "week_rank_move", "provisional", "you", "look"}
 
     stats = client.get("/api/me/stats", headers=headers).json()
     assert stats["rounds"] == 3 and stats["rank"] == 1 and stats["won_pct"] == 100.0

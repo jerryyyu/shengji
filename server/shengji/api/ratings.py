@@ -387,7 +387,7 @@ def set_visible(store: accounts.Store, user_id: int, visible: bool) -> bool:
 def _player_rows(conn, since: int) -> list[dict]:
     rows = conn.execute(
         """SELECT u.id, u.name, u.display_name, u.rating, u.rated_rounds,
-                  u.leaderboard_visible,
+                  u.leaderboard_visible, u.look_companion, u.look_colour,
                   COALESCE(SUM(CASE WHEN e.created_at >= ? THEN e.delta END), 0) AS week_delta,
                   COUNT(CASE WHEN e.created_at >= ? THEN 1 END) AS week_rounds,
                   COUNT(CASE WHEN e.created_at < ? THEN 1 END) AS earlier_rounds,
@@ -427,8 +427,8 @@ def _week_rank_moves(players: list[dict]) -> dict[int, int]:
 
 def _public_row(row: Mapping[str, Any], rank: int | None, you: bool,
                 moves: Mapping[int, int] | None = None) -> dict:
-    """One leaderboard row: the display name and numbers only, never the
-    account id or email."""
+    """One leaderboard row: the display name, the look (``accounts.look_id``)
+    and numbers only, never the account id or email."""
     return {
         "rank": rank,
         "name": accounts.effective_name(row) or "Player",
@@ -438,6 +438,7 @@ def _public_row(row: Mapping[str, Any], rank: int | None, you: bool,
         "week_rank_move": moves.get(row["id"]) if moves is not None else None,
         "provisional": int(row["rated_rounds"]) < PROVISIONAL_ROUNDS,
         "you": you,
+        "look": accounts.look_id(row),
     }
 
 

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-import type { GameState } from "../protocol";
+import type { GameState, Notice } from "../protocol";
 import { RANKS } from "../protocol";
 import { DUR, prefersReducedMotion } from "../motion";
 import { useCountUp } from "../useCountUp";
@@ -10,7 +10,7 @@ import { formatTableMessage, isDeclareMessage } from "../messageCopy";
 import { OFFLINE, useNearbySession } from "../offlineMode";
 import { useAuth } from "../auth";
 import { attackingTeam, myTeam } from "../tableCopy";
-import { showToast } from "../toast";
+import { clearToast, currentToast, showToast } from "../toast";
 import { useNearbyUi } from "../nearbyGate";
 import { displayName, t, useT } from "../i18n";
 
@@ -43,32 +43,58 @@ function TrumpChip({ state }: { state: GameState }) {
 }
 
 /** The notice and message on the table now, once told, so a remount of the
- *  table (How to play and back) tells neither again while it stands. */
-const told = { notice: "", message: "" };
+ *  table (How to play and back) tells neither again while it stands.
+ *  `toastId` is the toast that told the notice, so only that one is taken
+ *  down when its trick is gone. */
+const told = { notice: "", message: "", toastId: 0 };
+
+function sameCards(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const x = [...a].sort();
+  const y = [...b].sort();
+  return x.every((c, i) => c === y[i]);
+}
+
+/** True when the trick on the table is led by something other than the
+ *  notice's forced play. The engine keeps a notice for several plays, into
+ *  the next trick, and a "had to play ♦6 ♦6" line above a ♦Q ♦Q lead reads
+ *  as the table contradicting the notice. */
+function anotherLead(state: GameState, notice: Notice): boolean {
+  const lead = state.trick?.plays[0];
+  if (!lead) return false;
+  return lead.seat !== notice.seat || !sameCards(lead.cards, notice.forced);
+}
 
 /** A failed throw and the engine's table messages are told once, as the one
  *  toast. A declaration is not: its tag under the declared cards tells it.
  *  `message` restates a failed throw for one play, so the notice is told
- *  instead of it. */
+ *  instead of it. The failed throw is told only while its forced play leads
+ *  the trick on the table. */
 function useTableToasts(state: GameState) {
-  const notice = state.notice && state.phase === "play" ? state.notice : null;
-  const noticeKey = notice ? `${state.room}:${notice.id}` : "";
+  const standing = state.notice && state.phase === "play" ? state.notice : null;
+  const notice = standing && !anotherLead(state, standing) ? standing : null;
+  const noticeKey = standing ? `${state.room}:${standing.id}` : "";
   useEffect(() => {
     // a round numbers its notices afresh, so once no notice stands the next
     // one is news even with the same id; a remount while it stands is not
-    if (!notice) { told.notice = ""; return; }
+    if (!standing) { told.notice = ""; return; }
+    if (!notice) {
+      if (told.toastId !== 0 && currentToast()?.id === told.toastId) clearToast();
+      told.toastId = 0;
+      return;
+    }
     if (told.notice === noticeKey) return;
     told.notice = noticeKey;
     const thrower = state.players.find((p) => p.seat === notice.seat);
     const name = notice.seat === state.you
       ? t("common.you")
       : thrower ? displayName(thrower.name, thrower.is_bot) : t("table.aPlayer");
-    showToast(t("table.throwFailed", {
+    told.toastId = showToast(t("table.throwFailed", {
       name, tried: notice.attempted.map(shortLabel).join(" "), forced: notice.forced.map(shortLabel).join(" "),
-    }), { info: true });
+    }), { info: true }).id;
     // told on a new notice only; the rest is read with it
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [noticeKey]);
+  }, [noticeKey, notice === null]);
   const message = state.message && !state.notice && !isDeclareMessage(state.message) ? state.message : null;
   const messageKey = message ? `${state.room}:${message}` : "";
   useEffect(() => {

@@ -10,12 +10,13 @@
 // row at a thumb-sized pitch, and every control keeps a 44px hit area. Rendered checks live in the PR's screenshot sweep.
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { SHORT_VIEWPORT, TABLET_SCREEN } from "./phoneLayout";
+import { SHORT_VIEWPORT, TABLET_SCREEN, TABLET_UPRIGHT } from "./phoneLayout";
 
 const css = readFileSync(new URL("./index.css", import.meta.url), "utf8");
 
 const PHONE_BLOCK = ":where(.phone-landscape) {";
 const TABLET_BLOCK = "\n.tablet-table {";
+const UPRIGHT_BLOCK = `\n@media ${TABLET_UPRIGHT} {`;
 
 /** Body of the phone block, braces balanced. */
 function phoneBlock(): string {
@@ -673,6 +674,7 @@ function mediaMatches(query: string, w: number, h: number, pointer: "fine" | "co
     const p = /^\(pointer:\s*(\w+)\)$/.exec(f.trim());
     if (p) return p[1] === pointer;
     if (/^\(orientation:\s*landscape\)$/.test(f.trim())) return w > h;
+    if (/^\(orientation:\s*portrait\)$/.test(f.trim())) return h >= w;
     // a mouse hovers, a finger does not
     if (/^\(hover:\s*hover\)$/.test(f.trim())) return pointer === "fine";
     throw new Error(`unread feature ${f}`);
@@ -700,14 +702,25 @@ describe("a desktop window", () => {
     expect(table(1024, 500)).toBe("phone");
   });
 
-  it("leaves the touch screens where they were", () => {
+  it("keeps a desktop window of any shape off the upright layout", () => {
+    expect(mediaMatches(TABLET_UPRIGHT, 820, 1180, "fine")).toBe(false);
+    expect(table(820, 1180)).toBe("tablet");
+  });
+
+  it("draws the tablet table on every iPad, upright ones under 810px wide included", () => {
     const touch = (w: number, h: number) =>
       mediaMatches(SHORT_VIEWPORT, w, h, "coarse") ? "phone" : mediaMatches(TABLET_SCREEN, w, h, "coarse") ? "tablet" : "wide";
     expect(touch(1133, 744)).toBe("tablet");
     expect(touch(1366, 1024)).toBe("tablet");
     expect(touch(820, 1180)).toBe("tablet");
     expect(touch(1133, 700)).toBe("phone");
-    expect(touch(744, 1133)).toBe("wide");
+    // upright, each play lands at its seat, so a mini's 744px is wide enough
+    expect(touch(744, 1133)).toBe("tablet");
+    expect(touch(768, 1024)).toBe("tablet");
+    expect(touch(768, 954)).toBe("tablet");
+    expect(touch(744, 899)).toBe("wide");
+    for (const [w, h] of [[744, 1133], [768, 1024], [820, 1180], [1024, 1366]]) expect(mediaMatches(TABLET_UPRIGHT, w, h, "coarse")).toBe(true);
+    for (const [w, h] of [[1180, 820], [1366, 1024], [1133, 744]]) expect(mediaMatches(TABLET_UPRIGHT, w, h, "coarse")).toBe(false);
   });
 });
 
@@ -744,7 +757,7 @@ describe("a desktop leaves the small and the touch screen's rules alone", () => 
   // Everything the phone and the tablet blocks style for their screens must
   // live inside them, so a window that matches neither (the wide table) is
   // untouched.
-  const outside = css.replace(block, "").replace(blockAt(TABLET_BLOCK), "");
+  const outside = css.replace(block, "").replace(blockAt(TABLET_BLOCK), "").replace(blockAt(UPRIGHT_BLOCK), "");
 
   it("styles the phone-only classes only inside the phone block", () => {
     for (const cls of ["small-cards", "my-turn", "hud-menu-choice", "hud-menu-confirm", "deal-deck-"]) {
@@ -974,8 +987,6 @@ describe("the tablet table's trick cross", () => {
     "iPad 11\" 1180x820": { w: 1180, h: 820, left: 0, right: 0, bottom: 20, top: 24 },
     "iPad 13\" 1366x1024": { w: 1366, h: 1024, left: 0, right: 0, bottom: 20, top: 24 },
     "iPad 13\" 1376x1032": { w: 1376, h: 1032, left: 0, right: 0, bottom: 20, top: 24 },
-    "iPad 11\" upright 820x1180": { w: 820, h: 1180, left: 0, right: 0, bottom: 20, top: 24 },
-    "iPad 13\" upright 1024x1366": { w: 1024, h: 1366, left: 0, right: 0, bottom: 20, top: 24 },
   };
   // desktop browser windows, which take the same block
   const DESKTOPS: Record<string, Viewport> = {
@@ -999,7 +1010,7 @@ describe("the tablet table's trick cross", () => {
   };
 
   it("sizes the hand and the trick from the tablet block alone", () => {
-    const outside = css.replace(tablet, "");
+    const outside = css.replace(tablet, "").replace(blockAt(UPRIGHT_BLOCK), "");
     for (const token of ["--hcw", "--hcw-full", "--tcw", "--tcw-side", "--tag-room", "--cross-room", "--you-rest", "--size-rest", "--row-free", "--cross-fit"]) {
       expect(outside.includes(`${token}:`), token).toBe(false);
     }
@@ -1079,4 +1090,96 @@ describe("the tablet table's trick cross", () => {
     expect(g.hcw).toBeCloseTo(g.full, 6);
     expect(g.tcw).toBeCloseTo(g.side, 6);
   });
+});
+
+describe("the tablet table held upright: each play in front of its seat", () => {
+  const tablet = blockAt(TABLET_BLOCK);
+  const upright = blockAt(UPRIGHT_BLOCK);
+  const vars0 = { ...rule(tablet, "&"), ...rule(upright, "&") };
+  const hand = rule(tablet, ".hand");
+  const pitchRule = rule(upright, ".trick-play")["--t-pitch"];
+  // the iOS app (status bar and home indicator insets) and a browser
+  const UPRIGHTS: Record<string, Viewport> = {
+    "iPad mini 744x1133": { w: 744, h: 1133, left: 0, right: 0, bottom: 20, top: 24 },
+    "iPad 768x1024": { w: 768, h: 1024, left: 0, right: 0, bottom: 20, top: 20 },
+    "iPad 810x1080": { w: 810, h: 1080, left: 0, right: 0, bottom: 20, top: 24 },
+    "iPad 11\" 820x1180": { w: 820, h: 1180, left: 0, right: 0, bottom: 20, top: 24 },
+    "iPad 11\" 834x1194": { w: 834, h: 1194, left: 0, right: 0, bottom: 20, top: 24 },
+    "iPad 13\" 1024x1366": { w: 1024, h: 1366, left: 0, right: 0, bottom: 20, top: 24 },
+  };
+  const SIZES: [string, Viewport][] = [...Object.entries(UPRIGHTS).flatMap(([name, vp]) => [
+    [`${name} (app)`, vp] as [string, Viewport],
+    [`${name} (browser)`, { ...vp, top: 0, bottom: 0 }] as [string, Viewport],
+  ]),
+  // Safari's toolbars upright, the shortest window the query admits
+  ["iPad 768x954 Safari", { w: 768, h: 954, left: 0, right: 0, bottom: 0, top: 0 }],
+  ["touch 744x900", { w: 744, h: 900, left: 0, right: 0, bottom: 0, top: 0 }]];
+
+  it("keys the layout on TABLET_UPRIGHT, once, and holds only the tablet class's rules", () => {
+    expect(css.split(UPRIGHT_BLOCK)).toHaveLength(2);
+    expect(upright.trim().startsWith(".tablet-table {")).toBe(true);
+    expect(rule(upright, ".trick-area").inset).toBe("0");
+    expect(rule(upright, ".trick-area").transform).toBe("none");
+  });
+
+  it("turns each seat into a one-line tag with its count, no card backs and no line under it", () => {
+    const seat = rule(upright, ".opponent");
+    expect(seat["flex-direction"]).toBe("row");
+    expect(seat.height).toBe("var(--l1-tag-h)");
+    expect(rule(upright, ".back-stack, .opponent .their-turn, .opponent .bot-banter").display).toBe("none");
+    expect(rule(upright, ".opponent .opp-cards")["flex-shrink"]).toBe("0");
+  });
+
+  for (const [name, vp] of SIZES) {
+    it(`stacks the top play, the side seats and your play apart, at 80px cards or more: ${name}`, () => {
+      const L = (e: string, v: Record<string, string> = vars0) => evalLength(e, vp, v);
+      const u = L("var(--u)");
+      const felt = vp.h - L("var(--hud-h)");
+      // 100% in a seat's top is the felt's height
+      const inFelt = Object.fromEntries(Object.entries(vars0).map(([k, v]) => [k, v.replace(/100%/g, `${felt}px`)]));
+      const tcw = L("var(--tcw)");
+      expect(tcw).toBeGreaterThanOrEqual(80 - 0.01);
+      const tagH = L("var(--l1-tag-h)");
+      const playH = L("var(--l1-play-h)");
+      const topTagB = 12 * u + tagH;
+      const topT = L("var(--l1-top-t)");
+      const topB = L("var(--l1-top-b)");
+      const sideT = L("var(--l1-side-t)", inFelt);
+      const sideB = sideT + L("var(--l1-side-h)");
+      const bottomB = felt - L("var(--l1-bottom)");
+      const bottomT = bottomB - playH;
+      const youTop = felt - L("var(--you-h)");
+      // A winner's cards rise by win-lift's translate, grow about their
+      // centre by its scale, and wear a 2px ring: that much above the cards
+      // must stay clear of the tag over them, with 8u to spare.
+      const [, rise, grow] = /@keyframes win-lift \{\s*to \{\s*transform: translateY\(-(\d+)px\) scale\(([\d.]+)\);/.exec(css)!;
+      const lift = Number(rise) + ((Number(grow) - 1) / 2) * tcw * 1.4 + 2;
+      expect(topT - topTagB).toBeGreaterThanOrEqual(lift + 8 * u - 0.01);
+      const sidePlayT = sideT + tagH + L("var(--l1-tag-gap)");
+      expect(sidePlayT - (sideT + tagH)).toBeGreaterThanOrEqual(lift + 8 * u - 0.01);
+      expect(L("var(--l1-side-h)")).toBeCloseTo(tagH + L("var(--l1-tag-gap)") + playH, 6);
+      expect(sideT - topB).toBeGreaterThanOrEqual(lift + 16);
+      expect(bottomT - sideB).toBeGreaterThanOrEqual(lift + 16);
+      expect(youTop - bottomB).toBeGreaterThanOrEqual(12);
+      // the side plays split the gaps above and below them evenly
+      expect(sideT - topB).toBeCloseTo(bottomT - sideB, 4);
+    });
+
+    it(`keeps a side seat's play on its own half, and the hand at its width's card: ${name}`, () => {
+      const L = (e: string, ints: Record<string, number> = {}) => evalLength(e, vp, vars0, ints);
+      const tcw = L("var(--tcw)");
+      const half = vp.w / 2 - 8 - L("var(--edge-l)");
+      for (const n of [2, 4, 6, 8, 12, 25]) {
+        const span = tcw + (n - 1) * L(pitchRule, { n });
+        expect(span, `${n} cards`).toBeLessThanOrEqual(half + 0.01);
+      }
+      // up to four cards keep the landscape table's 60% pitch
+      expect(L(pitchRule, { n: 4 })).toBeCloseTo(tcw * 0.6, 4);
+      expect(L("var(--hcw)")).toBeCloseTo(L("var(--hcw-full)"), 6);
+      const pitch25 = evalLength(hand["--pitch"], vp, { ...vars0, "--cw": "var(--hcw)" }, { n: 25 });
+      // a finger's strip of every card: 26px on a mini upright, about a
+      // phone's 27px
+      expect(pitch25).toBeGreaterThanOrEqual(26 - 0.01);
+    });
+  }
 });

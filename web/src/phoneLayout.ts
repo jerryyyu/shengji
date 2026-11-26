@@ -6,12 +6,17 @@ import { useLayoutEffect, useSyncExternalStore } from "react";
 export const SHORT_VIEWPORT = "(max-height: 500px), (pointer: coarse) and (orientation: landscape) and (max-height: 739px)";
 /** A phone held upright (an iPad is at least 744px wide in portrait). */
 export const PORTRAIT_PHONE = "(orientation: portrait) and (max-width: 600px)";
+/** A touch screen held upright, an iPad mini's width included: the tablet
+ *  table lands each play in front of its seat there (index.css keys that
+ *  layout on this query), so the plays no longer share a cross that needs
+ *  810px of width. A desktop window keeps the cross at any shape. */
+export const TABLET_UPRIGHT = "(pointer: coarse) and (orientation: portrait) and (min-width: 744px) and (min-height: 900px)";
 /** A screen large enough for the tablet table, touch or mouse alike: it
  *  holds the edge-to-edge hand and a trick cross whose cards are at least the
- *  wide table's 52px (index.css, .tablet-table). An iPad mini is 744px tall
- *  sideways; a shorter or narrower window, a desktop's included, keeps the
- *  wide table's fixed sizes. */
-export const TABLET_SCREEN = "(min-width: 810px) and (min-height: 740px)";
+ *  wide table's 52px (index.css, .tablet-table), or it is held upright
+ *  (TABLET_UPRIGHT). An iPad mini is 744px tall sideways; a shorter or
+ *  narrower window, a desktop's included, keeps the wide table's fixed sizes. */
+export const TABLET_SCREEN = `(min-width: 810px) and (min-height: 740px), ${TABLET_UPRIGHT}`;
 /** The root class every phone-table rule in index.css is keyed on. */
 export const PHONE_CLASS = "phone-landscape";
 /** The root class every tablet-table rule in index.css is keyed on. */

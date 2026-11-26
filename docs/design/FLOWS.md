@@ -356,8 +356,8 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
 - A screen at least 810×740, touch or mouse (an iPad sideways, mini included, and 11" and 13" upright, or a desktop window; the root class
   `tablet-table` from `phoneLayout.ts`) draws the wide table sized to the screen. Below that the cross could not
   keep a six-card trick's cards at the wide table's 52 px. A sideways touch window under 740 px tall (Split View,
-  Safari with its toolbar on a mini) gets the phone table instead, whose cross fits a short screen; one under 810 px
-  wide and upright (an iPad mini or 10.2" upright) keeps the wide table's fixed sizes, as before. Seat panels, your name, the controls and the tags grow
+  Safari with its toolbar on a mini) gets the phone table instead, whose cross fits a short screen. Upright, a touch
+  screen at least 744×900 (every iPad, mini included) takes the tablet table too (below). Seat panels, your name, the controls and the tags grow
   with one size token from the screen's shorter side (1 at 880×640, at most 1.5); text never drops below the reader's
   size; buttons stay at least 48 px tall.
 - The hand runs edge to edge: its card comes from the screen's width (126 px on a 13" iPad sideways) and the pitch
@@ -371,8 +371,12 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
   Play / Clear (or Declare / Pass, Bury) share one row that spans the hand: your name at its start, the controls at its end, the hint
   between them, so the hint showing never moves a control; a short hand keeps the row at a set width. The card sizes are unchanged
   (sized as if your name still had a row of its own); the height the one row frees goes to the cross, which stretches down into it
-  (at 1440×900 the top play to your play goes from 34 px to 87 px). "Joining after this trick" stands in that row. An iPad held
-  upright takes the same row for now; its own layout (each play in front of its seat) is a follow-up. The phone table is unchanged.
+  (at 1440×900 the top play to your play goes from 34 px to 87 px). "Joining after this trick" stands in that row. The phone table is unchanged.
+- **An iPad held upright: each play in front of its seat (L1; Jerry 2026-11-26, decision mocks section 8, option B).** Each seat
+  is a one-line tag (team dot or crown, name, card count; whose turn is its gold edge), and its play lands in front of it: the
+  top seat's under its tag, a side seat's under its tag at the felt's edge, yours above your row, which is L2's one row.
+  Trick cards are 80 px (as an 11" iPad draws them sideways; 93 px on a 13"), the hand's card is unchanged, and the plays
+  fly in from the tags. Last trick stays the control in the corner. Sideways iPads and every desktop window keep L2.
 - The round's result dialog grows with the screen, whole (×1.15 from 1100×700, ×1.35 on a 13" iPad).
 - A laptop or desktop window takes the same rule (Jerry 2026-11-25, "do we want to apply the iPad view?"): from
   810×740 the tablet table, below it the wide table at its fixed sizes. A mouse clicks a card (no slide), and the

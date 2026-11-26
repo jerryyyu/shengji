@@ -1243,7 +1243,7 @@ def room_table_frame(room: Room, seat: int) -> dict:
     for i in range(4):
         sd = room.seats[i] if i < len(room.seats) else None
         seat_out = {"seat": i, "team": i % 2, "state": "open", "name": None,
-                    "you": i == seat, "reconnecting": False, "since": None,
+                    "you": i == seat, "ready": None, "reconnecting": False, "since": None,
                     "sit": None, "pair": False, "leader": False, "left": False}
         if sd is not None:
             gone = not sd.is_bot and sd.left_by_choice
@@ -1259,7 +1259,7 @@ def room_table_frame(room: Room, seat: int) -> dict:
                      "start_level": room.start_level,
                      "bot_level": room.bot_level},
         "timers": {"bots": None},
-        "chat_log": room.code,
+        "your_ready": None, "waiting_for": None, "chat_log": room.code,
     }
 
 

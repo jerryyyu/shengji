@@ -258,6 +258,8 @@ def _run_queue(env, case: dict, msg: dict) -> dict:
         for name in case.get("queued", ()):
             socks[name].send_json({"type": "queue_join", "mode": "casual", "name": name})
             codes[name] = _until(socks[name], "queue_state")[-1].get("code")
+        for name in case.get("ready", ()):
+            socks[name].send_json({"type": "table_start"})
         for name, ws in socks.items():           # everything so far is setup
             ws.send_json({"type": "table_chat", "text": f"zz-setup-{name}"})
             _until_text(ws, f"zz-setup-{name}")
@@ -284,17 +286,17 @@ def _run_queue(env, case: dict, msg: dict) -> dict:
 
 
 QUEUE_CASES = {
-    "an older page's take-back at a table": dict(actor="Bo", queued=("Ann", "Bo"),
-                                                 old={"type": "table_unready"},
-                                                 new={"type": "table_start", "on": False}),
+    "a Ready taken back": dict(actor="Bo", queued=("Ann", "Bo"), ready=("Bo",),
+                               old={"type": "table_unready"},
+                               new={"type": "table_start", "on": False}),
     "a Ready taken back with nothing to take back": dict(
         actor="Cy", old={"type": "table_unready"}, new={"type": "table_start", "on": False}),
     "Play bots alone": dict(actor="Ann", queued=("Ann",), old={"type": "queue_start_bots"},
                             new={"type": "table_start_bots"}),
-    "a joiner's Play bots at a table": dict(actor="Bo", queued=("Ann", "Bo"),
+    "Play bots at a table": dict(actor="Bo", queued=("Ann", "Bo"),
                                  old={"type": "queue_start_bots"},
                                  new={"type": "table_start_bots"}),
-    "the owner's Play bots at a table": dict(actor="Ann", queued=("Ann", "Bo"),
+    "the owner's Play bots at a table": dict(actor="Ann", queued=("Ann", "Bo"), ready=("Bo",),
                                              old={"type": "queue_start_bots"},
                                              new={"type": "table_start_bots"}),
     "Play bots against a changed panel": dict(
@@ -318,9 +320,9 @@ QUEUE_CASES = {
 
 
 QUEUE_SEES = {
-    "an older page's take-back at a table": '"queue_state"',
+    "a Ready taken back": '"ready": 0',
     "a Ready taken back with nothing to take back": '"not_seated"',
-    "Play bots alone": '"match_started"', "a joiner's Play bots at a table": '"queue_state"',
+    "Play bots alone": '"match_started"', "Play bots at a table": '"ready": 1',
     "the owner's Play bots at a table": '"match_started"',
     "Play bots against a changed panel": '"panel_changed"',
     "a Leave alone": '"queued": false', "a Leave at a table": '"queued": false',

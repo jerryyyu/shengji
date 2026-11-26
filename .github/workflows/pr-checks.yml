@@ -202,6 +202,7 @@ jobs:
           tests/test_bury_fly_config.py
           tests/test_ci_review_ledger_step.py
           tests/test_safe_rm.py
+          tests/test_sz2_gpu_smoke.py
           tests/test_pr_ship.py
           tests/test_client_server_constants.py
           tests/test_ops_dashboard.py
@@ -822,6 +823,7 @@ jobs:
             tests/test_unified_seq.py \
             tests/test_unified_slots.py \
             tests/test_unified_readout.py \
+            tests/test_sz2_joint_segment.py \
             tests/test_unified_readout_device.py \
             tests/test_unified_serving.py \
             tests/test_search_free_play.py \

@@ -673,7 +673,12 @@ def _register_pv_search_from_env() -> None:
     if not os.environ.get("SHENGJI_PV_CKPT"):
         return
     module = sys.modules.get("shengji.train.pv_search_policy")
-    if module is not None and not hasattr(module, "pv_env_recipe"):
+    if module is None:
+        # The policy module registers its environment once its factories exist.
+        from importlib import import_module
+        import_module("shengji.train.pv_search_policy")
+        return
+    if not hasattr(module, "pv_env_recipe"):
         return
     from ..train.pv_search_policy import pv_env_recipe
     recipe = pv_env_recipe()

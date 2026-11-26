@@ -1312,8 +1312,10 @@ class Matchmaker:
                 elif t == "table_unready":
                     self._table_unready(queue_id)
                 elif t == "queue_start_bots":
+                    # alone it is the owner's Start; sent a moment ago from a
+                    # table, it may have been a joiner's Ready
                     if e is not None:
-                        self._check_panel(e, msg)
+                        self._check_panel(e, msg, role_dependent=True)
                     await self._start_bots(queue_id)
                 elif t == "table_start_now":
                     if e is not None:

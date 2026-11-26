@@ -374,6 +374,7 @@ async def a_lone_chat_over_the_cap_merges_in_time_order(env: Env) -> None:
     await env.send(1, "queue_leave")
     await env.send(3, "table_chat", text="alone again")
     await env.send(3, "queue_status")
+    await env.advance(mm.ROLE_GRACE_SECS)
     await env.send(3, "queue_start_bots")
 
 
@@ -515,6 +516,7 @@ async def settings_carry_and_are_the_openers(env: Env) -> None:
     await env.send(3, "queue_leave")
     env.peek(c1)
     await env.send(2, "table_start_level", start_level="4")
+    await env.advance(mm.ROLE_GRACE_SECS)
     await env.send(2, "queue_start_bots")
 
 

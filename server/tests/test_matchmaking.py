@@ -2941,6 +2941,7 @@ def test_queue_events_are_logged_by_kind_without_identity():
             env.mm.connect(guest)
             await env.send(-9, "queue_join")
             await env.send(1234567, "queue_leave")
+            env.clock.advance(mm.ROLE_GRACE_SECS)    # alone again: an untagged Start waits out the grace
             await env.send(-9, "queue_start_bots")
         run(go())
     finally:
@@ -4886,6 +4887,7 @@ def test_the_one_left_at_a_table_keeps_the_tables_code_as_its_own():
         (t,) = env.mm.tables.values()
         assert t.code == code and t.seats == [2, None, 3, None]
         await env.send(3, "queue_leave")
+        env.clock.advance(mm.ROLE_GRACE_SECS)        # alone again: an untagged Start waits out the grace
         await env.send(2, "queue_start_bots")
         assert env.rooms[0]["code"] == code
     run(go())
@@ -5350,4 +5352,29 @@ def test_a_duo_partner_who_becomes_its_leader_cannot_have_an_untagged_ready_take
         assert env.conns[2].last("error")["code"] == "panel_changed" and env.started == []
         await env.send(2, "table_start")              # untagged, inside the grace
         assert env.conns[2].last("error")["code"] == "panel_changed" and env.started == []
+    run(go())
+
+
+def test_an_untagged_play_bots_from_a_shared_table_is_refused_when_its_sender_is_left_alone():
+    """P2 tapped Play bots as a joiner; P1 leaves first and P2 is alone at its
+    own table. Untagged, within ROLE_GRACE_SECS, it is refused; a fresh
+    tagged Start, or an untagged one after the grace, starts P2 with bots."""
+    async def go():
+        for fresh in (True, False):
+            env = Env()
+            for uid in (1, 2):
+                await env.join(uid)
+                await env.send(uid, "queue_wait_players")
+            await env.send(1, "queue_leave")
+            assert env.conns[2].last("queue_state")["table"] is None
+            await env.send(2, "queue_start_bots")         # untagged, from the old panel
+            assert env.conns[2].last("error")["code"] == "panel_changed" and env.started == []
+            if fresh:
+                seq = env.conns[2].last("queue_state")["panel_seq"]
+                await env.send(2, "queue_start_bots", panel_seq=seq)
+            else:
+                env.clock.advance(mm.ROLE_GRACE_SECS)
+                await env.send(2, "queue_start_bots")
+            (match_id, slots), = env.started
+            assert match_id is None and humans_of(slots) == [2]
     run(go())

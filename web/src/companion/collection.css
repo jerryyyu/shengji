@@ -72,8 +72,10 @@
   white-space: nowrap;
   pointer-events: none;
 }
-/* the tab bar floats over the page foot on a phone: the control stays clear of it */
-.coll-mode { margin: 24px 16px 0; padding-bottom: 104px; }
+/* Show at the table: the label and the switch alone on the page, no group
+   card, the label on the grid's gutter; the row keeps its 44 px target */
+.coll-mode { margin: 16px 16px 0; background: none; border-radius: 0; overflow: visible; }
+.coll-mode .coll-at-table { padding: 0; border-radius: 10px; }
 /* the companions, one tile each: the gold ring is the one looked at, the tick the one in use */
 .coll-kinds {
   display: grid;

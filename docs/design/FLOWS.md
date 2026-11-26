@@ -571,7 +571,9 @@ then its replay plays.
   the Tractor in a stand-in colour.
 - **Show at the table** (Jerry 2026-11-26, finding 2: one labelled switch, on by default) replaces Team ·
   Individual · Off. It is stored where the mode was (the account's `companions`, a guest's device), so an older
-  client keeps working: off is off, and an older Team or Individual reads as on.
+  client keeps working: off is off, and an older Team or Individual reads as on. The row has no card behind it
+  (Jerry 2026-11-26: "The show at table toggle doesn't need background"): the label and the switch sit on the page,
+  the label on the grid's gutter, the row still 44 px tall.
 - **The companions** (Jerry 2026-11-26: "we can start with tractor, bun, chick, sparrow"), all free from the start:
   the Tractor, now with its rider (a farm kid in a straw hat at the cab window), the Bun 包子, the Chick 小鸡 and the
   Sparrow 麻雀, four colours each beside the Tractor's eight. Hop and cheer are two different moves: hop one small

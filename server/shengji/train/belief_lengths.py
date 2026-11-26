@@ -130,3 +130,99 @@ def build_length_head(width=64):
             return total / len(context)
 
     return LengthHead()
+
+
+def load_length_checkpoint(path):
+    """Return the inference head and its training exposure for held-out evaluation."""
+    import torch
+
+    saved = torch.load(path, map_location="cpu", weights_only=True)
+    if saved["schema"] != "shengji-suit-lengths-v1":
+        raise ValueError("unknown suit-length checkpoint schema")
+    head = build_length_head(saved["width"])
+    head.load_state_dict(saved["model"], strict=True)
+    if not all(torch.isfinite(p).all() for p in head.parameters()):
+        raise ValueError("nonfinite suit-length checkpoint")
+    return head.eval(), saved["training"]
+
+
+def fit(args):
+    """Fit at most one pass of the train split and publish only a completed fit."""
+    import os
+    import tempfile
+    from pathlib import Path
+    import torch
+    from . import belief_seq as bs
+
+    out = Path(args.out)
+    if out.exists():
+        raise FileExistsError(out)
+    if min(args.steps, args.rounds_per_batch, args.width) < 1 or args.seed < 0:
+        raise ValueError("positive steps, batch size and width, and a nonnegative seed required")
+    entries = bs.extract_entries([args.extract], "train", exclude_seed_windows=args.exclude_seed_window)
+    rng = np.random.default_rng(args.seed)
+    torch.manual_seed(args.seed)
+    head = build_length_head(args.width)
+    optimizer = torch.optim.AdamW(head.parameters(), lr=args.lr)
+    verified = bs._Verified()
+    deals = set()
+    steps = rows_used = 0
+    for index in rng.permutation(len(entries)):
+        part = bs.load_part(entries[index], bs.ROW_KEYS, verified)
+        if not len(part["X"]):
+            continue
+        for rounds, rows in bs.round_batches(part, args.rounds_per_batch, rng):
+            batch = bs.make_batch(part, rounds, rows)
+            optimizer.zero_grad()
+            loss = head.loss(batch)
+            if not torch.isfinite(loss):
+                raise ValueError("nonfinite length loss")
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(head.parameters(), 1., error_if_nonfinite=True)
+            optimizer.step()
+            steps += 1
+            rows_used += len(rows)
+            deals.update(map(int, part["deal"][rows]))
+            if steps == args.steps:
+                break
+        if steps == args.steps:
+            break
+    if steps != args.steps:
+        raise ValueError(f"train split supplied {steps} of {args.steps} requested steps")
+    training = {"steps": steps, "rows": rows_used, "deals": sorted(deals),
+                "seed": args.seed, "rounds_per_batch": args.rounds_per_batch,
+                "lr": args.lr, "exclude_seed_window": args.exclude_seed_window}
+    with tempfile.NamedTemporaryFile(dir=out.parent) as tmp:
+        torch.save({"schema": "shengji-suit-lengths-v1", "width": args.width,
+                    "model": head.state_dict(), "training": training}, tmp)
+        tmp.flush()
+        load_length_checkpoint(tmp.name)
+        os.link(tmp.name, out)
+    return training
+
+
+def main(argv=None):
+    import argparse
+    from .belief_seq import seed_window
+
+    parser = argparse.ArgumentParser(description="Fit an offline joint suit-length checkpoint")
+    parser.add_argument("--extract", required=True)
+    parser.add_argument("--out", required=True)
+    parser.add_argument("--steps", type=int, required=True,
+                        help="optimizer updates required within one train-split pass")
+    parser.add_argument("--rounds-per-batch", type=int, default=1)
+    parser.add_argument("--lr", type=float, default=0.001)
+    parser.add_argument("--width", type=int, default=64)
+    parser.add_argument("--seed", type=int, required=True)
+    parser.add_argument("--exclude-seed-window", type=seed_window, action="append", default=[])
+    args = parser.parse_args(argv)
+    if not np.isfinite(args.lr) or args.lr <= 0:
+        parser.error("--lr must be finite and positive")
+    training = fit(args)
+    print(f"completed {training['steps']} updates on {training['rows']} rows "
+          f"from {len(training['deals'])} deals")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -560,3 +560,64 @@ def test_joint_length_support_matches_complete_allocations():
 
     assert len(valid) > 1
     assert completions([]) == valid
+
+
+def test_length_fit_cli_trains_excluding_reserved_deals_and_reloads_for_search(chunk, tmp_path):
+    torch = pytest.importorskip("torch")
+    from shengji.ai.belief_numpy import SuitLengthProposal
+    from shengji.train import belief_lengths as lengths
+    from shengji.train import belief_seq as bs
+    from test_world_history_legal import started
+
+    # A real extract manifest with two deals; hold one entire deal out of the fit.
+    rows = chunk["rows"]
+    name = "train-x.npz"
+    (tmp_path / "hist").mkdir()
+    np.savez(tmp_path / name, **rows)
+    np.savez(tmp_path / "hist" / name, **chunk["hist"])
+
+    def sha(path):
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"chunks": [{"files": {"train": {
+        "file": name, "rows": len(rows["X"]), "sha256": sha(tmp_path / name)}}}]}))
+    (tmp_path / "hist" / "manifest.json").write_text(json.dumps({
+        "schema": bs.HIST_SCHEMA, "source_extract_manifest_sha256": sha(manifest),
+        "files": {name: sha(tmp_path / "hist" / name)}}))
+    excluded = int(rows["seed"][0])
+    allowed = bs.seed_keep(rows, [(excluded, excluded + 1)])
+    assert allowed.any() and not allowed.all()
+
+    out = tmp_path / "lengths.pt"
+    argv = ["--extract", str(tmp_path), "--out", str(out), "--steps", "1",
+            "--seed", "77", "--width", "8", "--rounds-per-batch", "100",
+            "--exclude-seed-window", f"{excluded}:{excluded + 1}"]
+    assert lengths.main(argv) == 0
+    model, training = lengths.load_length_checkpoint(out)
+    assert training["rows"] == int(allowed.sum())
+    assert training["deals"] == sorted(set(map(int, rows["deal"][allowed])))
+    torch.manual_seed(77)
+    initial = lengths.build_length_head(8)
+    assert not torch.equal(model.output[-1].weight, initial.output[-1].weight)
+
+    class Uniform:
+        def marginals(self, inp):
+            return np.ones_like(inp["M"], dtype=float)
+
+    rnd, _ = started(7)
+    seat = (rnd.banker + 1) % 4
+    propose = SuitLengthProposal(Uniform(), rnd, seat, seed=9, batch=2,
+                                 draw_lengths=model.draw_lengths)
+    hands, kitty = propose(rnd, seat, None)
+    assert len(kitty) == len(rnd.buried)
+    assert all(len(cards) == len(rnd.hands[s]) for s, cards in hands.items())
+
+    original = out.read_bytes()
+    with pytest.raises(FileExistsError):
+        lengths.main(argv)
+    assert out.read_bytes() == original
+    other = tmp_path / "incomplete.pt"
+    with pytest.raises(ValueError, match="1 of 2 requested steps"):
+        lengths.main([*argv, "--steps", "2", "--out", str(other)])
+    assert not other.exists()

@@ -1280,7 +1280,8 @@ def cheapest_winning(bot, list hand, list lead, incumbent_suit,
                 trumps.append(hand[i])
         if len(trumps) < nl:
             return None
-        play = bot._trump_shape_match(trumps, lead_dec, ordering)
+        play = bot._trump_shape_match(trumps, lead_dec, ordering,
+                                     incumbent_top if incumbent_suit == "T" else None)
         if play is not None:
             won, _ = beats(play, lead, incumbent_suit, incumbent_top,
                            ordering)

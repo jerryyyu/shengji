@@ -545,6 +545,56 @@ describe("Details: the kitty and the last trick, closed by default", () => {
     expect(shape()).toEqual(before);
   });
 
+  it("a tap back mid-glide starts from the height on screen, cancels the old glide first, and the old glide's end leaves the new one alone", async () => {
+    // a stand-in for the Web Animations API: a running glide holds the
+    // cell at 92px, as a real one does part way from 52 to 99
+    class Glide {
+      onfinish: (() => void) | null = null;
+      oncancel: (() => void) | null = null;
+      readonly el: Element;
+      readonly frames: Keyframe[];
+      constructor(el: Element, frames: Keyframe[]) { this.el = el; this.frames = frames; }
+      cancel() { running = running.filter((g) => g !== this); queueMicrotask(() => this.oncancel?.()); }
+      finish() { running = running.filter((g) => g !== this); this.onfinish?.(); }
+    }
+    let running: Glide[] = [];
+    const glides: Glide[] = [];
+    const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+    const saved = (["animate", "getAnimations", "offsetHeight"] as const)
+      .map((k) => [k, Object.getOwnPropertyDescriptor(HTMLElement.prototype, k)] as const);
+    Object.defineProperty(HTMLElement.prototype, "animate", { configurable: true, writable: true,
+      value(this: HTMLElement, frames: Keyframe[]) { const g = new Glide(this, frames); running.push(g); glides.push(g); return g; } });
+    Object.defineProperty(HTMLElement.prototype, "getAnimations", { configurable: true, writable: true,
+      value(this: HTMLElement) { return running.filter((g) => g.el === this); } });
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true,
+      get(this: HTMLElement) {
+        if (!this.classList.contains("round-end-swap")) return 0;
+        if (running.some((g) => g.el === this)) return 92;
+        return this.classList.contains("details") ? 99 : 52;
+      } });
+    try {
+      renderModal(makeResult({ kitty_cards: kitty }), { ...state, last_trick: lastTrick });
+      const swap = host.querySelector<HTMLElement>(".round-end-swap")!;
+      act(() => viewBtn().click());
+      expect(glides.map((g) => g.frames)).toEqual([[{ height: "52px" }, { height: "99px" }]]);
+      // back to Levels while the first glide still runs
+      act(() => viewBtn().click());
+      expect(glides).toHaveLength(2);
+      expect(running).toEqual([glides[1]]);
+      expect(glides[1].frames).toEqual([{ height: "92px" }, { height: "52px" }]);
+      await Promise.resolve();
+      // the first glide's cancel came after the second began: overflow stays clipped
+      expect(swap.style.overflow).toBe("hidden");
+      act(() => glides[1].finish());
+      expect(swap.style.overflow).toBe("");
+    } finally {
+      for (const [k, d] of saved) {
+        if (d) Object.defineProperty(HTMLElement.prototype, k, d);
+        else delete proto[k];
+      }
+    }
+  });
+
   it("sizes every fan from the counts: the card width, the overlap step and each seat's column ride on the panel", () => {
     renderModal(makeResult({ kitty_cards: kitty }), { ...state, last_trick: lastTrick });
     const panel = host.querySelector<HTMLElement>(".round-end-details")!;

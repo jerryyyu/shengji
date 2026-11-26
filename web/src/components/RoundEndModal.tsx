@@ -260,19 +260,27 @@ export default function RoundEndModal({ state, result, clock = null, clockEnd = 
   const [open, setOpen] = useState(false);
   // each view is as tall as its own content: the cell's height glides from
   // the one to the other (and not under Reduce Motion)
+  // A tap mid-glide starts the next glide from the height on screen then:
+  // the running glide is cancelled before the new height is measured (it
+  // holds the cell's height while it runs), and a glide's end touches the
+  // cell only while it is still the latest one.
   const swapRef = useRef<HTMLDivElement | null>(null);
   const fromHeight = useRef<number | null>(null);
+  const glideGen = useRef(0);
   useLayoutEffect(() => {
     const el = swapRef.current;
     const from = fromHeight.current;
     fromHeight.current = null;
-    if (!el || from === null || typeof el.animate !== "function" || prefersReducedMotion()) return;
+    if (!el || from === null) return;
+    const gen = ++glideGen.current;
+    el.getAnimations?.().forEach((a) => a.cancel());
+    el.style.overflow = "";
+    if (typeof el.animate !== "function" || prefersReducedMotion()) return;
     const to = el.offsetHeight;
     if (Math.abs(to - from) < 1) return;
-    el.getAnimations?.().forEach((a) => a.cancel());
     el.style.overflow = "hidden";
     const glide = el.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: DUR.resize, easing: EASE.outExpo });
-    const done = () => { el.style.overflow = ""; };
+    const done = () => { if (glideGen.current === gen) el.style.overflow = ""; };
     glide.onfinish = done;
     glide.oncancel = done;
   }, [open]);

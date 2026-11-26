@@ -16,6 +16,7 @@ import { useAuth } from "../auth";
 import { guestName } from "../guestName";
 import { displayName, t, useT } from "../i18n";
 import type { MessageKey } from "../i18n";
+import { Portrait } from "../companion/Companion";
 
 /** Leave beside Next round (Next game), the same in every room. It asks through the one
  *  leave sheet, like every other leave: the round is over and recorded, so
@@ -84,6 +85,19 @@ function teamTitle(team: 0 | 1, state: GameState, outcome: Outcome): string {
       : t(`roundend.youAnd${outcome}` as MessageKey, { name: listed });
   }
   return t(`roundend.names${outcome}` as MessageKey, { name: listed });
+}
+
+/** The titled team's people as portraits, ahead of the title's names; a bot
+ *  has no portrait and its name says it. */
+function TeamFaces({ team, state }: { team: 0 | 1; state: GameState }) {
+  const people = state.players.filter((p) => p.team === team && !p.is_bot)
+    .sort((a, b) => Number(b.seat === state.you) - Number(a.seat === state.you) || a.seat - b.seat);
+  if (people.length === 0) return null;
+  return (
+    <span className="re-faces" aria-hidden="true">
+      {people.map((p) => <Portrait key={p.seat} look={p.look} size={28} />)}
+    </span>
+  );
 }
 
 /** The viewer's team when it lost the round, else null (a win, or a viewer
@@ -333,6 +347,7 @@ export default function RoundEndModal({ state, result, clock = null, clockEnd = 
       <div className={`panel modal round-end${gameWon ? " game-won" : ""}`}>
         {gameWon ? <div className={`game-won-crown${live ? " flash" : ""}`} aria-hidden="true">👑</div> : null}
         <h2 id={titleId} tabIndex={-1} className={`modal-title team${lostTeam ?? result.winner_team}`}>
+          <TeamFaces team={lostTeam ?? result.winner_team} state={state} />
           {lostTeam !== null
             ? teamTitle(lostTeam, state, gameWon ? "LoseGame" : "LoseRound")
             : teamTitle(result.winner_team, state, gameWon ? "WinGame" : "WinRound")}

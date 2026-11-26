@@ -6,7 +6,7 @@ import { openTab } from "./route";
 import type { Tab } from "./route";
 
 /** The phone tab bar's order, which a swipe walks: left goes to the next. */
-export const TAB_ORDER: readonly Tab[] = ["play", "leaderboard", "me"];
+export const TAB_ORDER: readonly Tab[] = ["play", "leaderboard", "collection", "me"];
 /** A touch that starts this close to either screen edge is the app's own
  *  back or forward swipe. */
 export const SWIPE_EDGE = 24;

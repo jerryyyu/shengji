@@ -1,8 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
-import { effectiveName, useAuth } from "../auth";
+import { useAuth } from "../auth";
+import { Portrait } from "../companion/Companion";
 import { ChatBody } from "../components/ChatPanel";
-import { useGuestName } from "../guestName";
 import { TimerRing } from "../components/MoveClock";
 import LeaveSheet from "../components/LeaveSheet";
 import ConfirmSheet from "../components/ConfirmSheet";
@@ -28,24 +28,26 @@ import "./tablePanel.css";
 
 export type { SeatItem } from "./tableModel";
 
-/** The initial of the name you play under: the account's, or a guest's own. */
-function useMyInitial(): string {
+/** Your own look: the account's, or the default for a guest. */
+function useMyLook(): string | null {
   const account = useAuth();
-  const guest = useGuestName();
-  const name = account.status === "in" && account.user ? effectiveName(account.user) : guest.name.trim();
-  return name.slice(0, 1).toUpperCase();
+  return account.status === "in" && account.user ? account.user.look ?? null : null;
 }
 
 /** A seat's avatar and words; an open seat with no name is its "+" alone,
- *  and its `label` says what it is. */
+ *  and its `label` says what it is. A person's avatar is their portrait. */
 function SeatBody({ s }: { s: SeatItem }) {
-  const mine = useMyInitial();
+  const mine = useMyLook();
   if (s.look === "open" && !s.name) return <span className="tp-av" aria-hidden="true">+</span>;
-  const av = s.look === "open" ? "+" : s.look === "bot" || s.look === "held" ? "·"
-    : s.look === "you" ? mine || "·" : s.name.slice(0, 2).toUpperCase();
+  const person = s.look === "you" || s.look === "friend" || s.look === "person";
+  const av = s.look === "open" ? "+" : "·";
   return (
     <>
-      <span className="tp-av" aria-hidden="true">{av}</span>
+      {person ? (
+        <span className="tp-av tp-av-portrait" aria-hidden="true">
+          <Portrait look={s.look === "you" ? mine : s.companion} size={24} />
+        </span>
+      ) : <span className="tp-av" aria-hidden="true">{av}</span>}
       <span className="tp-seat-text" aria-hidden="true">
         <span className="tp-seat-name">{s.name}{s.tick ? <span className="tp-tick"> ✓</span> : null}</span>
         {s.sub ? <span className="tp-seat-sub">{s.sub}</span> : null}

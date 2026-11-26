@@ -109,39 +109,39 @@ describe("the bars", () => {
   it("a phone gets the bottom tab bar, Play selected, and no top bar", async () => {
     await renderApp();
     const items = [...host.querySelectorAll<HTMLButtonElement>(".tabbar .tabbar-item")];
-    expect(items.map((b) => b.textContent)).toEqual(["Play", "Leaderboard", "Me"]);
+    expect(items.map((b) => b.textContent)).toEqual(["Play", "Leaderboard", "Collection", "Me"]);
     expect(items[0].getAttribute("aria-current")).toBe("page");
-    expect(items.slice(0, 2).every((b) => b.querySelector("svg"))).toBe(true);
-    // signed in, Me shows the account's initial in place of the person icon
-    expect(items[2].querySelector("svg")).toBeNull();
-    expect(items[2].querySelector(".avatar")?.getAttribute("data-initial")).toBe("J");
+    expect(items.slice(0, 3).every((b) => b.querySelector("svg"))).toBe(true);
+    // signed in, Me shows the account's portrait in place of the person icon
+    expect(items[3].querySelector("svg")).toBeNull();
+    expect(items[3].querySelector(".avatar .portrait")?.getAttribute("data-look")).toBe("tractor/red");
     expect(host.querySelector(".topbar")).toBeNull();
     expect(host.querySelector(".lobby-panel")).not.toBeNull();
   });
 
-  it("a guest's Me tab shows the initial of the name they play under", async () => {
+  it("a guest's Me tab shows the default portrait once they have a name", async () => {
     signedIn = false;
     await renderApp();
     const { guestName } = await import("./guestName");
-    const me = () => [...host.querySelectorAll<HTMLButtonElement>(".tabbar .tabbar-item")][2];
+    const me = () => [...host.querySelectorAll<HTMLButtonElement>(".tabbar .tabbar-item")][3];
     expect(me().textContent).toBe("Me");
     act(() => guestName.setName("Gentle Tractor"));
     expect(me().querySelector("svg")).toBeNull();
-    expect(me().querySelector(".avatar")?.getAttribute("data-initial")).toBe("G");
+    expect(me().querySelector(".avatar .portrait")?.getAttribute("data-look")).toBe("tractor/red");
   });
 
   for (const [label, width] of BREAKPOINTS) {
-    it(`the same three tabs, Play, Leaderboard and Me, on a ${label} (${width}px)`, async () => {
+    it(`the same four tabs, Play, Leaderboard, Collection and Me, on a ${label} (${width}px)`, async () => {
       viewport(width);
       await renderApp();
       const sel = width >= 700 ? ".topbar-tabs .topbar-tab" : ".tabbar .tabbar-item";
       const tabs = () => [...host.querySelectorAll<HTMLButtonElement>(sel)];
-      expect(tabs().map((b) => b.textContent)).toEqual(["Play", "Leaderboard", "Me"]);
+      expect(tabs().map((b) => b.textContent)).toEqual(["Play", "Leaderboard", "Collection", "Me"]);
       expect(host.querySelector(width >= 700 ? ".tabbar" : ".topbar")).toBeNull();
-      await act(async () => { tabs()[2].click(); await new Promise((r) => setTimeout(r, 0)); });
+      await act(async () => { tabs()[3].click(); await new Promise((r) => setTimeout(r, 0)); });
       expect(window.location.hash).toBe("#/me");
       expect(host.querySelector(".large-title")?.textContent).toBe("Me");
-      expect(tabs()[2].getAttribute("aria-current")).toBe("page");
+      expect(tabs()[3].getAttribute("aria-current")).toBe("page");
       // Stats and Games are a switch inside Me at every width
       const seg = (t: string) => [...host.querySelectorAll<HTMLButtonElement>(".me-page .segmented-btn")].find((b) => b.textContent === t)!;
       expect(seg("Stats").getAttribute("aria-pressed")).toBe("true");
@@ -150,7 +150,7 @@ describe("the bars", () => {
       expect(window.location.hash).toBe("#/me/games");
       expect(seg("Games").getAttribute("aria-pressed")).toBe("true");
       expect(host.querySelector(".large-title")?.textContent).toBe("Me");
-      expect(tabs()[2].getAttribute("aria-current")).toBe("page");
+      expect(tabs()[3].getAttribute("aria-current")).toBe("page");
       expect(host.querySelector(".games-status")?.textContent).toContain("No saved games yet");
       // who you are and the settings stay above or beside the games
       expect(host.querySelector(".me-who")).not.toBeNull();
@@ -162,7 +162,7 @@ describe("the bars", () => {
     it(`a phone held sideways (${w}x${h}) keeps the portrait design: the tab bar, no top bar`, async () => {
       viewport(w, h);
       await renderApp();
-      expect([...host.querySelectorAll(".tabbar .tabbar-item")].map((b) => b.textContent)).toEqual(["Play", "Leaderboard", "Me"]);
+      expect([...host.querySelectorAll(".tabbar .tabbar-item")].map((b) => b.textContent)).toEqual(["Play", "Leaderboard", "Collection", "Me"]);
       expect(host.querySelector(".topbar")).toBeNull();
       expect(host.querySelector(".home-narrow")).not.toBeNull();
     });
@@ -177,16 +177,18 @@ describe("the bars", () => {
     await act(async () => { openTab("leaderboard"); await new Promise((r) => setTimeout(r, 0)); });
     expect(bar().style.getPropertyValue("--tab-index")).toBe("1");
     expect(host.querySelector(".tabbar-item.on")?.textContent).toBe("Leaderboard");
-    await act(async () => { openTab("me"); await new Promise((r) => setTimeout(r, 0)); });
+    await act(async () => { openTab("collection"); await new Promise((r) => setTimeout(r, 0)); });
     expect(bar().style.getPropertyValue("--tab-index")).toBe("2");
+    await act(async () => { openTab("me"); await new Promise((r) => setTimeout(r, 0)); });
+    expect(bar().style.getPropertyValue("--tab-index")).toBe("3");
   });
 
-  it("at 700px and up the top bar has the three tabs centred and the account chip, which opens Me", async () => {
+  it("at 700px and up the top bar has the four tabs centred and the account chip, which opens Me", async () => {
     viewport(true);
     await renderApp();
     expect(host.querySelector(".tabbar")).toBeNull();
     const tabs = () => [...host.querySelectorAll<HTMLButtonElement>(".topbar-tabs .topbar-tab")];
-    expect(tabs().map((b) => b.textContent)).toEqual(["Play", "Leaderboard", "Me"]);
+    expect(tabs().map((b) => b.textContent)).toEqual(["Play", "Leaderboard", "Collection", "Me"]);
     // no corner wordmark on any tab: Play's page carries the title
     expect(host.querySelector(".topbar-mark")).toBeNull();
     const account = () => host.querySelector<HTMLButtonElement>(".topbar .account-pill")!;
@@ -199,7 +201,7 @@ describe("the bars", () => {
     expect(host.querySelector(".topbar-mark")).toBeNull();
     await act(async () => { account().click(); await new Promise((r) => setTimeout(r, 0)); });
     expect(window.location.hash).toBe("#/me");
-    expect(tabs()[2].getAttribute("aria-current")).toBe("page");
+    expect(tabs()[3].getAttribute("aria-current")).toBe("page");
     expect(host.querySelector(".me-name")?.textContent).toBe("Jerry");
     expect(document.querySelector(".guest-name-sheet")).toBeNull();
   });
@@ -304,7 +306,7 @@ describe("one name control", () => {
       await act(async () => { openTab("me"); await new Promise((r) => setTimeout(r, 0)); });
       expect(host.querySelector(".me-name")?.textContent).toBe("Gentle Tractor");
       expect(host.querySelector(".me-sub")?.textContent).toBe("Guest");
-      expect(host.querySelector(".me-who .avatar")?.textContent).toBe("G");
+      expect(host.querySelector(".me-who .avatar .portrait")?.getAttribute("data-look")).toBe("tractor/red");
       const edit = host.querySelector<HTMLButtonElement>(".me-identity")!;
       expect(edit.querySelector(".me-name")?.textContent).toBe("Gentle Tractor");
       act(() => edit.click());

@@ -438,10 +438,11 @@ it("cancelling Start before its room comes back, with no network, deals no game"
   await startGame();
 });
 
-/** React's generated ids, renumbered by first appearance, one tag per line. */
+/** React's generated ids, renumbered by first appearance, and a portrait's
+ *  drawing cut to its look (`data-look`), one tag per line. */
 function markup(el: Element | null): string {
   const seen = new Map<string, string>();
-  return (el?.outerHTML ?? "").replace(/«[^»]+»|:r[0-9a-z]+:|_r_[0-9a-z]+_/g, (id) => {
+  return (el?.outerHTML ?? "").replace(/ src="data:image\/svg\+xml[^"]*"/g, "").replace(/«[^»]+»|:r[0-9a-z]+:|_r_[0-9a-z]+_/g, (id) => {
     if (!seen.has(id)) seen.set(id, `«id${seen.size}»`);
     return seen.get(id)!;
   }).replace(/></g, ">\n<");

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { effectiveName, useAuth } from "../auth";
+import { useAuth } from "../auth";
 import type { AuthUser } from "../auth";
 import { canAnimate } from "../motion";
 import { useMediaQuery } from "../phoneLayout";
@@ -17,24 +17,15 @@ import AccountChip from "../components/AccountChip";
 import { useT } from "../i18n";
 import type { MessageKey } from "../i18n";
 import GuestChip from "../components/GuestChip";
+import { Portrait } from "../companion/Companion";
+import { lookAccount, useNewLook } from "../companion/seen";
 
 export { WIDE };
 
-/** The account's picture, or its initial on a plain disc; a guest's disc
- *  carries the initial of the name they play under. */
-export function Avatar({ user, size = "sm", guestName = "" }: {
-  user: AuthUser | null; size?: "sm" | "lg"; guestName?: string;
-}) {
-  const cls = `avatar avatar-${size}`;
-  if (!user) {
-    const initial = guestName.trim().slice(0, 1).toUpperCase();
-    return <span className={`${cls} avatar-guest`} aria-hidden="true">{initial || "?"}</span>;
-  }
-  if (user.picture) {
-    return <img className={cls} src={user.picture} alt="" referrerPolicy="no-referrer" />;
-  }
-  const shown = effectiveName(user) || user.email;
-  return <span className={cls} aria-hidden="true">{shown.slice(0, 1).toUpperCase()}</span>;
+/** A person's picture: the portrait of their equipped companion (a guest's
+ *  is the default). */
+export function Avatar({ user, size = "sm" }: { user: AuthUser | null; size?: "sm" | "lg" }) {
+  return <span className={`avatar avatar-${size} avatar-portrait`}><Portrait look={user?.look} size={size === "lg" ? 64 : 28} /></span>;
 }
 
 function PlayIcon() {
@@ -57,6 +48,18 @@ function PodiumIcon() {
   );
 }
 
+/** Collection: four small tiles; the selected tab fills one of them. */
+function TilesIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="tiles-icon">
+      <rect className="tile-on" x="3.5" y="3.5" width="7.5" height="7.5" rx="2" />
+      <rect className="nofill" x="13" y="3.5" width="7.5" height="7.5" rx="2" />
+      <rect className="nofill" x="3.5" y="13" width="7.5" height="7.5" rx="2" />
+      <rect className="nofill" x="13" y="13" width="7.5" height="7.5" rx="2" />
+    </svg>
+  );
+}
+
 function PersonIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -69,6 +72,7 @@ function PersonIcon() {
 const TABS: { tab: Tab; name: MessageKey; icon: () => ReactNode }[] = [
   { tab: "play", name: "home.tabPlay", icon: PlayIcon },
   { tab: "leaderboard", name: "home.tabLeaderboard", icon: PodiumIcon },
+  { tab: "collection", name: "home.tabCollection", icon: TilesIcon },
   { tab: "me", name: "home.tabMe", icon: PersonIcon },
 ];
 
@@ -78,24 +82,26 @@ function goTab(tab: Tab, active: Tab): void {
   else openTab(tab);
 }
 
-/** The Me tab's icon: the account's picture, or the initial of the name
- *  played under (an account's or a guest's), drawn by CSS so the tab's text
- *  stays "Me". */
-function TabAvatar({ user, guest }: { user: AuthUser | null; guest: string }) {
-  if (user?.picture) return <img className="avatar" src={user.picture} alt="" referrerPolicy="no-referrer" />;
-  const shown = user ? effectiveName(user) || user.email : guest.trim();
-  return <span className="avatar tabbar-initial" aria-hidden="true" data-initial={shown.slice(0, 1).toUpperCase()} />;
+/** The Me tab's icon: the player's portrait, so the tab's text stays "Me". */
+function TabAvatar({ user }: { user: AuthUser | null }) {
+  return <span className="avatar avatar-portrait"><Portrait look={user?.look} size={26} /></span>;
+}
+
+/** The gold dot a tab carries while it holds something new. */
+function NewDot() {
+  return <span className="tab-dot" aria-hidden="true" />;
 }
 
 /** A phone's tab bar: a floating glass pill over the page, above the home
  *  indicator, with a lighter capsule under the active tab that slides to the
- *  tab tapped. Me shows the player's picture or initial once there is one. */
+ *  tab tapped. Me shows the player's portrait once there is a player. */
 export function TabBar({ active }: { active: Tab }) {
   const t = useT();
   const account = useAuth();
   const { name: guest } = useGuestName();
   const user = account.status === "in" ? account.user : null;
   const known = user !== null || (account.status !== "loading" && guest.trim() !== "");
+  const fresh = useNewLook(lookAccount(user), user?.looks) && active !== "collection";
   const index = TABS.findIndex((x) => x.tab === active);
   return (
     <nav className="tabbar" aria-label={t("home.navMain")} style={{ "--tab-index": index } as CSSProperties}>
@@ -103,7 +109,8 @@ export function TabBar({ active }: { active: Tab }) {
       {TABS.map(({ tab, name, icon: Icon }) => (
         <button key={tab} type="button" className={`tabbar-item${tab === active ? " on" : ""}`}
                 aria-current={tab === active ? "page" : undefined} onClick={() => goTab(tab, active)}>
-          {tab === "me" && known ? <TabAvatar user={user} guest={guest} /> : <Icon />}
+          {tab === "me" && known ? <TabAvatar user={user} /> : <Icon />}
+          {tab === "collection" && fresh ? <NewDot /> : null}
           <span>{t(name)}</span>
         </button>
       ))}
@@ -111,7 +118,7 @@ export function TabBar({ active }: { active: Tab }) {
   );
 }
 
-/** The wide layout's top bar: no strip of its own, only the phone's three
+/** The wide layout's top bar: no strip of its own, only the phone's four
  *  tabs as a glass pill centred over the page and the account chip
  *  at the end (a guest's opens the identity sheet), after the Your table
  *  pill on a tab other than Play. */
@@ -119,6 +126,7 @@ export function TopBar({ active }: { active: Tab }) {
   const t = useT();
   const account = useAuth();
   const user = account.status === "in" ? account.user : null;
+  const fresh = useNewLook(lookAccount(user), user?.looks) && active !== "collection";
   let end: ReactNode = null;
   if (user) {
     end = <AccountChip user={user} compact />;
@@ -132,6 +140,7 @@ export function TopBar({ active }: { active: Tab }) {
           <button key={x.tab} type="button" className={`topbar-tab${x.tab === active ? " on" : ""}`}
                   aria-current={x.tab === active ? "page" : undefined} onClick={() => goTab(x.tab, active)}>
             {t(x.name)}
+            {x.tab === "collection" && fresh ? <NewDot /> : null}
           </button>
         ))}
       </nav>

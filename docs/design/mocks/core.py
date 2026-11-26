@@ -212,7 +212,7 @@ LEAVE = btn("Leave", "ghost", grow=False)
 
 def wide(body, active="Play", w=1280, h=800, u=SIGNED):
     tabs = "".join(f'<span style="padding:6px 14px;border-radius:999px;font-size:14px;font-weight:600;'
-                   f'{"background:rgba(255,255,255,.1);color:#fff" if t == active else "color:#9aa3b2"}">{t}</span>' for t in ("Play", "Leaderboard", "Me"))
+                   f'{"background:rgba(255,255,255,.1);color:#fff" if t == active else "color:#9aa3b2"}">{t}</span>' for t in ("Play", "Leaderboard", "Collection", "Me"))
     return (f'<div style="width:{w}px;height:{h}px;box-sizing:border-box;background:#1b1f27;color:#e9ecf2;font-family:{FONT};overflow:hidden;display:flex;flex-direction:column">'
             f'<header style="height:60px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #2b323e">'
             f'<span style="color:{GOLD};font-weight:800;letter-spacing:.2em;font-size:13px">升级 SHENG JI</span>'
@@ -617,6 +617,37 @@ def f9_me():
     ]
 
 
+def f11_collection():
+    """The Collection tab (Jerry 2026-11-26): the Tractor on a corner of felt, your leaderboard row as others see
+    it, the colours, and the one Team · Individual · Off control. No shop, no prices, nothing 'coming'."""
+    felt_box = ('<div style="border-radius:18px;background:radial-gradient(ellipse at 50% 35%,#2f7a52,#123a26);padding:18px 0 10px;'
+                'display:flex;flex-direction:column;align-items:center;gap:4px"><span style="font-size:96px;line-height:1">🚜</span>'
+                '<span style="font-size:14px;color:#e8ede8;min-height:18px">{status}</span></div>')
+    row = ('<div style="display:flex;align-items:center;gap:12px;background:#242a35;border-radius:12px;padding:10px 14px">'
+           '<span style="width:24px;height:24px;border-radius:12px;background:#c6cdd8;color:#1b1f27;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center">4</span>'
+           '<span style="width:28px;height:28px;border-radius:14px;background:#2f7a52;display:flex;align-items:center;justify-content:center;font-size:14px">🚜</span>'
+           '<span style="flex:1;font-size:16px">Cool Tractor</span><span style="font-weight:700">930</span></div>')
+    grounds = ("#2f7a52", "#f0c25a", "#f4ead2", "#a3232b", "#2c377c", "#2a2024", "#24408f", "#efe9da")
+    def swatches(on=0, locked=(4, 5, 6, 7)):
+        return ('<div style="display:flex;flex-wrap:wrap;gap:12px">' + "".join(
+            f'<span style="position:relative;width:44px;height:44px;border-radius:22px;background:{g};display:flex;align-items:center;justify-content:center;'
+            f'font-size:20px;{"box-shadow:0 0 0 2px " + GOLD if i == on else ""}">🚜'
+            + ('<span style="position:absolute;right:-4px;bottom:-4px;font-size:12px">🔒</span>' if i in locked else "") + '</span>'
+            for i, g in enumerate(grounds)) + '</div>')
+    mode = ('<div style="display:flex;padding:3px;border-radius:12px;background:#11141a;border:1px solid #333b49">'
+            + "".join(f'<span style="flex:1;text-align:center;padding:7px 0;border-radius:9px;font-size:14px;font-weight:700;'
+                      f'{"background:#2f3a4d" if i == 0 else "color:#9aa3b2"}">{t}</span>' for i, t in enumerate(("Team", "Individual", "Off")))
+            + '</div>')
+    page = phone(felt_box.format(status="") + row + swatches() + mode, active="Collection", title="Collection", user="CT")
+    locked = phone(felt_box.format(status="14 of 25 rounds") + row + swatches(on=4) + mode, active="Collection", title="Collection", user="CT")
+    return [
+        ("Collection: the Tractor and its colours", [
+            shot(page, 390, 844, "Tap Collection", "The Tractor idles on the felt; tap it and it hops. One tap on a colour equips it."),
+            shot(locked, 390, 844, "Tap a locked colour", "It shows on the felt, and its count is the page's one status line."),
+        ]),
+    ]
+
+
 def f10_game_over():
     won = felt(levels=("A", "♣ A", "9"), overlay=card_box('<span style="font-size:28px">👑</span><br><span style="color:#f2c14e">You &amp; Alice win the game!</span>',
                                                            "Games: Us 1 · Them 0", btn("Next game", h=46) + btn("Leave", "ghost", grow=False, h=46), w=400, gold=True))
@@ -670,6 +701,7 @@ FLOWS = [
     ("connection", "Connection drop", f7_connection),
     ("offline", "Offline", f8_offline),
     ("me", "Me and settings", f9_me),
+    ("collection", "Collection", f11_collection),
     ("game-over", "Game over (proposed, not decided)", f10_game_over),
 ]
 

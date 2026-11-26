@@ -25,7 +25,7 @@ async function render(status: number, body: unknown) {
 it("shows the avatar, the name and the rating, and a tap opens Me", async () => {
   const host = await render(200, { rating: 1468, week_delta: -6 });
   const chip = host.querySelector<HTMLButtonElement>(".account-pill")!;
-  expect(chip.querySelector(".avatar")?.textContent).toBe("J");
+  expect(chip.querySelector(".avatar .portrait")?.getAttribute("data-look")).toBe("tractor/red");
   expect(chip.querySelector(".account-pill-name")?.textContent).toBe("Jerry");
   expect(chip.querySelector(".account-pill-rating")?.textContent).toBe("1,468");
   expect(chip.querySelector("svg")).toBeNull();   // no pencil: the name is edited on Me

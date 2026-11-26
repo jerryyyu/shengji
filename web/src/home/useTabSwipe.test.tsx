@@ -94,15 +94,20 @@ function swipe(dx: number, { x = 200, ms = 500, on = ".plain", release = true, d
   return moves;
 }
 
-it("walks Play, Leaderboard and Me with leftward swipes past the threshold, and back", async () => {
+it("walks Play, Leaderboard, Collection and Me with leftward swipes past the threshold, and back", async () => {
   await render();
   expect(onTab()).toBe("Play");
   swipe(-150);
   expect(window.location.hash).toBe("#/leaderboard");
   expect(onTab()).toBe("Leaderboard");
   swipe(-150);
+  expect(window.location.hash).toBe("#/collection");
+  expect(onTab()).toBe("Collection");
+  swipe(-150);
   expect(window.location.hash).toBe("#/me");
   expect(onTab()).toBe("Me");
+  swipe(150);
+  expect(window.location.hash).toBe("#/collection");
   swipe(150);
   expect(window.location.hash).toBe("#/leaderboard");
   swipe(150);
@@ -300,7 +305,7 @@ it("fades the new page in for 150 ms when a tab is tapped, but not after a swipe
     expect(animate.mock.calls[0][0]).toEqual([{ opacity: 0 }, { opacity: 1 }]);
     expect(animate.mock.calls[0][1]).toMatchObject({ duration: TAB_FADE_MS });
     swipe(-150);
-    expect(onTab()).toBe("Me");
+    expect(onTab()).toBe("Collection");
     expect(animate).toHaveBeenCalledTimes(1);
     await wait(SWIPE_SETTLE_MS + 20);
     media.reduce = true;

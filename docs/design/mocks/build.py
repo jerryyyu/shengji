@@ -199,15 +199,15 @@ def tpanel(kicker, title, lines, ours, theirs, buttons, hint="", extra="", heads
             + f'<div style="display:flex;gap:8px">{buttons}</div></div>')
 
 
-TABS = ("Play", "Leaderboard", "Me")
+TABS = ("Play", "Leaderboard", "Collection", "Me")
 
 
 def tabbar(active="Play", user="G"):
     items = []
     for t in TABS:
         on = t == active
-        icon = (f'<span style="width:20px;height:20px;border-radius:10px;background:#2f3a4d;color:#fff;font-size:10px;font-weight:700;'
-                f'display:flex;align-items:center;justify-content:center">{user}</span>') if t == "Me" else \
+        icon = (f'<span style="width:20px;height:20px;border-radius:10px;background:#2f7a52;color:#fff;font-size:10px;font-weight:700;'
+                f'display:flex;align-items:center;justify-content:center">🚜</span>') if t == "Me" else \
             f'<span style="width:18px;height:18px;border-radius:5px;border:2px solid {GOLD if on else "#8a93a3"}"></span>'
         items.append(f'<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;border-radius:24px;'
                      f'{"background:rgba(255,255,255,.08);" if on else ""}color:{GOLD if on else "#9aa3b2"};font-size:10px;font-weight:600">{icon}{t}</div>')

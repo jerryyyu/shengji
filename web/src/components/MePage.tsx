@@ -263,7 +263,7 @@ function GuestMe() {
       main={(
         <>
           <button type="button" className="me-who me-identity" onClick={() => guestName.open("me_row")}>
-            <Avatar user={null} size="lg" guestName={shown} />
+            <Avatar user={null} size="lg" />
             <span className="me-who-text">
               <span className="me-name">{shown}</span>
               <span className="me-sub">{t("common.guest")}</span>

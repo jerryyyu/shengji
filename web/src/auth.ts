@@ -12,6 +12,8 @@ import { nativeAppleSignOut, nativeGoogleSignOut } from "./nativeAuth";
 import { telemetry } from "./telemetry";
 import { conn } from "./ws";
 import { t } from "./i18n";
+import { COMPANION_MODES } from "./companion/look";
+import type { CompanionMode, LookEntry } from "./companion/look";
 
 export interface AuthUser {
   /** The profile name: Google's, or the name Apple sent on the first sign-in. */
@@ -27,6 +29,14 @@ export interface AuthUser {
   /** False for an account with no Google or Apple identity (the iOS app's
    *  own); absent when the server does not say. */
   linked?: boolean;
+  /** The equipped companion, `"<companion>/<colour>"`; absent from older servers. */
+  look?: string;
+  /** Rated rounds the account's team won, which unlock a colour. */
+  ranked_wins?: number;
+  /** Every look and whether this account has unlocked it. */
+  looks?: LookEntry[];
+  /** Where this account's own screen draws companions. */
+  companions?: CompanionMode;
 }
 
 /** The `/api/me` body as the server sends it; older servers lack the two
@@ -40,6 +50,10 @@ function toUser(body: Partial<AuthUser> & { name: string; email: string }): Auth
     name_shown: body.name_shown ?? firstName(body.name),
     rounds_played: typeof body.rounds_played === "number" ? body.rounds_played : null,
     ...(typeof body.linked === "boolean" ? { linked: body.linked } : {}),
+    ...(typeof body.look === "string" ? { look: body.look } : {}),
+    ...(typeof body.ranked_wins === "number" ? { ranked_wins: body.ranked_wins } : {}),
+    ...(Array.isArray(body.looks) ? { looks: body.looks } : {}),
+    ...(COMPANION_MODES.includes(body.companions as CompanionMode) ? { companions: body.companions } : {}),
   };
 }
 
@@ -168,6 +182,20 @@ export async function updateDisplayName(name: string | null): Promise<AuthUser> 
   if (status === 400 && body?.detail) throw new NameRejected(body.detail);
   if (status === 429) throw new Error(t("home.tooManyChanges"));
   if (status !== 200 || !body) throw new Error(t("home.nameNotSavedStatus", { n: status }));
+  return toUser(body);
+}
+
+/** `PUT /api/me/look`: equip a look the account has unlocked, and/or set
+ *  where companions are drawn. Resolves with the updated account; rejects on
+ *  any refusal (a locked look, no session). */
+export async function putLook(change: { look?: string; companions?: CompanionMode }): Promise<AuthUser> {
+  const { status, body } = await api<AuthUser>("/api/me/look", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(change),
+  });
+  if (status === 429) throw new Error(t("home.tooManyChanges"));
+  if (status !== 200 || !body) throw new Error(t("home.lookNotSaved", { n: status }));
   return toUser(body);
 }
 

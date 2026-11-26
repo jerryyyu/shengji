@@ -37,6 +37,7 @@ import LeaveSheet from "./LeaveSheet";
 import { SeatHeldPill } from "./ConnectionPill";
 import { useAnyTapIsBack } from "./seatHeld";
 import { useFirstGameHint } from "./useFirstGameHint";
+import { Portrait } from "../companion/Companion";
 
 // the debug overlay loads on its first open, so a player's page never carries it
 const XrayPanel = lazy(() => import("./XrayPanel"));
@@ -201,6 +202,9 @@ export function OpponentPanel({ player, state, readOnly = false }: { player: Sta
         {player.is_banker ? (
           <span className="banker-crown" role="img" aria-label={bankerText(player, state.you)}>👑</span>
         ) : null}
+        {player.is_bot || player.left ? null : (
+          <span className="opp-portrait" aria-hidden="true"><Portrait look={player.look} size={20} /></span>
+        )}
         {/* a seat whose owner left is the bot's now: "Bot (Alice left)" is its name */}
         <span className={`opp-name-text${player.left ? " left-tag" : ""}`}>{player.left ? status : shownName}</span>
         {/* always drawn, so the label's width never changes with the turn */}
@@ -797,6 +801,7 @@ export default function Table({ state }: { state: GameState }) {
       )}
       <ChatBubbles state={state} open={chatOpen} onOpen={() => setChatOpen(true)} />
       <ChatPanel messages={chat} you={state.you} open={chatOpen}
+                 lookOf={(seat) => state.players.find((p) => p.seat === seat)?.look}
                  onClose={() => setChatOpen(false)} />
       {watching ? (
         <div className="away-pill join-pill" role="status">

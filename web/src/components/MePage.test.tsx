@@ -289,7 +289,7 @@ describe("a guest", () => {
     await render();
     expect(host.querySelector(".me-name")?.textContent).toBe("Gentle Tractor");
     expect(host.querySelector(".me-sub")?.textContent).toBe("Guest");
-    expect(host.querySelector(".me-who .avatar")?.textContent).toBe("G");
+    expect(host.querySelector(".me-who .avatar .portrait")?.getAttribute("data-look")).toBe("tractor/red");
     // no sign-in buttons on the page: the name row opens the sheet that has them
     expect(host.querySelector(".google-signin")).toBeNull();
     expect(host.querySelector(".signin-card")).toBeNull();
@@ -388,7 +388,7 @@ describe("a guest", () => {
     expect(host.querySelector(".me-name")?.textContent).toBe(rolled);
     act(() => guestName.setName("Mei"));
     expect(host.querySelector(".me-name")?.textContent).toBe("Mei");
-    expect(host.querySelector(".me-who .avatar")?.textContent).toBe("M");
+    expect(host.querySelector(".me-who .avatar .portrait")?.getAttribute("data-look")).toBe("tractor/red");
     const done = [...sheet.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Done")!;
     act(() => done.click());
     expect(guestName.getSnapshot().editing).toBe(false);

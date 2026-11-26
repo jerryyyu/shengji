@@ -130,10 +130,11 @@ function scopes(): Element[] {
   return out;
 }
 
-/** React's generated ids, renumbered by first appearance; nothing else changes. */
+/** React's generated ids, renumbered by first appearance, and a portrait's
+ *  drawing cut to its look (`data-look`); nothing else changes. */
 function normalize(html: string): string {
   const seen = new Map<string, string>();
-  return html.replace(/«[^»]+»|:r[0-9a-z]+:|_r_[0-9a-z]+_/g, (id) => {
+  return html.replace(/ src="data:image\/svg\+xml[^"]*"/g, "").replace(/«[^»]+»|:r[0-9a-z]+:|_r_[0-9a-z]+_/g, (id) => {
     if (!seen.has(id)) seen.set(id, `«id${seen.size}»`);
     return seen.get(id)!;
   });

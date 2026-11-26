@@ -91,6 +91,22 @@ it("the surfaces a player can open are exactly the listed ones", () => {
     .toEqual([...SURFACES].sort());
 });
 
+/** The home screen's tabs, in order, at every width. A tab is the largest
+ *  surface there is: a new one needs its row in docs/design/FLOWS.md first. */
+const HOME_TABS = ["play", "leaderboard", "collection", "me"];
+
+it("the home tabs are exactly the listed ones", () => {
+  const route = files.find((f) => f.rel === "home/route.ts")!.code;
+  const union = route.match(/export type Tab = ([^;]+);/)![1];
+  expect([...union.matchAll(/"(\w+)"/g)].map((m) => m[1]), "A new tab needs its row in FLOWS.md; a removed one shrinks HOME_TABS.")
+    .toEqual(HOME_TABS);
+  const swipe = files.find((f) => f.rel === "home/useTabSwipe.ts")!.code;
+  const order = swipe.match(/TAB_ORDER: readonly Tab\[\] = \[([^\]]+)\]/)![1];
+  expect([...order.matchAll(/"(\w+)"/g)].map((m) => m[1])).toEqual(HOME_TABS);
+  const shell = files.find((f) => f.rel === "home/HomeShell.tsx")!.code;
+  expect([...shell.matchAll(/\{ tab: "(\w+)", name: "home\.tab\w+"/g)].map((m) => m[1])).toEqual(HOME_TABS);
+});
+
 it("leave paths are exactly the listed ones", () => {
   expect(matching(/["'](?:leave_room|table_leave)["']|\bqueue\.leave\(/, notAClient),
     "A new way to leave duplicates the one Leave sheet (FLOWS.md section 3). Route it through an existing "
@@ -126,6 +142,7 @@ const TOAST_SITES = [
   "App.tsx", // the server's errors and notices
   "components/Hud.tsx", // a failed throw and the engine's table messages
   "codeJoin.ts", // a code that names nothing, or past the peek limit
+  "components/CollectionPage.tsx", // a colour or companion setting the server did not take
   "components/Table.tsx", // Coach on/off, a newcomer joining the table
   "queue/QueueLayer.tsx", // the queue's notices
 ];

@@ -168,14 +168,14 @@ describe("the lobby with sign-in ON", () => {
     expect([...host.querySelectorAll(".play-mode button")].map((b) => b.textContent)).toEqual(["Ranked", "Casual"]);
     expect(host.textContent).not.toContain("Sign in to play ranked");
     expect(host.textContent).not.toContain("Your name");
-    // the chip sits where an account's does: initial, name, the guest line for the rating, and a pencil
+    // the chip sits where an account's does: portrait, name, the guest line for the rating, and a pencil
     const chip = host.querySelector<HTMLButtonElement>(".guest-pill")!;
     // first beside the art, which ends with the preview
     expect(chip.previousElementSibling).toBeNull();
     expect(chip.parentElement?.previousElementSibling?.lastElementChild?.className).toBe("lobby-preview");
     const name = chip.querySelector(".account-pill-name")!.textContent!;
     expect(name).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);
-    expect(chip.querySelector(".avatar")?.textContent).toBe(name.slice(0, 1));
+    expect(chip.querySelector(".avatar .portrait")?.getAttribute("data-look")).toBe("tractor/red");
     expect(chip.querySelector(".account-pill-rating")?.textContent).toBe("Guest");
     expect(chip.querySelector(".guest-pill-edit")).not.toBeNull();
     const row = [...host.querySelectorAll<HTMLButtonElement>(".play-ranked-row button")];
@@ -214,7 +214,8 @@ describe("the lobby with sign-in ON", () => {
     // first beside the art, which ends with the preview
     expect(chip.previousElementSibling).toBeNull();
     expect(chip.parentElement?.previousElementSibling?.lastElementChild?.className).toBe("lobby-preview");
-    expect(chip.querySelector("img.avatar")?.getAttribute("src")).toBe("https://img/j.png");
+    // the companion's portrait stands for the account, in place of its Google picture
+    expect(chip.querySelector(".avatar .portrait")?.getAttribute("data-look")).toBe("tractor/red");
     expect(chip.querySelector(".account-pill-name")?.textContent).toBe("Jerry");
     expect(chip.querySelector(".account-pill-rating")?.textContent).toBe("1,532");
     expect(host.querySelector(".google-signin")).toBeNull();
@@ -238,11 +239,11 @@ describe("the lobby with sign-in ON", () => {
     expect(host.querySelector(".game-subtitle")).toBeNull();
   });
 
-  it("a blank avatar shows the initial", async () => {
-    authState.current = { status: "in", clientId: "cid.apps", user: { ...JERRY, picture: null } };
+  it("an account's chip shows its equipped companion", async () => {
+    authState.current = { status: "in", clientId: "cid.apps", user: { ...JERRY, picture: null, look: "tractor/jade" } };
     await render();
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
-    expect(host.querySelector(".account-pill .avatar")?.textContent).toBe("J");
+    expect(host.querySelector(".account-pill .avatar .portrait")?.getAttribute("data-look")).toBe("tractor/jade");
   });
 
   it("stats that cannot load leave the rating out of the chip", async () => {

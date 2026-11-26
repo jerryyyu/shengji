@@ -27,6 +27,7 @@ import { useInfoRoute } from "./support/route";
 import Leaderboard from "./components/Leaderboard";
 import MePage from "./components/MePage";
 import HomeShell from "./home/HomeShell";
+import CollectionPage from "./components/CollectionPage";
 import { IdentitySheet } from "./components/GuestChip";
 import { openTab, useHomeRoute } from "./home/route";
 import { noteReceipt } from "./stateReceipt";
@@ -368,6 +369,7 @@ export default function App() {
   // on them leads back to the game.
   const tabPage = homeRoute === null ? null
     : homeRoute.tab === "leaderboard" ? <Leaderboard />
+    : homeRoute.tab === "collection" ? <CollectionPage />
     : <MePage section={homeRoute.section} />;
 
   let screen: ReactNode;

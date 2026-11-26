@@ -694,3 +694,65 @@ def test_the_queue_logs_its_mode_to_telemetry(sink):
     rows = [r for r in _records(sink) if r["e"] == "queue"]
     assert [(r["q"], r.get("mode")) for r in rows][:3] == [
         ("join", "casual"), ("leave", "casual"), ("start", "casual")]
+
+
+def _hash(token: str) -> str:
+    import hashlib
+    return hashlib.sha256(b"shengji-invite-host:" + token.encode()).hexdigest()[:8]
+
+
+@pytest.mark.parametrize("step,via", [("created", "share"), ("created", "copy"), ("opened", None),
+                                      ("seated", None)])
+def test_an_invite_step_keeps_its_enums_and_only_the_hash_of_its_token(step, via):
+    raw = {"e": "invite", "t": 120, "step": step, "h": "0123456789ab"}
+    if via is not None:
+        raw["via"] = via
+    ev = telemetry.clean_event(raw)
+    assert ev == {"e": "invite", "t": 120, "step": step, "h": _hash("0123456789ab"),
+                  **({"via": via} if via is not None else {})}
+    assert "0123456789ab" not in json.dumps(ev)
+    assert re.fullmatch(r"[0-9a-f]{8}", ev["h"])
+
+
+def test_the_same_token_groups_and_another_does_not():
+    a = telemetry.clean_event({"e": "invite", "step": "created", "via": "copy", "h": "aaaaaaaaaaaa"})
+    b = telemetry.clean_event({"e": "invite", "step": "opened", "h": "aaaaaaaaaaaa"})
+    c = telemetry.clean_event({"e": "invite", "step": "opened", "h": "bbbbbbbbbbbb"})
+    assert a["h"] == b["h"] != c["h"]
+
+
+def test_an_invite_drops_a_bad_step_and_any_token_off_its_pattern():
+    assert telemetry.clean_event({"e": "invite", "step": "clicked", "h": "0123456789ab"}) is None
+    assert telemetry.clean_event({"e": "invite", "h": "0123456789ab"}) is None
+    for bad in ("FW4X", "0123456789AB", "0123456789a", "0123456789abc", "u_1234567890",
+                "01234567", 123456789012, None, True):
+        assert telemetry.clean_event({"e": "invite", "step": "opened", "h": bad}) == {
+            "e": "invite", "step": "opened"}, bad
+    assert telemetry.clean_event({"e": "invite", "step": "created", "via": "airdrop"}) == {
+        "e": "invite", "step": "created"}
+
+
+def test_an_invite_keeps_no_room_code_account_or_name():
+    ev = telemetry.clean_event({"e": "invite", "step": "seated", "h": "0123456789ab", "code": "FW4X",
+                                "room": "FW4X", "account": "u_1", "name": "Mei", "seat": 2})
+    assert ev == {"e": "invite", "step": "seated", "h": _hash("0123456789ab")}
+
+
+def test_the_collection_screen_and_the_watch_taps_are_kept():
+    assert telemetry.clean_event({"e": "screen", "name": "collection", "prev": "play"}) == {
+        "e": "screen", "name": "collection", "prev": "play"}
+    for tap in ("watch_open", "watch_leave"):
+        assert telemetry.clean_event({"e": "tap", "id": tap}) == {"e": "tap", "id": tap}
+
+
+def test_every_client_screen_and_invite_enum_is_on_the_server_allow_list():
+    web = Path(__file__).resolve().parents[2] / "web/src"
+    src = (web / "telemetry.ts").read_text()
+    union = re.search(r"export type Screen =(.*?);", src, re.DOTALL)
+    assert union is not None
+    assert set(re.findall(r'"([a-z_]+)"', union.group(1))) == set(telemetry.SCREENS)
+    codes = (web / "codes.ts").read_text()
+    for name, values in (("InviteStep", telemetry.INVITE_STEPS), ("InviteVia", telemetry.INVITE_VIA)):
+        union = re.search(rf"export type {name} =(.*?);", codes, re.DOTALL)
+        assert union is not None
+        assert set(re.findall(r'"([a-z_]+)"', union.group(1))) == set(values)

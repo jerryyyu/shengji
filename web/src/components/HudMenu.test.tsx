@@ -5,6 +5,7 @@ import HudMenu from "./HudMenu";
 import { isMuted, setMuted } from "../audio";
 import { auth } from "../auth";
 import { rounds } from "../roundTelemetry";
+import { hostToken } from "../codes";
 
 const sent: unknown[] = [];
 vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); }, reconnect: () => {} } }));
@@ -37,7 +38,7 @@ describe("the table's ⋯ menu", () => {
     await act(async () => { rows(v.host).find((r) => r.textContent === "Invite link")!.click(); });
     Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
     expect(shared).toEqual([{ title: "Sheng Ji", text: "Play Tractor with me? Code ABCD",
-                              url: `${window.location.origin}/?code=ABCD` }]);
+                              url: `${window.location.origin}/?code=ABCD&h=${hostToken()}` }]);
     v.unmount();
   });
 

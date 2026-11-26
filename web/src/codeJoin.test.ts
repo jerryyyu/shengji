@@ -1,6 +1,6 @@
 // The code store's own state, without a screen: one peek per code, its
 // answer matched by code, the panel's chosen seat and the join that follows.
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { sent, link } = vi.hoisted(() => ({
   sent: [] as Record<string, unknown>[],
@@ -20,6 +20,7 @@ const saved = vi.hoisted(() => ({ room: null as string | null, token: null as st
 
 import { CLOSED_LOOK_MS, codes, panelShown } from "./codeJoin";
 import { fromCode } from "./queue/tableModel";
+import { setInviteReporter } from "./codes";
 import { queue } from "./queue/store";
 import { clearToast, currentToast, subscribeToast } from "./toast";
 
@@ -552,5 +553,90 @@ describe("a return to the page while the socket is down", () => {
     sent.length = 0;
     codes.setPlace(lobby);
     expect(sent).toEqual([]);
+  });
+});
+
+describe("an invite link's funnel", () => {
+  const steps: unknown[][] = [];
+  beforeEach(() => {
+    steps.length = 0;
+    setInviteReporter((...args) => { steps.push(args); });
+  });
+  afterEach(() => setInviteReporter(null));
+
+  it("says opened once for the page, with the sender's token, and takes the token off the address", () => {
+    window.history.replaceState(null, "", "/?code=WXYZ&h=0123456789ab");
+    status("open");
+    expect(steps).toEqual([["opened", undefined, "0123456789ab"]]);
+    expect(window.location.search).toBe("?code=WXYZ");
+    status("closed");
+    status("open");
+    expect(steps).toHaveLength(1);
+  });
+
+  it("says seated once, when the server confirms the link's table after its Join", () => {
+    window.history.replaceState(null, "", "/?code=WXYZ&h=0123456789ab");
+    status("open");
+    codes.setPlace(lobby);
+    say(ROOM);
+    codes.join("Bo");
+    codes.setPlace({ ready: true, seatedAt: "WXYZ" });
+    // the lobby's seat alone is not the confirmed table
+    expect(steps).toEqual([["opened", undefined, "0123456789ab"]]);
+    say({ type: "state", room: "WXYZ", you: 1 });
+    say({ type: "state", room: "WXYZ", you: 1 });
+    expect(steps).toEqual([["opened", undefined, "0123456789ab"], ["seated", undefined, "0123456789ab"]]);
+  });
+
+  it("is not seated by another table's seat during the link's Join", () => {
+    window.history.replaceState(null, "", "/?code=WXYZ&h=0123456789ab");
+    status("open");
+    codes.setPlace(lobby);
+    say(ROOM);
+    codes.join("Bo");
+    codes.setPlace({ ready: true, seatedAt: "ABCD" });
+    expect(steps).toEqual([["opened", undefined, "0123456789ab"]]);
+  });
+
+  it("is seated by the link's own table during its Join", () => {
+    window.history.replaceState(null, "", "/?code=WXYZ&h=0123456789ab");
+    status("open");
+    codes.setPlace(lobby);
+    say(ROOM);
+    codes.join("Bo");
+    codes.setPlace({ ready: true, seatedAt: "WXYZ" });
+    say({ type: "state", room: "WXYZ", you: 1 });
+    expect(steps).toEqual([["opened", undefined, "0123456789ab"], ["seated", undefined, "0123456789ab"]]);
+  });
+
+  it("keeps a queued table Join's claim through the lobby's seat, until the server's own table settles it", () => {
+    window.history.replaceState(null, "", "/?code=FG3K&h=0123456789ab");
+    status("open");
+    codes.setPlace(lobby);
+    say(TABLE);
+    codes.join("Bo");
+    expect(sent.at(-1)).toMatchObject({ type: "table_join", code: "FG3K" });
+    codes.setPlace({ ready: true, seatedAt: "FG3K" });
+    expect(steps).toEqual([["opened", undefined, "0123456789ab"]]);
+    say({ type: "state", room: "FG3K", you: 1 });
+    expect(steps).toEqual([["opened", undefined, "0123456789ab"], ["seated", undefined, "0123456789ab"]]);
+  });
+
+  it("carries no token a link did not, or one off its pattern", () => {
+    window.history.replaceState(null, "", "/?code=WXYZ&h=FW4X");
+    status("open");
+    expect(steps).toEqual([["opened", undefined, null]]);
+  });
+
+  it("is not opened by a page without a whole code, nor seated by a seat the link did not take", () => {
+    window.history.replaceState(null, "", "/?code=WX&h=0123456789ab");
+    status("open");
+    codes.setPlace({ ready: true, seatedAt: "ABCD" });
+    expect(steps).toEqual([]);
+    codes.reset();
+    window.history.replaceState(null, "", "/?code=FG3K&h=0123456789ab");
+    status("open");
+    codes.setPlace({ ready: true, seatedAt: "FG3K" });
+    expect(steps).toEqual([["opened", undefined, "0123456789ab"]]);
   });
 });

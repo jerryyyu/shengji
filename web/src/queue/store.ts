@@ -623,6 +623,14 @@ export class QueueStore {
    *  that table instead, in its mode and with its settings, as `name`: the
    *  room that table has just become, if it started meanwhile, seats you
    *  under it. */
+  private joinSent = new Set<(code: string | undefined) => void>();
+
+  /** Called with the table code (none for a search) each time a join is sent. */
+  onJoinSent(fn: (code: string | undefined) => void): () => void {
+    this.joinSent.add(fn);
+    return () => { this.joinSent.delete(fn); };
+  }
+
   join(code?: string, name?: string): void {
     beforeOnlineSetup(() => this.sendJoin(code, false, name), this.sameIntent(), () => this.notTaken());
   }
@@ -659,6 +667,7 @@ export class QueueStore {
       return;
     }
     this.joinSentAt = Date.now();
+    for (const fn of this.joinSent) fn(code);
     this.set({ pending: "join", inGame: null });
     this.clearConfirm();
     // Searching shows only once the server confirms; a Play lost on a dead

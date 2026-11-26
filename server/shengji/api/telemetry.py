@@ -10,6 +10,14 @@ checked against ``SCHEMA``: an unknown event name, an unknown field, or a
 value outside its enum or integer bound drops that field or event. Nothing
 free-form survives: no names, chat, room codes or card codes.
 
+An ``invite`` event (``created``, ``opened``, ``seated``) may carry ``h``,
+the random token the sender's device puts on the links it shares
+(``/?code=CODE&h=TOKEN``, minted once and kept in that origin's storage).
+Only ``h``'s salted hash, eight hex, is written: it groups one sender's
+links with the opens and seats they led to, and it is derived from neither
+an account nor the room code. It is stable for that device's origin, so a
+sender's ``created`` rows of different sockets share it.
+
 Each socket gets a random ``sid`` minted here and kept only on the socket
 object, so no table maps it to an account, device or address. The server
 stamps ``sid``, ``who``, ``form``, ``platform``, ``build``, ``first_visit``,
@@ -71,6 +79,7 @@ A pass that hits the cap leaves the day unmarked so the next write goes on.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -98,6 +107,7 @@ _pruned: tuple[Path, str] | None = None
 SCREENS = frozenset({
     "play", "howto", "name_sheet", "duo_sheet", "room", "waiting_table",
     "offer", "table", "round_end", "leaderboard", "me", "games", "game",
+    "collection",
 })
 TAPS = frozenset({
     "play", "play_bots", "create_room", "duo", "join_code", "start_with_bots",
@@ -105,7 +115,7 @@ TAPS = frozenset({
     "offer_join", "offer_wait", "offer_chip", "next_round", "round_end_leave",
     "menu_leave", "chip_leave", "leave_confirm", "leave_keep", "howto_open",
     "signin_open", "coach_on", "coach_off", "invite_share", "copy_code",
-    "app_store_badge", "hint_preselect",
+    "app_store_badge", "hint_preselect", "watch_open", "watch_leave",
 })
 # Server error codes the client may echo, plus the client's own notice ids.
 NOTICE_CODES = frozenset({
@@ -174,6 +184,13 @@ MAX_HOWTO_STEP = 20
 APP_UA_TOKEN = re.compile(r"(?:^|\s)ShengjiApp/(\S{1,32})(?=\s|$)")
 APP_VERSION = re.compile(r"\d{1,4}\.\d{1,4}(?:\.\d{1,4})?")
 MAX_USER_AGENT = 512
+# An invite's funnel: the link sent (by the share sheet or a copy), a page
+# loaded from it, and that page's visitor seated by its Join.
+INVITE_STEPS = frozenset({"created", "opened", "seated"})
+INVITE_VIA = frozenset({"share", "copy"})
+# The sender's random link token (web/src/codes.ts hostToken); only its hash is kept.
+HOST_TOKEN = re.compile(r"[0-9a-f]{12}")
+HOST_HASH_SALT = b"shengji-invite-host:"
 
 
 def _enum(values: frozenset[str]):
@@ -191,6 +208,15 @@ def _bool(v: Any) -> bool | None:
 
 def _version(v: Any) -> str | None:
     return v if isinstance(v, str) and APP_VERSION.fullmatch(v) else None
+
+
+def _host_hash(v: Any) -> str | None:
+    """Eight hex of the salted SHA-256 of a well-formed link token: the same
+    token always gives the same group, and the kept value is never the token
+    a link carries."""
+    if not isinstance(v, str) or HOST_TOKEN.fullmatch(v) is None:
+        return None
+    return hashlib.sha256(HOST_HASH_SALT + v.encode()).hexdigest()[:8]
 
 
 SCHEMA: dict[str, dict[str, Any]] = {
@@ -220,12 +246,14 @@ SCHEMA: dict[str, dict[str, Any]] = {
                "cause": _enum(DISCONNECT_CAUSES), "ms": _int(0, MAX_MS)},
     # the app version asked for, as the page read it from its User-Agent
     "review_prompt": {"trigger": _enum(REVIEW_TRIGGERS), "version": _version},
+    # ``h`` arrives as the link's raw token and is kept only as its hash
+    "invite": {"step": _enum(INVITE_STEPS), "via": _enum(INVITE_VIA), "h": _host_hash},
 }
 # The field without which an event says nothing; missing or invalid drops it.
 REQUIRED = {"screen": "name", "turn_done": "phase", "tap": "id", "notice": "code",
             "signin": "step", "device_account": "step", "review_prompt": "trigger",
             "app_open": "cold", "round_start": "mode", "round_finish": "by",
-            "offline_digest": "rounds_started", "howto_step": "step"}
+            "offline_digest": "rounds_started", "howto_step": "step", "invite": "step"}
 
 # Server-side queue events (``queue_event``): field -> check.
 QUEUE_FIELDS: dict[str, Any] = {

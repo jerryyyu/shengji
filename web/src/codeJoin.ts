@@ -8,7 +8,7 @@
 // matched by code and one for a code nobody waits on does nothing.
 
 import { useSyncExternalStore } from "react";
-import { CODE_LEN, aliasInviteLink, normalizeCode } from "./codes";
+import { CODE_LEN, HOST_PARAM, aliasInviteLink, isHostToken, normalizeCode, reportInvite } from "./codes";
 import { roomChoices, roomDefaultSeat, tableFull, tableJoinSeat } from "./joinSeats";
 import type { RoomSeats, ServerMsg, TableSeats } from "./protocol";
 import { queue } from "./queue/store";
@@ -102,10 +102,22 @@ export class CodeStore {
   /** The next look at a table closed for a moment, and how many are left. */
   private closedTimer: number | null = null;
   private closedLooks = 0;
+  /** This page loaded from an invite link (its sender's token, or null for
+   *  a link without one), until its visitor is seated by the link's Join;
+   *  undefined when it did not, or once that seat was reported. */
+  private landing: string | null | undefined = undefined;
+  /** The link's Join sent: its code and sender token, until a seat at that
+   *  table settles it as the invite's seat. */
+  private invite: { code: string; host: string | null } | null = null;
 
   attach(): void {
     if (this.attached) return;
     this.attached = true;
+    // a search or another table's Join sent from the queue supersedes the
+    // link Join's claim; the link's own table Join keeps it
+    queue.onJoinSent((code) => {
+      if (this.invite !== null && code !== this.invite.code) this.invite = null;
+    });
     // a test may stand in a partial socket
     conn.subscribe?.((m) => this.onMessage(m));
     conn.subscribeStatus?.((s) => this.onStatus(s));
@@ -163,8 +175,10 @@ export class CodeStore {
     if (this.view) this.set({ ...this.view, ...next });
   }
 
-  /** The join is over, joined or not: the link goes with it. */
+  /** The join is over, joined or not: the link goes with it, and so does a
+   *  link Join's claim to a later seat (a seat at its table settled it first). */
   private drop(): void {
+    this.invite = null;
     if (!this.view) return;
     if (this.view.from === "link") dropParam("code");
     this.set(null);
@@ -186,7 +200,14 @@ export class CodeStore {
     if (this.linkTaken) return;
     this.linkTaken = true;
     aliasInviteLink();
-    const code = normalizeCode(new URLSearchParams(window.location.search).get("code") ?? "");
+    const params = new URLSearchParams(window.location.search);
+    const code = normalizeCode(params.get("code") ?? "");
+    const host = params.get(HOST_PARAM);
+    dropParam(HOST_PARAM);
+    if (code.length === CODE_LEN) {
+      this.landing = isHostToken(host) ? host : null;
+      reportInvite("opened", undefined, this.landing);
+    }
     if (code.length !== CODE_LEN || (j && j.from === "play")) return;
     // a link to another table while this device holds a room seat goes back
     // to that seat first and asks before leaving it
@@ -235,12 +256,16 @@ export class CodeStore {
       return;
     }
     if (p.seatedAt !== null) {
+      // a seat at the link's table keeps the Join's claim: the server's
+      // table frame or confirmed game state for that code settles it
+      const keep = this.invite !== null && p.seatedAt === this.invite.code ? this.invite : null;
       // a seat taken before the link's Join (the queue's table, back on a
       // fresh page) asks first, as a seat held before it would have
       if (now.from === "link" && now.step !== "joining" && p.seatedAt !== now.code) {
         this.seenSeated = true;
         this.set({ ...now, step: "ask", peek: null, full: false, seat: null });
       } else this.drop();
+      if (keep) this.invite = keep;
       return;
     }
     if (now.step === "peek" && !this.asked && p.ready) this.sendPeek(now.code);
@@ -289,13 +314,18 @@ export class CodeStore {
   private joinNow(name: string): void {
     const j = this.view;
     if (!j || j.step !== "panel" || j.full || !j.peek || (j.peek.table && j.peek.closed)) return;
+    // only the link's own Join claims the seat it leads to; any other Join
+    // supersedes an earlier one's claim
+    const claim = j.from === "link" && this.landing !== undefined ? { code: j.code, host: this.landing } : null;
     if (j.peek.table) {
+      this.invite = claim;
       queue.join(j.code, name);
     } else {
       if (j.seat === null) return;
       const token = getResumeToken();
       if (!conn.send({ type: "table_join", code: j.code, name, seat: j.seat, expect: "room",
                        ...(token ? { token } : {}) })) return;
+      this.invite = claim;
     }
     dropParam("code");
     this.set({ ...j, step: "joining" });
@@ -339,7 +369,24 @@ export class CodeStore {
     else this.drop();
   }
 
+  /** The invite's seat, said once: only a seat at the link's own table. */
+  private settleInvite(code: string): void {
+    const inv = this.invite;
+    if (!inv || inv.code !== code) return;
+    this.invite = null;
+    this.landing = undefined;
+    reportInvite("seated", undefined, inv.host);
+  }
+
   private onMessage(msg: ServerMsg): void {
+    // the server's own table for this socket settles the link's Join, once:
+    // the Join's screen may be gone by then, and a newcomer waiting for its
+    // handover is not seated yet
+    if (msg.type === "state" && !msg.joining_you) this.settleInvite(msg.room);
+    // a waiting table's own frame with your seat taken at it: you sit there,
+    // whether or not its game ever starts
+    if (msg.type === "table" && msg.phase === "open"
+        && msg.seats.some((st) => st.you && st.seat === msg.you && st.state === "taken")) this.settleInvite(msg.code);
     const j = this.view;
     if (!j) return;
     if (j.step === "resume" && (msg.type === "room" || msg.type === "state") && msg.room === j.code) {
@@ -440,6 +487,8 @@ export class CodeStore {
     this.refreshOwed = false;
     this.stopClosedLooks();
     this.place = { ready: false, seatedAt: null };
+    this.landing = undefined;
+    this.invite = null;
   }
 }
 

@@ -156,6 +156,23 @@ describe("funnel events and batch stamps", () => {
     expect(sent).toHaveLength(1);
   });
 
+  it("an invite step carries its enums and the sender's token, and a share reaches the page's buffer", async () => {
+    const t = new Telemetry(sender(), true);
+    t.invite("created", "copy", "0123456789ab");
+    t.invite("opened", undefined, null);
+    t.invite("seated", undefined, "0123456789ab");
+    expect(t.pending().map(({ t: _t, ...e }) => e)).toEqual([
+      { e: "invite", step: "created", via: "copy", h: "0123456789ab" },
+      { e: "invite", step: "opened" },
+      { e: "invite", step: "seated", h: "0123456789ab" },
+    ]);
+    const { reportInvite } = await import("./codes");
+    const before = telemetry.pending().length;
+    reportInvite("opened", undefined, "0123456789ab");
+    expect(telemetry.pending().slice(before).map(({ t: _t, ...e }) => e)).toEqual([
+      { e: "invite", step: "opened", h: "0123456789ab" }]);
+  });
+
   it("device_account says whether a round came first", () => {
     localStorage.clear();
     const t = new Telemetry(sender(), true);

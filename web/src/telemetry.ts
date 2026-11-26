@@ -13,10 +13,12 @@ import { subscribeLink, type DropCause } from "./link";
 import { setReviewReporter, type Trigger as ReviewTrigger } from "./reviewPrompt";
 import { isZh } from "./i18n";
 import { DeviceStamps, playedBefore, type Lang } from "./telemetryStamps";
+import { setInviteReporter, type InviteStep, type InviteVia } from "./codes";
 
 export type Screen =
   | "play" | "howto" | "name_sheet" | "duo_sheet" | "room" | "waiting_table"
-  | "offer" | "table" | "round_end" | "leaderboard" | "me" | "games" | "game";
+  | "offer" | "table" | "round_end" | "leaderboard" | "me" | "games" | "game"
+  | "collection";
 
 export type TapId =
   | "play" | "play_bots" | "create_room" | "duo" | "join_code" | "start_with_bots"
@@ -24,7 +26,7 @@ export type TapId =
   | "offer_join" | "offer_wait" | "offer_chip" | "next_round" | "round_end_leave"
   | "menu_leave" | "chip_leave" | "leave_confirm" | "leave_keep" | "howto_open"
   | "signin_open" | "coach_on" | "coach_off" | "invite_share" | "copy_code" | "app_store_badge"
-  | "hint_preselect";
+  | "hint_preselect" | "watch_open" | "watch_leave";
 
 /** Where the identity sheet (the name, and Sign in) was opened. */
 export type SigninFrom =
@@ -91,7 +93,8 @@ type Event =
   | ({ e: "offline_digest"; t: number } & OfflineCounts)
   | { e: "howto_step"; t: number; step: number; done: boolean }
   | { e: "notice"; t: number; code: string; where: Screen | "toast" | "other"; cause?: DropCause; ms?: number }
-  | { e: "review_prompt"; t: number; trigger: ReviewTrigger; version: string };
+  | { e: "review_prompt"; t: number; trigger: ReviewTrigger; version: string }
+  | { e: "invite"; t: number; step: InviteStep; via?: InviteVia; h?: string };
 
 export const FLUSH_MS = 10_000;
 export const FLUSH_AT = 20;
@@ -371,6 +374,15 @@ export class Telemetry {
     this.push({ e: "review_prompt", t: now(), trigger, version });
   }
 
+  /** A step of an invite's funnel; `h` is the sender's link token, which
+   *  the server keeps only as its hash. */
+  invite(step: InviteStep, via?: InviteVia, h?: string | null): void {
+    const ev: Event = { e: "invite", t: now(), step };
+    if (via !== undefined) ev.via = via;
+    if (h) ev.h = h;
+    this.push(ev);
+  }
+
   turnDone(turn: TurnDone): void {
     this.push({ e: "turn_done", t: now(), ...turn, nth_turn: Math.min(30, Math.max(1, turn.nth_turn)) });
   }
@@ -396,6 +408,9 @@ setReviewReporter((trigger, version) => {
   telemetry.reviewPrompt(trigger, version);
   return true;
 });
+
+// An invite sent from this page, and a page loaded from one (codes.ts, codeJoin.ts).
+setInviteReporter((step, via, h) => telemetry.invite(step, via, h));
 
 // The socket manager's drops and recoveries; they wait in the buffer while
 // the socket is down and go with the next flush.

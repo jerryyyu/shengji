@@ -10,6 +10,7 @@ import { GUARD_MS } from "./useKindGuard";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { framer, tableFrameFor } from "./testFrames";
+import { hostToken } from "../codes";
 import type { TableFrameMsg } from "./messages";
 
 class FakeWS {
@@ -1361,14 +1362,14 @@ describe("one code for rooms and tables", () => {
     expect(window.location.search).toBe("");
   });
 
-  it("share links are ?code= links", async () => {
+  it("share links are ?code= links, the sender's token beside the code", async () => {
     Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
     await renderApp();
     click(button("Duo"));
     say(queued({ duo: true, held_seat: 2, code: "4N5Z", opener: true }));
     click(panel()!.querySelector<HTMLButtonElement>("button.tp-invite"));
     await settle();
-    expect(clipboard).toEqual([`${window.location.origin}/?code=4N5Z`]);
+    expect(clipboard).toEqual([`${window.location.origin}/?code=4N5Z&h=${hostToken()}`]);
     expect(panel()!.querySelector("button.tp-invite")?.textContent).toBe("4N5ZLink copied");
   });
 
@@ -1383,7 +1384,7 @@ describe("one code for rooms and tables", () => {
     await settle();
     Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
     expect(shared).toEqual([{ title: "Sheng Ji", text: "Be my partner for Tractor? Code 4N5Z",
-                              url: `${window.location.origin}/?code=4N5Z` }]);
+                              url: `${window.location.origin}/?code=4N5Z&h=${hostToken()}` }]);
   });
 });
 

@@ -48,6 +48,7 @@ class ShellViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(ShengjiBotPlugin())
         bridge?.registerPluginInstance(ShengjiKeychainPlugin())
         bridge?.registerPluginInstance(ShengjiReviewPlugin())
+        bridge?.registerPluginInstance(ShengjiStorePlugin())
         #if SHENGJI_NEARBY
         // Nearby play is registered only in builds that define SHENGJI_NEARBY.
         bridge?.registerPluginInstance(ShengjiNearbyPlugin())

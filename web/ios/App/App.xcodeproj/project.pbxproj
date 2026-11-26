@@ -10,6 +10,7 @@
 		A1B0C0012FF0000100000401 /* NearbyPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B0C0012FF0000100000402 /* NearbyPlugin.swift */; };
 		A1B0C0012FF0000100000601 /* KeychainPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B0C0012FF0000100000602 /* KeychainPlugin.swift */; };
 		A1B0C0012FF0000100000801 /* ReviewPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B0C0012FF0000100000802 /* ReviewPlugin.swift */; };
+		A1B0C0012FF0000100000901 /* StorePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B0C0012FF0000100000902 /* StorePlugin.swift */; };
 		A1B0C0012FF0000100000001 /* PyBotPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B0C0012FF0000100000101 /* PyBotPlugin.swift */; };
 		A1B0C0012FF0000100000002 /* PyBotBridge.c in Sources */ = {isa = PBXBuildFile; fileRef = A1B0C0012FF0000100000102 /* PyBotBridge.c */; };
 		A1B0C0012FF0000100000005 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1B0C0012FF0000100000106 /* PrivacyInfo.xcprivacy */; };
@@ -47,6 +48,8 @@
 		A1B0C0012FF0000100000402 /* NearbyPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NearbyPlugin.swift; sourceTree = "<group>"; };
 		A1B0C0012FF0000100000602 /* KeychainPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainPlugin.swift; sourceTree = "<group>"; };
 		A1B0C0012FF0000100000802 /* ReviewPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewPlugin.swift; sourceTree = "<group>"; };
+		A1B0C0012FF0000100000902 /* StorePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorePlugin.swift; sourceTree = "<group>"; };
+		A1B0C0012FF0000100000903 /* Store.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Store.storekit; sourceTree = "<group>"; };
 		A1B0C0012FF0000100000101 /* PyBotPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PyBotPlugin.swift; sourceTree = "<group>"; };
 		A1B0C0012FF0000100000102 /* PyBotBridge.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = PyBotBridge.c; sourceTree = "<group>"; };
 		A1B0C0012FF0000100000104 /* PyBotBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PyBotBridge.h; sourceTree = "<group>"; };
@@ -111,6 +114,8 @@
 				A1B0C0012FF0000100000402 /* NearbyPlugin.swift */,
 				A1B0C0012FF0000100000602 /* KeychainPlugin.swift */,
 				A1B0C0012FF0000100000802 /* ReviewPlugin.swift */,
+				A1B0C0012FF0000100000902 /* StorePlugin.swift */,
+				A1B0C0012FF0000100000903 /* Store.storekit */,
 				A1B0C0012FF0000100000102 /* PyBotBridge.c */,
 				A1B0C0012FF0000100000104 /* PyBotBridge.h */,
 				A1B0C0012FF0000100000105 /* App-Bridging-Header.h */,
@@ -256,6 +261,7 @@
 				A1B0C0012FF0000100000401 /* NearbyPlugin.swift in Sources */,
 				A1B0C0012FF0000100000601 /* KeychainPlugin.swift in Sources */,
 				A1B0C0012FF0000100000801 /* ReviewPlugin.swift in Sources */,
+				A1B0C0012FF0000100000901 /* StorePlugin.swift in Sources */,
 				A1B0C0012FF0000100000002 /* PyBotBridge.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

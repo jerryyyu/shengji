@@ -25,7 +25,8 @@ def test_the_default_look_and_what_parses(accounts_on):
     assert a.account_look(None) == "tractor/red"
 
 
-def test_a_new_account_has_the_default_and_put_persists_it(accounts_on, keypair, client):
+def test_a_new_account_has_the_default_and_put_persists_it(accounts_on, keypair, client, monkeypatch):
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "1")
     private_pem, _ = keypair
     cookie = _session_cookie(accounts_on, client, private_pem)
     session = {"cookie": cookie}
@@ -155,7 +156,8 @@ def test_the_catalogue_lists_free_and_earned_colours(accounts_on):
     assert kept["tractor/yellow"]
 
 
-def test_a_locked_colour_is_refused_and_unlocks_with_play(accounts_on, keypair, client):
+def test_a_locked_colour_is_refused_and_unlocks_with_play(accounts_on, keypair, client, monkeypatch):
+    monkeypatch.setenv("COLLECTION_ENABLED", "1")
     private_pem, _ = keypair
     session = {"cookie": _session_cookie(accounts_on, client, private_pem)}
     assert client.put("/api/me/look", json={"look": "tractor/yellow"}, headers=session).status_code == 403
@@ -177,7 +179,8 @@ def test_a_locked_colour_is_refused_and_unlocks_with_play(accounts_on, keypair, 
     assert client.put("/api/me/look", json={"look": "tractor/ink"}, headers=session).status_code == 403
 
 
-def test_where_companions_show_is_stored_on_the_account(accounts_on, keypair, client):
+def test_where_companions_show_is_stored_on_the_account(accounts_on, keypair, client, monkeypatch):
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "7, 1")
     private_pem, _ = keypair
     session = {"cookie": _session_cookie(accounts_on, client, private_pem)}
     assert client.get("/api/me", headers=session).json()["companions"] == "team"
@@ -189,3 +192,23 @@ def test_where_companions_show_is_stored_on_the_account(accounts_on, keypair, cl
     both = client.put("/api/me/look", json={"look": "tractor/green", "companions": "individual"},
                       headers=session).json()
     assert (both["look"], both["companions"]) == ("tractor/green", "individual")
+
+
+def test_the_collection_is_shown_only_to_listed_accounts_unless_on_for_all(accounts_on, keypair, client, monkeypatch):
+    monkeypatch.delenv("COLLECTION_ENABLED", raising=False)
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "2, x,")
+    private_pem, _ = keypair
+    one = {"cookie": _session_cookie(accounts_on, client, private_pem)}
+    two = {"cookie": _session_cookie(accounts_on, client, private_pem, sub="222", email="two@example.com")}
+    assert client.get("/api/auth/config").json()["collection"] is False
+    assert client.get("/api/me", headers=one).json()["features"] == {"collection": False}
+    assert client.get("/api/me", headers=two).json()["features"] == {"collection": True}
+    # a listed account equips; any other is told the endpoint is not there
+    assert client.put("/api/me/look", json={"look": "tractor/green"}, headers=one).status_code == 404
+    assert client.put("/api/me/look", json={"companions": "off"}, headers=one).status_code == 404
+    assert accounts_on.STORE.user(1)["look_colour"] is None
+    assert client.put("/api/me/look", json={"look": "tractor/green"}, headers=two).json()["look"] == "tractor/green"
+    monkeypatch.setenv("COLLECTION_ENABLED", "1")
+    assert client.get("/api/auth/config").json()["collection"] is True
+    assert client.get("/api/me", headers=one).json()["features"] == {"collection": True}
+    assert client.put("/api/me/look", json={"look": "tractor/blue"}, headers=one).status_code == 200

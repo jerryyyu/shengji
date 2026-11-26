@@ -146,6 +146,12 @@ LOOK_UNLOCKS: dict[str, tuple[str, int]] = {
     "tractor/porcelain": ("rounds", 100),
     "tractor/ink": ("ranked_wins", 1),
 }
+# The Collection and companion portraits are shown to nobody unless
+# ``COLLECTION_ENABLED=1`` (everyone) or the signed-in account's id is in
+# ``COLLECTION_ACCOUNTS`` (comma-separated ids, a deploy secret). The look
+# record and its columns exist for everyone either way.
+COLLECTION_ENV = "COLLECTION_ENABLED"
+COLLECTION_ACCOUNTS_ENV = "COLLECTION_ACCOUNTS"
 # Where a player's own screen draws companions at the table (the table
 # placement itself is not built yet): beside the team, beside each seat, or
 # not at all. NULL in ``users.companions`` means the first.
@@ -201,6 +207,26 @@ def validate_display_name(raw: Any) -> str:
     if DISPLAY_NAME_BLOCKLIST is not None and DISPLAY_NAME_BLOCKLIST(name):
         raise DisplayNameError("not_allowed")
     return name
+
+
+def collection_enabled() -> bool:
+    """The Collection is on for everyone, guests included."""
+    return os.environ.get(COLLECTION_ENV, "") == "1"
+
+
+def collection_allowlist() -> frozenset[int]:
+    out = set()
+    for part in os.environ.get(COLLECTION_ACCOUNTS_ENV, "").split(","):
+        part = part.strip()
+        if part.isdigit():
+            out.add(int(part))
+    return frozenset(out)
+
+
+def collection_for(user_id: int | None) -> bool:
+    """Whether ``user_id`` (None for a guest) is shown the Collection and
+    the companion portraits."""
+    return collection_enabled() or (user_id is not None and user_id in collection_allowlist())
 
 
 def device_accounts_enabled() -> bool:
@@ -2107,7 +2133,8 @@ def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int
     Google or Apple identity (a device account has neither until it links),
     ``look``, the equipped companion (``look_id``), ``ranked_wins`` and
     ``looks``, every look with whether those counts unlocked it
-    (``look_catalogue``), and ``companions`` (``companions_mode``)."""
+    (``look_catalogue``), ``companions`` (``companions_mode``), and
+    ``features.collection`` (``collection_for``)."""
     look = remember_look(row)
     progress = {"rounds": int(rounds_played), "ranked_wins": int(ranked_wins)}
     return {"name": row.get("name") or "", "email": row.get("email") or "",
@@ -2115,7 +2142,8 @@ def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int
             "name_shown": effective_name(row), "rounds_played": int(rounds_played),
             "linked": not is_device_account(row), "look": look,
             "ranked_wins": int(ranked_wins), "looks": look_catalogue(progress, look),
-            "companions": companions_mode(row)}
+            "companions": companions_mode(row),
+            "features": {"collection": collection_for(int(row["id"])) if row.get("id") is not None else False}}
 
 
 async def account_payload(store: "Store", row: Mapping[str, Any]) -> dict:
@@ -2142,8 +2170,10 @@ def _clear_session_cookie(response: Response, request: Request) -> None:
 async def auth_config() -> dict:
     """Whether Google sign-in exists (its public client id, or null) and
     whether device accounts are on, so the app can draw its first Play tab
-    as the account it will make."""
-    return {"google_client_id": client_id(), "device_accounts": device_accounts_enabled()}
+    as the account it will make, and whether the Collection is on for
+    everyone (``collection_enabled``), which is what a guest is shown."""
+    return {"google_client_id": client_id(), "device_accounts": device_accounts_enabled(),
+            "collection": collection_enabled()}
 
 
 @router.post("/auth/google")
@@ -2232,6 +2262,8 @@ async def put_look(body: LookPut, request: Request) -> dict:
     user = await STORE.run(STORE.session_user, request.cookies.get(COOKIE))
     if user is None:
         raise HTTPException(status_code=401, detail="Not signed in.")
+    if not collection_for(int(user["id"])):
+        raise HTTPException(status_code=404, detail="Not found.")
     if body.companions is not None and body.companions not in COMPANION_MODES:
         raise HTTPException(status_code=400, detail="unknown_mode")
     wanted = None

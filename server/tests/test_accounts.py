@@ -302,7 +302,7 @@ def test_cold_start_under_contention_waits_for_the_one_fetch(accounts_on, keypai
 # -------------------------------------------------------------- HTTP flow
 def test_login_creates_a_user_sets_the_cookie_and_me_reads_it_back(accounts_on, keypair, client):
     private_pem, _ = keypair
-    assert client.get("/api/auth/config").json() == {"google_client_id": CLIENT_ID, "device_accounts": False}
+    assert client.get("/api/auth/config").json() == {"google_client_id": CLIENT_ID, "device_accounts": False, "collection": False}
     assert client.get("/api/me").status_code == 401
 
     resp = _login(client, _sign(private_pem, _claims()), nonce="n-1" )
@@ -313,7 +313,8 @@ def test_login_creates_a_user_sets_the_cookie_and_me_reads_it_back(accounts_on, 
                            "picture": "https://img.example/jy.png",
                            "display_name": None, "name_shown": "Jerry", "rounds_played": 0, "linked": True,
                            "look": "tractor/red", "ranked_wins": 0,
-                           "looks": accounts_on.look_catalogue({}), "companions": "team"}
+                           "looks": accounts_on.look_catalogue({}), "companions": "team",
+                           "features": {"collection": False}}
     cookie = resp.headers["set-cookie"]
     assert cookie.startswith("sj_session=")
     low = cookie.lower()
@@ -387,12 +388,12 @@ def test_the_login_endpoint_is_rate_limited_per_ip(accounts_on, keypair, client,
 def test_feature_off_when_the_client_id_is_unset(accounts_on, keypair, client, monkeypatch):
     private_pem, _ = keypair
     monkeypatch.delenv("GOOGLE_CLIENT_ID")
-    assert client.get("/api/auth/config").json() == {"google_client_id": None, "device_accounts": False}
+    assert client.get("/api/auth/config").json() == {"google_client_id": None, "device_accounts": False, "collection": False}
     assert _login(client, _sign(private_pem, _claims())).status_code == 404
     assert client.get("/api/me").status_code == 401
     assert client.get("/healthz").json()["accounts"] == {"google_sign_in": False}
     monkeypatch.setenv("GOOGLE_CLIENT_ID", "   ")
-    assert client.get("/api/auth/config").json() == {"google_client_id": None, "device_accounts": False}
+    assert client.get("/api/auth/config").json() == {"google_client_id": None, "device_accounts": False, "collection": False}
     monkeypatch.setenv("GOOGLE_CLIENT_ID", CLIENT_ID)
     assert client.get("/healthz").json()["accounts"] == {"google_sign_in": True}
 
@@ -443,7 +444,7 @@ def test_the_ios_list_alone_does_not_turn_sign_in_on(accounts_on, keypair, clien
     monkeypatch.delenv("GOOGLE_CLIENT_ID")
     monkeypatch.setenv("GOOGLE_IOS_CLIENT_IDS", IOS_CLIENT_ID)
     assert accounts_on.accepted_audiences() == ()
-    assert client.get("/api/auth/config").json() == {"google_client_id": None, "device_accounts": False}
+    assert client.get("/api/auth/config").json() == {"google_client_id": None, "device_accounts": False, "collection": False}
     assert _login(client, _sign(private_pem, _claims(aud=IOS_CLIENT_ID))).status_code == 404
     with pytest.raises(accounts_on.AuthError) as info:
         accounts_on.verify_google_id_token(_sign(private_pem, _claims(aud=IOS_CLIENT_ID)), ())
@@ -756,7 +757,8 @@ def test_patch_me_sets_clears_and_refuses_display_names(accounts_on, keypair, cl
         "name": "Jerome Yu", "email": "jerry@example.com", "picture": "https://img.example/jy.png",
         "display_name": "Cap", "name_shown": "Cap", "rounds_played": 0,
         "linked": True, "look": "tractor/red", "ranked_wins": 0,
-        "looks": accounts_on.look_catalogue({}), "companions": "team"}
+        "looks": accounts_on.look_catalogue({}), "companions": "team",
+                           "features": {"collection": False}}
 
 
 def test_patch_me_is_rate_limited_per_ip(accounts_on, keypair, client, monkeypatch):

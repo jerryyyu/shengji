@@ -28,6 +28,18 @@ export const home = defineMessages({
   "home.unlockRounds": { en: "Play {of} rounds to unlock · {n} of {of}", zh: "打满 {of} 局解锁 · {n}/{of}", hant: "打滿 {of} 局解鎖 · {n}/{of}" },
   "home.unlockRankedGames": { en: "Win {of} ranked games to unlock · {n} of {of}", zh: "赢 {of} 局排位解锁 · {n}/{of}", hant: "贏 {of} 局排位解鎖 · {n}/{of}" },
   "home.unlockRankedWin": { en: "Win a ranked game to unlock", zh: "赢一局排位解锁", hant: "贏一局排位解鎖" },
+  // the Collection's grid and the store: its two sections, a coming
+  // character, the website's one row, a store character's foot, the restore
+  // row, and the one status line of a purchase
+  "home.yours": { en: "Yours", zh: "我的", hant: "我的" },
+  "home.moreCompanions": { en: "More companions", zh: "更多伙伴", hant: "更多夥伴" },
+  "home.soon": { en: "Soon", zh: "即将推出", hant: "即將推出" },
+  "home.getApp": { en: "Get the app", zh: "下载 App", hant: "下載 App" },
+  "home.buyPrice": { en: "Buy {price}", zh: "购买 {price}", hant: "購買 {price}" },
+  "home.signInToBuy": { en: "Sign in to buy", zh: "登录后购买", hant: "登入後購買" },
+  "home.restorePurchases": { en: "Restore purchases", zh: "恢复购买", hant: "恢復購買" },
+  "home.shopPending": { en: "Waiting for approval", zh: "等待批准", hant: "等待批准" },
+  "home.shopFailed": { en: "Purchase not completed ({n})", zh: "购买未完成（{n}）", hant: "購買未完成（{n}）" },
   "home.tabMe": { en: "Me", zh: "我", hant: "我" },
   "home.navMain": { en: "Main", zh: "主导航", hant: "主導覽" },
   "home.refreshing": { en: "Refreshing", zh: "刷新中", hant: "重新整理中" },

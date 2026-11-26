@@ -42,12 +42,22 @@ const draw = async (node: React.ReactNode) => {
   await act(async () => { root.render(node); });
   await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 };
+// the Collection opens on its grid; a tap on the one in use opens its page
+const drawOpen = async () => {
+  await draw(<CollectionPage />);
+  const worn = host.querySelector<HTMLButtonElement>(".coll-worn .coll-figure");
+  if (worn && !host.querySelector(".char-page")) {
+    await act(async () => { worn.click(); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  }
+};
 
 describe("looks", () => {
   it("reads a look it can draw and falls back to the default otherwise", () => {
     expect(DEFAULT_LOOK).toBe("tractor/red");
     expect(parseLook("tractor/jade")).toEqual({ kind: "tractor", colour: "jade" });
-    for (const raw of [null, undefined, "", "goat/jade", "tractor/mauve", "tractor/red/x", 7]) {
+    expect(parseLook("lamb/jade")).toEqual({ kind: "lamb", colour: "jade" });
+    for (const raw of [null, undefined, "", "lamb/mauve", "goat/jade", "panda/bamboo", "dragon/jade", "tractor/mauve", "tractor/red/x", 7]) {
       expect(parseLook(raw)).toEqual({ kind: "tractor", colour: "red" });
     }
   });
@@ -158,8 +168,8 @@ describe("the Collection tab", () => {
 
   it("shows the Tractor on the felt, the companions, its colours, the one status line, the button and the switch", async () => {
     authState.current = { status: "in", clientId: "cid", user };
-    await draw(<CollectionPage />);
-    expect(host.querySelector(".large-title")?.textContent).toBe("Collection");
+    await drawOpen();
+    expect(host.querySelector(".large-title")?.textContent).toBe("Tractor");
     expect(host.querySelector(".coll-felt svg.cmp.cmp-idle")).not.toBeNull();
     const swatches = [...host.querySelectorAll<HTMLButtonElement>(".coll-swatch")];
     expect(swatches).toHaveLength(COMPANIONS.tractor.length);
@@ -170,14 +180,16 @@ describe("the Collection tab", () => {
     expect(swatches[0].getAttribute("aria-checked")).toBe("true");
     expect(host.querySelector(".coll-status")?.textContent).toBe("Tractor · Icon red");
     expect(host.querySelector(".coll-use")?.textContent).toBe("In use");
-    expect(host.querySelector(".coll-at-table")?.textContent).toBe("Show at the table");
     // no visible words on the swatches
     expect(host.querySelector(".coll-swatches")?.textContent).toBe("");
+    // the switch is on the grid
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-back")!.click(); });
+    expect(host.querySelector(".coll-at-table")?.textContent).toBe("Show at the table");
   });
 
   it("a locked colour's button names what unlocks it; an unlocked one is put in use by Use", async () => {
     authState.current = { status: "in", clientId: "cid", user };
-    await draw(<CollectionPage />);
+    await drawOpen();
     await act(async () => { swatch("Lantern orange").click(); });
     expect(host.querySelector(".coll-use")?.textContent).toBe("Win 25 ranked games to unlock · 14 of 25");
     expect(fetches.some((f) => f.url === "/api/me/look")).toBe(false);
@@ -276,13 +288,13 @@ describe("entitlements and writes stay with their session and their order", () =
   };
 
   it("a tenth ranked game won while signed in unlocks yellow without a reload", async () => {
-    await draw(<CollectionPage />);
+    await drawOpen();
     await flush();
     expect(swatch("Imperial yellow").classList.contains("locked")).toBe(true);
     server = { ...base, ranked_games: 10 };
     const { refreshAccount } = await import("./writes");
     await act(async () => { await refreshAccount(); });
-    await draw(<CollectionPage />);
+    await drawOpen();
     expect(swatch("Imperial yellow").classList.contains("locked")).toBe(false);
     await pick("Imperial yellow");
     await flush();
@@ -292,7 +304,7 @@ describe("entitlements and writes stay with their session and their order", () =
 
   it("opening the Collection reads the account's counts again", async () => {
     server = { ...base, rounds_played: 10 };
-    await draw(<CollectionPage />);
+    await drawOpen();
     await flush();
     expect(updated).toHaveBeenCalledWith(expect.objectContaining({ rounds_played: 10 }));
   });
@@ -301,10 +313,10 @@ describe("entitlements and writes stay with their session and their order", () =
     it(`a read started before a choice never undoes it (${order})`, async () => {
       holdGets = true;
       holdPuts = true;
-      await draw(<CollectionPage />);           // the open's read starts, with red
+      await drawOpen();           // the open's read starts, with red
       expect(gets()).toHaveLength(1);
       await pick("Paddy green");
-      await draw(<CollectionPage />);
+      await drawOpen();
       const put = puts()[0];
       if (order === "the read answers last") {
         await act(async () => { put.reply(); });
@@ -316,7 +328,7 @@ describe("entitlements and writes stay with their session and their order", () =
         await act(async () => { put.reply(); });
       }
       await flush();
-      await draw(<CollectionPage />);
+      await drawOpen();
       expect(authState.current.user?.look).toBe("tractor/green");
       expect(shownLook()).toBe("Paddy green");
       await reload();
@@ -363,7 +375,7 @@ describe("entitlements and writes stay with their session and their order", () =
   }
 
   it("a read started while a write is on the wire never undoes the confirmed choice", async () => {
-    await draw(<CollectionPage />);
+    await drawOpen();
     await flush();
     holdPuts = true;
     holdGets = true;
@@ -380,7 +392,7 @@ describe("entitlements and writes stay with their session and their order", () =
   });
 
   it("an older read answering after a newer one never puts its counts back", async () => {
-    await draw(<CollectionPage />);
+    await drawOpen();
     await flush();
     holdGets = true;
     const { refreshAccount } = await import("./writes");
@@ -397,7 +409,7 @@ describe("entitlements and writes stay with their session and their order", () =
   });
 
   it("a session change settles the writes still waiting to be sent", async () => {
-    await draw(<CollectionPage />);
+    await drawOpen();
     await flush();
     holdPuts = true;
     const { writeMode } = await import("./writes");
@@ -418,7 +430,7 @@ describe("entitlements and writes stay with their session and their order", () =
   });
 
   it("an unlock read for an older tap never saves over a newer choice", async () => {
-    await draw(<CollectionPage />);
+    await drawOpen();
     await flush();
     server = { ...server, ranked_games: 10 };        // the client still shows none
     holdGets = true;
@@ -438,7 +450,7 @@ describe("entitlements and writes stay with their session and their order", () =
   });
 
   it("re-tapping the equipped colour also overtakes an older tap's unlock read", async () => {
-    await draw(<CollectionPage />);
+    await drawOpen();
     await flush();
     server = { ...server, ranked_games: 10 };
     holdGets = true;
@@ -453,7 +465,7 @@ describe("entitlements and writes stay with their session and their order", () =
   });
 
   it("signing out settles a queued write with no further Collection call", async () => {
-    await draw(<CollectionPage />);
+    await drawOpen();
     await flush();
     holdPuts = true;
     const { writeMode } = await import("./writes");
@@ -472,7 +484,7 @@ describe("entitlements and writes stay with their session and their order", () =
   });
 
   it("a save that lands after a switch to another account changes nothing", async () => {
-    await draw(<CollectionPage />);
+    await drawOpen();
     await flush();
     updated.mockClear();
     holdPuts = true;
@@ -487,7 +499,7 @@ describe("entitlements and writes stay with their session and their order", () =
     expect(authState.current.user?.name).toBe("Bo");
     expect(authState.current.user?.look).toBe("tractor/red");
     // and B's own choice is sent at once, not queued behind A's
-    await draw(<CollectionPage />);
+    await drawOpen();
     await flush();
     await pick("Enamel blue");
     expect(puts().map((h) => h.body)).toEqual([{ look: "tractor/green" }, { look: "tractor/blue" }]);

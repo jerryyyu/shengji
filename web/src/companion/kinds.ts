@@ -10,6 +10,8 @@ import { bunMarkup, bunPortraitUrl, BUN_Z } from "./Bun";
 import { chickMarkup, chickPortraitUrl, CHICK_Z } from "./Chick";
 import { sparrowMarkup, sparrowPortraitUrl, SPARROW_Z } from "./Sparrow";
 import type { CharOpts } from "./rig";
+import { colourway } from "./characters";
+import type { SoldKind } from "./characters";
 import type { Colour, CompanionKind } from "./look";
 
 export interface Drawing {
@@ -22,6 +24,20 @@ export interface Drawing {
   /** The Tractor keeps its own hop and cheer (companion.css); the drawn
    *  characters take `cmp-char`'s (companion.store.css). */
   char: boolean;
+}
+
+/** A store character drawn as the Tractor in its colourway's stand-in
+ *  colour, until its own art lands (characters.ts). */
+function standIn(kind: SoldKind): Drawing {
+  const tractor = (colour: Colour) => colourway(kind, colour).standIn;
+  return {
+    markup: (colour, id, o) => tractorMarkup(tractor(colour), id,
+      { ...o, eyes: o.pose === "sleep" ? "sleep" : "open", rider: false }),
+    portraitUrl: (colour, small) => tractorPortraitUrl(tractor(colour), small),
+    z: [300, 80],
+    colourName: (colour) => colourway(kind, colour).name,
+    char: false,
+  };
 }
 
 const named = <T extends Record<string, { name: { en: string; zh: string; hant: string } }>>(table: T, fallback: keyof T) =>
@@ -57,4 +73,6 @@ export const DRAWINGS: Record<CompanionKind, Drawing> = {
     colourName: named(SPARROW_COLOURS, "tree"),
     char: true,
   },
+  lamb: standIn("lamb"),
+  panda: standIn("panda"),
 };

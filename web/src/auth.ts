@@ -39,8 +39,13 @@ export interface AuthUser {
   looks?: LookEntry[];
   /** Where this account's own screen draws companions. */
   companions?: CompanionMode;
+  /** The App Store products this account owns (verified by the server). */
+  products?: string[];
+  /** The UUID every purchase carries as its `appAccountToken`, so Apple
+   *  signs which account paid; sent only where the store is on. */
+  store_token?: string;
   /** What the server has turned on for this account. */
-  features?: { collection?: boolean };
+  features?: { collection?: boolean; store?: boolean };
 }
 
 /** The `/api/me` body as the server sends it; older servers lack the two
@@ -59,7 +64,12 @@ function toUser(body: Partial<AuthUser> & { name: string; email: string }): Auth
     ...(typeof body.ranked_games === "number" ? { ranked_games: body.ranked_games } : {}),
     ...(Array.isArray(body.looks) ? { looks: body.looks } : {}),
     ...(COMPANION_MODES.includes(body.companions as CompanionMode) ? { companions: body.companions } : {}),
-    ...(body.features?.collection === true ? { features: { collection: true } } : {}),
+    ...(Array.isArray(body.products) ? { products: body.products.filter((p) => typeof p === "string") } : {}),
+    ...(typeof body.store_token === "string" && body.store_token ? { store_token: body.store_token } : {}),
+    ...(body.features?.collection === true || body.features?.store === true
+      ? { features: { ...(body.features.collection === true ? { collection: true } : {}),
+                      ...(body.features.store === true ? { store: true } : {}) } }
+      : {}),
   };
 }
 
@@ -205,6 +215,24 @@ export async function putLook(change: { look?: string; companions?: CompanionMod
   });
   if (status === 429) throw new Error(t("home.tooManyChanges"));
   if (status !== 200 || !body) throw new Error(t("home.lookNotSaved", { n: status }));
+  return toUser(body);
+}
+
+/** `POST /api/store/verify`: hand the server Apple's signed transaction
+ *  for a purchase and the App Store storefront; resolves with the account
+ *  once the server has verified it and granted the product. Rejects when the
+ *  server refused it, with its `status` and the server's reason code as
+ *  `reason` (`detail`, e.g. "claimed"). */
+export async function verifyPurchase(jws: string, storefront: string | null): Promise<AuthUser> {
+  const { status, body } = await api<AuthUser & { detail?: unknown }>("/api/store/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jws, storefront }),
+  });
+  if (status !== 200 || !body) {
+    const reason = typeof body?.detail === "string" ? body.detail : undefined;
+    throw Object.assign(new Error(`verify ${status}`), { status, ...(reason ? { reason } : {}) });
+  }
   return toUser(body);
 }
 

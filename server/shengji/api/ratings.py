@@ -352,6 +352,7 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
                            opponents_bots)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (rec.game_id, rec.round_no, p.user_id, t, team,
+                     # banker_team: 1 if this player's team was the banker team, else 0 (not an index).
                      1 if team == rec.banker_team else 0,
                      1 if won and not p.abandoned else 0,
                      rec.level_change if won else -rec.level_change,

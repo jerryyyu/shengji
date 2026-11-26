@@ -2,7 +2,7 @@
 // checks each one for English left in JSX or a copy field.
 export const FILES: string[] = [
   "components/RoundEndModal.tsx",
-  "components/RoundEndLastTrick.tsx",
+  "components/RoundEndDetails.tsx",
   "components/ResultDialog.tsx",
   "components/LeaveSheet.tsx",
   "components/leaveCopy.ts",

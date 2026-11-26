@@ -99,7 +99,9 @@ describe("names in chat, the leaderboard and the round end", () => {
 
   it("keeps each name under the last trick on one line, ellipsized and narrow", () => {
     oneLine(".round-end-play-who");
-    expect(decls(".round-end-play-who")).toMatch(/max-width: \d+px/);
+    // narrow: the name keeps to its seat's fitted column
+    expect(decls(".round-end-play-who")).toMatch(/max-width: 100%/);
+    expect(decls(".round-end-play")).toMatch(/width: var\(--fit-col/);
   });
 
   it("moves a CJK name in a round-end Details label to the next line whole", () => {

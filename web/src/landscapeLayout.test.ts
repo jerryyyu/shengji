@@ -912,15 +912,13 @@ describe("the round-end card on a phone", () => {
     expect(rule(css, ".round-end-actions > .dialog-leave-btn").margin).toBe("0");
   });
 
-  it("overlaps each last-trick play at an 18px step and widens the opened card no further than the screen less 24px", () => {
-    const cw = px(rule(css, ".round-end-kitty-cards,\n.round-end-play-cards".replace("\n", " "))["--cw"]);
-    const step = cw + px(rule(css, ".round-end-play-cards .card + .card")["margin-left"]);
-    expect(step).toBe(18);
-    expect(cw + 4 * step).toBeLessThanOrEqual(106);
-    expect(px(rule(css, ".round-end-plays").gap)).toBe(10);
-    const open = rule(css, ".modal.round-end.details-open");
-    expect(open.width).toBe("max-content");
-    expect(open["max-width"]).toBe("min(100%, calc(100vw - 24px))");
+  it("draws each fan at the fitted step and swaps Details into the lanes' cell instead of widening the card", () => {
+    expect(rule(css, ".round-end-fan > .card + .card")["margin-left"]).toBe("calc(var(--fit-step, 18px) - var(--cw))");
+    expect(rule(css, ".round-end-play").width).toBe("var(--fit-col, auto)");
+    expect(rule(css, ".round-end-swap").display).toBe("grid");
+    expect(rule(css, ".round-end-swap > *")["grid-area"]).toBe("1 / 1");
+    expect(rule(css, ".round-end-row")["flex-wrap"]).toBeUndefined();
+    expect(css).not.toContain(".details-open");
   });
 });
 

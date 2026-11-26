@@ -204,12 +204,12 @@ describe("round end modal", () => {
 describe("buried kitty reveal", () => {
   it("labels the kitty with its points", () => {
     renderModal(makeResult({ kitty_cards: ["S5", "HK", "D10", "C3", "C4", "C6", "C7", "C8"] }));
-    expect(host.querySelector(".round-end-kitty .round-end-col-label")!.textContent).toBe("Kitty · 25 points");
+    expect(host.querySelector(".round-end-kitty-label")!.textContent).toBe("Kitty · 25 points");
   });
 
   it("counts a pointless bury as 0", () => {
     renderModal(makeResult({ kitty_cards: ["S2", "S3", "S4", "S6", "S7", "S8", "S9", "SJ"] }), { ...state, banker: 1 });
-    expect(host.querySelector(".round-end-kitty .round-end-col-label")!.textContent).toBe("Kitty · 0 points");
+    expect(host.querySelector(".round-end-kitty-label")!.textContent).toBe("Kitty · 0 points");
   });
 
   it("shows nothing when there are no buried cards", () => {
@@ -490,35 +490,62 @@ describe("Details: the kitty and the last trick, closed by default", () => {
   };
   const kitty = ["S5", "C3", "D10", "C4", "C6", "C7", "C8", "D9"];
 
-  it("is a small toggle between the result line and the buttons, closed by default", () => {
+  const viewBtn = () => host.querySelector<HTMLButtonElement>(".round-end-actions > .round-end-view-btn")!;
+  const shape = () => [...host.querySelector(".modal.round-end")!.querySelectorAll("*")].map((e) => e.tagName + "." + e.className.split(" ")[0]);
+
+  it("is a button on the row, Next round · Details · Leave game, closed by default", () => {
     renderModal(makeResult({ kitty_cards: kitty }), { ...state, last_trick: lastTrick });
-    const details = host.querySelector<HTMLDetailsElement>(".modal > details.result-details")!;
-    expect(details.open).toBe(false);
-    expect(details.querySelector("summary")!.textContent).toBe("Details");
-    const line = host.querySelector(".result-line")!;
     const row = host.querySelector(".round-end-actions")!;
-    expect(line.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(details.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(details.contains(row)).toBe(false);
-    expect(host.querySelector(".modal.details-open")).toBeNull();
+    expect([...row.querySelectorAll(":scope > button")].map((b) => b.textContent)).toEqual(["Next round", "Details", "Leave game"]);
+    expect(viewBtn().getAttribute("aria-expanded")).toBe("false");
+    // the old disclosure toggle is gone
+    expect(host.querySelector("details, summary")).toBeNull();
+    const swap = host.querySelector(".round-end-swap")!;
+    expect(swap.classList.contains("details")).toBe(false);
+    expect(swap.querySelector(".round-end-lanes")!.hasAttribute("aria-hidden")).toBe(false);
+    expect(swap.querySelector(".round-end-details")!.getAttribute("aria-hidden")).toBe("true");
+    expect(viewBtn().getAttribute("aria-controls")).toBe(swap.querySelector(".round-end-details")!.id);
   });
 
-  it("opened, widens the card and shows the kitty and the last trick side by side", () => {
+  it("Details swaps the kitty and the last trick in for the lanes, in the same cell; Levels swaps back; the card's shape is unchanged", () => {
     renderModal(makeResult({ attacker_points: 115, kitty_points: 30, kitty_cards: kitty, winner_team: 1, level_change: 1, new_levels: ["2", "3"] }),
                 { ...state, last_trick: lastTrick });
-    const details = host.querySelector<HTMLDetailsElement>("details.result-details")!;
-    act(() => {
-      details.open = true;
-      details.dispatchEvent(new Event("toggle"));
-    });
-    expect(host.querySelector(".modal.details-open")).not.toBeNull();
-    const cols = [...details.querySelectorAll(".round-end-details > .round-end-col")];
+    const before = shape();
+    act(() => viewBtn().click());
+    expect(viewBtn().textContent).toBe("Levels");
+    expect(viewBtn().getAttribute("aria-expanded")).toBe("true");
+    const swap = host.querySelector(".round-end-swap")!;
+    expect(swap.classList.contains("details")).toBe(true);
+    // one cell holds both: the lanes are hidden in place, not removed, so the
+    // card keeps its height; nothing is appended below the status line
+    expect([...swap.children].map((c) => c.className)).toEqual(["round-end-lanes", "round-end-details"]);
+    expect(swap.querySelector(".round-end-lanes")!.getAttribute("aria-hidden")).toBe("true");
+    expect(swap.querySelector(".round-end-details")!.hasAttribute("aria-hidden")).toBe(false);
+    expect(shape()).toEqual(before);
+    expect(host.querySelector(".modal.details-open")).toBeNull();
+    // the points bar and the status line stay where they were
+    const ladder = host.querySelector(".round-end-ladder")!;
+    expect([...ladder.children].map((c) => c.className.split(" ")[0])).toEqual(["round-end-swap", "points-bar"]);
+    const cols = [...swap.querySelectorAll(".round-end-row > .round-end-col")];
     expect(cols.map((c) => c.classList.contains("round-end-kitty"))).toEqual([true, false]);
-    const [kittyCol, trickCol] = cols;
-    expect(kittyCol.querySelector(".round-end-col-label")!.textContent).toBe("Kitty · 15 points");
+    const [kittyCol] = cols;
+    expect(swap.querySelector(".round-end-kitty-label")!.textContent).toBe("Kitty · 15 points");
     expect(kittyCol.querySelectorAll(".round-end-kitty-cards .card").length).toBe(8);
-    expect(kittyCol.querySelector(".kitty-bonus")!.textContent).toBe("They won the last trick: ×2, +30");
-    expect(trickCol.querySelector(".round-end-col-label")!.textContent).toBe("Last trick · Ada, 10 points");
+    expect(swap.querySelector(".round-end-details > .kitty-bonus")!.textContent).toBe("They won the last trick: 15 × 2 × 1 card = +30");
+    expect(swap.querySelector(".round-end-trick-label")!.textContent).toBe("Last trick · Ada, 10 points");
+    act(() => viewBtn().click());
+    expect(viewBtn().textContent).toBe("Details");
+    expect(swap.classList.contains("details")).toBe(false);
+    expect(shape()).toEqual(before);
+  });
+
+  it("sizes every fan from the counts: the card width, the overlap step and each seat's column ride on the panel", () => {
+    renderModal(makeResult({ kitty_cards: kitty }), { ...state, last_trick: lastTrick });
+    const panel = host.querySelector<HTMLElement>(".round-end-details")!;
+    // jsdom measures no width, so the fit is the cards at rest
+    expect(panel.style.getPropertyValue("--cw")).toBe("34px");
+    expect(panel.style.getPropertyValue("--fit-step")).toBe("18px");
+    expect(panel.style.getPropertyValue("--fit-col")).toBe("40px");
   });
 
   it("shows the last trick in play order, each card over its player's name, the winner's outlined", () => {
@@ -535,8 +562,8 @@ describe("Details: the kitty and the last trick, closed by default", () => {
       { seat: 3, cards: ["S6", "S7"] }, { seat: 0, cards: ["S8", "SJ"] } ] };
     renderModal(makeResult({ kitty_cards: ["S2", "S3", "S4", "S6", "S7", "S8", "S9", "SJ"] }), { ...state, last_trick: pairs });
     expect(host.querySelectorAll(".round-end-play")[0].querySelectorAll(".card").length).toBe(2);
-    expect(host.querySelector(".round-end-last-trick > .round-end-col-label")!.textContent).toBe("Last trick · Robin");
-    expect(host.querySelector(".kitty-bonus")!.textContent).toBe("They won the last trick: ×4, +0");
+    expect(host.querySelector(".round-end-trick-label")!.textContent).toBe("Last trick · Robin");
+    expect(host.querySelector(".kitty-bonus")!.textContent).toBe("They won the last trick: 0 × 2 × 2 cards = +0");
   });
 
   it("speaks in the first person when your side attacked: We took …, They go up …, We won the last trick", () => {
@@ -546,7 +573,7 @@ describe("Details: the kitty and the last trick, closed by default", () => {
     expect(host.querySelector(".result-line")!.textContent).toBe("Next banker: Ada.");
     // the bar is ours: we attacked
     expect(host.querySelector(".points-bar")!.className).toContain("team0");
-    expect(host.querySelector(".kitty-bonus")!.textContent).toBe("We won the last trick: ×2, +10");
+    expect(host.querySelector(".kitty-bonus")!.textContent).toBe("We won the last trick: 5 × 2 × 1 card = +10");
     // labels keep Us / Them
     expect(host.textContent).not.toMatch(/\b(Us|Them) (took|go|take|won)\b/);
   });
@@ -561,7 +588,44 @@ describe("Details: the kitty and the last trick, closed by default", () => {
     expect(plays.length).toBe(4);
     expect(plays.map((p) => p.querySelectorAll(".round-end-play-cards > .card").length)).toEqual([5, 5, 5, 5]);
     expect(plays.map((p) => p.classList.contains("winner"))).toEqual([false, false, false, true]);
-    expect(host.querySelector(".round-end-last-trick > .round-end-col-label")!.textContent).toBe("Last trick · You, 35 points");
+    expect(host.querySelector(".round-end-trick-label")!.textContent).toBe("Last trick · You, 35 points");
+  });
+
+  it("a 4-card tractor lead counts four cards: 5 × 2 × 4 cards = +40", () => {
+    const tractor = { leader: 1, winner: 1, points: 0, plays: [
+      { seat: 1, cards: ["S9", "S9", "S10", "S10"] }, { seat: 2, cards: ["S3", "S4", "S6", "S7"] },
+      { seat: 3, cards: ["C6", "C7", "C8", "CJ"] }, { seat: 0, cards: ["S8", "SJ", "SQ", "SK"] } ] };
+    renderModal(makeResult({ kitty_points: 40, kitty_cards: ["S5", "C3", "C4", "C6", "C7", "C8", "C9", "CJ"] }),
+                { ...state, last_trick: tractor });
+    expect(host.querySelector(".kitty-bonus")!.textContent).toBe("They won the last trick: 5 × 2 × 4 cards = +40");
+  });
+
+  it("the bonus is one line across the panel: the sentence when it fits, else the sum alone", () => {
+    const saved = (["clientWidth", "offsetWidth"] as const).map((k) => [k, Object.getOwnPropertyDescriptor(HTMLElement.prototype, k)] as const);
+    const sized = (row: number, sentence: number) => {
+      Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true,
+        get(this: HTMLElement) { return this.classList.contains("round-end-details") ? row : 0; } });
+      Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true,
+        get(this: HTMLElement) { return this.classList.contains("kitty-bonus-probe") ? sentence : 0; } });
+    };
+    try {
+      const shown = () => host.querySelector(".round-end-details > .kitty-bonus:not(.kitty-bonus-probe)")!.textContent;
+      sized(326, 300);
+      renderModal(makeResult({ attacker_points: 115, kitty_points: 30, kitty_cards: kitty, winner_team: 1 }), { ...state, last_trick: lastTrick });
+      expect(shown()).toBe("They won the last trick: 15 × 2 × 1 card = +30");
+      act(() => root.unmount());
+      host.remove();
+      sized(326, 360);
+      renderModal(makeResult({ attacker_points: 115, kitty_points: 30, kitty_cards: kitty, winner_team: 1 }), { ...state, last_trick: lastTrick });
+      expect(shown()).toBe("15 × 2 × 1 card = +30");
+      // it spans the panel, under the kitty and the last trick both
+      expect(host.querySelector(".round-end-kitty .kitty-bonus")).toBeNull();
+    } finally {
+      for (const [k, d] of saved) {
+        if (d) Object.defineProperty(HTMLElement.prototype, k, d);
+        else Reflect.deleteProperty(HTMLElement.prototype, k);
+      }
+    }
   });
 
   it("omits the bonus line when the banker's side took the last trick", () => {
@@ -577,15 +641,16 @@ describe("Details: the kitty and the last trick, closed by default", () => {
     act(() => root.unmount());
     host.remove();
     renderModal(makeResult());
-    expect(host.querySelector("details")).toBeNull();
+    expect(host.querySelector(".round-end-details")).toBeNull();
+    expect(host.querySelector(".round-end-view-btn")).toBeNull();
   });
 
-  it("a won game is the round-end card: one result line, then the games score as a label, then Details", () => {
+  it("a won game is the round-end card: one result line, then the games score as a label, then the buttons", () => {
     renderModal(makeResult({ point_scored: true, games_won: [1, 0], attacker_points: 35, kitty_cards: kitty }));
     const card = host.querySelector(".modal.round-end")!;
     const order = [...card.children].map((c) => c.className.split(" ")[0] || c.tagName);
     expect(order).toEqual(["game-won-crown", "modal-title", "round-end-ladder", "result-headline", "result-games",
-                           "result-details", "round-end-actions"]);
+                           "round-end-actions"]);
     expect(host.querySelectorAll(".result-headline")).toHaveLength(1);
     expect(host.querySelector(".result-line")!.textContent).toBe("Next banker: Sam.");
     expect(host.querySelector(".result-games")!.textContent).toBe("Games: Us 1 · Them 0");

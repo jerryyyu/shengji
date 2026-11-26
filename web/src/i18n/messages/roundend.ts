@@ -55,17 +55,22 @@ export const roundend = defineMessages({
 
   // Details
   "roundend.details": { en: "Details", zh: "详情" },
+  "roundend.levels": { en: "Levels", zh: "级数" },
   "roundend.kitty": { en: "Kitty · {points} points", zh: "底牌 · {points} 分" },
   "roundend.weBonus": {
-    en: (p) => `We won the last trick: ${p.times}+${p.points}`,
-    zh: (p) => `我们抠底：${p.times}+${p.points}`,
+    en: (p) => `We won the last trick: ${p.math}`,
+    zh: (p) => `我们抠底：${p.math}`,
   },
   "roundend.theyBonus": {
-    en: (p) => `They won the last trick: ${p.times}+${p.points}`,
-    zh: (p) => `闲家抠底：${p.times}+${p.points}`,
+    en: (p) => `They won the last trick: ${p.math}`,
+    zh: (p) => `闲家抠底：${p.math}`,
   },
-  /** The multiplier before the bonus: "×2, ". */
-  "roundend.times": { en: "×{n}, ", zh: "×{n}，" },
+  /** The bonus as its sum: the buried points × 2 × the cards counted. */
+  "roundend.bonusMath": {
+    en: (p) => `${p.points} × 2 × ${p.cards} ${Number(p.cards) === 1 ? "card" : "cards"} = +${p.bonus}`,
+    zh: (p) => `${p.points} × 2 × ${p.cards} 张 = +${p.bonus}`,
+  },
+  "roundend.bonusOnly": { en: "+{bonus}", zh: "+{bonus}" },
   "roundend.lastTrick": { en: "Last trick · {name}", zh: "最后一轮 · {name}" },
   "roundend.lastTrickPoints": { en: "Last trick · {name}, {points} points", zh: "最后一轮 · {name}，{points} 分" },
 

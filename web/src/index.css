@@ -1759,8 +1759,10 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   50% { opacity: 1; }
 }
 
-/* the pulse holds the layer, so a lit card that is chosen draws its ring on the card */
-.hand-line.coach.nudge ~ .hand .hand-slot.lit .card.selected {
+/* the pulse holds the layer, so a lit card that is chosen draws its ring on the card;
+   a first game's chosen hint keeps the same ring, with no pulse */
+.hand-line.coach.nudge ~ .hand .hand-slot.lit .card.selected,
+.hand.hinted .hand-slot.lit .card.selected {
   box-shadow: 0 0 0 2px var(--gold), 0 6px 16px rgba(0, 0, 0, 0.45);
 }
 

@@ -14,9 +14,8 @@
 // reload resumes the soak (nearbyDebug.tsx). Loaded only by the debug ⋯
 // rows of a build made for the device test or the Beta; the plugin's
 // debugChaos exists only in those builds.
-import type { Card, TrumpSuit } from "./offline/engine/cards";
-import type { RoundState } from "./offline/engine/round";
-import { SmartBot, type BotView, type PublicTrick } from "./offline/bot";
+import { SmartBot } from "./offline/bot";
+import { freshMemory, idsFor, remember, viewFromFrame, type Frame as FrameT, type FrameCard, type SeatMemory } from "./frameView";
 import { nearbyPluginProxy } from "./native";
 import { nearbyLog, nearbyLogLines, readNearbyLogFile, subscribeNearbyLog, type LogLine } from "./nearbyLog";
 import { nearbyHost } from "./nearbySession";
@@ -32,81 +31,10 @@ import { SoakDriver, type JoinPort } from "./nearbySoakDriver";
 import { pickPersonas, type PersonaMix } from "./nearbySoakPersonas";
 
 export { chaosPick, CHAOS_WEIGHTS, type ChaosKind, type ChaosRole } from "./nearbySoakChaos";
+export { freshMemory, remember, viewFromFrame, type SeatMemory } from "./frameView";
 
-type Frame = Record<string, unknown> & { type: string };
-interface HandCard {
-  id: number;
-  code: string;
-}
-type TrickJson = { leader: number; plays: { seat: number; cards: string[] }[] } | null;
-
-/** What the seat has seen this round, beyond the latest frame. */
-export interface SeatMemory {
-  /** Completed tricks, oldest first, from the frames' last tricks. */
-  history: PublicTrick[];
-  lastTrickKey: string;
-  /** The cards this seat buried, as the banker. */
-  buried: Card[];
-  handSize: number;
-}
-
-export function freshMemory(): SeatMemory {
-  return { history: [], lastTrickKey: "", buried: [], handSize: 0 };
-}
-
-const copyTrick = (t: NonNullable<TrickJson>): PublicTrick => ({
-  leader: t.leader,
-  plays: t.plays.map((p) => ({ seat: p.seat, cards: [...p.cards] })),
-});
-
-/** Folds a state frame into the seat's memory: a new round clears it, and a
- *  last trick it has not seen joins the history. */
-export function remember(mem: SeatMemory, f: Frame): void {
-  const hand = (f.hand as HandCard[] | undefined) ?? [];
-  if (f.phase === "deal" && hand.length < mem.handSize) Object.assign(mem, freshMemory());
-  mem.handSize = hand.length;
-  const last = f.last_trick as TrickJson;
-  if (last) {
-    const key = JSON.stringify(last.plays);
-    if (key !== mem.lastTrickKey) {
-      mem.lastTrickKey = key;
-      mem.history.push(copyTrick(last));
-    }
-  }
-}
-
-/** The bot's view from what this seat can see in `f`; null before trump is
- *  fixed (a view needs the trump rank). */
-export function viewFromFrame(f: Frame, mem: SeatMemory): BotView | null {
-  const trump = f.trump as { suit: string | null; rank: string } | null;
-  if (!trump) return null;
-  const seat = f.you as number;
-  const decl = f.current_declaration as { seat: number; cards: string[] } | null;
-  const trick = f.trick as TrickJson;
-  return {
-    seat,
-    hand: (f.hand as HandCard[]).map((c) => c.code),
-    phase: f.phase as RoundState["phase"],
-    trumpRank: trump.rank,
-    trumpSuit: (trump.suit === "NT" ? null : trump.suit) as TrumpSuit,
-    declaration: decl ? { seat: decl.seat, cards: [...decl.cards], strength: 1 } : null,
-    banker: (f.banker as number | null) ?? null,
-    ownBuried: f.banker === seat ? [...mem.buried] : [],
-    history: mem.history.map((t) => ({ leader: t.leader, plays: t.plays.map((p) => ({ seat: p.seat, cards: [...p.cards] })) })),
-    trick: trick ? copyTrick(trick) : null,
-  };
-}
-
-function idsFor(hand: HandCard[], codes: string[]): number[] | null {
-  const pool = [...hand];
-  const out: number[] = [];
-  for (const code of codes) {
-    const k = pool.findIndex((c) => c.code === code);
-    if (k < 0) return null;
-    out.push(pool.splice(k, 1)[0].id);
-  }
-  return out;
-}
+type Frame = FrameT;
+type HandCard = FrameCard;
 
 /** The seat's next message for state frame `f`, or null when it owes none:
  *  Start in the lobby is the caller's; here a pass in the declare window, a

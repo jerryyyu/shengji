@@ -410,8 +410,11 @@ class Table:
     chat: list[dict] = field(default_factory=list)
     chat_seq: int = 0
     senders: dict[int, int] = field(default_factory=dict)
-    # The owner's Start landed: the table is due at once.
-    forced: bool = False
+    # The owner whose Start landed: the table is due at once while that
+    # owner still owns it and every connected joiner's Ready still stands.
+    # A start held at the room cap keeps it; a Ready taken back, a setting
+    # or seat change that clears Readies, or a new owner drops it.
+    forced_by: int | None = None
     # The table's code for its whole life: its opener's entry code when it
     # formed. It stays when the opener leaves (``entry_codes`` then maps it
     # to the table's id) and the room takes it when the table starts.
@@ -1010,8 +1013,16 @@ class Matchmaker:
         if t is None:
             return
         e.table = None
+        owned = bool(t.entries) and t.entries[0] is e
         t.entries = [o for o in t.entries if o is not e]
         t.ready.discard(e.id)
+        t.forced_by = None
+        if owned and t.entries:
+            # the next arrival owns the table now: its leader has no Ready,
+            # and a Duo partner's own Ready stays
+            heir = t.entries[0]
+            t.ready.discard(heir.id)
+            heir.taps.discard(heir.leader)
         for s, u in enumerate(t.seats):
             if u in e.members:
                 t.seats[s] = None
@@ -1561,6 +1572,7 @@ class Matchmaker:
                 raise QueueError("bad_setting", "Bots is Beginner, Standard or Advanced.")
             if bots != t.bot_level and t.waiting:
                 t.ready.clear()         # a Ready agreed to the other bots
+                t.forced_by = None
                 for o in t.entries:
                     o.taps.clear()
             t.bot_level = bots
@@ -1575,6 +1587,7 @@ class Matchmaker:
                 raise QueueError("bad_start_level", "Unknown starting level.")
             if level != t.start_level and t.waiting:
                 t.ready.clear()         # a Ready agreed to the old level
+                t.forced_by = None
                 for o in t.entries:
                     o.taps.clear()
             t.start_level = level
@@ -1615,12 +1628,17 @@ class Matchmaker:
     async def _table_start(self, uid: int) -> None:
         """A joiner's Ready at its table. ``table_unready`` takes it back,
         and so do a change of the starting level and an opener's move of
-        the entry; a newcomer does not. The owner has no Ready: its tap is
-        answered with its state and nothing else."""
+        the entry; a newcomer does not. The owner has no Ready: an older
+        page's Start from it is the owner's Start, with the same consent
+        checks (``_table_start_now`` at a waiting table, ``_start_bots`` for
+        a Duo at its own table)."""
         e = self._entry(uid)
         t = self._table(e)
-        if e is not None and self._owns(e, uid) and (t is not None or e.size == 2):
-            self._send_state(e)
+        if e is not None and self._owns(e, uid) and t is not None:
+            await self._table_start_now(uid)
+            return
+        if e is not None and self._owns(e, uid) and e.size == 2:
+            await self._start_bots(uid)
             return
         if e is not None and e.size == 2:
             # each member's own Ready; alone it waits for the pair's table
@@ -1647,12 +1665,14 @@ class Matchmaker:
             if uid in e.taps:
                 e.taps.discard(uid)
                 e.table.ready.discard(e.id)
+                e.table.forced_by = None
                 self._send_table(e.table)
             return
         if e is None or t is None:
             raise QueueError("not_seated", "You are not at a waiting table.")
         if e.id in t.ready:
             t.ready.discard(e.id)
+            t.forced_by = None
             self._send_table(t)
 
     async def _table_start_now(self, uid: int) -> None:
@@ -1673,7 +1693,7 @@ class Matchmaker:
         if self._unready(t):
             self._send_state(e)
             raise QueueError("panel_changed", "Your table changed. Look again before you tap.")
-        t.forced = True
+        t.forced_by = uid
         await self._start_due()
 
     def _table_move(self, uid: int, msg: dict) -> None:
@@ -1749,6 +1769,7 @@ class Matchmaker:
             t.seats[b] = people[a]
         t.ready.discard(o.id)
         o.taps.clear()
+        t.forced_by = None
         self._send_table(t)
         self._tell_moved(t, o, who, seat, by=e.leader, team_changed=src % 2 != seat % 2)
 
@@ -1932,8 +1953,12 @@ class Matchmaker:
 
     # ------------------------------------------------------------- starts
     def _due(self, t: Table, now: float) -> bool:
-        if t.forced:
-            return True
+        if t.forced_by is not None:
+            owner = t.entries[0] if t.entries else None
+            if (owner is not None and owner.leader == t.forced_by
+                    and self._entry_available(owner) and not self._unready(t)):
+                return True
+            t.forced_by = None         # the consent the Start was given under is gone
         timer = t.timer()
         if timer is not None and now >= timer[0]:
             return True

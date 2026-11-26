@@ -5193,3 +5193,99 @@ def test_at_the_room_cap_start_with_bots_is_refused_and_the_entry_stays():
         (table_id, slots), = env.started
         assert table_id is None and humans_of(slots) == [1]
     run(go())
+
+
+def test_a_start_held_at_the_room_cap_is_dropped_when_a_joiner_takes_back_ready():
+    """The owner's Start waits out a full server, but is judged again when it
+    is dispatched: a Ready taken back meanwhile means nothing starts."""
+    async def go():
+        env, full = _full_env()
+        for uid in (1, 2):
+            await env.join(uid)
+            await env.send(uid, "queue_wait_players")
+        await env.send(2, "table_start")
+        await env.send(1, "table_start_now")
+        await env.mm.pump()
+        assert env.started == []
+        await env.send(2, "table_unready")
+        assert env.conns[1].last("queue_state")["table"]["waiting_for"] == ["P2"]
+        full["v"] = False
+        env.clock.advance(mm.TICK_INTERVAL)
+        await env.mm.pump()
+        assert env.started == [] and env.mm._entry(1) is not None and env.mm._entry(2) is not None
+        # a capacity-only wait keeps the start: Ready again, the owner's fresh Start goes
+        await env.send(2, "table_start")
+        await env.send(1, "table_start_now")
+        (_, slots), = env.started
+        assert sorted(humans_of(slots)) == [1, 2]
+    run(go())
+
+
+def test_a_start_held_at_the_room_cap_starts_once_there_is_room_when_consent_holds():
+    async def go():
+        env, full = _full_env()
+        for uid in (1, 2):
+            await env.join(uid)
+            await env.send(uid, "queue_wait_players")
+        await env.send(2, "table_start")
+        await env.send(1, "table_start_now")
+        await env.mm.pump()
+        assert env.started == []
+        full["v"] = False
+        env.clock.advance(mm.TICK_INTERVAL)
+        await env.mm.pump()
+        (_, slots), = env.started
+        assert sorted(humans_of(slots)) == [1, 2]
+    run(go())
+
+
+def test_a_ready_joiner_promoted_to_owner_has_no_ready_left_and_idles_like_any_owner():
+    async def go():
+        env = Env()
+        for uid in (1, 2, 3):
+            await env.join(uid)
+            await env.send(uid, "queue_wait_players")
+        await env.send(2, "table_start")
+        await env.send(1, "queue_leave")
+        state = env.conns[2].last("queue_state")
+        assert state["opener"] is True and state["table"]["you_ready"] is False
+        assert state["you_ready"] is False
+        t = env.mm._entry(2).table
+        assert env.mm._entry(2).id not in t.ready
+        env.clock.advance(mm.TABLE_IDLE_SECS + mm.STILL_HERE_SECS + 1)
+        await env.mm.pump()
+        assert env.mm._entry(2) is None and env.conns[2].last("queue_removed")["reason"] == "idle"
+        # a promoted Duo keeps its partner's own Ready
+        env = Env()
+        await env.join(1)
+        await env.send(1, "queue_wait_players")
+        await _duo_table(env, 3, friend=4)
+        await env.send(4, "table_start")
+        await env.send(3, "table_start")
+        await env.send(1, "queue_leave")
+        e = env.mm._entry(3)
+        assert e.taps == {4}
+    run(go())
+
+
+def test_an_older_pages_start_from_the_owner_or_a_duo_leader_is_its_start_with_the_same_consent():
+    async def go():
+        env = Env()
+        for uid in (1, 2):
+            await env.join(uid)
+            await env.send(uid, "queue_wait_players")
+        await env.send(1, "table_start")              # an older owner's Start: Alice is not Ready
+        assert env.conns[1].last("error")["code"] == "panel_changed" and env.started == []
+        await env.send(2, "table_start")
+        await env.send(1, "table_start")
+        (_, slots), = env.started
+        assert sorted(humans_of(slots)) == [1, 2]
+        env = Env()
+        await _duo_table(env, 1, friend=2)
+        await env.send(1, "table_start")              # an older Duo leader's Start
+        assert env.conns[1].last("error")["code"] == "panel_changed" and env.started == []
+        await env.send(2, "table_start")
+        await env.send(1, "table_start")
+        (match_id, slots), = env.started
+        assert match_id is None and [s.user_id for s in slots] == [1, None, 2, None]
+    run(go())

@@ -106,6 +106,9 @@ export class CodeStore {
    *  a link without one), until its visitor is seated by the link's Join;
    *  undefined when it did not, or once that seat was reported. */
   private landing: string | null | undefined = undefined;
+  /** The link's Join sent: its code and sender token, until a seat at that
+   *  table settles it as the invite's seat. */
+  private invite: { code: string; host: string | null } | null = null;
 
   attach(): void {
     if (this.attached) return;
@@ -246,12 +249,8 @@ export class CodeStore {
       return;
     }
     if (p.seatedAt !== null) {
-      // only a seat at the link's own table is the invite's seat
-      if (now.from === "link" && now.step === "joining" && p.seatedAt === now.code
-          && this.landing !== undefined) {
-        reportInvite("seated", undefined, this.landing);
-        this.landing = undefined;
-      }
+      // a queued table's seat: the invite's, when it is the link's table
+      if (now.from === "link" && now.step === "joining") this.settleInvite(p.seatedAt);
       // a seat taken before the link's Join (the queue's table, back on a
       // fresh page) asks first, as a seat held before it would have
       if (now.from === "link" && now.step !== "joining" && p.seatedAt !== now.code) {
@@ -314,6 +313,7 @@ export class CodeStore {
       if (!conn.send({ type: "table_join", code: j.code, name, seat: j.seat, expect: "room",
                        ...(token ? { token } : {}) })) return;
     }
+    if (j.from === "link" && this.landing !== undefined) this.invite = { code: j.code, host: this.landing };
     dropParam("code");
     this.set({ ...j, step: "joining" });
     this.timer = window.setTimeout(() => {
@@ -356,7 +356,19 @@ export class CodeStore {
     else this.drop();
   }
 
+  /** The invite's seat, said once: only a seat at the link's own table. */
+  private settleInvite(code: string): void {
+    const inv = this.invite;
+    if (!inv || inv.code !== code) return;
+    this.invite = null;
+    this.landing = undefined;
+    reportInvite("seated", undefined, inv.host);
+  }
+
   private onMessage(msg: ServerMsg): void {
+    // the server's own table for this socket; the Join's screen may be gone
+    // by then, and a newcomer waiting for its handover is not seated yet
+    if (msg.type === "state" && !msg.joining_you) this.settleInvite(msg.room);
     const j = this.view;
     if (!j) return;
     if (j.step === "resume" && (msg.type === "room" || msg.type === "state") && msg.room === j.code) {
@@ -458,6 +470,7 @@ export class CodeStore {
     this.stopClosedLooks();
     this.place = { ready: false, seatedAt: null };
     this.landing = undefined;
+    this.invite = null;
   }
 }
 

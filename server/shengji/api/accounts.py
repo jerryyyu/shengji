@@ -39,6 +39,7 @@ import sqlite3
 import threading
 import time
 import unicodedata
+import uuid
 import urllib.request
 from collections import deque
 from contextlib import closing
@@ -845,6 +846,17 @@ _ENTITLEMENTS_V12 = """
 """
 
 
+def _migrate_v12(conn: sqlite3.Connection) -> None:
+    """App Store purchases (``_ENTITLEMENTS_V12``) and each account's
+    ``store_token``: the UUID the app passes to StoreKit as the purchase's
+    ``appAccountToken``, so Apple signs which account paid. NULL until the
+    account first opens the Shop (``Store.store_token``)."""
+    for statement in filter(None, (s.strip() for s in _ENTITLEMENTS_V12.split(";"))):
+        conn.execute(statement)
+    _add_column_if_missing(conn, "users", "store_token", "TEXT NULL")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_store_token ON users(store_token)")
+
+
 # Each entry is one version: SQL statements separated by ';', or a callable
 # taking the connection. Entry i brings the database to version i + 1.
 SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
@@ -891,7 +903,7 @@ SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
     # version 11: the equipped companion look.
     _migrate_v11,
     # version 12: App Store purchases.
-    _ENTITLEMENTS_V12,
+    _migrate_v12,
 ]
 
 # Saved games: kept for twelve months; the history list shows the latest
@@ -1179,12 +1191,44 @@ class Store:
                 (user_id, *envs)).fetchall()
         return frozenset(r["product_id"] for r in rows)
 
-    def claim_entitlement(self, user_id: int, txn: Mapping[str, Any], now: float | None = None) -> str:
+    def owned_by(self, user_ids: Collection[int]) -> dict[int, frozenset[str]]:
+        """``owned_products`` of each of ``user_ids`` that owns any."""
+        ids = sorted({int(u) for u in user_ids})
+        envs = sorted(store_environments())
+        if not ids or not envs:
+            return {}
+        out: dict[int, set[str]] = {}
+        with closing(self._open()) as conn:
+            rows = conn.execute(
+                f"""SELECT user_id, product_id FROM entitlements
+                    WHERE revoked_at IS NULL AND user_id IN ({",".join("?" * len(ids))})
+                      AND environment IN ({",".join("?" * len(envs))})""", (*ids, *envs)).fetchall()
+        for r in rows:
+            out.setdefault(int(r["user_id"]), set()).add(r["product_id"])
+        return {k: frozenset(v) for k, v in out.items()}
+
+    def store_token(self, user_id: int) -> str | None:
+        """The account's ``store_token``, minted on first use; None for an
+        unknown account."""
+        with closing(self._open()) as conn:
+            conn.execute("UPDATE users SET store_token = ? WHERE id = ? AND store_token IS NULL",
+                         (str(uuid.uuid4()), user_id))
+            row = conn.execute("SELECT store_token FROM users WHERE id = ?", (user_id,)).fetchone()
+        return None if row is None else row["store_token"]
+
+    def store_token_account(self, token: str) -> int | None:
+        """The account whose ``store_token`` is ``token`` (any case), or None."""
+        with closing(self._open()) as conn:
+            row = conn.execute("SELECT id FROM users WHERE store_token = ?", (token.lower(),)).fetchone()
+        return None if row is None else int(row["id"])
+
+    def claim_entitlement(self, user_id: int | None, txn: Mapping[str, Any], now: float | None = None) -> str:
         """Record a verified purchase (``purchases.transaction`` fields) for
         ``user_id``, or bind it to ``user_id`` when no account holds it and it
         is not revoked. ``"granted"`` when the account now holds it (also when
         it already did); ``"revoked"`` when Apple refunded or revoked that
-        purchase; ``"claimed"`` when another account holds it."""
+        purchase; ``"claimed"`` when another account holds it. A ``user_id``
+        of None records the purchase unheld."""
         t = time.time() if now is None else now
         with closing(self._open()) as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -1213,33 +1257,39 @@ class Store:
         return "granted" if row["user_id"] == user_id else "claimed"
 
     def revoke_entitlement(self, txn: Mapping[str, Any], revoked_at: float, signed_at: float,
-                           companion: str | None) -> int | None:
+                           companion: str | None) -> tuple[int | None, bool]:
         """Apply a refund or revocation Apple signed at ``signed_at``: mark
         the purchase ``txn`` revoked at ``revoked_at`` (recording it unheld if
-        no account has presented it) and unequip ``companion`` (the product's)
-        from the account holding it. A notification signed no later than the
-        one that last set the purchase's state changes nothing. The holding
-        account's id, or None."""
+        no account has presented it). A notification signed no later than the
+        one that last set the purchase's state changes nothing. When this
+        removes a purchase an account held, ``companion`` (the product's) is
+        unequipped from it. The holding account's id, and whether this call
+        removed the purchase from it."""
         with closing(self._open()) as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
-                conn.execute(
-                    """INSERT INTO entitlements(user_id, product_id, original_transaction_id,
-                           transaction_id, environment, storefront, purchased_at, verified_at,
-                           revoked_at, state_at)
-                       VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                       ON CONFLICT(original_transaction_id) DO UPDATE SET
-                           revoked_at = COALESCE(entitlements.revoked_at, excluded.revoked_at),
-                           state_at = excluded.state_at
-                       WHERE entitlements.state_at IS NULL OR excluded.state_at > entitlements.state_at""",
-                    (txn["product_id"], txn["original_transaction_id"], txn["transaction_id"],
-                     txn["environment"], txn.get("storefront"), float(txn["purchased_at"]),
-                     revoked_at, revoked_at, signed_at))
-                row = conn.execute(
-                    "SELECT user_id, revoked_at FROM entitlements WHERE original_transaction_id = ?",
+                before = conn.execute(
+                    "SELECT user_id, revoked_at, state_at FROM entitlements WHERE original_transaction_id = ?",
                     (txn["original_transaction_id"],)).fetchone()
-                user_id = row["user_id"]
-                if user_id is not None and companion is not None and row["revoked_at"] is not None:
+                applies = before is None or before["state_at"] is None or signed_at > before["state_at"]
+                if before is None:
+                    conn.execute(
+                        """INSERT INTO entitlements(user_id, product_id, original_transaction_id,
+                               transaction_id, environment, storefront, purchased_at, verified_at,
+                               revoked_at, state_at)
+                           VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (txn["product_id"], txn["original_transaction_id"], txn["transaction_id"],
+                         txn["environment"], txn.get("storefront"), float(txn["purchased_at"]),
+                         revoked_at, revoked_at, signed_at))
+                elif applies:
+                    conn.execute(
+                        """UPDATE entitlements SET revoked_at = COALESCE(revoked_at, ?), state_at = ?
+                           WHERE original_transaction_id = ?""",
+                        (revoked_at, signed_at, txn["original_transaction_id"]))
+                user_id = None if before is None else before["user_id"]
+                removed = (applies and before is not None and user_id is not None
+                           and before["revoked_at"] is None)
+                if removed and companion is not None:
                     conn.execute(
                         """UPDATE users SET look_companion = NULL, look_colour = NULL
                            WHERE id = ? AND look_companion = ?""", (user_id, companion))
@@ -1247,19 +1297,29 @@ class Store:
             except BaseException:
                 conn.execute("ROLLBACK")
                 raise
-        return user_id
+        return user_id, removed
 
-    def restore_entitlement(self, original_transaction_id: str, signed_at: float) -> int | None:
+    def restore_entitlement(self, txn: Mapping[str, Any], signed_at: float) -> int | None:
         """Clear the revocation of a purchase whose refund Apple reversed in
         a notification signed at ``signed_at``, unless a notification signed
-        no earlier already set its state; the holding account's id, or None."""
+        no earlier already set its state. A reversal of a purchase not seen
+        yet is recorded unheld and unrevoked, with its time, so an older
+        refund delivered later cannot revoke it. The holding account's id, or
+        None."""
         with closing(self._open()) as conn:
             conn.execute(
-                """UPDATE entitlements SET revoked_at = NULL, state_at = ?
-                   WHERE original_transaction_id = ? AND (state_at IS NULL OR state_at < ?)""",
-                (signed_at, original_transaction_id, signed_at))
+                """INSERT INTO entitlements(user_id, product_id, original_transaction_id,
+                       transaction_id, environment, storefront, purchased_at, verified_at,
+                       revoked_at, state_at)
+                   VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+                   ON CONFLICT(original_transaction_id) DO UPDATE SET
+                       revoked_at = NULL, state_at = excluded.state_at
+                   WHERE entitlements.state_at IS NULL OR excluded.state_at > entitlements.state_at""",
+                (txn["product_id"], txn["original_transaction_id"], txn["transaction_id"],
+                 txn["environment"], txn.get("storefront"), float(txn["purchased_at"]),
+                 signed_at, signed_at))
             row = conn.execute("SELECT user_id FROM entitlements WHERE original_transaction_id = ?",
-                               (original_transaction_id,)).fetchone()
+                               (txn["original_transaction_id"],)).fetchone()
         return None if row is None else row["user_id"]
 
     def set_display_name(self, user_id: int, name: str | None) -> dict | None:
@@ -2333,9 +2393,21 @@ def look_id(row: Mapping[str, Any] | None) -> str:
     return stored if parse_look(stored) is not None else DEFAULT_LOOK
 
 
-def remember_look(row: Mapping[str, Any]) -> str:
-    """``look_id`` of ``row``, kept in ``STORE.seen_looks`` for the seats."""
-    look = look_id(row)
+def sold_look(row: Mapping[str, Any] | None) -> bool:
+    """Whether ``row`` has a sold companion equipped, whose display needs
+    its owned products (``owned_look``)."""
+    return look_id(row).partition("/")[0] in COMPANION_PRODUCTS
+
+
+def shown_look(row: Mapping[str, Any] | None, owned: Collection[str] = frozenset()) -> str:
+    """The look others see for ``row``: ``look_id`` held to ``owned`` (the
+    account's effective products, ``Store.owned_products``)."""
+    return owned_look(look_id(row), owned)
+
+
+def remember_look(row: Mapping[str, Any], owned: Collection[str] = frozenset()) -> str:
+    """``shown_look`` of ``row``, kept in ``STORE.seen_looks`` for the seats."""
+    look = shown_look(row, owned)
     if row.get("id") is not None:
         STORE.seen_looks[int(row["id"])] = look
     return look
@@ -2348,7 +2420,7 @@ def account_look(user_id: int | None) -> str:
 
 
 def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int = 0,
-                owned: Collection[str] = frozenset()) -> dict:
+                owned: Collection[str] = frozenset(), store_token: str | None = None) -> dict:
     """The ``/api/me`` payload: the Google profile, the chosen display name
     (null when none), ``name_shown``, the effective name, and
     ``rounds_played`` (``Store.rounds_played``), which tells the client
@@ -2360,10 +2432,11 @@ def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int
     ``companions`` (``companions_mode``), ``products``, the App Store
     products the account owns (``Store.owned_products``), and
     ``features.collection`` (``collection_for``) and ``features.store``
-    (``store_for``)."""
+    (``store_for``), and, where the store is on, ``store_token``, which the
+    app passes to every purchase so Apple signs which account paid."""
     user_id = int(row["id"]) if row.get("id") is not None else None
     shop = store_for(user_id)
-    look = owned_look(look_id(row), owned)
+    look = shown_look(row, owned)
     if user_id is not None:
         STORE.seen_looks[user_id] = look
     progress = {"rounds": int(rounds_played), "ranked_wins": int(ranked_wins)}
@@ -2375,6 +2448,7 @@ def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int
             "looks": look_catalogue(progress, look, owned, shop),
             "companions": companions_mode(row),
             "products": sorted(owned),
+            **({"store_token": store_token} if shop and store_token else {}),
             "features": {"collection": collection_for(user_id) if user_id is not None else False,
                          "store": shop}}
 
@@ -2383,7 +2457,8 @@ async def account_payload(store: "Store", row: Mapping[str, Any]) -> dict:
     """``public_user`` with the account's counts and purchases read off the loop."""
     progress = await store.run(store.look_progress, int(row["id"]))
     owned = await store.run(store.owned_products, int(row["id"]))
-    return public_user(row, progress["rounds"], progress["ranked_wins"], owned)
+    token = await store.run(store.store_token, int(row["id"])) if store_for(int(row["id"])) else None
+    return public_user(row, progress["rounds"], progress["ranked_wins"], owned, token)
 
 
 def _cookie_secure(request: Request) -> bool:
@@ -2848,7 +2923,13 @@ async def websocket_user(ws: WebSocket) -> dict | None:
             pass
         return None
     if row is not None:
-        remember_look(row)
+        owned: frozenset[str] = frozenset()
+        if sold_look(row):
+            try:
+                owned = await STORE.run(STORE.owned_products, int(row["id"]))
+            except Exception as exc:    # noqa: BLE001 - gameplay over a portrait
+                log.warning("owned products lookup failed on websocket (%s)", type(exc).__name__)
+        remember_look(row, owned)
     return row
 
 

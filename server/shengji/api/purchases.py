@@ -76,6 +76,12 @@ NON_CONSUMABLE = "Non-Consumable"
 REVOKING_NOTIFICATIONS = frozenset({"REFUND", "REVOKE"})
 RESTORING_NOTIFICATIONS = frozenset({"REFUND_REVERSED"})
 MAX_JWS_BYTES = 64 * 1024
+# The refusals no later presentation of the same transaction can turn into a
+# grant: the app may finish (acknowledge) the transaction on these. Every
+# other refusal (a signature or storefront check, an environment not
+# accepted, a product not sold yet, no session, the store off) may pass
+# later, so the app keeps the transaction and presents it again.
+PERMANENT_REFUSALS = frozenset({"claimed", "revoked", "wrong_app", "other_account"})
 
 
 class VerificationError(Exception):
@@ -201,11 +207,13 @@ def transaction(payload: dict) -> dict:
         raise VerificationError("bad_transaction", "no transaction id")
     storefront = payload.get("storefront")
     revoked = payload.get("revocationDate")
+    token = payload.get("appAccountToken")
     return {"product_id": product, "original_transaction_id": original,
             "transaction_id": current, "environment": environment,
             "storefront": storefront if isinstance(storefront, str) else None,
             "purchased_at": _ms(payload.get("purchaseDate"), "purchaseDate"),
-            "revoked_at": None if revoked is None else _ms(revoked, "revocationDate")}
+            "revoked_at": None if revoked is None else _ms(revoked, "revocationDate"),
+            "account_token": token.lower() if isinstance(token, str) and token else None}
 
 
 def companion_of(product_id: str) -> str | None:
@@ -241,7 +249,11 @@ async def verify(body: VerifyBody, request: Request) -> dict:
     Refused: a guest (401), an account without the store (404), a JWS that
     fails verification or names another app or product (400), the China
     mainland storefront by the client's word or the signed one (403), and a
-    purchase that was refunded or that another account holds (409)."""
+    purchase that was refunded or that another account holds (409). A
+    transaction whose ``appAccountToken`` names another account's
+    ``store_token`` is granted to that account, and refused here as
+    ``other_account``. The refusal's ``detail`` is its reason;
+    ``PERMANENT_REFUSALS`` are the ones that never become a grant."""
     store = accounts.STORE
     if not accounts.LIMITER.allow(accounts.client_ip(request)):
         raise HTTPException(status_code=429, detail="Too many requests; try again in a minute.")
@@ -264,7 +276,15 @@ async def verify(body: VerifyBody, request: Request) -> dict:
         txn["storefront"] = body.storefront.upper()[:3]
     if txn["revoked_at"] is not None:
         raise HTTPException(status_code=409, detail="revoked")
-    outcome = await store.run(store.claim_entitlement, user_id, txn)
+    payer = user_id
+    if txn["account_token"] is not None:
+        # Apple signed which account paid: the purchase is that account's,
+        # whoever presents it (an account that no longer exists holds nothing)
+        payer = await store.run(store.store_token_account, txn["account_token"])
+    outcome = await store.run(store.claim_entitlement, payer, txn)
+    if payer != user_id:
+        log.info("store verify for another account: %s", outcome)
+        raise HTTPException(status_code=409, detail="revoked" if outcome == "revoked" else "other_account")
     if outcome != "granted":
         log.info("store verify refused: %s", outcome)
         raise HTTPException(status_code=409, detail=outcome)
@@ -304,10 +324,11 @@ async def notify(body: NotifyBody) -> dict:
     if kind in REVOKING_NOTIFICATIONS:
         companion = companion_of(txn["product_id"])
         when = txn["revoked_at"] if txn["revoked_at"] is not None else time.time()
-        user_id = await store.run(store.revoke_entitlement, txn, when, signed_at, companion)
-        _forget_look(user_id, companion)
+        user_id, removed = await store.run(store.revoke_entitlement, txn, when, signed_at, companion)
+        if removed:
+            _forget_look(user_id, companion)
         log.info("store purchase revoked: %s %s", kind, txn["product_id"])
     else:
-        await store.run(store.restore_entitlement, txn["original_transaction_id"], signed_at)
+        await store.run(store.restore_entitlement, txn, signed_at)
         log.info("store purchase restored: %s %s", kind, txn["product_id"])
     return {}

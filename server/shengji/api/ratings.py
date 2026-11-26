@@ -426,9 +426,11 @@ def _week_rank_moves(players: list[dict]) -> dict[int, int]:
 
 
 def _public_row(row: Mapping[str, Any], rank: int | None, you: bool,
-                moves: Mapping[int, int] | None = None) -> dict:
-    """One leaderboard row: the display name, the look (``accounts.look_id``)
-    and numbers only, never the account id or email."""
+                moves: Mapping[int, int] | None = None,
+                owned: Mapping[int, frozenset[str]] | None = None) -> dict:
+    """One leaderboard row: the display name, the look (``accounts.shown_look``
+    held to the account's products in ``owned``) and numbers only, never the
+    account id or email."""
     return {
         "rank": rank,
         "name": accounts.effective_name(row) or "Player",
@@ -438,7 +440,7 @@ def _public_row(row: Mapping[str, Any], rank: int | None, you: bool,
         "week_rank_move": moves.get(row["id"]) if moves is not None else None,
         "provisional": int(row["rated_rounds"]) < PROVISIONAL_ROUNDS,
         "you": you,
-        "look": accounts.look_id(row),
+        "look": accounts.shown_look(row, (owned or {}).get(row["id"], frozenset())),
     }
 
 
@@ -469,13 +471,17 @@ def leaderboard(store: accounts.Store, period: str, viewer: int | None,
         players = [r for r in players if r["week_rounds"] > 0]
         moves = _week_rank_moves(players)
     visible = [r for r in players if r["leaderboard_visible"]]
-    top = [_public_row(r, i + 1, r["id"] == viewer, moves)
-           for i, r in enumerate(visible[:LEADERBOARD_SIZE])]
+    shown = visible[:LEADERBOARD_SIZE]
+    mine = next((r for r in players if r["id"] == viewer), None) if viewer is not None else None
+    # a sold companion shows only while its account still owns it
+    sold = [r["id"] for r in [*shown, *([mine] if mine else [])] if accounts.sold_look(r)]
+    owned = store.owned_by(sold) if sold else {}
+    top = [_public_row(r, i + 1, r["id"] == viewer, moves, owned)
+           for i, r in enumerate(shown)]
     me = None
     if viewer is not None:
-        mine = next((r for r in players if r["id"] == viewer), None)
         if mine is not None:
-            me = _public_row(mine, _rank_of(players, viewer), True, moves)
+            me = _public_row(mine, _rank_of(players, viewer), True, moves, owned)
             me["visible"] = bool(mine["leaderboard_visible"])
     # ``anchor`` is the served bot, which plays every partner seat; the
     # relaxed levels' anchors are listed by level

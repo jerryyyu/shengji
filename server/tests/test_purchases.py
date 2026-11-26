@@ -19,7 +19,8 @@ from cryptography.x509.oid import NameOID
 
 from tests.test_accounts import (  # noqa: F401
     V1_SCHEMA, _claims, _session_cookie, accounts_on, accounts_sqlite, keypair)
-from tests.test_server_ws import client  # noqa: F401
+from tests.test_ratings import _rounds_at
+from tests.test_server_ws import _drain, client  # noqa: F401
 
 GOAT = "com.jerryyu.shengji.companion.goat"
 PANDA = "com.jerryyu.shengji.companion.panda"
@@ -490,3 +491,82 @@ def test_sandbox_grants_disappear_when_only_production_is_enabled(accounts_on, c
     prod = _txn(originalTransactionId="75", transactionId="75", productId=PANDA, environment="Production")
     assert client.post("/api/store/verify", json={"jws": chain.sign(prod)}, headers=shop).status_code == 200
     assert client.get("/api/me", headers=shop).json()["products"] == [PANDA]
+
+
+# ------------------------------------------------------------ round two
+def test_a_reversal_before_any_claim_and_before_its_older_refund_keeps_the_purchase_claimable(
+        accounts_on, client, shop, chain):
+    one = _txn(originalTransactionId="81", transactionId="81")
+    reversal = _notify_at(chain, "REFUND_REVERSED", one, _signed_at(-1000))
+    older_refund = _notify_at(chain, "REFUND", dict(one, revocationDate=_signed_at(-2000)), _signed_at(-2000))
+    assert client.post("/api/store/notify", json=reversal).status_code == 200
+    assert client.post("/api/store/notify", json=older_refund).status_code == 200
+    resp = client.post("/api/store/verify", json={"jws": chain.sign(one)}, headers=shop)
+    assert resp.status_code == 200, resp.text
+    assert client.get("/api/me", headers=shop).json()["products"] == [GOAT]
+
+
+def test_a_stale_refund_leaves_the_seat_look_alone(accounts_on, client, shop, chain):
+    assert client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=shop).status_code == 200
+    refund = _notify_at(chain, "REFUND", _txn(revocationDate=_signed_at(-3000)), _signed_at(-3000))
+    assert client.post("/api/store/notify", json=refund).status_code == 200
+    assert client.post("/api/store/notify", json=_notify_at(chain, "REFUND_REVERSED", _txn(), _signed_at(-1000))).status_code == 200
+    assert client.put("/api/me/look", json={"look": "goat/ink"}, headers=shop).status_code == 200
+    assert accounts_on.account_look(1) == "goat/ink"
+    assert client.post("/api/store/notify", json=refund).status_code == 200      # redelivered, older
+    assert accounts_on.account_look(1) == "goat/ink"
+    assert client.get("/api/me", headers=shop).json()["look"] == "goat/ink"
+
+
+def test_seats_and_leaderboard_rows_show_only_an_owned_look(accounts_on, client, shop, chain, monkeypatch):
+    from shengji.api import ratings
+
+    assert client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=shop).status_code == 200
+    assert client.put("/api/me/look", json={"look": "goat/jade"}, headers=shop).status_code == 200
+    _rounds_at(accounts_on.STORE, 1, [time.time() - 60])
+    board = ratings.leaderboard(accounts_on.STORE, "all", 1)
+    assert board["me"]["look"] == "goat/jade"
+    monkeypatch.setenv("STORE_ENVIRONMENTS", "Production")
+    accounts_on.STORE.seen_looks.clear()
+    with client.websocket_connect("/ws", headers=shop) as ws:
+        ws.send_json({"type": "create_room"})
+        assert _drain(ws, "room")["players"][0]["look"] == "tractor/red"
+    assert accounts_on.account_look(1) == "tractor/red"
+    board = ratings.leaderboard(accounts_on.STORE, "all", 1)
+    assert board["me"]["look"] == "tractor/red"
+    assert {r["look"] for r in board["players"]} <= {"tractor/red"}
+
+
+def test_the_account_token_binds_a_purchase_to_its_payer(accounts_on, client, shop, chain, keypair, monkeypatch):
+    payer = client.get("/api/me", headers=shop).json()["store_token"]
+    assert isinstance(payer, str) and len(payer) == 36
+    assert client.get("/api/me", headers=shop).json()["store_token"] == payer      # stable
+    private_pem, _ = keypair
+    client.cookies.clear()
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "1,2")
+    other = {"cookie": _session_cookie(accounts_on, client, private_pem, sub="555", email="e@example.com")}
+    assert client.get("/api/me", headers=other).json()["store_token"] != payer
+    # the payer's purchase presented by another account: the payer gets it, the presenter does not
+    bought = chain.sign(_txn(appAccountToken=payer))
+    resp = client.post("/api/store/verify", json={"jws": bought}, headers=other)
+    assert resp.status_code == 409 and resp.json()["detail"] == "other_account"
+    assert client.get("/api/me", headers=other).json()["products"] == []
+    assert accounts_on.STORE.owned_products(1) == frozenset({GOAT})
+    assert client.post("/api/store/verify", json={"jws": bought}, headers=shop).status_code == 200
+    # a token no account holds grants nobody
+    stray = chain.sign(_txn(originalTransactionId="91", transactionId="91", productId=PANDA,
+                            appAccountToken="00000000-0000-4000-8000-000000000000"))
+    resp = client.post("/api/store/verify", json={"jws": stray}, headers=shop)
+    assert resp.status_code == 409 and resp.json()["detail"] == "other_account"
+    assert PANDA not in accounts_on.STORE.owned_products(1)
+
+
+def test_a_guest_or_store_off_account_gets_no_token(accounts_on, client, shop, monkeypatch):
+    monkeypatch.setenv("STORE_ENABLED", "0")
+    assert client.get("/api/me", headers=shop).json().get("store_token") is None
+
+
+def test_the_refusal_reasons_say_which_are_permanent():
+    from shengji.api import purchases
+
+    assert purchases.PERMANENT_REFUSALS == frozenset({"claimed", "revoked", "wrong_app", "other_account"})

@@ -8,13 +8,15 @@ import { TRACTOR_COLOURS } from "./palette";
 import type { TractorColourId } from "./palette";
 import { BUN_COLOURS, CHICK_COLOURS, SPARROW_COLOURS } from "./storePalette";
 import type { BunColourId, ChickColourId, SparrowColourId } from "./storePalette";
+import { SOLD_COLOURS, SOLD_PRODUCTS } from "./characters";
+import type { SoldColourId, SoldKind } from "./characters";
 
 export const DEFAULT_COMPANION = "tractor";
 export const DEFAULT_COLOUR = "red";
 export const DEFAULT_LOOK = `${DEFAULT_COMPANION}/${DEFAULT_COLOUR}`;
 
-export type CompanionKind = "tractor" | "bun" | "chick" | "sparrow";
-export type Colour = TractorColourId | BunColourId | ChickColourId | SparrowColourId;
+export type CompanionKind = "tractor" | "bun" | "chick" | "sparrow" | SoldKind;
+export type Colour = TractorColourId | BunColourId | ChickColourId | SparrowColourId | SoldColourId;
 
 /** Every companion this client draws, in Collection order, each with its
  *  colours in Collection order. */
@@ -23,7 +25,16 @@ export const COMPANIONS: Record<CompanionKind, readonly Colour[]> = {
   bun: Object.keys(BUN_COLOURS) as Colour[],
   chick: Object.keys(CHICK_COLOURS) as Colour[],
   sparrow: Object.keys(SPARROW_COLOURS) as Colour[],
+  goat: Object.keys(SOLD_COLOURS.goat) as Colour[],
+  panda: Object.keys(SOLD_COLOURS.panda) as Colour[],
 };
+
+/** The companions sold in the app, each one App Store product with every
+ *  colour included (the server's `accounts.COMPANION_PRODUCTS`). */
+export const COMPANION_PRODUCTS: Partial<Record<CompanionKind, string>> = SOLD_PRODUCTS;
+
+/** The companions free to everyone, in Collection order. */
+export const FREE_KINDS = (Object.keys(COMPANIONS) as CompanionKind[]).filter((k) => !(k in SOLD_PRODUCTS));
 
 export const COMPANION_KINDS = Object.keys(COMPANIONS) as CompanionKind[];
 
@@ -70,11 +81,15 @@ export interface LookEntry {
   id: string;
   unlocked: boolean;
   needs: { count: UnlockCount; of: number } | null;
+  /** The App Store product that sells it, null when it is not sold. */
+  product?: string | null;
 }
 
 /** Every look with whether `progress` has unlocked it: the server's list
  *  when it sent one, else this client's own reading of the same rules (a
- *  guest, an older server, no connection). */
+ *  guest, an older server, no connection). A sold companion is listed only
+ *  when the server listed it (an owner, or an account the store is on for),
+ *  and unlocked only by the server's word. */
 export function lookCatalogue(progress: Partial<Record<UnlockCount, number>>, equipped: string,
                               fromServer?: readonly LookEntry[] | null): LookEntry[] {
   const known = new Map((fromServer ?? []).map((e) => [e.id, e]));
@@ -84,9 +99,11 @@ export function lookCatalogue(progress: Partial<Record<UnlockCount, number>>, eq
       const id = `${kind}/${colour}`;
       const rule = LOOK_UNLOCKS[id] ?? null;
       const served = known.get(id);
+      const product = COMPANION_PRODUCTS[kind as CompanionKind] ?? null;
+      if (product !== null && !served) continue;
       const unlocked = served ? served.unlocked
         : rule === null || id === equipped || (progress[rule.count] ?? 0) >= rule.of;
-      out.push({ id, unlocked, needs: rule });
+      out.push({ id, unlocked, needs: rule, product });
     }
   }
   return out;

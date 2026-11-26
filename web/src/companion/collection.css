@@ -128,3 +128,67 @@
 .coll-use { flex: 1; }
 .coll-use.done:disabled { opacity: 1; }
 .coll-mode-line { min-height: 1.4em; margin: 8px 0 0; color: var(--text-dim, #9aa3b2); font-size: var(--fs-13, 13px); text-align: center; }
+
+/* The grid: Yours, then More companions. Two tiles across on a phone, three
+   or four on a wide layout. */
+.coll-worn { padding: 12px 16px 8px; }
+.coll-section { margin: 24px 16px 8px; font-size: var(--fs-17); font-weight: 700; color: var(--text); }
+.coll-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 16px; }
+@media (min-width: 700px) and (min-height: 501px) {
+  .coll-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+}
+.coll-tile {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 0 10px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--grp);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.coll-tile:active { transform: scale(0.97); }
+.coll-tile.dim .coll-tile-stage { opacity: 0.55; }
+.coll-tile-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  padding: 10px 0 4px;
+  border-radius: 16px 16px 12px 12px;
+  background: radial-gradient(ellipse at 50% 35%, #2f7a52 0%, #1d5638 60%, #123a26 100%);
+}
+.coll-tile-stage .coll-tick { position: absolute; top: 8px; right: 8px; }
+.coll-tile-name { font-weight: 600; font-size: var(--fs-15); text-align: center; }
+.coll-tile-sub { font-size: var(--fs-13); color: var(--muted-2); font-variant-numeric: tabular-nums; }
+.coll-tile-sub.gold { color: var(--gold); font-weight: 600; }
+/* a tile just bought rises into Yours */
+.coll-tile.arrive { animation: coll-arrive 0.5s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
+@keyframes coll-arrive {
+  0% { transform: translateY(48px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .coll-tile.arrive { animation: none; }
+}
+.coll-restore-row { margin: 24px 16px 0; }
+.coll-grid-status { margin: 8px 16px 0; padding-bottom: 104px; }
+.coll-back {
+  appearance: none;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--gold);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.store-price { margin: 0 0 8px; text-align: center; color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }

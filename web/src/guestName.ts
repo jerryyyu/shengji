@@ -98,10 +98,11 @@ class GuestNameStore {
   }
 
   /** Open the identity sheet; `from` names the entry point for telemetry.
-   *  Me's Sign in row and the domain move's one ask open it at Sign in. */
+   *  Me's Sign in row, the Shop's Sign in to buy and the domain move's one
+   *  ask open it at Sign in. */
   open(from?: SigninFrom): void {
     if (from) telemetry.signinOpen(from);
-    this.set({ editing: true, toSignIn: from === "me_signin" || from === "moved" });
+    this.set({ editing: true, toSignIn: from === "me_signin" || from === "shop" || from === "moved" });
   }
 
   close(): void {

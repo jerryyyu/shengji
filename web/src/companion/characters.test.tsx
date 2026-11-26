@@ -20,7 +20,7 @@ vi.mock("../auth", async (importOriginal) => {
 
 import { Companion } from "./Companion";
 import { DRAWINGS } from "./kinds";
-import { COMPANIONS, COMPANION_KINDS, lookCatalogue, parseLook } from "./look";
+import { COMPANIONS, COMPANION_KINDS, FREE_KINDS, lookCatalogue, parseLook } from "./look";
 import { companionSize, levelScale } from "./rig";
 import { parseArt } from "./Tractor";
 import TableCompanions, { SEAT_SIZE, levelIndex } from "./TableCompanions";
@@ -51,7 +51,8 @@ const draw = async (node: React.ReactNode) => {
 
 describe("the free companions", () => {
   it("are the Tractor, the Bun, the Chick and the Sparrow, four colours each beside the Tractor's eight", () => {
-    expect(COMPANION_KINDS).toEqual(["tractor", "bun", "chick", "sparrow"]);
+    expect(FREE_KINDS).toEqual(["tractor", "bun", "chick", "sparrow"]);
+    expect(COMPANION_KINDS).toEqual(["tractor", "bun", "chick", "sparrow", "goat", "panda"]);
     expect(COMPANIONS.bun).toEqual(["plain", "custard", "taro", "peach"]);
     expect(COMPANIONS.chick).toEqual(["yellow", "cream", "cocoa", "ink"]);
     expect(COMPANIONS.sparrow).toEqual(["tree", "java", "snow", "oriole"]);
@@ -70,7 +71,8 @@ describe("the free companions", () => {
 
   it("every look draws every pose as elements with one body, and each portrait is its own", () => {
     const urls = new Set<string>();
-    for (const kind of COMPANION_KINDS) {
+    // the store characters draw as stand-ins until their art lands (characters.ts)
+    for (const kind of FREE_KINDS) {
       for (const colour of COMPANIONS[kind]) {
         for (const pose of ["idle", "hop", "cheer", "sleep", "react"] as const) {
           const nodes = parseArt(DRAWINGS[kind].markup(colour, "t", { pose }));
@@ -82,7 +84,7 @@ describe("the free companions", () => {
         expect(DRAWINGS[kind].colourName(colour).zh).not.toBe("");
       }
     }
-    expect(urls.size).toBe(COMPANION_KINDS.reduce((n, k) => n + COMPANIONS[k].length, 0));
+    expect(urls.size).toBe(FREE_KINDS.reduce((n, k) => n + COMPANIONS[k].length, 0));
   });
 
   it("the Tractor carries its rider, in its portrait too", () => {
@@ -92,7 +94,7 @@ describe("the free companions", () => {
   });
 
   it("at the table a team stands on its own pad shape and wears its colour", () => {
-    for (const kind of COMPANION_KINDS) {
+    for (const kind of FREE_KINDS) {
       const us = DRAWINGS[kind].markup(COMPANIONS[kind][0], "t", { team: "us" });
       const them = DRAWINGS[kind].markup(COMPANIONS[kind][0], "t", { team: "them" });
       expect(us).toContain('class="cmp-pad"');
@@ -161,7 +163,7 @@ describe("level growth", () => {
   });
 });
 
-describe("the Collection, one page", () => {
+describe("the Collection's grid and the character page", () => {
   const user: AuthUser = {
     name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry",
     rounds_played: 3, ranked_wins: 0, look: "bun/custard", companions: "individual", features: { collection: true },
@@ -178,21 +180,27 @@ describe("the Collection, one page", () => {
   const use = () => host.querySelector(".coll-use") as HTMLButtonElement | null;
   const swatch = (label: string) => [...host.querySelectorAll<HTMLButtonElement>(".coll-swatches .coll-swatch")]
     .find((s) => s.getAttribute("aria-label")!.startsWith(label))!;
-  const tile = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".coll-kind")]
-    .find((b) => b.querySelector(".coll-kind-name")!.textContent === name)!;
+  const tile = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".coll-tile")]
+    .find((b) => b.querySelector(".coll-tile-name")!.textContent === name)!;
+  const openTile = async (name: string) => {
+    await act(async () => { tile(name).click(); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  };
+  const back = async () => { await act(async () => { host.querySelector<HTMLButtonElement>(".coll-back")!.click(); }); };
   const signedIn = () => { authState.current = { status: "in", clientId: "cid", user }; };
   const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
-  it("lists the four companions and ticks the one in use; a tap on one only shows it", async () => {
+  it("Yours lists the four companions and ticks the one in use; a tile opens its page", async () => {
     signedIn();
     await draw(<CollectionPage />);
-    const tiles = [...host.querySelectorAll<HTMLButtonElement>(".coll-kind")];
-    expect(tiles.map((b) => b.querySelector(".coll-kind-name")!.textContent)).toEqual(["Tractor", "Bun", "Chick", "Sparrow"]);
-    expect(tiles.filter((b) => b.querySelector(".coll-tick")).map((b) => b.querySelector(".coll-kind-name")!.textContent)).toEqual(["Bun"]);
-    await act(async () => { tile("Chick").click(); });
-    await settle();
+    const tiles = [...host.querySelectorAll<HTMLButtonElement>(".coll-yours .coll-tile")];
+    expect(tiles.map((b) => b.querySelector(".coll-tile-name")!.textContent)).toEqual(["Tractor", "Bun", "Chick", "Sparrow"]);
+    expect(tiles.filter((b) => b.querySelector(".coll-tick")).map((b) => b.querySelector(".coll-tile-name")!.textContent)).toEqual(["Bun"]);
+    // the one in use stands small at the top
+    expect(host.querySelector(".coll-worn svg.cmp-bun")).not.toBeNull();
+    await openTile("Chick");
     expect(puts).toEqual([]);
-    expect(tile("Chick").classList.contains("on")).toBe(true);
+    expect(host.querySelector(".large-title")?.textContent).toBe("Chick");
     expect(host.querySelector(".char-stage svg.cmp-chick")).not.toBeNull();
     expect(host.querySelector(".coll-status")?.textContent).toBe("Chick · Chick yellow");
     expect(use()?.textContent).toBe("Use");
@@ -204,6 +212,7 @@ describe("the Collection, one page", () => {
   it("a colour tap only shows it; Use applies it, In use is inert, and the tick stays on what is in use", async () => {
     signedIn();
     await draw(<CollectionPage />);
+    await openTile("Bun");
     expect(use()?.textContent).toBe("In use");
     expect(use()?.disabled).toBe(true);
     await act(async () => { swatch("Taro").click(); });
@@ -222,15 +231,14 @@ describe("the Collection, one page", () => {
   it("a locked colour's button says what unlocks it and does nothing", async () => {
     signedIn();
     await draw(<CollectionPage />);
-    await act(async () => { tile("Tractor").click(); });
+    await openTile("Tractor");
     await act(async () => { swatch("Ink black").click(); });
     expect(use()?.textContent).toBe("Win 1,000 ranked games to unlock · 0 of 1,000");
     expect(use()?.disabled).toBe(true);
     await act(async () => { swatch("Imperial yellow").click(); });
     expect(use()?.textContent).toBe("Win 10 ranked games to unlock · 0 of 10");
     authState.current = { status: "in", clientId: "cid", user: { ...user, ranked_games: 3 } };
-    await draw(<CollectionPage />);
-    await act(async () => { tile("Tractor").click(); });
+    await draw(<CollectionPage />);         // still on the Tractor's page
     await act(async () => { swatch("Lantern orange").click(); });
     expect(use()?.textContent).toBe("Win 25 ranked games to unlock · 3 of 25");
     await settle();
@@ -245,8 +253,10 @@ describe("the Collection, one page", () => {
 
   it("a guest's button reads Sign in to use, and no count is shown", async () => {
     await draw(<CollectionPage />);
+    await openTile("Bun");
     expect(use()?.textContent).toBe("Sign in to use");
-    await act(async () => { tile("Tractor").click(); });
+    await back();
+    await openTile("Tractor");
     await act(async () => { swatch("Lantern orange").click(); });
     expect(use()?.textContent).toBe("Sign in to use");
     expect(host.textContent).not.toMatch(/ of \d|ranked games/);
@@ -256,6 +266,7 @@ describe("the Collection, one page", () => {
   it("has no state chips, only Try on your table, which stands it beside a partner on your team's pads", async () => {
     signedIn();
     await draw(<CollectionPage />);
+    await openTile("Bun");
     expect([...host.querySelectorAll(".char-chip")].map((b) => b.textContent)).toEqual(["Try on your table"]);
     await act(async () => { host.querySelector<HTMLButtonElement>(".char-chip")!.click(); });
     const figs = [...host.querySelectorAll(".char-stage svg.cmp")];
@@ -268,6 +279,7 @@ describe("the Collection, one page", () => {
     try {
       signedIn();
       await act(async () => { root.render(<CollectionPage />); });
+      await act(async () => { tile("Bun").click(); });
       const pose = () => [...host.querySelector(".char-stage svg.cmp")!.classList].find((c) => /^cmp-(idle|hop|cheer|sleep|react)$/.test(c));
       expect(pose()).toBe("cmp-idle");
       act(() => { vi.advanceTimersByTime(2300); });

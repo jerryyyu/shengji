@@ -540,15 +540,35 @@ then its replay plays.
   is the move clock. The portrait replaces the Google picture too, so every player looks the same way to everyone.
 - **The Collection tab** (伙伴 in Chinese; Jerry 2026-11-26 took the red team's call: 收藏 reads as Favourites,
   and the gamer words 装备 and 待机 are gone, the button reading 使用 / 使用中) is the third of four, its icon four
-  small tiles with one filled when selected. It is one page (Jerry 2026-11-26, red-team findings 3 and 4): the look shown on a corner of felt, playing its moves
-  by itself (a tap plays the next); Try on your table, which stands it beside a partner on your team's pads;
-  the four companions as portrait tiles with their names; the shown companion's colour swatches (56 px, four in
-  a row on a phone); one status line naming what is shown ("Bun · Taro"); one button; and one switch. No
-  leaderboard row, no state chips, no Shop, no prices, no silhouettes or empty slots for what is coming.
+  small tiles with one filled when selected. It is one grid (Jerry 2026-11-26, the unified grid, design B, which
+  replaced the one page with its companions strip): at the top the one in use, small, on felt (a tap opens its
+  page), and the one switch; then **Yours**, the free companions and the ones bought, as tiles idling on felt with
+  their names and a tick on the one in use; then, where the store can sell, **More companions**, the store's
+  characters with StoreKit's own price or Soon for one not launched, and Restore purchases as the last, text, row.
+  Two tiles across on a phone, three or four on a wide layout. Each character appears once: buying one sends its
+  tile up into Yours. No Shop segment, button or page, no leaderboard row, no state chips.
+- **The character page**, opened by any tile, is the same for every character: the look on a corner of felt,
+  playing its moves by itself (a tap plays the next); Try on your table, which stands it beside a partner on your
+  team's pads; its colour swatches (56 px, four in a row on a phone); one status line naming what is shown ("Bun ·
+  Taro"); and one button. Back (Collection, in the title row) returns to the grid.
 - **One rule for taps:** a tap on a companion or a colour only shows it (the gold ring is "looking at"); the one
   button puts it in use: Use, In use (inert), for a locked Tractor colour what unlocks it ("Win 25 ranked games
-  to unlock · 3 of 25", "Win a ranked game to unlock", inert), and for a guest Sign in to use, which opens the
-  identity sheet. A tick marks the companion and the colour in use. A guest sees no counts.
+  to unlock · 3 of 25", "Win a ranked game to unlock", inert), for a guest Sign in to use, which opens the
+  identity sheet, and for a store character not owned Buy with StoreKit's price (Soon, inert, for one not
+  launched). A tick marks the companion and the colour in use. A guest sees no counts.
+- **The store** (store plumbing, behind `features.store`: the Collection allowlist plus `STORE_ENABLED=1`):
+  More companions and Restore purchases show only in an app build with the StoreKit plugin, to an account the
+  store is on for, off the China mainland storefront; elsewhere the grid is Yours alone, and a guest on the website
+  gets one Get the app row (the App Store link) in their place. Buying and restoring need an Apple or Google
+  sign-in (Jerry 2026-11-26): for the app's own device account a store character's page shows the price and a
+  gold Sign in to buy in the button's place, and Restore purchases opens the same identity sheet; signing in links
+  the device account (its rounds and looks carry over) and leaves the player on the same page, where Buy now buys.
+  A purchase is Apple's sheet, then the server verifies Apple's signed transaction, bound before the sheet opens
+  to the account that pays; success is the character's cheer and the success haptic, nothing written, and Use
+  takes Buy's place. Waiting for approval (Ask to Buy) and a refused purchase use the page's one status line, a
+  failed restore the grid's. A transaction the server has not settled stays with the App Store and is delivered
+  again when the Collection opens or the account signs in. Until each store character's art lands it is drawn as
+  the Tractor in a stand-in colour.
 - **Show at the table** (Jerry 2026-11-26, finding 2: one labelled switch, on by default) replaces Team ·
   Individual · Off. It is stored where the mode was (the account's `companions`, a guest's device), so an older
   client keeps working: off is off, and an older Team or Individual reads as on.

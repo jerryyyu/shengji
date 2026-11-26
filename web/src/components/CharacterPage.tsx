@@ -10,16 +10,26 @@ import { guestName } from "../guestName";
 import { locale, useT } from "../i18n";
 import type { MessageKey } from "../i18n";
 import { prefersReducedMotion } from "../motion";
+import { STORE_NAMES } from "../companion/characters";
+import type { SoldKind, SoonKind } from "../companion/characters";
 
 /** Where a look stands for this viewer, which picks the one button: Use, In
- *  use, the unlock line, Sign in to use, or (the Shop's, not drawn yet) a price. */
+ *  use, the unlock line, Sign in to use, or a store character's price. */
 export type Ownership = "owned" | "equipped" | "store" | "locked" | "guest";
 
-const KIND_NAME: Record<CompanionKind, MessageKey> = {
+const KIND_NAME: Partial<Record<CompanionKind, MessageKey>> = {
   tractor: "home.kindTractor", bun: "home.kindBun", chick: "home.kindChick", sparrow: "home.kindSparrow",
 };
 
-export const kindName = (t: ReturnType<typeof useT>, kind: CompanionKind): string => t(KIND_NAME[kind]);
+/** A companion's name: the free ones' from the messages, a store
+ *  character's from its own table (characters.ts). */
+export const kindName = (t: ReturnType<typeof useT>, kind: CompanionKind | SoonKind): string => {
+  const key = KIND_NAME[kind as CompanionKind];
+  if (key) return t(key);
+  const name = STORE_NAMES[kind as SoldKind | SoonKind];
+  const lang = locale();
+  return lang === "zh-Hant" ? name.hant : lang === "zh-Hans" ? name.zh : name.en;
+};
 
 /** The spoken name of a companion's colour, in the app's language. */
 export function colourName(kind: CompanionKind, colour: Colour): string {
@@ -60,6 +70,7 @@ function unlockLine(t: ReturnType<typeof useT>, entry: LookEntry, user: AuthUser
 
 /** What the one button may do for `entry` when `inUse` is worn. */
 export function ownershipOf(entry: LookEntry, inUse: string, user: AuthUser | null): Ownership {
+  if (entry.product && !entry.unlocked) return "store";
   if (!user) return "guest";
   if (!entry.unlocked) return "locked";
   return entry.id === inUse ? "equipped" : "owned";
@@ -145,15 +156,21 @@ export function UseButton({ entry, ownership, user, onUse, price }: {
 /** The moves a stage plays by itself, one after another, each for its time. */
 const CYCLE: readonly [Pose, number][] = [["idle", 2200], ["hop", 900], ["idle", 1800], ["cheer", 1500], ["idle", 1800],
   ["react", 1800], ["idle", 1800], ["sleep", 2400]];
+const CHEER_STEP = CYCLE.findIndex(([pose]) => pose === "cheer");
 
 /** A live figure on felt that plays its moves in turn by itself (a tap plays
  *  the next at once), still under Reduce Motion and while the page is hidden. */
-export function Stage({ kind, colour, size, label, partner }: {
+export function Stage({ kind, colour, size, label, partner, cheer = 0 }: {
   kind: CompanionKind; colour: Colour; size: number; label: string;
   partner?: { kind: CompanionKind; colour: Colour; size: number } | null;
+  /** Each new value plays the cheer at once (a purchase). */
+  cheer?: number;
 }) {
   const [step, setStep] = useState(0);
   const timer = useRef(0);
+  useEffect(() => {
+    if (cheer > 0) setStep((s) => s - (s % CYCLE.length) + CYCLE.length + CHEER_STEP);
+  }, [cheer]);
   const [pose] = CYCLE[step % CYCLE.length];
   useEffect(() => {
     if (prefersReducedMotion()) return;
@@ -186,16 +203,22 @@ export function Stage({ kind, colour, size, label, partner }: {
 const TRY_PARTNER: Record<CompanionKind, { kind: CompanionKind; colour: Colour }> = {
   tractor: { kind: "bun", colour: "plain" }, bun: { kind: "tractor", colour: "red" },
   chick: { kind: "tractor", colour: "red" }, sparrow: { kind: "tractor", colour: "red" },
+  goat: { kind: "bun", colour: "plain" }, panda: { kind: "bun", colour: "plain" },
 };
 
-/** The one character page, the Collection's body (and the Shop's, with a
- *  price for its button, once it is built): the live figure on felt, Try on
- *  your table, `strip` (the Collection's companions), the colours, the one
- *  status line (the look shown) and the one button. A tap on a colour only
- *  shows it; the button puts it in use. */
-export default function CharacterPage({ kind, shown, entries, inUse, user, phone, strip, onShow, onUse, price }: {
+/** The one character page, opened from any tile of the Collection's grid:
+ *  the live figure on felt, Try on your table, `strip`, the colours, the one
+ *  status line (the look shown) and the one button, or for a store character
+ *  not owned `price` (Buy, Sign in to buy). A tap on a colour only shows it;
+ *  the button puts it in use. */
+export default function CharacterPage({ kind, shown, entries, inUse, user, phone, strip, onShow, onUse, price,
+  status = "", cheer = 0 }: {
   kind: CompanionKind; shown: string; entries: readonly LookEntry[]; inUse: string; user: AuthUser | null; phone: boolean;
   strip?: ReactNode; onShow: (entry: LookEntry) => void; onUse: (entry: LookEntry) => void; price?: ReactNode;
+  /** Replaces the status line while set (a purchase waiting or refused). */
+  status?: string;
+  /** Each new value plays the cheer (a purchase granted). */
+  cheer?: number;
 }) {
   const t = useT();
   const [tryOn, setTryOn] = useState(false);
@@ -205,7 +228,7 @@ export default function CharacterPage({ kind, shown, entries, inUse, user, phone
   return (
     <div className="char-page">
       <Stage kind={kind} colour={colour} size={tryOn ? (phone ? 112 : 132) : phone ? 176 : 208} label={lookName(t, entry.id)}
-             partner={partner} />
+             partner={partner} cheer={cheer} />
       <div className="char-poses">
         <button type="button" className={`char-chip${tryOn ? " on" : ""}`} aria-pressed={tryOn}
                 onClick={() => setTryOn((v) => !v)}>
@@ -214,7 +237,7 @@ export default function CharacterPage({ kind, shown, entries, inUse, user, phone
       </div>
       {strip}
       <Swatches entries={entries} shown={entry.id} inUse={inUse} user={user} size={56} className="char-swatches" onPick={onShow} />
-      <p className="coll-status" role="status">{lookName(t, entry.id)}</p>
+      <p className="coll-status" role="status">{status || lookName(t, entry.id)}</p>
       <UseButton entry={entry} ownership={ownershipOf(entry, inUse, user)} user={user} onUse={() => onUse(entry)} price={price} />
     </div>
   );

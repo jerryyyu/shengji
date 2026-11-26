@@ -21,6 +21,7 @@
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   /* Motion tokens, mirrored by DUR and EASE in src/motion.ts. */
   --dur-fast: 120ms;
+  --dur-resize: 180ms;
   --dur-lift: 400ms;
   --dur-flight: 340ms;
   --dur-reflow: 280ms;
@@ -2395,9 +2396,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 }
 
 /* Details, a button on the row: Details and Levels swap the kitty and the
-   last trick in for the lanes, in the same grid cell, so the card keeps one
-   height either way and the points bar, the status line and the buttons stay
-   where they are. */
+   last trick in for the lanes, in the same grid cell; the card takes the
+   height of the view shown, and the points bar, the status line and the
+   buttons follow it in order. */
 .round-end-actions > .round-end-view-btn {
   margin: 0;
   flex: none;
@@ -2420,6 +2421,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 }
 
 .round-end-swap {
+  position: relative;
   display: grid;
   min-width: 0;
 }
@@ -2429,18 +2431,21 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   min-width: 0;
 }
 
-/* the lanes and the Details content both sit at the foot of the cell,
-   which is as tall as the taller of them: the points bar follows each at
-   the card's own gap, and any spare height falls under the title */
 .round-end-lanes {
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
   gap: 4px;
 }
 
+/* the view not shown leaves the flow, so the cell, and the card, are as
+   tall as the view shown; it stays laid out at the cell's width, so the
+   Details fit is measured before it opens */
 .round-end-swap.details > .round-end-lanes,
 .round-end-swap:not(.details) > .round-end-details {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   visibility: hidden;
 }
 
@@ -2451,7 +2456,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   position: relative;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
   gap: 4px;
   text-align: left;
 }

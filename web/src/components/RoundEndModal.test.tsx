@@ -513,7 +513,7 @@ describe("Details: the kitty and the last trick, closed by default", () => {
     expect(viewBtn().getAttribute("aria-controls")).toBe(swap.querySelector(".round-end-details")!.id);
   });
 
-  it("Details swaps the kitty and the last trick in for the lanes, in the same cell; Levels swaps back; the card's shape is unchanged", () => {
+  it("Details swaps the kitty and the last trick in for the lanes, in the same cell; Levels swaps back; the card's elements are unchanged", () => {
     renderModal(makeResult({ attacker_points: 115, kitty_points: 30, kitty_cards: kitty, winner_team: 1, level_change: 1, new_levels: ["2", "3"] }),
                 { ...state, last_trick: lastTrick });
     const before = shape();
@@ -522,8 +522,8 @@ describe("Details: the kitty and the last trick, closed by default", () => {
     expect(viewBtn().getAttribute("aria-expanded")).toBe("true");
     const swap = host.querySelector(".round-end-swap")!;
     expect(swap.classList.contains("details")).toBe(true);
-    // one cell holds both: the lanes are hidden in place, not removed, so the
-    // card keeps its height; nothing is appended below the status line
+    // one cell holds both: the lanes are hidden in place, not removed, and
+    // nothing is appended below the status line
     expect([...swap.children].map((c) => c.className)).toEqual(["round-end-lanes", "round-end-details"]);
     expect(swap.querySelector(".round-end-lanes")!.getAttribute("aria-hidden")).toBe("true");
     expect(swap.querySelector(".round-end-details")!.hasAttribute("aria-hidden")).toBe(false);

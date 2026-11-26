@@ -921,9 +921,11 @@ describe("the round-end card on a phone", () => {
     expect(css).not.toContain(".details-open");
   });
 
-  it("sets the lanes and the Details content at the foot of one cell, the bar after them at the card's own gap, and keeps the bar's 14px rhythm above the buttons", () => {
-    expect(rule(css, ".round-end-lanes")["justify-content"]).toBe("flex-end");
-    expect(rule(css, ".round-end-details")["justify-content"]).toBe("flex-end");
+  it("sizes the cell to the view shown, the other out of the flow, the bar after it at the card's own gap, and keeps the bar's 14px rhythm above the buttons", () => {
+    const hidden = rule(css, ".round-end-swap.details > .round-end-lanes,\n.round-end-swap:not(.details) > .round-end-details".replace("\n", " "));
+    expect(hidden.position).toBe("absolute");
+    expect(hidden.visibility).toBe("hidden");
+    expect(rule(css, ".round-end-swap").position).toBe("relative");
     // Details sits straight on the card, like the lanes: no box of its own
     expect(rule(css, ".round-end-details").background).toBeUndefined();
     expect(rule(css, ".round-end-details").padding).toBeUndefined();

@@ -1,7 +1,8 @@
 import { RANKS } from "../protocol";
 import type { GameState, RoundResult } from "../protocol";
 import { conn } from "../ws";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { DUR, EASE, prefersReducedMotion } from "../motion";
 import ResultDialog from "./ResultDialog";
 import LeaveSheet from "./LeaveSheet";
 import { OFFLINE } from "../offlineMode";
@@ -257,6 +258,24 @@ export default function RoundEndModal({ state, result, clock = null, clockEnd = 
   useScreen("round_end");
   // Details swaps the kitty and the last trick in for the lanes, in place
   const [open, setOpen] = useState(false);
+  // each view is as tall as its own content: the cell's height glides from
+  // the one to the other (and not under Reduce Motion)
+  const swapRef = useRef<HTMLDivElement | null>(null);
+  const fromHeight = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const el = swapRef.current;
+    const from = fromHeight.current;
+    fromHeight.current = null;
+    if (!el || from === null || typeof el.animate !== "function" || prefersReducedMotion()) return;
+    const to = el.offsetHeight;
+    if (Math.abs(to - from) < 1) return;
+    el.getAnimations?.().forEach((a) => a.cancel());
+    el.style.overflow = "hidden";
+    const glide = el.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: DUR.resize, easing: EASE.outExpo });
+    const done = () => { el.style.overflow = ""; };
+    glide.onfinish = done;
+    glide.oncancel = done;
+  }, [open]);
   const detailsId = useId();
   const ranked = !!state.matched;
   // kitty_cards are the 8 cards the banker buried (the server sends rnd.buried).
@@ -309,7 +328,7 @@ export default function RoundEndModal({ state, result, clock = null, clockEnd = 
         {/* the pictures say the round: each team's lane (or, with Details, the
             kitty and the last trick in the same cell), then the attackers' points */}
         <div className="round-end-ladder">
-          <div className={`round-end-swap${open ? " details" : ""}`}>
+          <div ref={swapRef} className={`round-end-swap${open ? " details" : ""}`}>
             <div className="round-end-lanes" aria-hidden={open || undefined} inert={open || undefined}>
               {lane(us)}
               {lane(them)}
@@ -346,7 +365,10 @@ export default function RoundEndModal({ state, result, clock = null, clockEnd = 
           </button>
           {hasDetails ? (
             <button type="button" className="btn big round-end-view-btn" aria-expanded={open} aria-controls={detailsId}
-                    onClick={() => setOpen((v) => !v)}>
+                    onClick={() => {
+                      fromHeight.current = swapRef.current?.offsetHeight ?? null;
+                      setOpen((v) => !v);
+                    }}>
               {/* both words share one cell, so the button keeps one width and
                   Next round does not move as it toggles */}
               <span className="round-end-view-words">

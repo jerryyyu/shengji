@@ -18,6 +18,10 @@ and it is checked twice: the round's records must run from its
 be past that round (``_is_over``). A round in play, an abandoned one or one
 replaced by a new deal has no ``round_end`` and is never served.
 
+Whole rounds only. A round is served only when its records are the whole
+round as the engine plays one (``complete_sequence``); one with a lost
+record gives way to the table's previous finished round.
+
 Limits. At most ``WATCH_CAP`` watchers per table (a watcher counts until
 ``WATCH_TTL`` passes without a poll), and ``LIMITER`` per address.
 
@@ -38,6 +42,7 @@ open-table offer already gives a stranger, so Take a seat can join it.
 from __future__ import annotations
 
 import asyncio
+import collections
 import json
 import logging
 import os
@@ -49,6 +54,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
+from ..engine.round import HAND_SIZE
 from . import accounts, ratings, saved_games
 
 log = logging.getLogger(__name__)
@@ -62,6 +68,7 @@ LIMITER = accounts.RateLimiter(limit=30, window=60.0)
 # A round's records fill well under 1 MB; the read stops here regardless.
 READ_CAP = 4 * 1024 * 1024
 RERUN_ID = "rerun"
+KEEP_ROUNDS = 3
 
 
 ACCOUNTS_ENV = "SPECTATE_ACCOUNTS"
@@ -107,6 +114,9 @@ class WatchState:
     # (round number, the log, its round_start offset) of the round in play
     started: tuple[int, Path, int] | None = None
     last: Finished | None = None
+    # the latest finished rounds, newest last: a round whose log turns out
+    # incomplete is skipped for the one before it
+    recent: collections.deque = field(default_factory=lambda: collections.deque(maxlen=KEEP_ROUNDS))
     # watcher token -> when it last read this table
     watchers: dict[str, float] = field(default_factory=dict)
 
@@ -156,6 +166,7 @@ def round_ended(room: Any, written: bool = True) -> None:
             return
         n, path, offset = st.started
         st.last = Finished(path=path, start=offset, round=n, ranked=ratings.ranked(room))
+        st.recent.append(st.last)
         if st.last.ranked:
             _rerun = st.last
     except Exception:               # noqa: BLE001 - never raise into a game
@@ -215,11 +226,67 @@ def _players(rec: dict) -> list[dict]:
     return out
 
 
+def _cards(v: Any) -> list[str] | None:
+    return list(v) if isinstance(v, list) and all(isinstance(c, str) for c in v) else None
+
+
+def complete_sequence(records: list[dict]) -> bool:
+    """Whether the records are a whole round as the engine plays one: one
+    deal, the banker's bury of eight, then tricks of four plays in turn
+    order, each led by the previous trick's winner (the banker first), each
+    play as many cards as the lead and from that seat's own cards, every
+    trick closed by its ``trick`` record, until each seat has played its
+    ``HAND_SIZE`` cards, then ``round_end``. A lost record anywhere fails it."""
+    if not records or records[0].get("e") != "round_start" or records[-1].get("e") != "round_end":
+        return False
+    deck = _cards(records[0].get("deck"))
+    if deck is None or len(deck) < 4 * HAND_SIZE + 8:
+        return False
+    trump = [r for r in records if r.get("e") == "trump"]
+    buries = [r for r in records if r.get("e") == "bury"]
+    if len(trump) != 1 or len(buries) != 1:
+        return False
+    banker = trump[0].get("banker")
+    buried = _cards(buries[0].get("cards"))
+    if not isinstance(banker, int) or not 0 <= banker < 4 or buries[0].get("seat") != banker \
+            or buried is None or len(buried) != 8:
+        return False
+    held = [collections.Counter(deck[s:4 * HAND_SIZE:4]) for s in range(4)]
+    held[banker].update(deck[4 * HAND_SIZE:4 * HAND_SIZE + 8])
+    held[banker].subtract(buried)
+    if any(v < 0 for v in held[banker].values()):
+        return False
+    leader, plays = banker, []
+    played = [0, 0, 0, 0]
+    for rec in records[1:-1]:
+        kind = rec.get("e")
+        if kind == "play":
+            cards = _cards(rec.get("cards"))
+            seat = rec.get("seat")
+            if (len(plays) == 4 or seat != (leader + len(plays)) % 4 or not cards
+                    or (plays and len(cards) != len(plays[0]))):
+                return False
+            held[seat].subtract(cards)
+            if any(v < 0 for v in held[seat].values()):
+                return False
+            played[seat] += len(cards)
+            plays.append(cards)
+        elif kind == "trick":
+            winner = rec.get("winner")
+            if len(plays) != 4 or not isinstance(winner, int) or not 0 <= winner < 4:
+                return False
+            leader, plays = winner, []
+        elif kind in ("round_start", "round_end"):
+            return False
+    return not plays and played == [HAND_SIZE] * 4
+
+
 def round_doc(f: Finished) -> dict | None:
     """The finished round as a watcher sees it: every event of the
-    allow-list with every card shown, or None when it is not finished."""
+    allow-list with every card shown, or None unless the log holds the
+    whole round (``complete_sequence``)."""
     records = _read(f)
-    if records is None or records[-1].get("e") != "round_end":
+    if records is None or not complete_sequence(records):
         return None
     events = []
     for rec in records:
@@ -319,18 +386,33 @@ def _join_code(room: Any) -> str | None:
     return room.code
 
 
-async def _serve(room: Any, token: str, after: int | None) -> dict:
-    """One table's answer: its latest finished round (when newer than
-    ``after``), or that its round is still in play."""
+def _still(room: Any, wide: bool) -> bool:
+    """The room is still the one under its code, and still watchable."""
+    from . import server
+    return server.rooms.get(room.code) is room and watchable(room, wide)
+
+
+async def _serve(room: Any, token: str, after: int | None, wide: bool) -> dict | None:
+    """One table's answer: its latest whole finished round (when newer than
+    ``after``; a round whose log is incomplete gives way to the one before
+    it), or that its round is still in play. None when, after the read, the
+    room is gone or no longer watchable; the answer's header is read then."""
     st = room.watch
-    f = st.last
+    doc = None
+    for f in reversed(list(st.recent)):
+        if after is not None and f.round <= after:
+            break
+        if not _is_over(room, f.round):
+            continue
+        doc = await asyncio.to_thread(round_doc, f)
+        if doc is not None or not _still(room, wide):
+            break
+    # checked again after the reads: the same room, still watchable, past the round
+    if not _still(room, wide):
+        return None
     head = {"table": st.id, "watcher": token, "mode": _mode(room),
             "live_round": room.game.round_no, "code": _join_code(room), "rerun": False}
-    if f is None or (after is not None and f.round <= after) or not _is_over(room, f.round):
-        return {**head, "waiting": True}
-    doc = await asyncio.to_thread(round_doc, f)
-    # checked again after the read: the room must still be past that round
-    if doc is None or not _is_over(room, f.round):
+    if doc is None or not _is_over(room, doc["round"]):
         return {**head, "waiting": True}
     return {**head, **doc, "waiting": False}
 
@@ -377,9 +459,11 @@ async def watch(request: Request, mode: str | None = None, skip: str | None = No
             if st is not None and other is not room:
                 st.watchers.pop(token, None)
         room.watch.watchers[token] = now
-        out = await _serve(room, token, None)
-        if not out["waiting"]:
+        out = await _serve(room, token, None, wide)
+        if out is not None and not out["waiting"]:
             return out
+        if out is None:
+            room.watch.watchers.pop(token, None)
     rerun = _rerun
     if rerun is not None:
         doc = await asyncio.to_thread(round_doc, rerun)
@@ -405,7 +489,11 @@ async def follow(table: str, request: Request, after: int | None = None,
     if token not in st.watchers and st.live_watchers(now) >= WATCH_CAP:
         raise HTTPException(status_code=404, detail="Not found.")
     st.watchers[token] = now
-    return await _serve(room, token, after)
+    out = await _serve(room, token, after, wide)
+    if out is None:
+        st.watchers.pop(token, None)
+        raise HTTPException(status_code=404, detail="Not found.")
+    return out
 
 
 def register_spectate(app) -> None:

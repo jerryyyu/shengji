@@ -379,3 +379,93 @@ def test_with_no_flag_and_no_list_the_presence_line_is_unchanged(client, monkeyp
     assert spectate.presence_key() == ()
     assert spectate.presence(41) is None
     assert "watch" not in srv.MATCHMAKER.presence_payload(41)
+
+
+# ------------------------------------------------------- after the read
+def _during_read(monkeypatch, spectate, change):
+    """Run ``change`` while the feed reads the log, as another request could."""
+    real = spectate.round_doc
+
+    def reading(f):
+        doc = real(f)
+        change()
+        return doc
+
+    monkeypatch.setattr(spectate, "round_doc", reading)
+
+
+def test_allow_joiners_switched_off_during_the_read_serves_nothing(feed, monkeypatch):
+    srv, spectate, client = feed
+    t = Table(srv, code="CSUL")
+    t.play_round()
+    t.deal()
+    token = _watch(client).json()["watcher"]
+    _during_read(monkeypatch, spectate, lambda: setattr(t.room, "allow_joiners", False))
+    assert _watch(client, w=token).status_code == 404
+    t.room.allow_joiners = True
+    tid = t.room.watch.id
+    assert client.get(f"/api/watch/{tid}", params={"w": token}).status_code == 404
+
+
+def test_a_room_replaced_during_the_read_serves_nothing(feed, monkeypatch):
+    srv, spectate, client = feed
+    t = Table(srv, code="CSUL")
+    t.play_round()
+    t.deal()
+
+    def replace():
+        srv.rooms["CSUL"] = srv.Room(code="CSUL")
+
+    _during_read(monkeypatch, spectate, replace)
+    assert _watch(client).status_code == 404
+
+
+def test_the_last_seat_filling_during_the_read_drops_the_join_code(feed, monkeypatch):
+    srv, spectate, client = feed
+    t = Table(srv, code="CSUL")
+    t.play_round()
+    t.deal()
+
+    def fill():
+        for sd in t.room.seats:
+            sd.is_bot, sd.connected = False, True
+
+    _during_read(monkeypatch, spectate, fill)
+    doc = _watch(client).json()
+    assert doc["round"] == 1 and doc["code"] is None
+
+
+def _drop_a_play(path, round_no):
+    """Delete one interior play of ``round_no`` from the log, as a lost write would."""
+    lines = path.read_bytes().splitlines(keepends=True)
+    plays = [i for i, line in enumerate(lines)
+             if json.loads(line).get("round") == round_no and json.loads(line).get("e") == "play"]
+    del lines[plays[len(plays) // 2]]
+    path.write_bytes(b"".join(lines))
+
+
+def test_a_round_missing_an_interior_play_is_refused_and_the_last_good_round_kept(feed):
+    srv, spectate, client = feed
+    t = Table(srv, ranked=True)
+    t.play_round()
+    first = _watch(client).json()
+    assert first["round"] == 1
+    t.play_round()
+    t.deal()
+    _drop_a_play(spectate._log_path(t.room), 2)
+    broken = t.room.watch.last
+    assert broken.round == 2 and spectate.round_doc(broken) is None
+    again = _watch(client, w=first["watcher"]).json()
+    assert again["round"] == 1 and again["waiting"] is False
+    follow = client.get(f"/api/watch/{first['table']}", params={"after": 1, "w": first["watcher"]}).json()
+    assert follow["waiting"] is True and "events" not in follow
+
+
+def test_a_complete_round_passes_the_sequence_check(feed):
+    srv, spectate, client = feed
+    t = Table(srv)
+    t.play_round()
+    records = spectate._read(t.room.watch.last)
+    assert spectate.complete_sequence(records) is True
+    plays = [r for r in records if r["e"] == "play"]
+    assert sum(len(p["cards"]) for p in plays) == 100

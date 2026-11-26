@@ -353,3 +353,30 @@ def test_mixed_throw_overruff_reaches_ballot_and_wins(trusted, lead, ruff, low, 
     assert Counter(proposal["actions"][0]) == Counter(anchor)
     rnd.play(3, proposal["actions"][0])
     assert rnd.last_trick.winner == 3
+
+
+@pytest.mark.parametrize("trusted", [False, True])
+@pytest.mark.parametrize("spare,winner", [("H3", 3), ("S3", 2)])
+def test_pair_throw_overruff_avoids_a_lower_filler_pair(trusted, spare, winner):
+    from shengji.engine.cards import Ordering
+    from shengji.engine.round import Round, Trick
+
+    rnd = Round("7", 0, random.Random(11))
+    rnd.phase, rnd.turn, rnd.trump_suit = "play", 0, "H"
+    rnd.ordering = Ordering("H", "7")
+    rnd.trick = Trick(leader=0)
+    lead = ["CA", "CA", "CK", "CQ"]
+    discard = ["D2", "D3", "D4", "D6"]
+    ruff = ["H6", "H6", "HJ", "HA"]
+    rnd.hands = [lead + ["S2"], discard + ["S4"], ruff + ["S5"],
+                 ["H2", "H2", "H8", "H8", spare]]
+    rnd._trusted_rollout = trusted
+    for seat, cards in enumerate((lead, discard, ruff)):
+        rnd.play(seat, cards)
+    anchor = HeuristicBot().decide_play(rnd, 3)
+    assert is_legal(rnd, 3, anchor)
+    proposal = sf.propose(rnd, 3, anchor, np.zeros(54))
+    rnd.play(3, proposal["actions"][0])
+    assert rnd.last_trick.winner == winner
+    if winner == 3:
+        assert Counter(anchor) == Counter(["H8", "H8", "H2", "H3"])

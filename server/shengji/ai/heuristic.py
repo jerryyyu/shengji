@@ -267,6 +267,14 @@ class HeuristicBot:
                     return run + [self._lowest(remaining, o, avoid_points=True)]
             return None
         pool = list(trumps)
+        if incumbent_trump_top is not None and runs == [1] and n_singles > 1:
+            # The engine matches the lowest available pair. A lower or tied
+            # pair can supply one filler, but both copies would lose the trick.
+            for card, copies in Counter(trumps).items():
+                if copies == 2 and o.level(card) <= incumbent_trump_top:
+                    pool.remove(card)
+            if len(pool) < 2 + n_singles:
+                return None
         picked: list[str] = []
         for k in runs:
             if k == 1:

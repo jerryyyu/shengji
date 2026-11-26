@@ -4,23 +4,29 @@ import StoreKit
 import os
 
 /// In-app purchases for the Shop (StoreKit 2). The server is the record of what
-/// a player owns: every verified transaction is handed to the page as its JWS,
-/// which the page sends on for the server to check, so the app keeps no copy.
+/// a player owns: every verified transaction is handed to the page as its JWS
+/// with its `transactionId`, the page sends it on for the server to check, and
+/// only the page's `finish({transactionId})` after the server recorded it
+/// finishes it (StoreDelivery.swift). Until then StoreKit keeps it and
+/// `pending()` hands it over again, at this launch or the next.
 /// - `products({ids})` resolves `{products: [{id, displayName, displayPrice}]}`
 ///   in the order asked; an id the App Store does not know is left out.
-/// - `purchase({id})` resolves `{status: "purchased", jws, productId}`,
+/// - `purchase({id})` resolves `{status: "purchased", jws, productId, transactionId}`,
 ///   `{status: "cancelled"}`, `{status: "pending"}` or `{status: "unverified"}`.
-///   A verified purchase is finished once the page has its JWS: a lost
-///   delivery comes back through `restore()` or `entitlements()`. An
-///   unverified one is never finished, so StoreKit offers it again.
+///   Nothing is finished here.
+/// - `pending()` resolves `{transactions: [{jws, productId, transactionId}]}`:
+///   every verified transaction not finished yet.
+/// - `finish({transactionId})` resolves `{finished}`: false when that
+///   transaction is not unfinished (already finished, or unknown).
 /// - `restore()` syncs with the App Store (it may ask the player to sign in),
-///   then resolves `{transactions: [{jws, productId}]}` from the current
+///   then resolves `{transactions: [{jws, productId, transactionId}]}` from the current
 ///   entitlements; `entitlements()` resolves the same without the sync, so it
 ///   never prompts. Only verified, unrevoked transactions are listed.
 /// - `storefront()` resolves `{countryCode}` (ISO 3166-1 alpha-3) or null.
-/// - Event `transaction` `{jws, productId}`: a verified transaction that
-///   arrived outside a purchase call (Ask to Buy, another device, a refund or
-///   its revocation); it is finished once sent.
+/// - Event `transaction` `{jws, productId, transactionId}`: a verified
+///   transaction that arrived outside a purchase call (Ask to Buy, another
+///   device, a refund or its revocation). It is not finished either: with no
+///   page listening it is still in `pending()`.
 /// Log lines carry event names and product ids only, never a JWS or a
 /// transaction id.
 @objc(ShengjiStorePlugin)
@@ -32,13 +38,17 @@ public class ShengjiStorePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "purchase", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "restore", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "entitlements", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "storefront", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "storefront", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "pending", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "finish", returnType: CAPPluginReturnPromise)
     ]
+
+    private let delivery = StoreDelivery(ledger: StoreKitLedger())
 
     private static let log = Logger(subsystem: "com.jerryyu.shengji", category: "store")
 
-    /// Listens for the whole life of the plugin: a transaction that is not
-    /// collected here stays unfinished and StoreKit redelivers it every launch.
+    /// Listens for the whole life of the plugin and forwards each update to
+    /// the page; StoreKit keeps it unfinished until the page acknowledges it.
     private var updatesTask: Task<Void, Never>?
 
     override public func load() {
@@ -51,13 +61,11 @@ public class ShengjiStorePlugin: CAPPlugin, CAPBridgedPlugin {
                 let productId = transaction.productID
                 guard let self = self else { return }
                 // A revocation is forwarded too: its JWS carries the revocation
-                // date, and the server decides what it removes. The event is
-                // retained until the page listens, so one that arrives at
-                // launch, before the page subscribes, still reaches it.
-                self.notifyListeners("transaction", data: ["jws": result.jwsRepresentation, "productId": productId],
-                                     retainUntilConsumed: true)
+                // date, and the server decides what it removes.
+                let delivered = DeliveredTransaction(id: transaction.id, productId: productId,
+                                                     jws: result.jwsRepresentation)
+                self.notifyListeners("transaction", data: delivered.payload, retainUntilConsumed: true)
                 ShengjiStorePlugin.log.info("update forwarded \(productId, privacy: .public)")
-                await transaction.finish()
             }
         }
     }
@@ -107,9 +115,9 @@ public class ShengjiStorePlugin: CAPPlugin, CAPBridgedPlugin {
                 case .success(let result):
                     switch result {
                     case .verified(let transaction):
-                        call.resolve(["status": "purchased", "jws": result.jwsRepresentation,
-                                      "productId": transaction.productID])
-                        await transaction.finish()
+                        let delivered = DeliveredTransaction(id: transaction.id, productId: transaction.productID,
+                                                             jws: result.jwsRepresentation)
+                        call.resolve(delivered.payload.merging(["status": "purchased"]) { a, _ in a })
                         ShengjiStorePlugin.log.info("purchased \(id, privacy: .public)")
                     case .unverified:
                         ShengjiStorePlugin.log.error("purchase unverified \(id, privacy: .public)")
@@ -165,12 +173,55 @@ public class ShengjiStorePlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    @objc func pending(_ call: CAPPluginCall) {
+        Task {
+            let list = await delivery.pending()
+            ShengjiStorePlugin.log.info("pending \(list.count, privacy: .public)")
+            call.resolve(["transactions": list])
+        }
+    }
+
+    @objc func finish(_ call: CAPPluginCall) {
+        guard let id = call.getString("transactionId"), !id.isEmpty else {
+            call.reject("transactionId must be a non-empty string", "bad_request")
+            return
+        }
+        Task {
+            let finished = await delivery.acknowledge(id)
+            ShengjiStorePlugin.log.info("finish \(finished, privacy: .public)")
+            call.resolve(["finished": finished])
+        }
+    }
+
     private static func currentEntitlements() async -> [[String: Any]] {
         var list: [[String: Any]] = []
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result, transaction.revocationDate == nil else { continue }
-            list.append(["jws": result.jwsRepresentation, "productId": transaction.productID])
+            list.append(DeliveredTransaction(id: transaction.id, productId: transaction.productID,
+                                             jws: result.jwsRepresentation).payload)
         }
         return list
+    }
+}
+
+/// StoreKit's own ledger: `Transaction.unfinished`, verified ones only.
+struct StoreKitLedger: StoreLedger {
+    func unfinished() async -> [DeliveredTransaction] {
+        var list: [DeliveredTransaction] = []
+        for await result in Transaction.unfinished {
+            guard case .verified(let transaction) = result else { continue }
+            list.append(DeliveredTransaction(id: transaction.id, productId: transaction.productID,
+                                             jws: result.jwsRepresentation))
+        }
+        return list
+    }
+
+    func finish(id: UInt64) async -> Bool {
+        for await result in Transaction.unfinished {
+            guard case .verified(let transaction) = result, transaction.id == id else { continue }
+            await transaction.finish()
+            return true
+        }
+        return false
     }
 }

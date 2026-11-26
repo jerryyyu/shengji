@@ -4896,6 +4896,47 @@ def test_peek_a_duo_table_shows_its_held_seat_until_the_friend_takes_it():
     run(go())
 
 
+def test_the_code_each_seat_is_sent_previews_the_seat_its_join_takes():
+    """Alice's Duo table with Bob seated from Play. Both are sent the table's
+    one code, Alice's: its preview asks for her partner, its join takes the
+    held seat opposite Alice, and so Bob's share (web codes.ts inviteAskOf)
+    is the plain ask. Team order is the table opener's for every code."""
+    from shengji.api import invite_preview as ip
+
+    async def go():
+        env = Env()
+        await env.join(2)                                  # Bob, waiting
+        await _duo_table(env, 1)                           # Alice opens; Bob sits
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, 2, None, None] and t.held_seat() == 2
+        alice_frame, bob_frame = env.conns[1].last("table"), env.conns[2].last("table")
+        assert bob_frame["code"] == alice_frame["code"]
+        assert (bob_frame["you"], bob_frame["opener"]) == (1, 0)
+        assert [s["state"] for s in bob_frame["seats"]] == ["taken", "taken", "held", "open"]
+        code = bob_frame["code"]
+
+        opener, seats, table_id = env.mm.invite_seats(code)
+        assert opener == 0 and table_id == t.id
+        assert seats == [("person", "P1", False), ("person", "P2", False),
+                         ("held", None, True), ("open", None, False)]
+        view = ip.table_view(code, opener, seats)
+        assert view.ask == "partner"
+        assert [(s.us, s.free) for s in view.seats] == [(True, False), (True, True), (False, False), (False, False)]
+        # the recipient of Bob's share joins by that code: Alice's partner seat, not Bob's team
+        env.player(7)
+        await env.send(7, "queue_join", code=code)
+        assert t.seats[2] == 7 and t.seats[3] is None
+        assert env.conns[7].last("table")["code"] == code
+        # with the held seat filled, the same code offers the last open seat
+        opener, seats, _ = env.mm.invite_seats(code)
+        assert ip.table_view(code, opener, seats).ask == "one"
+        env.player(8)
+        await env.send(8, "queue_join", code=code)
+        assert t.seats[3] == 8
+        assert env.mm.invite_seats("ZZZZ") is None
+    run(go())
+
+
 def test_peek_a_waiting_table_shows_its_seats_starts_and_a_full_table():
     async def go():
         env = Env()

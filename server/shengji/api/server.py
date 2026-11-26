@@ -16,7 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketState
 
@@ -30,7 +31,7 @@ from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
-from . import accounts, blocks, chat_filter, limits, matchmaking, nearby_logs, ranked_bots, ratings, reports, saved_games, support, tables, telemetry
+from . import accounts, blocks, chat_filter, invite_preview, limits, matchmaking, nearby_logs, ranked_bots, ratings, reports, saved_games, support, tables, telemetry
 from .model_serving import run_model_search
 
 
@@ -601,6 +602,9 @@ class Room:
     # The cheap bot that plays a closing room's round: nobody is watching, so
     # no model search runs for it. Built on first use.
     closing_bot: Any = field(default=None, init=False, repr=False)
+    # Which room holds the code, for the link preview's image URL: a code
+    # reused by a later room never matches an earlier room's URL.
+    preview_id: str = field(default_factory=lambda: secrets.token_hex(4), init=False, repr=False)
     # A table continuing a saved game: the ``saved_games.resume_point`` its
     # creator's account was given, applied once at ``start_game`` (both
     # teams' levels, games won and the first banker); its game id keeps the
@@ -4308,6 +4312,80 @@ async def healthz() -> dict:
             "web_build": WEB_BUILD}
 
 
+def room_invite_seats(room: Room) -> list[tuple[str, str | None, bool]] | None:
+    """A room's seats as its link preview shows them, from the Join panel's
+    own projection (``room_seats_json``): a seat is free when that frame
+    says a joiner may claim it, and none is when it says the table is full.
+    A departed player's claimable seat is an empty seat, never their name;
+    a reserved one keeps its holder. None for a room a code join cannot
+    enter: no game yet, over, aborted, closing or no longer the code's."""
+    game = room.game
+    if (rooms.get(room.code) is not room or room.aborted or room.closing
+            or game is None or game.game_over):
+        return None
+    frame = room_seats_json(room)
+    by_seat = {s["seat"]: s for s in frame["seats"]}
+    seats: list[tuple[str, str | None, bool]] = []
+    for i in range(4):
+        s = by_seat.get(i)
+        free = s is not None and bool(s["claimable"]) and not frame.get("full")
+        if s is None:
+            seats.append((invite_preview.OPEN, None, False))
+        elif s["is_bot"]:
+            seats.append((invite_preview.BOT, None, free))
+        elif free:
+            seats.append((invite_preview.OPEN, None, True))
+        else:
+            seats.append((invite_preview.PERSON, s["name"], False))
+    return seats
+
+
+def invite_view(code: str) -> invite_preview.TableView | None:
+    """The link preview's view of the live room or queued table ``code``
+    names, as a join by that code would find it; None for any other code and
+    for a table that join cannot enter."""
+    room = rooms.get(code)
+    if room is not None:
+        seats = room_invite_seats(room)
+        if seats is None:
+            return None
+        return invite_preview.table_view(code, room.host, seats, f"r{room.preview_id}")
+    found = MATCHMAKER.invite_seats(code)
+    if found is None:
+        return None
+    opener, seats, table_id = found
+    return invite_preview.table_view(code, opener, seats, f"q{table_id}")
+
+
+def preview_lookup(raw: object, ip: str) -> invite_preview.TableView | None:
+    """``invite_view`` on the code peeks' own budget: a malformed code is
+    never looked up, a lookup past the budget finds nothing, and a code
+    that names nothing spends a miss, so guessing codes through previews is
+    no cheaper than through the Join box."""
+    code = invite_preview.valid_code(raw)
+    if code is None or not _lookup_allowed(ip):
+        return None
+    if code not in rooms and not MATCHMAKER.has_code(code):
+        limits.record_miss(ip)
+        return None
+    return invite_view(code)
+
+
+async def og_table_card(code: str, request: Request) -> Response:
+    """``GET /og/table/<code>.png?s=<state>``: the live table's card while
+    its state is still the one the page's URL was made for; for any other
+    code or state, the same card with no table on it. Reusable for a minute."""
+    view = invite_preview.card_for(preview_lookup(code, accounts.client_ip(request)),
+                                   request.query_params.get("s"))
+    png = await asyncio.to_thread(invite_preview.render_png, view)
+    return Response(png, media_type="image/png",
+                    headers={"Cache-Control": f"public, max-age={int(invite_preview.CACHE_SECS)}"})
+
+
+app.add_api_route("/og/table/{code}.png", og_table_card, methods=["GET", "HEAD"],
+                  include_in_schema=False)
+
+
 from .debug import register_debug  # noqa: E402
 
 register_debug(app, rooms)
@@ -4422,6 +4500,10 @@ class WebFiles(StaticFiles):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
             response.headers["Vary"] = "Accept-Encoding"
             return response
+        if path in (".", "index.html") and scope["method"] in ("GET", "HEAD"):
+            invite = self._invite_page(scope)
+            if invite is not None:
+                return invite
         response = await super().get_response(path, scope)
         query = parse_qs(scope.get("query_string", b"").decode("latin-1"))
         versioned = path.startswith("sounds/") and bool(query.get("v"))
@@ -4430,6 +4512,29 @@ class WebFiles(StaticFiles):
         else:
             response.headers["Cache-Control"] = "no-cache"
         return response
+
+    def _invite_page(self, scope) -> HTMLResponse | None:
+        """The page for an invite link ``/?code=<code>`` (or the older
+        ``?room=``) to a live table: the same page with that table's preview
+        tags, in Chinese when the asker prefers it. None for any other code,
+        which gets the page as it is."""
+        from urllib.parse import parse_qs
+
+        query = parse_qs(scope.get("query_string", b"").decode("latin-1"))
+        raw = (query.get("code") or query.get("room") or [None])[0]
+        if raw is None:
+            return None
+        request = Request(scope)
+        view = preview_lookup(raw, accounts.client_ip(request))
+        if view is None:
+            return None
+        try:
+            page = (Path(self.directory) / "index.html").read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+        zh = invite_preview.prefers_zh(request.headers.get("accept-language"))
+        return HTMLResponse(invite_preview.page_tags(page, view, zh),
+                            headers={"Cache-Control": "no-cache", "Vary": "Accept-Language"})
 
     async def _precompressed(self, path, scope):
         import mimetypes

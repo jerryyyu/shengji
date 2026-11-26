@@ -165,6 +165,7 @@ jobs:
           tests/test_player_blocks.py
           tests/test_matchmaking_golden.py
           tests/test_web_cache_headers.py
+          tests/test_invite_preview.py
           tests/test_oracle_screen.py
           tests/test_report_world_reuse.py
           tests/test_served_config.py

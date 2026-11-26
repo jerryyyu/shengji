@@ -85,7 +85,9 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
   const close = () => setOpen(false);
 
   const invite = () => {
-    void shareInvite(room).then((didCopy) => {
+    // mid-game a bot's seat may or may not be open to a joiner (a pending
+    // join, a ranked table's rules), so the menu sends the plain ask
+    void shareInvite(room, "three").then((didCopy) => {
       if (!didCopy) return;
       setCopied(true);
       window.setTimeout(() => setCopied(false), COPIED_MS);

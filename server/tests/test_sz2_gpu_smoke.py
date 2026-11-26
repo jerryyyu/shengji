@@ -846,3 +846,72 @@ def test_inkling_config_binds_the_same_filter_at_preflight_and_restore(host, los
     result = invoke(host, *args)
     assert result.returncode == (9 if lose_filter else 0), result.stderr
     assert events(log) == ["stop", "train", "restart"]
+
+
+@pytest.mark.parametrize("stage", [["--worker", "0"], ["--polish"], ["--finish-selection"]])
+def test_split_volume_cache_admission_precedes_each_stage(tmp_path, monkeypatch, stage):
+    import plistlib
+    from types import SimpleNamespace
+
+    monkeypatch.syspath_prepend(str(WORKER.parent))
+    import rt4m_cache as arm
+
+    # /dev is a distinct mounted filesystem on the supported macOS and Linux hosts.
+    mount = Path("/dev")
+    assert mount.stat().st_dev != tmp_path.stat().st_dev
+    uuid = "2F94AE89-D930-3DA1-AD63-FFD2B87B8D9F"
+    cache = mount / "uncreated-rt4m-cache-fixture"
+    info = {"VolumeUUID": uuid, "MountPoint": str(mount)}
+
+    def diskutil(command, **kwargs):
+        assert command == ["/usr/sbin/diskutil", "info", "-plist", uuid]
+        return SimpleNamespace(returncode=0, stdout=plistlib.dumps(info))
+
+    monkeypatch.setattr(arm.subprocess, "run", diskutil)
+    free = {mount: 3, tmp_path: 2}
+    monkeypatch.setattr(arm.shutil, "disk_usage", lambda path: SimpleNamespace(free=free[path] * 2**30))
+    calls = []
+
+    def consume(root, output, *args, **kwargs):
+        calls.append((root, output))
+        return 0
+
+    monkeypatch.setattr(arm, "partition", consume)
+    monkeypatch.setattr(arm, "polish", consume)
+    argv = ["rt4m_cache.py", *stage, "--root", str(tmp_path), "--cache-root", str(cache),
+            "--cache-volume-uuid", uuid, "--min-cache-free-gib", "3", "--min-internal-free-gib", "2"]
+    monkeypatch.setattr(sys, "argv", argv)
+    assert arm.main() == 0
+    for path in (mount, tmp_path):
+        free[path] -= 1
+        with pytest.raises(SystemExit) as exc:
+            arm.main()
+        assert exc.value.code == 2
+        free[path] += 1
+    info["MountPoint"] = str(tmp_path)
+    with pytest.raises(SystemExit):
+        arm.main()
+    info["MountPoint"] = str(mount)
+    info["VolumeUUID"] = "00000000-0000-0000-0000-000000000000"
+    with pytest.raises(SystemExit):
+        arm.main()
+    monkeypatch.setattr(sys, "argv", ["rt4m_cache.py", *stage, "--root", str(tmp_path),
+                                      "--cache-root", "/Volumes/Absent/cache"])
+    with pytest.raises(SystemExit):
+        arm.main()
+    assert calls == [(tmp_path, cache)]
+
+
+def test_partition_refuses_redirected_arm_cache(tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(str(WORKER.parent))
+    import rt4m_cache as arm
+
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
+    elsewhere = tmp_path / "other-volume"
+    elsewhere.mkdir()
+    (cache_root / "A").symlink_to(elsewhere, target_is_directory=True)
+    monkeypatch.setattr(arm.rt4m_joint, "completed_inputs", lambda *_: (None, "digest", {}))
+    with pytest.raises(ValueError, match="escapes the cache root"):
+        arm.partition(tmp_path, cache_root, 0, None)
+    assert not list(elsewhere.iterdir())

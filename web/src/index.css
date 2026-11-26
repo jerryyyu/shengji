@@ -3993,15 +3993,19 @@ dialog.modal-backdrop::backdrop { background: transparent; }
       --l1-tag-h: max(calc(36 * var(--u)), 32px);
       /* a play's height: its cards and the LEAD / WINS line under them */
       --l1-play-h: calc(var(--tcw) * 1.4 + 4px + 20 * var(--u));
+      /* a play stands this far under its seat's tag: a gap, and the room a
+         winner's cards rise into (win-lift: 10px up, grown 6% about their
+         centre, a 2px ring) */
+      --l1-tag-gap: calc(8 * var(--u) + 12px + var(--tcw) * 0.042);
       /* the top play, under the top seat's tag, ends here */
-      --l1-top-t: calc(22 * var(--u) + var(--l1-tag-h));
+      --l1-top-t: calc(12 * var(--u) + var(--l1-tag-h) + var(--l1-tag-gap));
       --l1-top-b: calc(var(--l1-top-t) + var(--l1-play-h));
       /* your play stands this far above the felt's bottom: your row, the
          hand and a gap */
       --l1-bottom: calc(var(--you-h) + 24 * var(--u));
       /* a side seat's tag and its play, centred between the top play and
          yours (100% is the felt's height) */
-      --l1-side-h: calc(var(--l1-tag-h) + 8 * var(--u) + var(--l1-play-h));
+      --l1-side-h: calc(var(--l1-tag-h) + var(--l1-tag-gap) + var(--l1-play-h));
       --l1-side-t: calc((var(--l1-top-b) + 100% - var(--l1-bottom) - var(--l1-play-h) - var(--l1-side-h)) / 2);
       /* a play never runs past the felt's middle less a gap */
       --l1-span: calc(50vw - 8px);
@@ -4029,7 +4033,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
     .trick-play.pos-left,
     .trick-play.pos-right {
-      top: calc(var(--l1-side-t) + var(--l1-tag-h) + 8 * var(--u));
+      top: calc(var(--l1-side-t) + var(--l1-tag-h) + var(--l1-tag-gap));
       translate: 0 0;
     }
 

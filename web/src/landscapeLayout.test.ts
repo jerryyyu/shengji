@@ -1124,9 +1124,15 @@ describe("the tablet table held upright: each play in front of its seat", () => 
       const bottomB = felt - L("var(--l1-bottom)");
       const bottomT = bottomB - playH;
       const youTop = felt - L("var(--you-h)");
-      // a winner's play lifts 10px and grows 6%
-      const lift = 10 + 0.06 * tcw * 1.4;
-      expect(topT - topTagB).toBeGreaterThanOrEqual(8 * u - 0.01);
+      // A winner's cards rise by win-lift's translate, grow about their
+      // centre by its scale, and wear a 2px ring: that much above the cards
+      // must stay clear of the tag over them, with 8u to spare.
+      const [, rise, grow] = /@keyframes win-lift \{\s*to \{\s*transform: translateY\(-(\d+)px\) scale\(([\d.]+)\);/.exec(css)!;
+      const lift = Number(rise) + ((Number(grow) - 1) / 2) * tcw * 1.4 + 2;
+      expect(topT - topTagB).toBeGreaterThanOrEqual(lift + 8 * u - 0.01);
+      const sidePlayT = sideT + tagH + L("var(--l1-tag-gap)");
+      expect(sidePlayT - (sideT + tagH)).toBeGreaterThanOrEqual(lift + 8 * u - 0.01);
+      expect(L("var(--l1-side-h)")).toBeCloseTo(tagH + L("var(--l1-tag-gap)") + playH, 6);
       expect(sideT - topB).toBeGreaterThanOrEqual(lift + 16);
       expect(bottomT - sideB).toBeGreaterThanOrEqual(lift + 16);
       expect(youTop - bottomB).toBeGreaterThanOrEqual(12);

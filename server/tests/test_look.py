@@ -18,12 +18,12 @@ def test_the_default_look_and_what_parses(accounts_on):
     assert a.DEFAULT_LOOK == "tractor/red"
     assert a.parse_look("tractor/red") == ("tractor", "red")
     assert a.parse_look("tractor/green") == ("tractor", "green")
-    for bad in ("tractor/mauve", "goat/jade", "tractor", "", None, 3, "tractor/red/x"):
+    for bad in ("tractor/mauve", "goat/mauve", "dragon/jade", "tractor", "", None, 3, "tractor/red/x"):
         assert a.parse_look(bad) is None
     assert a.look_id(None) == "tractor/red"
     assert a.look_id({"look_companion": None, "look_colour": None}) == "tractor/red"
     # a stored look no longer offered falls back to the default
-    assert a.look_id({"look_companion": "goat", "look_colour": "jade"}) == "tractor/red"
+    assert a.look_id({"look_companion": "dragon", "look_colour": "jade"}) == "tractor/red"
     assert a.account_look(None) == "tractor/red"
 
 
@@ -34,7 +34,7 @@ def test_a_new_account_has_the_default_and_put_persists_it(accounts_on, keypair,
     session = {"cookie": cookie}
     assert client.get("/api/me", headers=session).json()["look"] == "tractor/red"
     assert client.put("/api/me/look", json={"look": "tractor/red"}).status_code == 401
-    assert client.put("/api/me/look", json={"look": "goat/jade"}, headers=session).status_code == 400
+    assert client.put("/api/me/look", json={"look": "dragon/jade"}, headers=session).status_code == 400
     resp = client.put("/api/me/look", json={"look": "tractor/red"}, headers=session)
     assert resp.status_code == 200 and resp.json()["look"] == "tractor/red"
     row = accounts_on.STORE.user(1)
@@ -202,8 +202,8 @@ def test_the_collection_is_shown_only_to_listed_accounts_unless_on_for_all(accou
     one = {"cookie": _session_cookie(accounts_on, client, private_pem)}
     two = {"cookie": _session_cookie(accounts_on, client, private_pem, sub="222", email="two@example.com")}
     assert client.get("/api/auth/config").json()["collection"] is False
-    assert client.get("/api/me", headers=one).json()["features"] == {"collection": False}
-    assert client.get("/api/me", headers=two).json()["features"] == {"collection": True}
+    assert client.get("/api/me", headers=one).json()["features"] == {"collection": False, "store": False}
+    assert client.get("/api/me", headers=two).json()["features"] == {"collection": True, "store": False}
     # a listed account equips; any other is told the endpoint is not there
     assert client.put("/api/me/look", json={"look": "tractor/green"}, headers=one).status_code == 404
     assert client.put("/api/me/look", json={"companions": "off"}, headers=one).status_code == 404
@@ -211,7 +211,7 @@ def test_the_collection_is_shown_only_to_listed_accounts_unless_on_for_all(accou
     assert client.put("/api/me/look", json={"look": "tractor/green"}, headers=two).json()["look"] == "tractor/green"
     monkeypatch.setenv("COLLECTION_ENABLED", "1")
     assert client.get("/api/auth/config").json()["collection"] is True
-    assert client.get("/api/me", headers=one).json()["features"] == {"collection": True}
+    assert client.get("/api/me", headers=one).json()["features"] == {"collection": True, "store": False}
     assert client.put("/api/me/look", json={"look": "tractor/blue"}, headers=one).status_code == 200
 
 

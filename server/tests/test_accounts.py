@@ -314,7 +314,7 @@ def test_login_creates_a_user_sets_the_cookie_and_me_reads_it_back(accounts_on, 
                            "display_name": None, "name_shown": "Jerry", "rounds_played": 0, "linked": True,
                            "look": "tractor/red", "ranked_wins": 0,
                            "looks": accounts_on.look_catalogue({}), "companions": "team",
-                           "features": {"collection": False}}
+                           "products": [], "features": {"collection": False, "store": False}}
     cookie = resp.headers["set-cookie"]
     assert cookie.startswith("sj_session=")
     low = cookie.lower()
@@ -758,7 +758,7 @@ def test_patch_me_sets_clears_and_refuses_display_names(accounts_on, keypair, cl
         "display_name": "Cap", "name_shown": "Cap", "rounds_played": 0,
         "linked": True, "look": "tractor/red", "ranked_wins": 0,
         "looks": accounts_on.look_catalogue({}), "companions": "team",
-                           "features": {"collection": False}}
+                           "products": [], "features": {"collection": False, "store": False}}
 
 
 def test_patch_me_is_rate_limited_per_ip(accounts_on, keypair, client, monkeypatch):

@@ -1144,6 +1144,7 @@ name = "shengji"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "google-auth" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1167,6 +1168,7 @@ rl = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = ">=44" },
     { name = "fastapi", specifier = ">=0.110" },
     { name = "google-auth", specifier = ">=2.62.0" },
     { name = "numpy", specifier = ">=1.26" },

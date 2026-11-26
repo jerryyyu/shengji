@@ -36,11 +36,13 @@ def _b64(n: int) -> str:
 
 
 def _without_look(body: dict) -> dict:
-    """``/api/me`` without the companion fields (``tests/test_look.py``
-    holds those), which an account with no look shows as the defaults."""
-    look = {k: body.pop(k) for k in ("look", "ranked_wins", "looks", "companions", "features")}
+    """``/api/me`` without the companion and store fields
+    (``tests/test_look.py`` and ``tests/test_purchases.py`` hold those),
+    which an account with no look and no purchase shows as the defaults."""
+    look = {k: body.pop(k) for k in ("look", "ranked_wins", "looks", "companions", "features", "products")}
     assert look["look"] == "tractor/red" and look["companions"] == "team"
-    assert look["features"] == {"collection": False}
+    assert look["features"] == {"collection": False, "store": False} and look["products"] == []
+    assert "store_token" not in body
     return body
 
 @pytest.fixture(scope="module")

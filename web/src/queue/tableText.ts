@@ -3,6 +3,7 @@ import { isZh, t } from "../i18n";
 import { clock, namesAt, sharedTable, yourReady } from "./store";
 import type { OfferView, Presence, QueueView, TableFrame } from "./store";
 import type { FirstJoinerMsg, QueueMode } from "./messages";
+import { canWatch } from "../watch/store";
 
 /** A seat taken this recently reads "Just joined". */
 export const JUST_JOINED_MS = 5000;
@@ -186,7 +187,9 @@ function sentence(name: string, words: string): string {
 }
 
 /** One piece of the presence line; `hl` marks the selected mode's count. */
-export interface PresencePart { text: string; hl?: boolean }
+/** `watch`: the part that opens the watch screen ("5 playing", or the
+ *  nobody line when a rerun can play). */
+export interface PresencePart { text: string; hl?: boolean; watch?: boolean }
 
 /** The Play tab's line under Play and Duo, first match wins: people
  *  waiting, else open tables (split by mode only when both modes have one)
@@ -194,10 +197,11 @@ export interface PresencePart { text: string; hl?: boolean }
  *  from the server, nobody is about. */
 export function presenceParts(p: Presence | null, mode: QueueMode = "ranked"): PresencePart[] {
   if (p && p.waiting >= 1) return [{ text: t("queue.presence.waiting", { n: p.waiting }) }];
+  const watchable = canWatch(p);
   if (p && p.tables >= 1) {
     const ranked = p.ranked ?? 0;
     const casual = p.casual ?? 0;
-    const playing = { text: t("queue.presence.playing", { n: p.playing }) };
+    const playing = { text: t("queue.presence.playing", { n: p.playing }), watch: watchable };
     if (ranked >= 1 && casual >= 1) {
       return [{ text: t("queue.presence.tablesSplit", { n: p.tables }) },
               { text: t("queue.presence.ranked", { n: ranked }), hl: mode === "ranked" },
@@ -208,7 +212,7 @@ export function presenceParts(p: Presence | null, mode: QueueMode = "ranked"): P
       : "queue.presence.tables";
     return [{ text: t(key, { n: p.tables }) }, playing];
   }
-  return [{ text: t("queue.presence.nobody") }];
+  return [{ text: t("queue.presence.nobody"), watch: watchable }];
 }
 
 /** The one toast a game started alone gets when its first newcomer sits. */

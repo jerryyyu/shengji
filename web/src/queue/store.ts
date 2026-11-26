@@ -390,7 +390,9 @@ export class QueueStore {
     switch (msg.type) {
       case "presence":
         this.set({ presence: { tables: msg.tables, playing: msg.playing, waiting: msg.waiting,
-                               ranked: msg.ranked, casual: msg.casual } });
+                               ranked: msg.ranked, casual: msg.casual,
+                               // the watch keys only from a server with its feed on
+                               ...(typeof msg.watch === "number" ? { watch: msg.watch, rerun: msg.rerun === true } : {}) } });
         break;
       case "table_chat_history": {
         const lines = msg.messages.slice(-100).map((m): ChatMsg => ({ ...m, type: "chat", room: msg.table ?? "" }));

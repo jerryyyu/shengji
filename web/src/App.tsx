@@ -48,6 +48,8 @@ import { MESSAGES } from "./i18n/messages";
 import { useNearbyHostLeft, useNearbyUi } from "./nearbyGate";
 import { setSeatSafe, startReloadGate } from "./reloadGate";
 import { rounds } from "./roundTelemetry";
+import WatchScreen from "./watch/WatchScreen";
+import { watch, useWatching } from "./watch/store";
 
 /** What leaving the seat you hold costs, for the sheet a link to another
  *  table opens: the game in play, else the Play table as its panel says it. */
@@ -281,8 +283,14 @@ export default function App() {
 
   // The iOS app keeps lobby screens portrait and the table landscape on an
   // iPhone; everywhere else these are no-ops.
+  // watching a table draws a table too, from the Play tab with no game
+  const watching = useWatching();
+  const watchShown = watching !== null && game === null && room === null
+    && !gamesRoute && !howtoRoute && !infoRoute && !homeRoute;
+  // a seat anywhere ends watching: the table you sit at is the one shown
+  useEffect(() => { if (watching && (game !== null || room !== null)) watch.close(); }, [watching, game, room]);
   const atTable =
-    game !== null && !gamesRoute && !howtoRoute && !infoRoute && !homeRoute;
+    (game !== null && !gamesRoute && !howtoRoute && !infoRoute && !homeRoute) || watchShown;
   useEffect(() => { void lockFor(atTable ? "game" : "lobby"); }, [atTable]);
   // the app's edge swipe back is off at the table, so a live game is never
   // covered by an earlier page by accident
@@ -382,6 +390,8 @@ export default function App() {
         {tabPage}
       </HomeShell>
     );
+  } else if (watchShown && watching) {
+    screen = <WatchScreen mode={watching.mode} />;
   } else if (game) {
     // the table draws the one toast in its own spot (Toast.tsx)
     screenIsTable = true;

@@ -267,6 +267,9 @@ export interface TableFrameMsg {
 export interface PresenceMsg {
   type: "presence"; tables: number; playing: number; waiting: number;
   ranked?: number; casual?: number;
+  /** With the server's watch feed on: tables that can be watched, and
+   *  whether a finished ranked round can be replayed. */
+  watch?: number; rerun?: boolean;
 }
 
 /** A line of your table's chat; you get your own lines too. `id` counts up

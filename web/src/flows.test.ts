@@ -47,6 +47,7 @@ const SURFACES = [
   "components/ResultDialog.tsx", // the round end's modal frame
   "queue/Sheet.tsx", // the queue sheet frame every Sheet uses
   "queue/TablePanel.tsx", // the chat sheet
+  "watch/WatchScreen.tsx", // the kitty peek: a watcher's look at the eight buried cards
 ];
 
 // The message unions and the on-device server name these messages without
@@ -77,6 +78,7 @@ const JOIN_SITES = [
   "queue/Ranked.tsx", // Play (and Duo, which opens your own table)
   "queue/store.ts", // queue.join(code): the table_join the queue's join sites call
   "queue/tableModel.ts", // the panel's I’m back (your table, moved here from another device)
+  "watch/WatchScreen.tsx", // Play on a watched ranked table's round end: the same queue.join() as Play
 ];
 
 /** The files that render the panel frame: the one table UI. */

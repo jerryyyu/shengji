@@ -6,11 +6,12 @@ import { nearby } from "./nearby";
 import { queue } from "./queue";
 import { roundend } from "./roundend";
 import { table } from "./table";
+import { watch } from "./watch";
 
 /** The area tables; each area file owns its key prefix ("me.", "table.").
  *  i18n.test.ts fails a key defined in two areas. */
-export const AREAS = { common, home, howto, me, nearby, queue, roundend, table } as const;
+export const AREAS = { common, home, howto, me, nearby, queue, roundend, table, watch } as const;
 
 export const MESSAGES = {
-  ...common, ...home, ...howto, ...me, ...nearby, ...queue, ...roundend, ...table,
+  ...common, ...home, ...howto, ...me, ...nearby, ...queue, ...roundend, ...table, ...watch,
 };

@@ -31,7 +31,7 @@ from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
-from . import accounts, blocks, chat_filter, invite_preview, limits, matchmaking, nearby_logs, ranked_bots, ratings, reports, saved_games, support, tables, telemetry
+from . import accounts, blocks, chat_filter, invite_preview, limits, matchmaking, nearby_logs, ranked_bots, ratings, reports, saved_games, spectate, support, tables, telemetry
 from .model_serving import run_model_search
 
 
@@ -613,6 +613,10 @@ class Room:
     # Built by the matchmaking queue, ranked (``matched``) or casual: a game
     # one entry started alone tells its people of its first newcomer.
     queued: bool = field(default=False, repr=False)
+    # Watchers' bookkeeping (``spectate.WatchState``): where the round in
+    # play and the latest finished round are logged, and who reads it.
+    # Server-only: it enters no frame and no log record.
+    watch: Any = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.bot_level not in matchmaking.BOT_LEVELS:
@@ -1746,13 +1750,15 @@ def _log_round_start(room: Room) -> int | None:
     # (a game's first) or rises (a later round) logs it in a ``bot_levels``
     # record once it is read. The log is server-only.
     standard = ranked_bots.standard(room)
-    return room.log_event("round_start", deck=rnd.deck, banker=rnd.banker,
+    offset = room.log_event("round_start", deck=rnd.deck, banker=rnd.banker,
                    trump_rank=rnd.trump_rank, levels=list(game.levels),
                    players=players, bot_seed=room.bot_seed,
                    bot_policy=getattr(room.bot, "policy_name", type(room.bot).__name__),
                    bot_level=ranked_bots.log_level(room) if standard else room.bot_level,
                    ranked=ratings.ranked(room),
                    **({"standard_seats": sorted(standard)} if standard else {}))
+    spectate.round_started(room, offset)
+    return offset
 
 
 def _log_seat(room: Room, kind: str, seat: Seat, reason: str, **fields: Any) -> None:
@@ -1795,12 +1801,13 @@ def _log_round_end(room: Room) -> None:
     r = room.game.result if room.game else None
     if r is None:
         return
-    room.log_event("round_end", attacker_points=r.attacker_points,
+    written = room.log_event("round_end", attacker_points=r.attacker_points,
                    kitty=r.kitty_cards, kitty_points=r.kitty_points,
                    winner_team=r.winner_team, level_change=r.level_change,
                    new_levels=list(r.new_levels), next_banker=r.next_banker,
                    game_over=r.game_over, games_won=list(r.games_won),
                    point_scored=r.point_scored)
+    spectate.round_ended(room, written is not None)
     saved_games.round_ended(room, r)
     ratings.round_ended(room, r)
     _joined_round_ended(room)
@@ -4293,7 +4300,9 @@ MATCHMAKER = matchmaking.Matchmaker(start_room=start_matched_room,
                                     open_tables=open_tables,
                                     join_table=join_open_table,
                                     join_pair=join_pair_open_table,
-                                    presence=presence_counts)
+                                    presence=presence_counts,
+                                    watch=spectate.presence,
+                                    watch_key=spectate.presence_key)
 
 
 def _attach(room: Room, seat: Seat, ws: WebSocket) -> int:
@@ -4521,6 +4530,7 @@ accounts.USER_RENAMED_HOOKS.append(rename_user)
 # page handler never shadows them.
 accounts.register_accounts(app)
 saved_games.register_saved_games(app)
+spectate.register_spectate(app)
 ratings.register_ratings(app)
 nearby_logs.register_nearby_logs(app)
 

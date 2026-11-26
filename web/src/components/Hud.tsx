@@ -55,12 +55,13 @@ function sameCards(a: readonly string[], b: readonly string[]): boolean {
   return x.every((c, i) => c === y[i]);
 }
 
-/** True when the trick on the table is led by something other than the
- *  notice's forced play. The engine keeps a notice for several plays, into
- *  the next trick, and a "had to play ♦6 ♦6" line above a ♦Q ♦Q lead reads
- *  as the table contradicting the notice. */
+/** True when the trick on the table, or the one just finished while the
+ *  table waits for a lead, is led by something other than the notice's
+ *  forced play. The engine keeps a notice for several plays, into the next
+ *  trick, and a "had to play ♦6 ♦6" line above a ♦Q ♦Q lead reads as the
+ *  table contradicting the notice. */
 function anotherLead(state: GameState, notice: Notice): boolean {
-  const lead = state.trick?.plays[0];
+  const lead = state.trick?.plays[0] ?? state.last_trick?.plays[0];
   if (!lead) return false;
   return lead.seat !== notice.seat || !sameCards(lead.cards, notice.forced);
 }

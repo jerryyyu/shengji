@@ -6,6 +6,9 @@ import type { GameState, Notice, StatePlayer } from "../protocol";
 import Hud from "./Hud";
 import { clearToast, currentToast, showToast } from "../toast";
 import { applyPlay, newRound } from "../offline/engine/round";
+import { newGame } from "../offline/engine/game";
+import { DeckRng } from "../offline/server/rng";
+import { LocalRoom, Seat, stateFor } from "../offline/server/server";
 
 function makePlayer(overrides: Partial<StatePlayer> = {}): StatePlayer {
   return {
@@ -202,6 +205,22 @@ describe("failed-throw notice and table messages: told once, as the one toast", 
     const again = render({ ...next, room: `${next.room}-r` });
     expect(toast()).toBeNull();
     again.unmount();
+
+    // that trick resolves; a fresh client mounted from the offline server's
+    // frame sees an empty trick after a ♦Q ♦Q lead, with the notice standing
+    applyPlay(rnd, 3, ["DK", "DK"]);
+    applyPlay(rnd, 0, ["S7", "S9"]);
+    const room = new LocalRoom(`${next.room}-x`, "4", new DeckRng(1));
+    room.seats = ["You", "Robin", "Sam", "Kim"].map((name, s) => new Seat(name, s !== 0, `t${s}`));
+    room.game = { ...newGame({ startLevel: "4" }), banker: 0, round: rnd };
+    const served = stateFor(room, 0) as unknown as GameState;
+    expect(served.phase).toBe("play");
+    expect(served.trick?.plays).toEqual([]);
+    expect(served.last_trick?.plays[0].cards).toEqual(["DQ", "DQ"]);
+    expect(served.notice?.forced).toEqual(["D6", "D6"]);
+    const fresh = render(served);
+    expect(toast()).toBeNull();
+    fresh.unmount();
   });
 
   it("leaves a toast that is not the failed throw's alone", () => {

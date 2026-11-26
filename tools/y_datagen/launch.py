@@ -60,6 +60,8 @@ def _admit(spec):
             raise Refused(f'invalid {k}')
     if spec['rounds'] % 2 or spec['workers'] > (os.cpu_count() or 1):
         raise Refused('invalid work size')
+    if type(spec.get('split_tail_mirrors', False)) is not bool:
+        raise Refused('split_tail_mirrors must be boolean')
     for path in spec['holds'] + spec['foreign_locks']:
         if present(path):
             raise Refused(f'HOLD/foreign lock: {path}')
@@ -111,6 +113,8 @@ def command(spec):
             '--seed-registry', spec['seed_registry'], '--rounds', str(spec['rounds']),
             '--seed', str(spec['seed']), '--workers', str(spec['workers']),
             '--out', spec['output'], '--cap', '256']
+    if spec.get('split_tail_mirrors', False):
+        args.append('--split-tail-mirrors')
     if spec.get('resume', False):
         args.append('--resume')
     return args

@@ -56,8 +56,10 @@ def test_recipe_refuses_budget_width_and_model_path_drift(tmp_path, old, new):
         runner.recipe_environment(changed, tmp_path)
 
 
-@pytest.mark.parametrize("capture", [False, True])
-def test_runner_constructs_exact_served_bot(release50_packages, release55_pair, tmp_path, capture):
+@pytest.mark.parametrize(("capture", "workers", "split"),
+                         [(False, 1, False), (True, 1, False), (True, 2, False), (True, 2, True)],
+                         ids=["False", "True", "whole-tail", "split-tail"])
+def test_runner_constructs_exact_served_bot(release50_packages, release55_pair, tmp_path, capture, workers, split):
     import json
     import os
     import subprocess
@@ -78,8 +80,10 @@ def test_runner_constructs_exact_served_bot(release50_packages, release55_pair, 
     output = tmp_path / "store"
     registry = _seed_windows(output)
     registry.write_text(json.dumps({"schema": "shengji-seed-windows-v1", "windows": []}))
-    options = (["--rounds", "2", "--workers", "1", "--seed", "4300000",
+    options = (["--rounds", "2", "--workers", str(workers), "--seed", "4300000",
                 "--out", str(output), "--cap", "256"] if capture else ["--inspect"])
+    if split:
+        options.append("--split-tail-mirrors")
     result = subprocess.run([
         sys.executable, str(_PATH), "--fly", str(fly), "--models", str(models),
         "--seed-registry", str(registry), *options,
@@ -98,6 +102,13 @@ def test_runner_constructs_exact_served_bot(release50_packages, release55_pair, 
         from shengji.train.cwv_data import bridge_record, search_means_points
         manifest = json.loads((output / "manifest.json").read_text())
         assert manifest["config"]["policy"] == env["SHENGJI_BOT"]
+        if workers > 1:
+            runtime = json.loads((output / "runtime.json").read_text())
+            assert runtime.get("split_tail_mirrors", False) is split
+            timing = runtime["per_cluster"]["0"]
+            assert ("worker_wall_secs" in timing) is split
+            if split:
+                assert timing["worker_wall_secs"] > 0
         shard = output / manifest["shards"][0]["path"]
         records = [json.loads(line) for line in shard.read_text().splitlines()]
         plays = [row for row in records if row["decision_kind"] == "play"]
@@ -177,10 +188,14 @@ def test_launcher_hold_then_guarded_resume_preserves_completed_shard(release50_p
     assert not (out/'manifest.json').exists()
     kept = {p.name: p.read_bytes() for p in (out/'shards').glob('cluster-000000.*')}
     assert len(kept) == 2
-    spec.update(resume=True, run_id=json.loads((out/'run.json').read_text())['run_id'])
+    spec.update(resume=True, run_id=json.loads((out/'run.json').read_text())['run_id'],
+                workers=2, split_tail_mirrors=True)
     monkeypatch.setattr(launcher.time, 'sleep', real_sleep)
     hold.unlink()
     assert released_run() == 0
+    runtime = json.loads((out/'runtime.json').read_text())
+    assert runtime['split_tail_mirrors'] and runtime['clusters']['reused'] == [0]
+    assert runtime['per_cluster']['1']['worker_wall_secs'] > 0
     assert terminal0.read_bytes() == old_terminal
     assert all((out/'shards'/name).read_bytes() == data for name, data in kept.items())
     assert json.loads(Path(str(out)+'.terminal.1.json').read_text())['status'] == 'completed'

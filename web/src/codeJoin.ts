@@ -296,6 +296,12 @@ export class CodeStore {
   private onMessage(msg: ServerMsg): void {
     const j = this.view;
     if (!j) return;
+    if (j.step === "resume" && (msg.type === "room" || msg.type === "state") && msg.room === j.code) {
+      // the seat is back (a game in progress answers with its state alone,
+      // and the Table, not the Play screen, shows it): the link is spent
+      this.drop();
+      return;
+    }
     if (msg.type === "room_seats") {
       if (msg.room !== j.code || j.step !== "peek") return;
       if (msg.table && msg.closed) {

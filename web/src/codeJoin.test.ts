@@ -334,6 +334,19 @@ describe("your own table's link or code", () => {
     expect(sent).toEqual([]);
   });
 
+  it("is spent by the resumed seat's state alone, so a later Leave reopens nothing", () => {
+    saved.room = "WXYZ";
+    window.history.replaceState(null, "", "/?code=WXYZ");
+    status("open");
+    say({ type: "state", room: "WXYZ" });
+    expect(codes.view).toBeNull();
+    expect(window.location.search).toBe("");
+    codes.release();
+    codes.setPlace(lobby);
+    expect(codes.view).toBeNull();
+    expect(sent).toEqual([]);
+  });
+
   it("whose resume is refused goes on to its peek", () => {
     saved.room = "WXYZ";
     window.history.replaceState(null, "", "/?code=WXYZ");

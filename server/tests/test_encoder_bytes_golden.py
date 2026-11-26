@@ -49,7 +49,6 @@ def _regenerate():
     import copy, hashlib, random
     import numpy as np
     from shengji.ai.memory import Memory
-    from shengji.ai.smart import SmartBot
     from shengji.engine.cards import make_deck
     from shengji.engine.game import Game
     from shengji.rl.encode_versions import encode_obs
@@ -59,18 +58,20 @@ def _regenerate():
     def surface(m):
         return _memory_surface(m, codes)
     rows = []
-    bot = SmartBot(); n = g["digest_hex_chars"]
-    for sd in g["seeds"]:
+    n = g["digest_hex_chars"]
+    traces = [json.loads(line) for line in GOLDEN.with_name("encoder_golden_actions.jsonl").read_text().splitlines()]
+    assert [trace["seed"] for trace in traces] == g["seeds"]
+    for trace in traces:
+        sd = trace["seed"]
         gm = Game(random.Random(sd)); rnd = gm.start_round()
         while rnd.phase == "deal": rnd.deal_next()
-        for s in range(4):
-            c = bot.decide_declare(rnd, s, final=True)
-            if c: rnd.declare(s, c)
-        rnd.finalize_declare(); rnd.bury(rnd.banker, bot.decide_bury(rnd, rnd.banker))
+        for seat, cards in trace["declare"]:
+            rnd.declare(seat, cards)
+        rnd.finalize_declare(); rnd.bury(rnd.banker, trace["bury"])
         plays = 0
         for d in g["depths"]:
             while plays < d and rnd.phase == "play":
-                rnd.play(rnd.turn, bot.decide_play(rnd, rnd.turn)); plays += 1
+                rnd.play(rnd.turn, trace["plays"][plays]); plays += 1
             snap = copy.deepcopy(rnd); rec = {"seed": sd, "depth": d, "banker": snap.banker}
             for seat in range(4):
                 for v in g["versions"]:

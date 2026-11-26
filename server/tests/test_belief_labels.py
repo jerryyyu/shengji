@@ -57,7 +57,7 @@ def _throw_attempt(rnd, seat, rng):
     return list(rng.choice(options)) if options else None
 
 
-def synthetic_cluster(seed: int, *, throw_rate: float = 0.35, declare: bool = True):
+def synthetic_cluster(seed: int, *, throw_rate: float = 0.35, declare: bool = True, plays=None):
     """One deal, two rounds (banker 0 then banker 1), records in shard order."""
     deck = list(Round("2", 0, random.Random(seed)).deck)
     rng = random.Random(seed)
@@ -71,7 +71,9 @@ def synthetic_cluster(seed: int, *, throw_rate: float = 0.35, declare: bool = Tr
         while rnd.phase == "play":
             seat = rnd.turn
             action = None
-            if not rnd.trick.plays and rng.random() < throw_rate:
+            if plays is not None:
+                action = plays[mirror][len(prefix)]
+            elif not rnd.trick.plays and rng.random() < throw_rate:
                 action = _throw_attempt(rnd, seat, rng)
             if action is None:
                 action = list(bot.decide_play(rnd, seat))
@@ -86,6 +88,8 @@ def synthetic_cluster(seed: int, *, throw_rate: float = 0.35, declare: bool = Tr
                 rec["engine_play"] = list(played)
             prefix.append({"seat": seat, "cards": list(played)})
             per_seat[seat].append(rec)
+        if plays is not None:
+            assert len(prefix) == len(plays[mirror])
         for s in range(4):                    # a shard groups a round's records by seat
             records += per_seat[s]
     return records

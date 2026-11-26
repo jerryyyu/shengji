@@ -1,0 +1,14 @@
+{
+  "name": "overruff-screen-2674000000",
+  "purpose": "screen",
+  "seed0": 2674000000,
+  "clusters": 3920,
+  "span": [
+    2674000000,
+    2674003920
+  ],
+  "created_at": "2026-11-25T22:47:05-05:00",
+  "host": "mini",
+  "git_head": "9e5e25573b9faa3451b1da0a9b87d41e8cbe972a",
+  "note": "#1847 seat-swapped r2 screen, isolated R55 overruff versus R55. Reservation only. Confirmation requires a passing screen and separate admission."
+}

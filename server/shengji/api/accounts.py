@@ -127,6 +127,29 @@ NUMBERED_TRIES = 1000
 _NAME_RNG = random.SystemRandom()
 # The ``users`` column holding each provider's subject.
 PROVIDER_COLUMNS = {"google": "google_sub", "apple": "apple_sub"}
+# Companions a player may equip, each with its colours in the order the
+# Collection lists them. A look travels as ``"<companion>/<colour>"``; a
+# guest, and an account that chose nothing, shows ``DEFAULT_LOOK``. The
+# client's ``web/src/companion/palette.ts`` draws each colour.
+LOOKS: dict[str, tuple[str, ...]] = {
+    "tractor": ("red", "green", "blue", "yellow", "orange", "jade", "porcelain", "ink"),
+}
+DEFAULT_COMPANION = "tractor"
+DEFAULT_COLOUR = "red"
+DEFAULT_LOOK = f"{DEFAULT_COMPANION}/{DEFAULT_COLOUR}"
+# What unlocks a look: (count, at least) over ``look_progress``'s counts.
+# A look not listed is free from the start.
+LOOK_UNLOCKS: dict[str, tuple[str, int]] = {
+    "tractor/yellow": ("rounds", 10),
+    "tractor/orange": ("rounds", 25),
+    "tractor/jade": ("rounds", 50),
+    "tractor/porcelain": ("rounds", 100),
+    "tractor/ink": ("ranked_wins", 1),
+}
+# Where a player's own screen draws companions at the table (the table
+# placement itself is not built yet): beside the team, beside each seat, or
+# not at all. NULL in ``users.companions`` means the first.
+COMPANION_MODES = ("team", "individual", "off")
 
 
 class AuthError(Exception):
@@ -722,6 +745,15 @@ def _migrate_v10(conn: sqlite3.Connection) -> None:
 _CREATE_INDEX_RE = re.compile(r"^\s*CREATE\s+INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?", re.IGNORECASE)
 
 
+def _migrate_v11(conn: sqlite3.Connection) -> None:
+    """The equipped companion and its colour, and where companions are drawn
+    (``COMPANION_MODES``); NULL means the default, so no existing row is
+    rewritten."""
+    _add_column_if_missing(conn, "users", "look_companion", "TEXT NULL")
+    _add_column_if_missing(conn, "users", "look_colour", "TEXT NULL")
+    _add_column_if_missing(conn, "users", "companions", "TEXT NULL")
+
+
 # Each entry is one version: SQL statements separated by ';', or a callable
 # taking the connection. Entry i brings the database to version i + 1.
 SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
@@ -765,6 +797,8 @@ SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
     _SEGMENTS_V9,
     # version 10: device accounts (no provider) and their credentials.
     _migrate_v10,
+    # version 11: the equipped companion look.
+    _migrate_v11,
 ]
 
 # Saved games: kept for twelve months; the history list shows the latest
@@ -809,15 +843,12 @@ class Store:
         with self._lock:
             if self._ready:
                 return
+            version = self._stored_version(conn)
+            if 0 < version < len(SCHEMA):
+                self._snapshot_before_migration(conn, version)
             conn.execute("BEGIN IMMEDIATE")
             try:
-                has = conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
-                ).fetchone()
-                version = 0
-                if has:
-                    row = conn.execute("SELECT MAX(version) AS v FROM schema_version").fetchone()
-                    version = int(row["v"] or 0)
+                version = self._stored_version(conn)
                 for i in range(version, len(SCHEMA)):
                     step = SCHEMA[i]
                     if callable(step):
@@ -832,6 +863,31 @@ class Store:
                 conn.execute("ROLLBACK")
                 raise
             self._ready = True
+
+    @staticmethod
+    def _stored_version(conn: sqlite3.Connection) -> int:
+        has = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
+        ).fetchone()
+        if not has:
+            return 0
+        row = conn.execute("SELECT MAX(version) AS v FROM schema_version").fetchone()
+        return int(row["v"] or 0)
+
+    def backup_path(self, version: int) -> Path:
+        """Where the copy of a version-``version`` database is kept before
+        the migrations past it run."""
+        return self.path.with_name(f"{self.path.name}.v{version}.bak")
+
+    def _snapshot_before_migration(self, conn: sqlite3.Connection, version: int) -> None:
+        """A consistent copy of the database as it stood at ``version``,
+        written once beside it (``VACUUM INTO`` needs no open transaction).
+        An existing copy is kept: a migration that failed and is retried
+        must not overwrite the copy taken before its first attempt."""
+        target = self.backup_path(version)
+        if target.exists():
+            return
+        conn.execute("VACUUM INTO ?", (str(target),))
 
     def _open(self) -> sqlite3.Connection:
         conn = self._connect()
@@ -957,6 +1013,22 @@ class Store:
 
     def user(self, user_id: int) -> dict | None:
         with closing(self._open()) as conn:
+            row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            return dict(row) if row else None
+
+    def set_look(self, user_id: int, companion: str, colour: str) -> dict | None:
+        """Equip ``companion`` in ``colour`` (both already checked against
+        ``LOOKS``); the updated row, or None for an unknown account."""
+        with closing(self._open()) as conn:
+            conn.execute("UPDATE users SET look_companion = ?, look_colour = ? WHERE id = ?",
+                         (companion, colour, user_id))
+            row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            return dict(row) if row else None
+
+    def set_companions(self, user_id: int, mode: str) -> dict | None:
+        """Store ``mode`` (already checked against ``COMPANION_MODES``)."""
+        with closing(self._open()) as conn:
+            conn.execute("UPDATE users SET companions = ? WHERE id = ?", (mode, user_id))
             row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
             return dict(row) if row else None
 
@@ -1449,6 +1521,17 @@ class Store:
                 (to_round, game_id, user_id, seat))
             return cur.rowcount
 
+    def ranked_wins(self, user_id: int) -> int:
+        """Rated rounds the account's team won."""
+        with closing(self._open()) as conn:
+            row = conn.execute("SELECT COUNT(*) AS n FROM rating_events WHERE user_id = ? AND won = 1",
+                               (user_id,)).fetchone()
+        return int(row["n"])
+
+    def look_progress(self, user_id: int) -> dict[str, int]:
+        """The counts ``LOOK_UNLOCKS`` reads: rounds played and ranked wins."""
+        return {"rounds": self.rounds_played(user_id), "ranked_wins": self.ranked_wins(user_id)}
+
     def rounds_played(self, user_id: int) -> int:
         """Rounds the account has sat in: its saved-game rounds (each link's
         interval, an open one up to the game's last round started, hidden
@@ -1938,6 +2021,11 @@ class DisplayNamePatch(BaseModel):
     display_name: str | None = None
 
 
+class LookPut(BaseModel):
+    look: str | None = None
+    companions: str | None = None
+
+
 def first_name(name: str | None) -> str:
     """The default for a player who chose no display name: the first word of
     the Google name."""
@@ -1952,21 +2040,88 @@ def effective_name(row: Mapping[str, Any]) -> str:
     return row.get("display_name") or first_name(row.get("name"))
 
 
-def public_user(row: Mapping[str, Any], rounds_played: int = 0) -> dict:
+def parse_look(raw: Any) -> tuple[str, str] | None:
+    """``"<companion>/<colour>"`` as a pair when ``LOOKS`` offers it, else None."""
+    if not isinstance(raw, str):
+        return None
+    companion, _, colour = raw.partition("/")
+    return (companion, colour) if colour in LOOKS.get(companion, ()) else None
+
+
+def look_catalogue(progress: Mapping[str, int], equipped: str = DEFAULT_LOOK) -> list[dict]:
+    """Every look in Collection order: its id, whether ``progress`` (the
+    counts ``Store.look_progress`` reads) has unlocked it, and what unlocks
+    it (``{"count", "of"}``, null when free). The equipped look counts as
+    unlocked, so a count that falls (a purged casual game) never strips it."""
+    out = []
+    for companion, colours in LOOKS.items():
+        for colour in colours:
+            look = f"{companion}/{colour}"
+            rule = LOOK_UNLOCKS.get(look)
+            unlocked = (rule is None or look == equipped
+                        or int(progress.get(rule[0], 0)) >= rule[1])
+            out.append({"id": look, "unlocked": unlocked,
+                        "needs": None if rule is None else {"count": rule[0], "of": rule[1]}})
+    return out
+
+
+def companions_mode(row: Mapping[str, Any]) -> str:
+    """Where the account's own screen draws companions: its stored mode, else
+    the first of ``COMPANION_MODES``."""
+    mode = row.get("companions")
+    return mode if mode in COMPANION_MODES else COMPANION_MODES[0]
+
+
+def look_id(row: Mapping[str, Any] | None) -> str:
+    """The look an account row shows: its stored companion and colour when
+    both are still offered, else ``DEFAULT_LOOK``."""
+    if row is None:
+        return DEFAULT_LOOK
+    stored = f"{row.get('look_companion')}/{row.get('look_colour')}"
+    return stored if parse_look(stored) is not None else DEFAULT_LOOK
+
+
+# The look of each account seen on a socket or stored since this process
+# started, so a seat's look enters a frame without a database read. An
+# account missing here shows ``DEFAULT_LOOK``.
+_SEEN_LOOKS: dict[int, str] = {}
+
+
+def remember_look(row: Mapping[str, Any]) -> str:
+    look = look_id(row)
+    _SEEN_LOOKS[int(row["id"])] = look
+    return look
+
+
+def account_look(user_id: int | None) -> str:
+    """The look a person's seat shows: their account's, or ``DEFAULT_LOOK``
+    for a guest (``None``) and an account not seen yet."""
+    return DEFAULT_LOOK if user_id is None else _SEEN_LOOKS.get(user_id, DEFAULT_LOOK)
+
+
+def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int = 0) -> dict:
     """The ``/api/me`` payload: the Google profile, the chosen display name
     (null when none), ``name_shown``, the effective name, and
     ``rounds_played`` (``Store.rounds_played``), which tells the client
-    whether the account is still new, and ``linked``: whether it has a
-    Google or Apple identity (a device account has neither until it links)."""
+    whether the account is still new, ``linked``: whether it has a
+    Google or Apple identity (a device account has neither until it links),
+    ``look``, the equipped companion (``look_id``), ``ranked_wins`` and
+    ``looks``, every look with whether those counts unlocked it
+    (``look_catalogue``), and ``companions`` (``companions_mode``)."""
+    look = remember_look(row)
+    progress = {"rounds": int(rounds_played), "ranked_wins": int(ranked_wins)}
     return {"name": row.get("name") or "", "email": row.get("email") or "",
             "picture": row.get("picture"), "display_name": row.get("display_name"),
             "name_shown": effective_name(row), "rounds_played": int(rounds_played),
-            "linked": not is_device_account(row)}
+            "linked": not is_device_account(row), "look": look,
+            "ranked_wins": int(ranked_wins), "looks": look_catalogue(progress, look),
+            "companions": companions_mode(row)}
 
 
 async def account_payload(store: "Store", row: Mapping[str, Any]) -> dict:
-    """``public_user`` with the account's rounds played read off the loop."""
-    return public_user(row, await store.run(store.rounds_played, int(row["id"])))
+    """``public_user`` with the account's counts read off the loop."""
+    progress = await store.run(store.look_progress, int(row["id"]))
+    return public_user(row, progress["rounds"], progress["ranked_wins"])
 
 
 def _cookie_secure(request: Request) -> bool:
@@ -2064,6 +2219,37 @@ async def patch_me(body: DisplayNamePatch, request: Request) -> dict:
             hook(int(updated["id"]), shown)
         except Exception:           # noqa: BLE001 - the rename is stored either way
             log.exception("account-rename hook failed")
+    return await account_payload(STORE, updated)
+
+
+@router.put("/me/look")
+async def put_look(body: LookPut, request: Request) -> dict:
+    """Equip a companion and colour from ``LOOKS`` that the account has
+    unlocked (``look_catalogue``), and/or set where companions are drawn
+    (``COMPANION_MODES``); the account payload."""
+    if not LIMITER.allow(client_ip(request)):
+        raise HTTPException(status_code=429, detail="Too many changes; try again in a minute.")
+    user = await STORE.run(STORE.session_user, request.cookies.get(COOKIE))
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not signed in.")
+    if body.companions is not None and body.companions not in COMPANION_MODES:
+        raise HTTPException(status_code=400, detail="unknown_mode")
+    wanted = None
+    if body.look is not None:
+        wanted = parse_look(body.look)
+        if wanted is None:
+            raise HTTPException(status_code=400, detail="unknown_look")
+        progress = await STORE.run(STORE.look_progress, int(user["id"]))
+        entry = next(e for e in look_catalogue(progress, look_id(user)) if e["id"] == body.look)
+        if not entry["unlocked"]:
+            raise HTTPException(status_code=403, detail="locked")
+    updated = user
+    if wanted is not None:
+        updated = await STORE.run(STORE.set_look, user["id"], *wanted)
+    if updated is not None and body.companions is not None:
+        updated = await STORE.run(STORE.set_companions, user["id"], body.companions)
+    if updated is None:
+        raise HTTPException(status_code=401, detail="Not signed in.")
     return await account_payload(STORE, updated)
 
 
@@ -2393,6 +2579,8 @@ async def websocket_user(ws: WebSocket) -> dict | None:
         except Exception:               # noqa: BLE001 - a gone socket ends on its own
             pass
         return None
+    if row is not None:
+        remember_look(row)
     return row
 
 

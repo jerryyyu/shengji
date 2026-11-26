@@ -9,12 +9,12 @@ type QueueStateLike = Record<string, unknown>;
 
 function emptySeat(seat: number, state: "open" | "held"): TableFrameSeatMsg {
   return { seat, team: (seat % 2) as 0 | 1, state, name: null, you: false, ready: false, reconnecting: false,
-           since: null, sit: null, pair: false, leader: false, left: false };
+           since: null, sit: null, pair: false, leader: false, left: false, look: null };
 }
 
 function takenSeat(seat: number, s: Partial<TableFrameSeatMsg> & { name: string }): TableFrameSeatMsg {
   return { ...emptySeat(seat, "open"), state: "taken", you: false, ready: false, reconnecting: false,
-           since: null, sit: null, pair: false, leader: false, ...s };
+           since: null, sit: null, pair: false, leader: false, look: "tractor/red", ...s };
 }
 
 /** Whether a queue_state holds the entry here, so a table frame follows it. */

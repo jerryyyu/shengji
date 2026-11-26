@@ -311,7 +311,9 @@ def test_login_creates_a_user_sets_the_cookie_and_me_reads_it_back(accounts_on, 
     assert resp.status_code == 200
     assert resp.json() == {"name": "Jerry Yu", "email": "jerry@example.com",
                            "picture": "https://img.example/jy.png",
-                           "display_name": None, "name_shown": "Jerry", "rounds_played": 0, "linked": True}
+                           "display_name": None, "name_shown": "Jerry", "rounds_played": 0, "linked": True,
+                           "look": "tractor/red", "ranked_wins": 0,
+                           "looks": accounts_on.look_catalogue({}), "companions": "team"}
     cookie = resp.headers["set-cookie"]
     assert cookie.startswith("sj_session=")
     low = cookie.lower()
@@ -753,7 +755,8 @@ def test_patch_me_sets_clears_and_refuses_display_names(accounts_on, keypair, cl
     assert client.get("/api/me", headers=session).json() == {
         "name": "Jerome Yu", "email": "jerry@example.com", "picture": "https://img.example/jy.png",
         "display_name": "Cap", "name_shown": "Cap", "rounds_played": 0,
-        "linked": True}
+        "linked": True, "look": "tractor/red", "ranked_wins": 0,
+        "looks": accounts_on.look_catalogue({}), "companions": "team"}
 
 
 def test_patch_me_is_rate_limited_per_ip(accounts_on, keypair, client, monkeypatch):
@@ -843,7 +846,7 @@ def test_a_v2_database_upgrades_to_v3_once_and_keeps_its_rows(accounts_on, tmp_p
     assert _columns(path, "users") == [
         "id", "google_sub", "email", "name", "picture", "created_at", "last_login_at",
         "display_name", "rating", "rated_rounds", "leaderboard_visible", "apple_sub", "suspended_at",
-        "last_seen_at"]
+        "last_seen_at", "look_companion", "look_colour", "companions"]
     # The sessions still follow their users, and the highest id is never
     # handed out again after its account is deleted.
     store.link_seat(_game(), 2, 0, 1)

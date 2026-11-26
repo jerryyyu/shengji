@@ -230,6 +230,9 @@ export interface TableFrameSeatMsg {
   pair: boolean;
   leader: boolean;
   left: boolean;
+  /** The person's companion, `"<companion>/<colour>"`; null for an empty
+   *  or bot seat. Older servers omit it. */
+  look?: string | null;
 }
 
 /** The table you sit at, before its game (`phase: "open"`, right after each

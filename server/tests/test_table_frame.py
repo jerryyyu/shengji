@@ -20,7 +20,7 @@ from tests.test_server_ws import _drain, client  # noqa: F401
 FRAME_KEYS = {"type", "code", "phase", "mode", "you", "opener", "seats", "settings",
               "timers", "your_ready", "waiting_for", "chat_log"}
 SEAT_KEYS = {"seat", "team", "state", "name", "you", "ready", "reconnecting", "since",
-             "sit", "pair", "leader", "left"}
+             "sit", "pair", "leader", "left", "look"}
 # a seat's fields from queue_state.table that the table frame carries as is
 QUEUE_SEAT_FIELDS = ("name", "you", "ready", "reconnecting", "since", "sit", "pair", "leader")
 

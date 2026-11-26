@@ -192,6 +192,7 @@ jobs:
           tests/test_online_soak.py
           tests/test_health_activity.py
           tests/test_accounts.py
+          tests/test_look.py
           tests/test_apple_signin.py
           tests/test_device_accounts.py
           tests/test_device_accounts_link.py

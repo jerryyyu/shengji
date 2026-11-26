@@ -57,7 +57,7 @@ def _v9_database(path, accounts):
     table that references ``users`` and a deleted id below the high-water
     mark."""
     full = accounts.SCHEMA
-    assert len(full) == 10
+    assert len(full) >= 10
     accounts.SCHEMA = full[:9]
     try:
         store = accounts.Store(path)
@@ -106,8 +106,10 @@ def _dump(path):
     return out
 
 
-def test_a_v9_database_upgrades_to_v10_and_keeps_every_row(device_on, tmp_path):
+def test_a_v9_database_upgrades_to_v10_and_keeps_every_row(device_on, tmp_path, monkeypatch):
     accounts = device_on
+    # the v10 step alone: later versions add columns of their own
+    monkeypatch.setattr(accounts, "SCHEMA", accounts.SCHEMA[:10])
     fixture = tmp_path / "v9" / "fixture.sqlite3"
     fixture.parent.mkdir()
     g, a, gone = _v9_database(fixture, accounts)

@@ -32,6 +32,7 @@ import { BOT_LEVELS, type BotLevel } from "../../queue/messages";
 import { isQuickPhrase } from "../../quickPhrases";
 import { type ActionEntry, BotGate, DEFAULT_BOT_LEVEL, type DecisionKind, type RemoteBot, requestFor } from "./pybot";
 import { DeckRng, randomSeed } from "./rng";
+import { DEFAULT_LOOK } from "../../companion/look";
 import { CANONICAL, LOBBY, RETIRED_MESSAGE, forQueue, forRoom, retired } from "./tables";
 import { newNearbyCode } from "./nearby/codes";
 import { NEARBY_COPY } from "./nearby/copy";
@@ -492,6 +493,7 @@ export function stateFor(room: LocalRoom, seat: number, now = 0): Json {
       seat: s,
       name: sd.name,
       is_bot: sd.isBot,
+      look: seatLook(sd),
       connected: sd.connected || sd.isBot,
       team: s % 2,
       cards_left: rnd.hands[s].length,
@@ -592,6 +594,12 @@ export function nearbyPeekJson(room: LocalRoom, now = 0, token: string | null = 
   };
 }
 
+/** A person's companion look. No device here knows an account, so every
+ *  person shows the default; a bot shows an initial (null), as online. */
+function seatLook(sd: { isBot: boolean }): string | null {
+  return sd.isBot ? null : DEFAULT_LOOK;
+}
+
 export function roomJson(room: LocalRoom, seat: number, now = 0): Json {
   return {
     type: "room",
@@ -602,7 +610,8 @@ export function roomJson(room: LocalRoom, seat: number, now = 0): Json {
     start_level: room.startLevel,
     allow_joiners: room.allowJoiners,
     players: room.slots().flatMap((s, i) =>
-      s === null ? [] : [{ seat: i, name: s.name, is_bot: s.isBot, connected: s.connected || s.isBot }]),
+      s === null ? [] : [{ seat: i, name: s.name, is_bot: s.isBot, connected: s.connected || s.isBot,
+                           look: seatLook(s) }]),
     ...(room.nearby ? { bot_level: room.botLevel } : {}),
     ...(room.lobby ? { nearby: nearbyJson(room, now) } : {}),
   };

@@ -846,15 +846,36 @@ _ENTITLEMENTS_V12 = """
 """
 
 
+# Every account token ever issued (``Store.store_token``): the UUID the app
+# passes to StoreKit as a purchase's ``appAccountToken``, so Apple signs which
+# account paid. A row is never deleted. ``status`` is ``live`` for the
+# account's own token, ``merged`` once its device account linked into
+# ``user_id`` (the survivor), and ``deleted`` once the account behind it was
+# deleted (``user_id`` then names an id never issued again).
+_STORE_TOKENS_V12 = """
+    CREATE TABLE IF NOT EXISTS store_tokens (
+        token TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        created_at REAL NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS store_tokens_user ON store_tokens(user_id, status);
+    CREATE TRIGGER IF NOT EXISTS store_tokens_account_deleted AFTER DELETE ON users
+    BEGIN
+        UPDATE store_tokens SET status = 'deleted' WHERE user_id = OLD.id AND status != 'deleted';
+    END
+"""
+
+
 def _migrate_v12(conn: sqlite3.Connection) -> None:
-    """App Store purchases (``_ENTITLEMENTS_V12``) and each account's
-    ``store_token``: the UUID the app passes to StoreKit as the purchase's
-    ``appAccountToken``, so Apple signs which account paid. NULL until the
-    account first opens the Shop (``Store.store_token``)."""
+    """App Store purchases (``_ENTITLEMENTS_V12``) and account tokens
+    (``_STORE_TOKENS_V12``)."""
     for statement in filter(None, (s.strip() for s in _ENTITLEMENTS_V12.split(";"))):
         conn.execute(statement)
-    _add_column_if_missing(conn, "users", "store_token", "TEXT NULL")
-    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_store_token ON users(store_token)")
+    statements = _STORE_TOKENS_V12.split("CREATE TRIGGER")
+    for statement in filter(None, (s.strip() for s in statements[0].split(";"))):
+        conn.execute(statement)
+    conn.execute("CREATE TRIGGER" + statements[1])
 
 
 # Each entry is one version: SQL statements separated by ';', or a callable
@@ -1208,26 +1229,50 @@ class Store:
         return {k: frozenset(v) for k, v in out.items()}
 
     def store_token(self, user_id: int) -> str | None:
-        """The account's ``store_token``, minted on first use; None for an
-        unknown account."""
+        """The account's live token (``_STORE_TOKENS_V12``), minted on first
+        use; None for an unknown account."""
         with closing(self._open()) as conn:
-            conn.execute("UPDATE users SET store_token = ? WHERE id = ? AND store_token IS NULL",
-                         (str(uuid.uuid4()), user_id))
-            row = conn.execute("SELECT store_token FROM users WHERE id = ?", (user_id,)).fetchone()
-        return None if row is None else row["store_token"]
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                if conn.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone() is None:
+                    conn.execute("COMMIT")
+                    return None
+                row = conn.execute(
+                    "SELECT token FROM store_tokens WHERE user_id = ? AND status = 'live'", (user_id,)).fetchone()
+                if row is None:
+                    token = str(uuid.uuid4())
+                    conn.execute("INSERT INTO store_tokens(token, user_id, status, created_at) VALUES (?, ?, 'live', ?)",
+                                 (token, user_id, time.time()))
+                else:
+                    token = row["token"]
+                conn.execute("COMMIT")
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
+        return token
+
+    def store_token_owner(self, token: str) -> tuple[str, int] | None:
+        """Who a token was issued for: ``("live", id)`` for an account's own
+        token and ``("merged", id)`` for one that now belongs to the account
+        its device account linked into (both name an account that exists),
+        ``("deleted", id)`` once that account was deleted; None for a token
+        never issued here."""
+        with closing(self._open()) as conn:
+            row = conn.execute("SELECT status, user_id FROM store_tokens WHERE token = ?",
+                               (token.lower(),)).fetchone()
+        return None if row is None else (row["status"], int(row["user_id"]))
 
     def store_token_account(self, token: str) -> int | None:
-        """The account whose ``store_token`` is ``token`` (any case), or None."""
-        with closing(self._open()) as conn:
-            row = conn.execute("SELECT id FROM users WHERE store_token = ?", (token.lower(),)).fetchone()
-        return None if row is None else int(row["id"])
+        """The account a token now resolves to, or None (unknown or deleted)."""
+        owner = self.store_token_owner(token)
+        return owner[1] if owner is not None and owner[0] != "deleted" else None
 
     def claim_entitlement(self, user_id: int | None, txn: Mapping[str, Any], now: float | None = None) -> str:
         """Record a verified purchase (``purchases.transaction`` fields) for
         ``user_id``, or bind it to ``user_id`` when no account holds it and it
         is not revoked. ``"granted"`` when the account now holds it (also when
         it already did); ``"revoked"`` when Apple refunded or revoked that
-        purchase; ``"claimed"`` when another account holds it. A ``user_id``
+        purchase; ``"held_by_other"`` when another account holds it. A ``user_id``
         of None records the purchase unheld."""
         t = time.time() if now is None else now
         with closing(self._open()) as conn:
@@ -1254,7 +1299,7 @@ class Store:
                 raise
         if row["revoked_at"] is not None:
             return "revoked"
-        return "granted" if row["user_id"] == user_id else "claimed"
+        return "granted" if row["user_id"] == user_id else "held_by_other"
 
     def revoke_entitlement(self, txn: Mapping[str, Any], revoked_at: float, signed_at: float,
                            companion: str | None) -> tuple[int | None, bool]:
@@ -1539,8 +1584,12 @@ class Store:
             """INSERT OR IGNORE INTO blocks(blocker_id, blocked_id, created_at)
                SELECT blocker_id, ?, created_at FROM blocks
                WHERE blocked_id = ? AND blocker_id != ?""", (target_id, device_id, target_id))
-        # Purchases move with the player: the device's entitlements become the target's.
+        # Purchases move with the player: the device's entitlements become the
+        # target's, and every token issued for it (or merged into it) now
+        # resolves to the target.
         conn.execute("UPDATE entitlements SET user_id = ? WHERE user_id = ?", (target_id, device_id))
+        conn.execute("UPDATE store_tokens SET user_id = ?, status = 'merged' WHERE user_id = ? AND status != 'deleted'",
+                     (target_id, device_id))
         conn.execute("DELETE FROM users WHERE id = ?", (device_id,))
         conn.execute(
             """DELETE FROM games WHERE NOT EXISTS (

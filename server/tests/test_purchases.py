@@ -245,7 +245,7 @@ def test_a_purchase_held_by_another_account_is_refused(accounts_on, client, shop
     other = {"cookie": _session_cookie(accounts_on, client, private_pem, sub="222", email="b@example.com")}
     monkeypatch.setenv("COLLECTION_ACCOUNTS", "1,2")
     resp = client.post("/api/store/verify", json={"jws": token}, headers=other)
-    assert resp.status_code == 409 and resp.json()["detail"] == "claimed"
+    assert resp.status_code == 409 and resp.json()["detail"] == "held_by_other"
     assert client.get("/api/me", headers=other).json()["products"] == []
 
 
@@ -470,14 +470,64 @@ def test_deleting_the_account_keeps_the_refund_record(accounts_on, client, shop,
 
 
 def test_an_unrefunded_purchase_restores_onto_a_new_account_after_deletion(accounts_on, client, shop, chain, keypair, monkeypatch):
-    assert client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=shop).status_code == 200
+    token = client.get("/api/me", headers=shop).json()["store_token"]
+    bought = chain.sign(_txn(appAccountToken=token))
+    assert client.post("/api/store/verify", json={"jws": bought}, headers=shop).status_code == 200
     assert accounts_on.STORE.delete_user(1)
     private_pem, _ = keypair
     client.cookies.clear()
     monkeypatch.setenv("COLLECTION_ACCOUNTS", "2")
     other = {"cookie": _session_cookie(accounts_on, client, private_pem, sub="444", email="d@example.com")}
-    assert client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=other).status_code == 200
+    resp = client.post("/api/store/verify", json={"jws": bought}, headers=other)
+    assert resp.status_code == 200, resp.text
     assert client.get("/api/me", headers=other).json()["products"] == [GOAT]
+
+
+def test_a_refunded_purchase_of_a_deleted_payer_is_not_released(accounts_on, client, shop, chain, keypair, monkeypatch):
+    token = client.get("/api/me", headers=shop).json()["store_token"]
+    bought = chain.sign(_txn(appAccountToken=token))
+    assert client.post("/api/store/verify", json={"jws": bought}, headers=shop).status_code == 200
+    refund = _notify_at(chain, "REFUND", _txn(appAccountToken=token, revocationDate=_signed_at(-1000)), _signed_at(-1000))
+    assert client.post("/api/store/notify", json=refund).status_code == 200
+    assert accounts_on.STORE.delete_user(1)
+    private_pem, _ = keypair
+    client.cookies.clear()
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "2")
+    other = {"cookie": _session_cookie(accounts_on, client, private_pem, sub="445", email="f@example.com")}
+    resp = client.post("/api/store/verify", json={"jws": bought}, headers=other)
+    assert resp.status_code == 409 and resp.json()["detail"] == "revoked"
+    assert client.get("/api/me", headers=other).json()["products"] == []
+
+
+def test_a_purchase_signed_for_a_merged_device_account_reaches_the_survivor(accounts_on, client, shop, chain):
+    store = accounts_on.STORE
+    device = store.upsert_user(_claims(sub="dev1", email="dev@example.com", name="Dev"))
+    device_token = store.store_token(device["id"])
+    # bought on the device account, never delivered; then the device account links into account 1
+    pending = chain.sign(_txn(originalTransactionId="101", transactionId="101", appAccountToken=device_token))
+    with store._open() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        store._merge_device(conn, device["id"], 1)
+        conn.execute("COMMIT")
+    resp = client.post("/api/store/verify", json={"jws": pending}, headers=shop)
+    assert resp.status_code == 200, resp.text
+    assert client.get("/api/me", headers=shop).json()["products"] == [GOAT]
+    # the survivor's own token is unchanged and the device's still resolves to it
+    assert store.store_token_account(device_token) == 1
+
+
+def test_a_purchase_for_a_live_payer_is_settled_only_once_the_payer_has_it(accounts_on, client, shop, chain, keypair, monkeypatch):
+    token = client.get("/api/me", headers=shop).json()["store_token"]
+    refunded = _txn(originalTransactionId="111", transactionId="111", appAccountToken=token)
+    refund = _notify_at(chain, "REFUND", dict(refunded, revocationDate=_signed_at(-1000)), _signed_at(-1000))
+    assert client.post("/api/store/notify", json=refund).status_code == 200
+    private_pem, _ = keypair
+    client.cookies.clear()
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "1,2")
+    other = {"cookie": _session_cookie(accounts_on, client, private_pem, sub="446", email="g@example.com")}
+    resp = client.post("/api/store/verify", json={"jws": chain.sign(refunded)}, headers=other)
+    assert resp.status_code == 409 and resp.json()["detail"] == "revoked"
+    assert accounts_on.STORE.owned_products(1) == frozenset()
 
 
 def test_sandbox_grants_disappear_when_only_production_is_enabled(accounts_on, client, shop, chain, monkeypatch):
@@ -549,16 +599,18 @@ def test_the_account_token_binds_a_purchase_to_its_payer(accounts_on, client, sh
     # the payer's purchase presented by another account: the payer gets it, the presenter does not
     bought = chain.sign(_txn(appAccountToken=payer))
     resp = client.post("/api/store/verify", json={"jws": bought}, headers=other)
-    assert resp.status_code == 409 and resp.json()["detail"] == "other_account"
+    assert resp.status_code == 409 and resp.json()["detail"] == "held_by_other"
     assert client.get("/api/me", headers=other).json()["products"] == []
     assert accounts_on.STORE.owned_products(1) == frozenset({GOAT})
     assert client.post("/api/store/verify", json={"jws": bought}, headers=shop).status_code == 200
-    # a token no account holds grants nobody
+    # a token this server never issued grants nobody, and records nothing (retryable)
     stray = chain.sign(_txn(originalTransactionId="91", transactionId="91", productId=PANDA,
                             appAccountToken="00000000-0000-4000-8000-000000000000"))
     resp = client.post("/api/store/verify", json={"jws": stray}, headers=shop)
-    assert resp.status_code == 409 and resp.json()["detail"] == "other_account"
+    assert resp.status_code == 409 and resp.json()["detail"] == "unknown_token"
     assert PANDA not in accounts_on.STORE.owned_products(1)
+    with accounts_on.STORE._open() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM entitlements WHERE original_transaction_id = '91'").fetchone()[0] == 0
 
 
 def test_a_guest_or_store_off_account_gets_no_token(accounts_on, client, shop, monkeypatch):
@@ -569,4 +621,4 @@ def test_a_guest_or_store_off_account_gets_no_token(accounts_on, client, shop, m
 def test_the_refusal_reasons_say_which_are_permanent():
     from shengji.api import purchases
 
-    assert purchases.PERMANENT_REFUSALS == frozenset({"claimed", "revoked", "wrong_app", "other_account"})
+    assert purchases.PERMANENT_REFUSALS == frozenset({"held_by_other", "revoked", "wrong_app"})

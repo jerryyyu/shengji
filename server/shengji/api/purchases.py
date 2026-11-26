@@ -81,7 +81,7 @@ MAX_JWS_BYTES = 64 * 1024
 # other refusal (a signature or storefront check, an environment not
 # accepted, a product not sold yet, no session, the store off) may pass
 # later, so the app keeps the transaction and presents it again.
-PERMANENT_REFUSALS = frozenset({"claimed", "revoked", "wrong_app", "other_account"})
+PERMANENT_REFUSALS = frozenset({"held_by_other", "revoked", "wrong_app"})
 
 
 class VerificationError(Exception):
@@ -250,10 +250,12 @@ async def verify(body: VerifyBody, request: Request) -> dict:
     fails verification or names another app or product (400), the China
     mainland storefront by the client's word or the signed one (403), and a
     purchase that was refunded or that another account holds (409). A
-    transaction whose ``appAccountToken`` names another account's
-    ``store_token`` is granted to that account, and refused here as
-    ``other_account``. The refusal's ``detail`` is its reason;
-    ``PERMANENT_REFUSALS`` are the ones that never become a grant."""
+    transaction whose ``appAccountToken`` names another live account (its own
+    token, or one merged into it) is granted to that account, and refused
+    here as ``held_by_other``; one whose payer was deleted is restored onto
+    the presenter unless refunded; one with a token never issued here is
+    ``unknown_token``, which settles nothing. The refusal's ``detail`` is its
+    reason; ``PERMANENT_REFUSALS`` are the ones that never become a grant."""
     store = accounts.STORE
     if not accounts.LIMITER.allow(accounts.client_ip(request)):
         raise HTTPException(status_code=429, detail="Too many requests; try again in a minute.")
@@ -278,13 +280,21 @@ async def verify(body: VerifyBody, request: Request) -> dict:
         raise HTTPException(status_code=409, detail="revoked")
     payer = user_id
     if txn["account_token"] is not None:
-        # Apple signed which account paid: the purchase is that account's,
-        # whoever presents it (an account that no longer exists holds nothing)
-        payer = await store.run(store.store_token_account, txn["account_token"])
+        # Apple signed which account paid: the purchase goes to that account
+        # (or the one its device account linked into), whoever presents it.
+        # A deleted payer's purchase restores onto the presenter like any
+        # unheld one; a token never issued here settles nothing.
+        owner = await store.run(store.store_token_owner, txn["account_token"])
+        if owner is None:
+            log.info("store verify refused: unknown_token")
+            raise HTTPException(status_code=409, detail="unknown_token")
+        if owner[0] != "deleted":
+            payer = owner[1]
     outcome = await store.run(store.claim_entitlement, payer, txn)
     if payer != user_id:
+        # settled: the payer holds it now (or a refund or another holder does)
         log.info("store verify for another account: %s", outcome)
-        raise HTTPException(status_code=409, detail="revoked" if outcome == "revoked" else "other_account")
+        raise HTTPException(status_code=409, detail="revoked" if outcome == "revoked" else "held_by_other")
     if outcome != "granted":
         log.info("store verify refused: %s", outcome)
         raise HTTPException(status_code=409, detail=outcome)

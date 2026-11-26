@@ -13,7 +13,7 @@ import { Segmented } from "../home/HomeShell";
 import LargeTitlePage from "../home/LargeTitlePage";
 import { WIDE } from "../home/route";
 import { useCachedResource, useTabScroll, viewerScope } from "../home/session";
-import { isZh, useT } from "../i18n";
+import { locale, useT } from "../i18n";
 import { useMediaQuery } from "../phoneLayout";
 import { fetchLeaderboard } from "../ratings/api";
 import type { Leaderboard as Board, Loaded } from "../ratings/api";
@@ -34,7 +34,8 @@ function progressText(t: ReturnType<typeof useT>, entry: LookEntry, user: AuthUs
 function colourName(id: string): string {
   const { colour } = parseLook(id);
   const name = TRACTOR_COLOURS[colour].name;
-  return isZh() ? name.zh : name.en;
+  const lang = locale();
+  return lang === "zh-Hant" ? name.hant : lang === "zh-Hans" ? name.zh : name.en;
 }
 
 /** The Collection tab: the equipped companion on a corner of felt (tap it

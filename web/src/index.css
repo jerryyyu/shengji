@@ -2164,6 +2164,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   width: 100%;
 }
 
+/* on the card, the cell and the points bar take the card's own gap, the
+   same as the title's above the cell */
+.modal.round-end > .round-end-ladder {
+  display: contents;
+}
+
 .rank-lane,
 .points-bar {
   display: grid;
@@ -2423,12 +2429,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   min-width: 0;
 }
 
-/* the lanes sit at the cell's top, as the Details panel does, so the gap
-   under the title is the same either way; spare height falls below them */
+/* the lanes and the Details content both sit centred in the cell, which
+   is as tall as the taller of them: the gap above matches the gap below */
 .round-end-lanes {
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
+  justify-content: center;
   gap: 4px;
 }
 
@@ -2437,20 +2443,16 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   visibility: hidden;
 }
 
-/* the kitty's fan, then one fan per seat, on one row: RoundEndDetails sets
-   --cw, --fit-step and --fit-col from the measured width and the counts */
+/* the kitty's fan, then one fan per seat, on one row, straight on the card
+   like the lanes: RoundEndDetails sets --cw, --fit-step and --fit-col from
+   the measured width and the counts */
 .round-end-details {
   position: relative;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 4px;
-  padding: 6px 10px;
-  border-radius: 12px;
-  background: #11141a;
-  border: 1px solid var(--panel-edge);
   text-align: left;
-  overflow: hidden;
 }
 
 .round-end-row {

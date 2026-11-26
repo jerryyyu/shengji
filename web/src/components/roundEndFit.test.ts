@@ -5,7 +5,7 @@ import { FIT, fitDetails, rowWidth } from "./roundEndFit";
 // browser: a phone held upright (390 × 844, the table turned sideways) and
 // sideways (844 × 390) both draw the 440px phone card; a desktop (1280 × 800)
 // draws the 480px card. The narrowest is a 300px card.
-const VIEWPORTS = { phonePortrait390: 384, phoneLandscape844: 384, desktop1280: 393, card300: 244 };
+const VIEWPORTS = { phonePortrait390: 406, phoneLandscape844: 406, desktop1280: 414, card300: 266 };
 const COUNTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
 describe("the round-end Details row fits its width for every card count", () => {

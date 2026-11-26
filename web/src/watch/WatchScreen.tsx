@@ -175,25 +175,45 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   const [seat, setSeat] = useState(0);
   const [menu, setMenu] = useState(false);
   const [kitty, setKitty] = useState(false);
+  // the next round, read while the round-end card holds, and when it may play
   const next = useRef<Loaded | null>(null);
+  const holdTimer = useRef<number | null>(null);
   const endedAt = useRef<number | null>(null);
+  // the table on screen: a late answer about any other is dropped
+  const table = useRef<string | null>(null);
+  // the latest pick: an answer to an earlier one is dropped
+  const picks = useRef(0);
+  // what a waiting reply says now: the round in play, and the code Take a seat joins
+  const [live, setLive] = useState<{ round: number | null; code: string | null }>({ round: null, code: null });
   const root = useRef<HTMLDivElement>(null);
   const handRects = useRef<HandRects>(new Map());
 
+  const dropNext = () => {
+    next.current = null;
+    if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+  };
   const show = (l: Loaded) => {
+    dropNext();
+    table.current = l.doc.table;
     setLoaded(l);
+    setLive({ round: l.doc.live_round, code: l.doc.code });
     setAt(0);
     setSeat(l.doc.seat ?? 0);
     setKitty(false);
     endedAt.current = null;
   };
   const pick = (skip: string | null) => {
+    const mine = ++picks.current;
+    dropNext();
     void fetchWatch(mode, skip, loaded?.doc.watcher ?? null).then((r) => {
+      if (mine !== picks.current) return;
       const l = r.ok ? load(r.doc) : null;
       if (l) { setNone(false); show(l); } else if (!loaded) setNone(true);
     });
   };
   useEffect(() => { pick(null); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => dropNext(), []);
 
   const beats = loaded?.beats ?? [];
   const beat = beats[Math.min(at, Math.max(0, beats.length - 1))];
@@ -207,37 +227,41 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     return () => window.clearTimeout(timer);
   }, [loaded, beat, paused, atEnd, speed, beats.length]);
 
-  // caught up: ask about the round in play until it finishes, then play it
+  // Caught up: one timer asks about the round in play every FOLLOW_MS until
+  // it finishes; that round then plays once the card has held CARD_HOLD_MS.
   useEffect(() => {
     if (!loaded || !atEnd) return;
     if (endedAt.current === null) endedAt.current = Date.now();
     const { doc } = loaded;
-    let live = true;
+    let on = true;
+    const play = (l: Loaded) => {
+      const wait = CARD_HOLD_MS - (Date.now() - (endedAt.current ?? 0));
+      next.current = l;
+      if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
+      holdTimer.current = window.setTimeout(() => {
+        holdTimer.current = null;
+        if (on && next.current === l && table.current === doc.table) show(l);
+      }, Math.max(0, wait));
+    };
     const ask = () => {
+      if (next.current) return;
       const r = doc.rerun ? fetchWatch(mode, null, doc.watcher)
         : followWatch(doc.table, doc.round ?? 0, doc.watcher);
       void r.then((res) => {
-        if (!live) return;
-        if (res.ok && !res.doc.waiting) {
+        if (!on || table.current !== doc.table) return;
+        if (res.ok && res.doc.waiting) {
+          setLive({ round: res.doc.live_round, code: res.doc.code });
+        } else if (res.ok) {
           const l = load(res.doc);
-          if (l && (l.doc.table !== doc.table || l.doc.round !== doc.round)) next.current = l;
-        } else if (!res.ok && res.reason === "none" && !doc.rerun) {
+          if (l && (l.doc.table !== doc.table || l.doc.round !== doc.round)) play(l);
+        } else if (res.reason === "none" && !doc.rerun) {
           pick(doc.table);
         }
       });
     };
-    const poll = window.setInterval(() => {
-      if (next.current && Date.now() - (endedAt.current ?? 0) >= CARD_HOLD_MS) {
-        const l = next.current;
-        next.current = null;
-        show(l);
-        return;
-      }
-      ask();
-    }, CARD_HOLD_MS);
-    const first = window.setTimeout(ask, 0);
-    const follow = window.setInterval(ask, FOLLOW_MS);
-    return () => { live = false; window.clearInterval(poll); window.clearInterval(follow); window.clearTimeout(first); };
+    ask();
+    const poll = window.setInterval(ask, FOLLOW_MS);
+    return () => { on = false; window.clearInterval(poll); };
   }, [loaded, atEnd]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   useTurn(root, seat);
@@ -263,20 +287,20 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   const buried = loaded.buried ?? setup.kitty ?? [];
   const kittyShown = beat.kind !== "bury" && beat.kind !== "buryLift" && buried.length > 0;
   const end = frame.result;
-  const caughtUp = doc.live_round !== null && doc.round !== undefined && doc.live_round > doc.round
-    ? t("watch.inPlay", { n: doc.live_round }) : null;
+  const caughtUp = live.round !== null && doc.round !== undefined && live.round > doc.round
+    ? t("watch.inPlay", { n: live.round }) : null;
   const goTo = (i: number) => { setAt(i); };
   const takeSeat = () => {
     watch.close();
-    if (doc.mode === "ranked" || !doc.code) {
+    if (doc.mode === "ranked" || !live.code) {
       queue.setPlayMode(doc.mode);
       rounds.noteEntry("queue");
       queue.join();
     } else {
-      codes.open(doc.code);
+      codes.open(live.code);
     }
   };
-  const seatLabel = doc.mode === "ranked" || !doc.code ? t("home.play") : t("watch.takeSeat");
+  const seatLabel = doc.mode === "ranked" || !live.code ? t("home.play") : t("watch.takeSeat");
 
   return (
     <div ref={root} className="table-screen watch-screen phase-play">

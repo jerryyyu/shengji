@@ -12,24 +12,28 @@
 .watch-ctl svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2;
   stroke-linecap: round; stroke-linejoin: round; }
 .watch-controls { display: flex; align-items: center; gap: 4px; }
-.watch-ctl { min-width: 32px; height: 32px; padding: 0 6px; border: 0; border-radius: 16px;
+.watch-ctl { position: relative; min-width: 32px; height: 32px; padding: 0 6px; border: 0; border-radius: 16px;
   background: rgba(10, 26, 20, 0.82); color: #fff; display: inline-flex; align-items: center;
   justify-content: center; font: 700 12px/1 inherit; cursor: pointer; }
+/* drawn 32 px, tapped at 44: the extenders overlap the 4 px gaps, never a neighbour's face */
+.watch-ctl::after { content: ""; position: absolute; inset: -6px -2px; }
 .watch-ctl:disabled { opacity: 0.4; cursor: default; }
 .watch-ctl:focus-visible, .watch-tab:focus-visible, .watch-kitty:focus-visible {
   outline: 2px solid #f2c14e; outline-offset: 2px; }
 .watch-speed { font-variant-numeric: tabular-nums; min-width: 40px; }
 .watch-tabs-row { display: flex; align-items: center; justify-content: center; gap: 8px; }
 .watch-tabs { display: flex; gap: 4px; padding: 2px; border-radius: 14px; background: rgba(10, 16, 22, 0.86); }
-.watch-tab { height: 26px; padding: 0 11px; border: 0; border-radius: 10px; background: transparent;
+.watch-tab { position: relative; height: 26px; padding: 0 11px; border: 0; border-radius: 10px; background: transparent;
   color: #aab3c2; font: 700 13px/26px inherit; display: inline-flex; align-items: center; gap: 6px;
   white-space: nowrap; cursor: pointer; }
+.watch-tab::after { content: ""; position: absolute; inset: -9px -2px; }
 .watch-tab.on { background: #2e3648; color: #fff; }
 .watch-tab .banker-crown { font-size: 12px; }
 .watch-tab-n { color: #8c96a6; font-weight: 600; font-variant-numeric: tabular-nums; }
 .watch-tab-name { max-width: 9em; overflow: hidden; text-overflow: ellipsis; }
 .watch-kitty { position: relative; width: 34px; height: 30px; border: 0; padding: 0; background: none; cursor: pointer;
   --cw: 18px; }
+.watch-kitty::after { content: ""; position: absolute; inset: -7px -5px; }
 .watch-kitty .card { position: absolute; top: 2px; width: 18px; }
 .watch-kitty .card:nth-child(1) { left: 2px; }
 .watch-kitty .card:nth-child(2) { left: 7px; }

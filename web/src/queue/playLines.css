@@ -262,6 +262,10 @@
 /* "5 playing" when a table can be watched: gold, with a chevron; one tap
    goes to a table */
 .play-presence-watch {
+  position: relative;
+  display: inline-block;
+  height: 24px;
+  line-height: 24px;
   padding: 0;
   border: 0;
   background: none;
@@ -270,5 +274,7 @@
   font-weight: 700;
   cursor: pointer;
 }
+/* drawn on the text's line, tapped at 44 */
+.play-presence-watch::after { content: ""; position: absolute; inset: -10px -6px; }
 .play-presence-watch:focus-visible { outline: 2px solid #f2c14e; outline-offset: 2px; border-radius: 4px; }
 .play-presence-chev { margin-left: 2px; }

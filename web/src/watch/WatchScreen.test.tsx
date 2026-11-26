@@ -137,3 +137,104 @@ describe("the entry", () => {
     expect(canWatch({ watch: 2 })).toBe(true);
   });
 });
+
+describe("caught up", () => {
+  type Reply = (url: string) => unknown | Promise<unknown>;
+  let reply: Reply;
+  const roots: { root: Root; host: HTMLDivElement }[] = [];
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      urls.push(url);
+      return new Response(JSON.stringify(await reply(url)), { status: 200 });
+    }));
+  });
+  afterEach(() => {
+    for (const r of roots.splice(0)) { act(() => r.root.unmount()); r.host.remove(); }
+  });
+  const flush = async () => { for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); }); };
+  async function screen() {
+    const h = document.createElement("div");
+    document.body.appendChild(h);
+    const r = createRoot(h);
+    roots.push({ root: r, host: h });
+    await act(async () => { r.render(<WatchScreen mode="ranked" />); });
+    await flush();
+    return h;
+  }
+  const btn = (h: HTMLElement, label: string) => h.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+  async function toEnd(h: HTMLElement) {
+    await act(async () => { btn(h, "Pause")?.click(); });
+    for (let i = 0; i < 40; i++) await act(async () => { btn(h, "Next trick")?.click(); });
+    await flush();
+  }
+  const follows = (table = "abc123") => urls.filter((u) => u.startsWith(`/api/watch/${table}`)).length;
+
+  it("updates the live round and the seat from a waiting reply", async () => {
+    reply = (url) => url.startsWith("/api/watch/")
+      ? { ...feed, waiting: true, events: undefined, live_round: 5, code: null } : feed;
+    const h = await screen();
+    await toEnd(h);
+    const card = document.querySelector(".round-end")!;
+    expect(card.textContent).toContain("Round 5 in play");
+    expect([...card.querySelectorAll(".round-end-actions button")].map((b) => b.textContent)).toEqual(["Play", "Leave"]);
+  });
+
+  it("polls on one timer: two viewers behind one address stay well under its 30 reads a minute", async () => {
+    reply = (url) => url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined } : feed;
+    const a = await screen();
+    const b = await screen();
+    await toEnd(a);
+    await toEnd(b);
+    urls.length = 0;
+    for (let s = 0; s < 60; s++) await act(async () => { vi.advanceTimersByTime(1000); });
+    await flush();
+    expect(urls.length).toBeLessThanOrEqual(10);
+    expect(follows()).toBeGreaterThanOrEqual(4);
+  });
+
+  it("a switch to another table drops the old table's buffered round", async () => {
+    const other = { ...feed, table: "zzz999", round: 7 };
+    reply = (url) => url.startsWith("/api/watch/abc123") ? { ...feed, round: 4 }
+      : url.startsWith("/api/watch/zzz999") ? { ...other, waiting: true, events: undefined }
+      : url.includes("skip=abc123") ? other : feed;
+    const h = await screen();
+    await toEnd(h);                        // round 4 of abc123 is buffered behind the card
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    await flush();
+    expect(follows()).toBeGreaterThanOrEqual(1);
+    await act(async () => { btn(h, "More")!.click(); });
+    await act(async () => { [...h.querySelectorAll<HTMLButtonElement>("[role=menuitem]")][0].click(); });
+    await flush();
+    expect(h.querySelector(".watch-round")!.textContent).toContain("Round 7");
+    await toEnd(h);                        // the new table's round ends; its next is still in play
+    for (let s = 0; s < 20; s++) await act(async () => { vi.advanceTimersByTime(1000); });
+    await flush();
+    expect(h.querySelector(".watch-round")!.textContent).toContain("Round 7");
+  });
+
+  it("ignores a pick that answers after a later one", async () => {
+    let release: (() => void) | null = null;
+    const slow = new Promise<void>((r) => { release = r; });
+    reply = async (url) => {
+      if (url.includes("skip=abc123")) { await slow; return { ...feed, table: "old111", round: 9 }; }
+      if (url.includes("skip=")) return { ...feed, table: "new222", round: 8 };
+      return url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined } : feed;
+    };
+    const h = await screen();
+    await act(async () => { btn(h, "Pause")!.click(); });
+    const next = async () => {
+      await act(async () => { btn(h, "More")!.click(); });
+      await act(async () => { [...h.querySelectorAll<HTMLButtonElement>("[role=menuitem]")][0].click(); });
+      await flush();
+    };
+    await next();                          // skip=abc123: slow
+    await next();                          // still on abc123, so skip=abc123 again: also slow
+    reply = async (url) => (url.includes("skip=") ? { ...feed, table: "new222", round: 8 } : feed);
+    await next();
+    expect(h.querySelector(".watch-round")!.textContent).toContain("Round 8");
+    release!();
+    await flush();
+    expect(h.querySelector(".watch-round")!.textContent).toContain("Round 8");
+  });
+});

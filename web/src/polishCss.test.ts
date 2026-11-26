@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
-const files = ["./index.css", "./queue/playLines.css", "./components/ChatPanel.css"];
+const files = ["./index.css", "./queue/playLines.css", "./components/ChatPanel.css", "./watch/watch.css"];
 const sources = files.map((f) => readFileSync(new URL(f, import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, ""));
 const css = sources.join("\n");
 
@@ -364,6 +364,7 @@ describe("tap targets", () => {
   const EXTENDED = [
     ".last-trick-btn", ".reconnect-retry", ".play-mode-opt", ".tp-settings", ".btn.join-leave",
     ".table-pill", ".last-trick-close", ".chat-quick-btn", ".account-pill", ".segmented-btn", ".rating-signin",
+    ".watch-ctl", ".watch-tab", ".watch-kitty", ".play-presence-watch",
   ];
   // States drawn under 44px on purpose, each with its reason.
   const EXCEPTIONS: Record<string, string> = {

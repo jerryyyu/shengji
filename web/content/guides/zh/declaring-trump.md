@@ -5,6 +5,7 @@ slug: declaring-trump
 order: 3
 related: [how-to-play, burying-the-kitty, pairs-tractors-throws, sheng-ji-by-the-numbers]
 updated: 2026-11-25
+author: Jerry Yu
 lang: zh
 ---
 

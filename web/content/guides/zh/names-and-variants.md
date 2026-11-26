@@ -5,6 +5,7 @@ slug: names-and-variants
 order: 2
 related: [how-to-play, scoring-and-levels, declaring-trump]
 updated: 2026-11-25
+author: Jerry Yu
 lang: zh
 ---
 

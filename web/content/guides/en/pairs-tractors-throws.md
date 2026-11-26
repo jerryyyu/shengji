@@ -5,6 +5,7 @@ slug: pairs-tractors-throws
 order: 5
 related: [how-to-play, declaring-trump, scoring-and-levels, sheng-ji-by-the-numbers, tough-last-trick-throw]
 updated: 2026-11-25
+author: Jerry Yu
 lang: en
 ---
 

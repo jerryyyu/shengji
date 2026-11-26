@@ -5,6 +5,7 @@ slug: tough-dont-feed-the-trick
 order: 13
 related: [toughest-decisions, counting-cards, pairs-tractors-throws, scoring-and-levels]
 updated: 2026-11-25
+author: Jerry Yu
 lang: en
 answer: A
 ---

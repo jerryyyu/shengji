@@ -5,6 +5,7 @@ slug: tough-feed-partners-throw
 order: 12
 related: [toughest-decisions, pairs-tractors-throws, counting-cards, scoring-and-levels]
 updated: 2026-11-25
+author: Jerry Yu
 lang: en
 answer: A
 ---

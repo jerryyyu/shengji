@@ -5,6 +5,7 @@ slug: counting-cards
 order: 9
 related: [toughest-decisions, pairs-tractors-throws, scoring-and-levels, burying-the-kitty]
 updated: 2026-11-25
+author: Jerry Yu
 lang: en
 ---
 

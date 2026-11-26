@@ -45,6 +45,7 @@ slug: test
 order: 1
 related: []
 updated: 2026-01-01
+author: A <i>writer</i>
 lang: en
 ${extra}---
 ${body}`;
@@ -120,10 +121,11 @@ describe("each page's metadata", () => {
     expect(new Set(titles).size).toBe(titles.length);
   });
 
-  it("names an author and dates on every guide's Article", () => {
+  it("names an author and dates on every guide's Article, and shows the byline", () => {
     for (const [p, html] of guidePages) {
       const article = ld(html)["@graph"][0];
-      expect(article.author, p).toEqual({ "@type": "Organization", name: "Sheng Ji 升级", url: `${SITE_ORIGIN}/` });
+      expect(article.author, p).toEqual({ "@type": "Person", name: "Jerry Yu" });
+      expect(html, p).toMatch(/<p class="sub byline">(By |作者：)Jerry Yu<\/p>/);
       expect(article.dateModified, p).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(html, p).toContain(`${article.dateModified}`);
     }
@@ -249,6 +251,7 @@ describe("the Markdown converter", () => {
     expect(html).toContain("<title>A &lt;b&gt;bold&lt;/b&gt; &quot;title&quot; | Sheng Ji guides</title>");
     expect(html).toContain("&lt;img src=x&gt;");
     expect(html).not.toContain("<img");
+    expect(html).toContain('<p class="sub byline">By A &lt;i&gt;writer&lt;/i&gt;</p>');
   });
 
   it("keeps </script> out of JSON-LD", () => {

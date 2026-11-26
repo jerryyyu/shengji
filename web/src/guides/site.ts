@@ -60,6 +60,7 @@ const T = {
     ctaWeb: "or play in your browser",
     note: "Automated play is not allowed: AI agents and other automated clients must not join, queue for or play games on this site. Reading these pages is fine. See [llms.txt](/llms.txt) and the [privacy page](/privacy).",
     updated: "Updated",
+    by: "By ",
     sep: " · ",
   },
   zh: {
@@ -79,6 +80,7 @@ const T = {
     ctaWeb: "或者直接在浏览器里玩",
     note: "本站禁止自动化对局：AI 代理和其他自动化程序不得加入、排队或进行游戏。阅读这些页面不受限制。详见 [llms.txt](/llms.txt) 和[隐私页面](/privacy)。",
     updated: "更新于",
+    by: "作者：",
     sep: " · ",
   },
 } as const;
@@ -256,7 +258,7 @@ export function guidePage(guide: Guide, byKey: Map<string, Guide>): string {
       image: IMAGE,
       dateModified: meta.updated,
       datePublished: meta.updated,
-      author: { "@type": "Organization", name: SITE_NAME, url: `${SITE_ORIGIN}/` },
+      author: { "@type": "Person", name: meta.author },
       publisher: { "@type": "Organization", name: SITE_NAME, url: `${SITE_ORIGIN}/` },
       about: { "@type": "Game", name: "Sheng Ji", alternateName: ["升级", "Tractor", "拖拉机", "八十分"] },
       isPartOf: { "@type": "WebSite", name: SITE_NAME, url: `${SITE_ORIGIN}/` },
@@ -326,6 +328,7 @@ ${crumbs(lang, title, titleAttrs)}
 <article>
 <h1${titleAttrs}>${esc(title)}</h1>
 <p class="sub"${ledeAttrs}>${esc(description)}</p>
+<p class="sub byline">${t.by}${esc(meta.author)}</p>
 ${meta.slug === CALCULATOR_SLUG ? `${calculatorHtml(lang)}\n` : ""}${body}
 </article>
 ${pageCta}<h2>${t.related}</h2>

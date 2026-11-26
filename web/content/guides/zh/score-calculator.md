@@ -5,6 +5,7 @@ slug: score-calculator
 order: 7
 related: [scoring-and-levels, burying-the-kitty, sheng-ji-by-the-numbers]
 updated: 2026-11-24
+author: Jerry Yu
 lang: zh
 schema: WebApplication
 ---

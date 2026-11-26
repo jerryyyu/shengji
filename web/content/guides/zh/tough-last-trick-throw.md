@@ -5,6 +5,7 @@ slug: tough-last-trick-throw
 order: 15
 related: [toughest-decisions, pairs-tractors-throws, scoring-and-levels, counting-cards]
 updated: 2026-11-25
+author: Jerry Yu
 lang: zh
 answer: C
 ---

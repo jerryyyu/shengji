@@ -15,6 +15,8 @@ export interface FrontMatter {
   order: number;
   related: string[];
   updated: string;
+  /** The byline's name, also the Article's author in the page's JSON-LD. */
+  author: string;
   lang: Lang;
   schema?: string;
   /** A puzzle's favoured option letters, e.g. "A" or "B C D" (puzzle.ts). */
@@ -23,7 +25,7 @@ export interface FrontMatter {
 
 export class GuideError extends Error {}
 
-const REQUIRED = ["title", "description", "slug", "order", "related", "updated", "lang"] as const;
+const REQUIRED = ["title", "description", "slug", "order", "related", "updated", "author", "lang"] as const;
 
 export function parseFrontMatter(src: string, where: string): { meta: FrontMatter; body: string } {
   const m = /^---\n([\s\S]*?)\n---\n/.exec(src);
@@ -47,7 +49,7 @@ export function parseFrontMatter(src: string, where: string): { meta: FrontMatte
   return {
     meta: {
       title: raw.title, description: raw.description, slug: raw.slug, order, related,
-      updated: raw.updated, lang: raw.lang, schema: raw.schema, answer: raw.answer,
+      updated: raw.updated, author: raw.author, lang: raw.lang, schema: raw.schema, answer: raw.answer,
     },
     body: src.slice(m[0].length),
   };

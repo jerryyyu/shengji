@@ -574,15 +574,17 @@ describe("an invite link's funnel", () => {
     expect(steps).toHaveLength(1);
   });
 
-  it("says seated once, when the link's Join seats its visitor", () => {
+  it("says seated once, when the server confirms the link's table after its Join", () => {
     window.history.replaceState(null, "", "/?code=WXYZ&h=0123456789ab");
     status("open");
     codes.setPlace(lobby);
     say(ROOM);
     codes.join("Bo");
     codes.setPlace({ ready: true, seatedAt: "WXYZ" });
-    codes.setPlace({ ready: true, seatedAt: null });
-    codes.setPlace({ ready: true, seatedAt: "WXYZ" });
+    // the lobby's seat alone is not the confirmed table
+    expect(steps).toEqual([["opened", undefined, "0123456789ab"]]);
+    say({ type: "state", room: "WXYZ", you: 1 });
+    say({ type: "state", room: "WXYZ", you: 1 });
     expect(steps).toEqual([["opened", undefined, "0123456789ab"], ["seated", undefined, "0123456789ab"]]);
   });
 
@@ -603,6 +605,20 @@ describe("an invite link's funnel", () => {
     say(ROOM);
     codes.join("Bo");
     codes.setPlace({ ready: true, seatedAt: "WXYZ" });
+    say({ type: "state", room: "WXYZ", you: 1 });
+    expect(steps).toEqual([["opened", undefined, "0123456789ab"], ["seated", undefined, "0123456789ab"]]);
+  });
+
+  it("keeps a queued table Join's claim through its waiting seat, until that table's state", () => {
+    window.history.replaceState(null, "", "/?code=FG3K&h=0123456789ab");
+    status("open");
+    codes.setPlace(lobby);
+    say(TABLE);
+    codes.join("Bo");
+    expect(sent.at(-1)).toMatchObject({ type: "table_join", code: "FG3K" });
+    codes.setPlace({ ready: true, seatedAt: "FG3K" });
+    expect(steps).toEqual([["opened", undefined, "0123456789ab"]]);
+    say({ type: "state", room: "FG3K", you: 1 });
     expect(steps).toEqual([["opened", undefined, "0123456789ab"], ["seated", undefined, "0123456789ab"]]);
   });
 

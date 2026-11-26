@@ -132,3 +132,54 @@ it("an ordinary resume of a saved seat at the link's table settles nothing witho
   await settle();
   expect(steps).toEqual([]);
 });
+
+/** Type `code` in the Play box, Join its panel's seat. */
+async function typedJoin(ws: FakeWS, code: string): Promise<void> {
+  const input = host.querySelector<HTMLInputElement>(".room-input")!;
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, code);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  act(() => host.querySelector<HTMLButtonElement>(".join-row button")!.click());
+  expect(ws.sent.filter((m) => m.type !== "ping").at(-1)).toEqual({ type: "table_peek", code });
+  act(() => ws.deliver({ ...SEATS, room: code }));
+  act(() => [...host.querySelectorAll<HTMLButtonElement>(".tp-join-code button")]
+    .find((b) => b.textContent === "Join")!.click());
+  await settle();
+  expect(ws.sent.filter((m) => m.type !== "ping").at(-1)).toMatchObject({ type: "table_join", code });
+}
+
+it("a refused link Join, then the same code typed and joined, is not the invite's seat", async () => {
+  const { ws, steps } = await joinFromLink();
+  act(() => ws.deliver({ type: "error", code: "table_closed", message: "That table has closed." }));
+  await settle();
+  await typedJoin(ws, "WXYZ");
+  act(() => ws.deliver({ type: "resume", token: "t1", gen: 1 }));
+  act(() => ws.deliver(state("WXYZ")));
+  await settle();
+  expect(host.querySelector(".table-screen")).not.toBeNull();
+  expect(steps).toEqual([["opened", undefined, TOKEN]]);
+});
+
+it("Not now after a link Join, then the code typed and joined, is not the invite's seat", async () => {
+  const { ws, steps } = await joinFromLink();
+  // a refusal that hands the panel back
+  act(() => ws.deliver({ type: "error", code: "rate_limited", message: "Too many requests; wait a minute." }));
+  act(() => [...host.querySelectorAll<HTMLButtonElement>(".tp-join-code button")]
+    .find((b) => b.textContent === "Not now")!.click());
+  await settle();
+  await typedJoin(ws, "WXYZ");
+  act(() => ws.deliver(state("WXYZ")));
+  await settle();
+  expect(steps).toEqual([["opened", undefined, TOKEN]]);
+});
+
+it("a search started after the link's Join supersedes it", async () => {
+  const { ws, steps } = await joinFromLink();
+  const { queue } = await import("./queue/store");
+  act(() => queue.join());
+  expect(ws.sent.filter((m) => m.type !== "ping").at(-1)).toMatchObject({ type: "queue_join" });
+  act(() => ws.deliver(state("WXYZ")));
+  await settle();
+  expect(steps).toEqual([["opened", undefined, TOKEN]]);
+});

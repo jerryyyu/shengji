@@ -113,6 +113,11 @@ export class CodeStore {
   attach(): void {
     if (this.attached) return;
     this.attached = true;
+    // a search or another table's Join sent from the queue supersedes the
+    // link Join's claim; the link's own table Join keeps it
+    queue.onJoinSent((code) => {
+      if (this.invite !== null && code !== this.invite.code) this.invite = null;
+    });
     // a test may stand in a partial socket
     conn.subscribe?.((m) => this.onMessage(m));
     conn.subscribeStatus?.((s) => this.onStatus(s));
@@ -170,8 +175,10 @@ export class CodeStore {
     if (this.view) this.set({ ...this.view, ...next });
   }
 
-  /** The join is over, joined or not: the link goes with it. */
+  /** The join is over, joined or not: the link goes with it, and so does a
+   *  link Join's claim to a later seat (a seat at its table settled it first). */
   private drop(): void {
+    this.invite = null;
     if (!this.view) return;
     if (this.view.from === "link") dropParam("code");
     this.set(null);
@@ -249,14 +256,16 @@ export class CodeStore {
       return;
     }
     if (p.seatedAt !== null) {
-      // a queued table's seat: the invite's, when it is the link's table
-      if (now.from === "link" && now.step === "joining") this.settleInvite(p.seatedAt);
+      // a seat at the link's table keeps the Join's claim: the server's
+      // confirmed table for that code settles it (a handover's comes later)
+      const keep = this.invite !== null && p.seatedAt === this.invite.code ? this.invite : null;
       // a seat taken before the link's Join (the queue's table, back on a
       // fresh page) asks first, as a seat held before it would have
       if (now.from === "link" && now.step !== "joining" && p.seatedAt !== now.code) {
         this.seenSeated = true;
         this.set({ ...now, step: "ask", peek: null, full: false, seat: null });
       } else this.drop();
+      if (keep) this.invite = keep;
       return;
     }
     if (now.step === "peek" && !this.asked && p.ready) this.sendPeek(now.code);
@@ -305,15 +314,19 @@ export class CodeStore {
   private joinNow(name: string): void {
     const j = this.view;
     if (!j || j.step !== "panel" || j.full || !j.peek || (j.peek.table && j.peek.closed)) return;
+    // only the link's own Join claims the seat it leads to; any other Join
+    // supersedes an earlier one's claim
+    const claim = j.from === "link" && this.landing !== undefined ? { code: j.code, host: this.landing } : null;
     if (j.peek.table) {
+      this.invite = claim;
       queue.join(j.code, name);
     } else {
       if (j.seat === null) return;
       const token = getResumeToken();
       if (!conn.send({ type: "table_join", code: j.code, name, seat: j.seat, expect: "room",
                        ...(token ? { token } : {}) })) return;
+      this.invite = claim;
     }
-    if (j.from === "link" && this.landing !== undefined) this.invite = { code: j.code, host: this.landing };
     dropParam("code");
     this.set({ ...j, step: "joining" });
     this.timer = window.setTimeout(() => {

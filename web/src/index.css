@@ -1622,7 +1622,32 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 }
 
 .hand .card {
-  transition: transform var(--dur-fast) ease-out, box-shadow var(--dur-fast);
+  transition: transform var(--dur-fast) ease-out;
+}
+
+/* The chosen card's ring and deeper shadow are drawn once on a layer over
+   its border box; choosing fades the layer, so a tap never repaints the
+   card or its neighbours. The card's own resting shadow goes as the layer
+   comes, so a chosen card looks as it did with the shadow on the card. */
+.hand .card::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  box-shadow: 0 0 0 2px var(--gold), 0 6px 16px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-fast);
+}
+
+.hand .card.selected::before {
+  opacity: 1;
+}
+
+/* A joker clips its face (overflow: hidden), and the layer's ring with it:
+   a chosen joker draws the ring on the card itself, without the fade. */
+.hand .card.joker.selected {
+  box-shadow: 0 0 0 2px var(--gold), 0 6px 16px rgba(0, 0, 0, 0.45);
 }
 
 /* Hover-lift is a mouse nicety only — tap/click alone selects on touch. */
@@ -1639,7 +1664,7 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 
 .hand .card.selected {
   transform: translateY(-18px);
-  box-shadow: 0 0 0 2px var(--gold), 0 6px 16px rgba(0, 0, 0, 0.45);
+  box-shadow: none;
 }
 
 /* A chosen card keeps the strip its lift uncovers: without this the
@@ -1733,9 +1758,15 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   50% { opacity: 1; }
 }
 
+/* the pulse holds the layer, so a lit card that is chosen draws its ring on the card */
+.hand-line.coach.nudge ~ .hand .hand-slot.lit .card.selected {
+  box-shadow: 0 0 0 2px var(--gold), 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hand-line.coach.nudge,
-  .hand-line.coach.nudge ~ .hand .hand-slot.lit .card {
+  .hand-line.coach.nudge ~ .hand .hand-slot.lit .card,
+  .hand-line.coach.nudge ~ .hand .hand-slot.lit .card.selected {
     animation: none;
     box-shadow: 0 0 0 2px var(--gold);
   }
@@ -1776,14 +1807,66 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   line-height: 1;
 }
 
-.timer-ring::before {
-  content: "";
+/* The band: the track, masked to a ring, under two half rings in the ring
+   colour. Each half is a disc's half, clipped to its side of the ring and
+   turned back about the centre: the left half over the window's first half,
+   the right over its second, so the coloured arc runs from the top clockwise
+   to a point that moves back to the top, linearly over --ring-total, which
+   --ring-at enters part way (MoveClock.tsx). Only transforms move, drawn
+   once and turned on the compositor. */
+.timer-ring-band {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: conic-gradient(var(--ring) 0 var(--ring-deg, 360deg), var(--track) var(--ring-deg, 360deg) 360deg);
+  background: var(--track);
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--band) - 0.5px), #000 calc(100% - var(--band)));
   mask: radial-gradient(farthest-side, transparent calc(100% - var(--band) - 0.5px), #000 calc(100% - var(--band)));
+}
+
+.timer-ring-half {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  overflow: hidden;
+}
+
+.timer-ring-half.l { left: 0; }
+.timer-ring-half.r { right: 0; }
+
+.timer-ring-half > span {
+  position: absolute;
+  top: 0;
+  width: 200%;
+  height: 100%;
+  animation: var(--ring-total, 60s) linear var(--ring-at, 0s) both;
+}
+
+.timer-ring-half.l > span {
+  left: 0;
+  background: linear-gradient(to right, var(--ring) 50%, transparent 50%);
+  animation-name: ring-drain-l;
+}
+
+.timer-ring-half.r > span {
+  right: 0;
+  background: linear-gradient(to left, var(--ring) 50%, transparent 50%);
+  animation-name: ring-drain-r;
+}
+
+/* Reduce Motion: the drain steps once a second rather than gliding */
+@media (prefers-reduced-motion: reduce) {
+  .timer-ring-half > span { animation-timing-function: steps(var(--ring-steps, 30)); }
+}
+
+@keyframes ring-drain-l {
+  from { transform: rotate(0deg); }
+  50%, to { transform: rotate(-180deg); }
+}
+
+@keyframes ring-drain-r {
+  from, 50% { transform: rotate(0deg); }
+  to { transform: rotate(-180deg); }
 }
 
 .timer-ring-secs {
@@ -4168,7 +4251,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .modal, .modal-backdrop, .trick-play { animation: none; }
   .trick-play.winner .trick-cards, .trick-play.winner .win-tag, .level-chip.level-up { animation: none; }
   .opponent.on-turn::after { animation: none; }
-  .hand .card, .btn { transition: none; }
+  .hand .card, .hand .card::before, .btn { transition: none; }
   .btn:active:not(:disabled) { transform: none; }
   /* Preserve the toast's dismissal timing, without its slide-in movement. */
   .toast { animation: toast-out 0.01ms linear calc(var(--toast-ms, 4000ms) - 0.01ms) forwards; }
@@ -6708,6 +6791,8 @@ dialog.leave-sheet-backdrop {
 }
 
 .hand-slot { position: relative; }
+/* a card flying in (the deal, the kitty) passes over your row (z-index 3) */
+.hand-slot.arriving { z-index: 4; }
 
 /* the last trick: a small control in the felt's top left and its panel */
 .last-trick-btn {

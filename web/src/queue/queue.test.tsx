@@ -488,7 +488,7 @@ describe("your own table", () => {
     // the bots' countdown, never the time waited
     const ring = () => q(".table-pill .timer-ring");
     expect(ring()?.textContent).toBe("60");
-    expect(ring()?.getAttribute("style")).toContain("--ring-deg: 360deg");
+    expect(ring()?.querySelector(".timer-ring-band")?.getAttribute("style")).toContain("--ring-at: 0s");
     tick(49_000);
     expect(ring()?.textContent).toBe("11");
     expect(ring()?.className).not.toContain("low");
@@ -1474,14 +1474,14 @@ describe("open tables", () => {
     expect(p.textContent).not.toMatch(/Tap a green seat/);
     const ring = () => primary()?.querySelector(".timer-ring");
     expect(ring()?.textContent).toBe("20");
-    expect(ring()?.getAttribute("style")).toContain("--ring-deg: 360deg");
+    expect(ring()?.querySelector(".timer-ring-band")?.getAttribute("style")).toContain("--ring-at: 0s");
     tick(GUARD_MS + 10);
     expect(primary()?.textContent).toBe(`${ring()?.textContent}Join`);
     expect(ring()?.className).not.toContain("low");
     tick(9300);                          // 10 s left
     expect(ring()?.textContent).toBe("10");
     expect(ring()?.className).toContain("low");
-    expect(ring()?.getAttribute("style")).toContain("--ring-deg: 180deg");
+    expect(ring()?.querySelector(".timer-ring-band")?.getAttribute("style")).toContain("--ring-at: 0s");
     tick(3000);
     expect(ring()?.textContent).toBe("7");
     // tap a green seat on the other team: you move there

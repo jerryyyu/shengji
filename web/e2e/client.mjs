@@ -327,5 +327,41 @@ if (!only || only.test("forced-colors")) {
   await page2.context().close();
 }
 
+// ---- a chosen card's gold ring shows above it, a joker's (which clips its face) too
+if (!only || only.test("chosen-ring")) {
+  const name = "chosen-ring";
+  const page = await open(browser, "phone-land-app", { native: true, storage: { "shengji.coach": "off", "shengji.muted": "1" },
+    fakeSocket: fakeSocketScript([base({ trick: { leader: 0, plays: [] }, turn: 0 }, { banker: 1 })]) });
+  await scenario(rep, name, page, async () => {
+    await page.waitForSelector(".hand .card");
+    const joker = await page.evaluate(() => document.querySelector(".hand .card.joker")?.closest(".hand-slot")?.dataset.id);
+    const problems = [joker ? null : "no joker in the hand"];
+    for (const id of [joker, "3"].filter(Boolean)) {
+      await page.locator(`.hand .hand-slot[data-id="${id}"] .card`).click({ force: true, position: { x: 8, y: 14 } });
+    }
+    await sleep(600);
+    for (const [what, id] of [["joker", joker], ["ordinary card", "3"]]) {
+      if (!id) continue;
+      const r = await page.evaluate((i) => {
+        const c = document.querySelector(`.hand .hand-slot[data-id="${i}"] .card`);
+        const b = c.getBoundingClientRect();
+        return { x: Math.round(b.left + Math.min(15, b.width / 3)), y: Math.round(b.top) - 2, selected: c.classList.contains("selected") };
+      }, id);
+      const png = await page.screenshot({ clip: { x: r.x, y: r.y, width: 1, height: 1 }, scale: "css" });
+      const px = await page.evaluate(async (b64) => {
+        const img = new Image(); img.src = `data:image/png;base64,${b64}`; await img.decode();
+        const cv = document.createElement("canvas"); cv.width = 1; cv.height = 1;
+        const g = cv.getContext("2d"); g.drawImage(img, 0, 0); return [...g.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+      }, png.toString("base64"));
+      const gold = [242, 193, 78].every((v, k) => Math.abs(v - px[k]) <= 40);
+      problems.push(r.selected ? null : `${what} was not chosen`,
+        gold ? null : `${what}: 2px above it is rgb(${px.join(",")}), not the gold ring`);
+    }
+    await rep.check(`${name}: a chosen joker and a chosen ordinary card both show the gold ring above them`, problems, page);
+    await shot(page, name);
+  });
+  await page.context().close();
+}
+
 await browser.close();
 process.exit(rep.done());

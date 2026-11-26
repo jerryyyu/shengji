@@ -723,7 +723,17 @@ exports[`the table panel, fixture by fixture > join: Mei 1`] = `
     "</div>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="20 seconds left" style="--ring-deg: 351deg;">",
+    "<span class="timer-ring" role="timer" aria-label="20 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 20s; --ring-at: 0s; --ring-steps: 10;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">20</span>",
     "</span>Join</button>",
     "<button type="button" class="tp-secondary">Keep looking</button>",
@@ -793,7 +803,7 @@ exports[`the table panel, fixture by fixture > join: Mei 1`] = `
     {
       "change": {
         "at": 26,
-        "cut": 14,
+        "cut": 24,
         "put": [
           "<button type="button" class="tp-seat open bare team1" aria-label="Open seat, other team. Sit here" disabled="">",
           "<span class="tp-av" aria-hidden="true">+</span>",
@@ -820,7 +830,7 @@ exports[`the table panel, fixture by fixture > join: Mei 1`] = `
     {
       "change": {
         "at": 0,
-        "cut": 40,
+        "cut": 50,
         "put": [
           "<div class="sr-only" role="status" aria-live="polite">Your table. Waiting for players.</div>",
           "<div class="play-section play-table">",
@@ -926,7 +936,17 @@ exports[`the table panel, fixture by fixture > join: Mei, wide 1`] = `
     "</div>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="20 seconds left" style="--ring-deg: 351deg;">",
+    "<span class="timer-ring" role="timer" aria-label="20 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 20s; --ring-at: 0s; --ring-steps: 10;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">20</span>",
     "</span>Join</button>",
     "<button type="button" class="tp-secondary">Keep looking</button>",
@@ -996,7 +1016,7 @@ exports[`the table panel, fixture by fixture > join: Mei, wide 1`] = `
     {
       "change": {
         "at": 26,
-        "cut": 14,
+        "cut": 24,
         "put": [
           "<button type="button" class="tp-seat open bare team1" aria-label="Open seat, other team. Sit here" disabled="">",
           "<span class="tp-av" aria-hidden="true">+</span>",
@@ -1023,7 +1043,7 @@ exports[`the table panel, fixture by fixture > join: Mei, wide 1`] = `
     {
       "change": {
         "at": 0,
-        "cut": 40,
+        "cut": 50,
         "put": [
           "<div class="sr-only" role="status" aria-live="polite">Your table. Waiting for players.</div>",
           "<div class="play-section play-table">",
@@ -1135,7 +1155,17 @@ exports[`the table panel, fixture by fixture > join: a Duo's offer 1`] = `
     "</div>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring low" role="timer" aria-label="10 seconds left" style="--ring-deg: 171deg;">",
+    "<span class="timer-ring low" role="timer" aria-label="10 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 20s; --ring-at: -10s; --ring-steps: 10;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">10</span>",
     "</span>Join</button>",
     "<button type="button" class="tp-secondary">Keep looking</button>",
@@ -1148,7 +1178,7 @@ exports[`the table panel, fixture by fixture > join: a Duo's offer 1`] = `
     {
       "change": {
         "at": 41,
-        "cut": 5,
+        "cut": 15,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Joining…</button>",
           "<button type="button" class="tp-secondary" disabled="">Keep looking</button>",
@@ -1166,7 +1196,7 @@ exports[`the table panel, fixture by fixture > join: a Duo's offer 1`] = `
     {
       "change": {
         "at": 0,
-        "cut": 47,
+        "cut": 57,
         "put": [
           "<div class="sr-only" role="status" aria-live="polite">Your Duo's table. Waiting for players.</div>",
           "<div class="play-section play-table">",
@@ -1269,7 +1299,17 @@ exports[`the table panel, fixture by fixture > join: an away seat, round end 1`]
     "</div>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="20 seconds left" style="--ring-deg: 351deg;">",
+    "<span class="timer-ring" role="timer" aria-label="20 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 20s; --ring-at: 0s; --ring-steps: 10;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">20</span>",
     "</span>Join</button>",
     "<button type="button" class="tp-secondary">Keep looking</button>",
@@ -1313,7 +1353,7 @@ exports[`the table panel, fixture by fixture > join: an away seat, round end 1`]
     {
       "change": {
         "at": 12,
-        "cut": 31,
+        "cut": 41,
         "put": [
           "<button type="button" class="tp-seat open bare team0" aria-label="Open seat, your team. Sit here" disabled="">",
           "<span class="tp-av" aria-hidden="true">+</span>",
@@ -1357,7 +1397,7 @@ exports[`the table panel, fixture by fixture > join: an away seat, round end 1`]
     {
       "change": {
         "at": 0,
-        "cut": 43,
+        "cut": 53,
         "put": [
           "<div class="sr-only" role="status" aria-live="polite">Your table. Waiting for players.</div>",
           "<div class="play-section play-table">",
@@ -1471,7 +1511,17 @@ exports[`the table panel, fixture by fixture > join: guest 1`] = `
     "</div>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="20 seconds left" style="--ring-deg: 351deg;">",
+    "<span class="timer-ring" role="timer" aria-label="20 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 20s; --ring-at: 0s; --ring-steps: 10;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">20</span>",
     "</span>Join</button>",
     "<button type="button" class="tp-secondary">Keep looking</button>",
@@ -1541,7 +1591,7 @@ exports[`the table panel, fixture by fixture > join: guest 1`] = `
     {
       "change": {
         "at": 26,
-        "cut": 14,
+        "cut": 24,
         "put": [
           "<button type="button" class="tp-seat open bare team1" aria-label="Open seat, other team. Sit here" disabled="">",
           "<span class="tp-av" aria-hidden="true">+</span>",
@@ -1569,7 +1619,7 @@ exports[`the table panel, fixture by fixture > join: guest 1`] = `
     {
       "change": {
         "at": 0,
-        "cut": 40,
+        "cut": 50,
         "put": [
           "<div class="sr-only" role="status" aria-live="polite">Your table. Waiting for players.</div>",
           "<div class="play-section play-table">",
@@ -1676,7 +1726,17 @@ exports[`the table panel, fixture by fixture > join: nearly lapsed 1`] = `
     "</div>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring low" role="timer" aria-label="4 seconds left" style="--ring-deg: 63deg;">",
+    "<span class="timer-ring low" role="timer" aria-label="4 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 20s; --ring-at: -16s; --ring-steps: 10;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">4</span>",
     "</span>Join</button>",
     "<button type="button" class="tp-secondary">Keep looking</button>",
@@ -1746,7 +1806,7 @@ exports[`the table panel, fixture by fixture > join: nearly lapsed 1`] = `
     {
       "change": {
         "at": 26,
-        "cut": 14,
+        "cut": 24,
         "put": [
           "<button type="button" class="tp-seat open bare team1" aria-label="Open seat, other team. Sit here" disabled="">",
           "<span class="tp-av" aria-hidden="true">+</span>",
@@ -1773,7 +1833,7 @@ exports[`the table panel, fixture by fixture > join: nearly lapsed 1`] = `
     {
       "change": {
         "at": 0,
-        "cut": 40,
+        "cut": 50,
         "put": [
           "<div class="sr-only" role="status" aria-live="polite">Your table. Waiting for players.</div>",
           "<div class="play-section play-table">",
@@ -1834,7 +1894,17 @@ exports[`the table panel, fixture by fixture > join: nearly lapsed 1`] = `
           "</button>",
           "<div class="tp-acts">",
           "<button type="button" class="tp-primary" disabled="">",
-          "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+          "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+          "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: -0.5s; --ring-steps: 30;" aria-hidden="true">",
+          "<span class="timer-ring-half l">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "<span class="timer-ring-half r">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "</span>",
           "<span class="timer-ring-secs">60</span>",
           "</span>Start with bots</button>",
           "<button type="button" class="tp-secondary">Leave</button>",
@@ -1903,7 +1973,17 @@ exports[`the table panel, fixture by fixture > own: Duo follower 1`] = `
     "</svg>",
     "</button>",
     "<p class="tp-led">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Sam leads</p>",
     "</section>",
@@ -2076,7 +2156,17 @@ exports[`the table panel, fixture by fixture > own: Duo friend, both ready 1`] =
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary searching waiting">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Finding a table</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -2213,7 +2303,7 @@ exports[`the table panel, fixture by fixture > own: Duo friend, both ready 1`] =
     },
     {
       "change": {
-        "at": 61,
+        "at": 71,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id1»" aria-describedby="«id2»" open="">",
@@ -2294,7 +2384,17 @@ exports[`the table panel, fixture by fixture > own: Duo friend, none ready 1`] =
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Start</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -2420,7 +2520,7 @@ exports[`the table panel, fixture by fixture > own: Duo friend, none ready 1`] =
     {
       "change": {
         "at": 53,
-        "cut": 4,
+        "cut": 14,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Starting…</button>",
         ],
@@ -2434,7 +2534,7 @@ exports[`the table panel, fixture by fixture > own: Duo friend, none ready 1`] =
     },
     {
       "change": {
-        "at": 59,
+        "at": 69,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id1»" aria-describedby="«id2»" open="">",
@@ -2516,7 +2616,17 @@ exports[`the table panel, fixture by fixture > own: Duo friend, you ready 1`] = 
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary waiting">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Waiting for Jerry</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -2652,7 +2762,7 @@ exports[`the table panel, fixture by fixture > own: Duo friend, you ready 1`] = 
     },
     {
       "change": {
-        "at": 60,
+        "at": 70,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id1»" aria-describedby="«id2»" open="">",
@@ -2744,7 +2854,17 @@ exports[`the table panel, fixture by fixture > own: Duo opener, both ready 1`] =
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Start with bots</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -2912,7 +3032,7 @@ exports[`the table panel, fixture by fixture > own: Duo opener, both ready 1`] =
     {
       "change": {
         "at": 64,
-        "cut": 4,
+        "cut": 14,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Starting…</button>",
         ],
@@ -2926,7 +3046,7 @@ exports[`the table panel, fixture by fixture > own: Duo opener, both ready 1`] =
     },
     {
       "change": {
-        "at": 70,
+        "at": 80,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id1»" aria-describedby="«id2»" open="">",
@@ -3017,7 +3137,17 @@ exports[`the table panel, fixture by fixture > own: Duo opener, both ready, casu
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Start with bots</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -3209,7 +3339,7 @@ exports[`the table panel, fixture by fixture > own: Duo opener, both ready, casu
     {
       "change": {
         "at": 63,
-        "cut": 4,
+        "cut": 14,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Starting…</button>",
         ],
@@ -3223,7 +3353,7 @@ exports[`the table panel, fixture by fixture > own: Duo opener, both ready, casu
     },
     {
       "change": {
-        "at": 69,
+        "at": 79,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id1»" aria-describedby="«id2»" open="">",
@@ -3313,7 +3443,17 @@ exports[`the table panel, fixture by fixture > own: Duo opener, leave sheet 1`] 
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Start</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -3358,7 +3498,7 @@ exports[`the table panel, fixture by fixture > own: Duo opener, leave sheet 1`] 
     {
       "change": {
         "at": 43,
-        "cut": 30,
+        "cut": 40,
         "put": [
           "<button type="button" class="tp-set tp-settings" aria-expanded="true" aria-label="Table settings" aria-controls="«id1»">",
           "<span class="tp-settings-label" aria-hidden="true">Table settings</span>",
@@ -3392,7 +3532,17 @@ exports[`the table panel, fixture by fixture > own: Duo opener, leave sheet 1`] 
           "</button>",
           "<div class="tp-acts">",
           "<button type="button" class="tp-primary">",
-          "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+          "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+          "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+          "<span class="timer-ring-half l">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "<span class="timer-ring-half r">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "</span>",
           "<span class="timer-ring-secs">60</span>",
           "</span>Start</button>",
           "<button type="button" class="tp-secondary">Leave</button>",
@@ -3410,7 +3560,7 @@ exports[`the table panel, fixture by fixture > own: Duo opener, leave sheet 1`] 
     {
       "change": {
         "at": 2,
-        "cut": 71,
+        "cut": 81,
         "put": [
           "<div class="play-mode" role="group" aria-label="Mode" inert="">",
           "<button type="button" class="play-mode-opt on" aria-pressed="true" disabled="">Ranked</button>",
@@ -3505,7 +3655,17 @@ exports[`the table panel, fixture by fixture > own: Duo opener, leave sheet 1`] 
           "</div>",
           "<div class="tp-acts" inert="">",
           "<button type="button" class="tp-primary">",
-          "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+          "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+          "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+          "<span class="timer-ring-half l">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "<span class="timer-ring-half r">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "</span>",
           "<span class="timer-ring-secs">60</span>",
           "</span>Start</button>",
           "<button type="button" class="tp-secondary">Leave</button>",
@@ -3523,7 +3683,7 @@ exports[`the table panel, fixture by fixture > own: Duo opener, leave sheet 1`] 
     {
       "change": {
         "at": 62,
-        "cut": 4,
+        "cut": 14,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Starting…</button>",
         ],
@@ -3542,7 +3702,7 @@ exports[`the table panel, fixture by fixture > own: Duo opener, leave sheet 1`] 
     },
     {
       "change": {
-        "at": 68,
+        "at": 78,
         "cut": 12,
         "put": [],
       },
@@ -3552,10 +3712,20 @@ exports[`the table panel, fixture by fixture > own: Duo opener, leave sheet 1`] 
     {
       "change": {
         "at": 62,
-        "cut": 18,
+        "cut": 28,
         "put": [
           "<button type="button" class="tp-primary" disabled="">",
-          "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+          "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+          "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+          "<span class="timer-ring-half l">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "<span class="timer-ring-half r">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "</span>",
           "<span class="timer-ring-secs">60</span>",
           "</span>Start</button>",
           "<button type="button" class="tp-secondary" disabled="">Leave</button>",
@@ -3640,7 +3810,17 @@ exports[`the table panel, fixture by fixture > own: Duo opener, partner ready 1`
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Start</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -3807,7 +3987,7 @@ exports[`the table panel, fixture by fixture > own: Duo opener, partner ready 1`
     {
       "change": {
         "at": 63,
-        "cut": 4,
+        "cut": 14,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Starting…</button>",
         ],
@@ -3821,7 +4001,7 @@ exports[`the table panel, fixture by fixture > own: Duo opener, partner ready 1`
     },
     {
       "change": {
-        "at": 69,
+        "at": 79,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id1»" aria-describedby="«id2»" open="">",
@@ -3910,7 +4090,17 @@ exports[`the table panel, fixture by fixture > own: Duo, seat held 1`] = `
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Start with bots</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -4072,7 +4262,7 @@ exports[`the table panel, fixture by fixture > own: Duo, seat held 1`] = `
     {
       "change": {
         "at": 61,
-        "cut": 4,
+        "cut": 14,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Starting…</button>",
         ],
@@ -4086,7 +4276,7 @@ exports[`the table panel, fixture by fixture > own: Duo, seat held 1`] = `
     },
     {
       "change": {
-        "at": 67,
+        "at": 77,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id1»" open="">",
@@ -4174,7 +4364,17 @@ exports[`the table panel, fixture by fixture > own: Duo, seat held, leave sheet 
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Start with bots</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -4215,7 +4415,7 @@ exports[`the table panel, fixture by fixture > own: Duo, seat held, leave sheet 
     {
       "change": {
         "at": 42,
-        "cut": 29,
+        "cut": 39,
         "put": [
           "<button type="button" class="tp-set tp-settings" aria-expanded="true" aria-label="Table settings" aria-controls="«id1»">",
           "<span class="tp-settings-label" aria-hidden="true">Table settings</span>",
@@ -4249,7 +4449,17 @@ exports[`the table panel, fixture by fixture > own: Duo, seat held, leave sheet 
           "</button>",
           "<div class="tp-acts">",
           "<button type="button" class="tp-primary">",
-          "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+          "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+          "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+          "<span class="timer-ring-half l">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "<span class="timer-ring-half r">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "</span>",
           "<span class="timer-ring-secs">60</span>",
           "</span>Start with bots</button>",
           "<button type="button" class="tp-secondary">Leave</button>",
@@ -4266,7 +4476,7 @@ exports[`the table panel, fixture by fixture > own: Duo, seat held, leave sheet 
     {
       "change": {
         "at": 2,
-        "cut": 69,
+        "cut": 79,
         "put": [
           "<div class="play-mode" role="group" aria-label="Mode" inert="">",
           "<button type="button" class="play-mode-opt on" aria-pressed="true" disabled="">Ranked</button>",
@@ -4360,7 +4570,17 @@ exports[`the table panel, fixture by fixture > own: Duo, seat held, leave sheet 
           "</div>",
           "<div class="tp-acts" inert="">",
           "<button type="button" class="tp-primary">",
-          "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+          "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+          "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+          "<span class="timer-ring-half l">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "<span class="timer-ring-half r">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "</span>",
           "<span class="timer-ring-secs">60</span>",
           "</span>Start with bots</button>",
           "<button type="button" class="tp-secondary">Leave</button>",
@@ -4377,7 +4597,7 @@ exports[`the table panel, fixture by fixture > own: Duo, seat held, leave sheet 
     {
       "change": {
         "at": 61,
-        "cut": 4,
+        "cut": 14,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Starting…</button>",
         ],
@@ -4396,7 +4616,7 @@ exports[`the table panel, fixture by fixture > own: Duo, seat held, leave sheet 
     },
     {
       "change": {
-        "at": 67,
+        "at": 77,
         "cut": 11,
         "put": [],
       },
@@ -4406,10 +4626,20 @@ exports[`the table panel, fixture by fixture > own: Duo, seat held, leave sheet 
     {
       "change": {
         "at": 61,
-        "cut": 17,
+        "cut": 27,
         "put": [
           "<button type="button" class="tp-primary" disabled="">",
-          "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+          "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+          "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+          "<span class="timer-ring-half l">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "<span class="timer-ring-half r">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "</span>",
           "<span class="timer-ring-secs">60</span>",
           "</span>Start with bots</button>",
           "<button type="button" class="tp-secondary" disabled="">Leave</button>",
@@ -4489,7 +4719,17 @@ exports[`the table panel, fixture by fixture > own: bots nearly here 1`] = `
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring low" role="timer" aria-label="5 seconds left" style="--ring-deg: 27deg;">",
+    "<span class="timer-ring low" role="timer" aria-label="5 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: -55s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">5</span>",
     "</span>Start with bots</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -4648,7 +4888,7 @@ exports[`the table panel, fixture by fixture > own: bots nearly here 1`] = `
     {
       "change": {
         "at": 58,
-        "cut": 4,
+        "cut": 14,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Starting…</button>",
         ],
@@ -4662,7 +4902,7 @@ exports[`the table panel, fixture by fixture > own: bots nearly here 1`] = `
     },
     {
       "change": {
-        "at": 64,
+        "at": 74,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id1»" open="">",
@@ -5001,7 +5241,17 @@ exports[`the table panel, fixture by fixture > own: casual, level 4 1`] = `
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Start with bots</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -5184,7 +5434,7 @@ exports[`the table panel, fixture by fixture > own: casual, level 4 1`] = `
     {
       "change": {
         "at": 57,
-        "cut": 4,
+        "cut": 14,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Starting…</button>",
         ],
@@ -5198,7 +5448,7 @@ exports[`the table panel, fixture by fixture > own: casual, level 4 1`] = `
     },
     {
       "change": {
-        "at": 63,
+        "at": 73,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id1»" open="">",
@@ -5282,7 +5532,17 @@ exports[`the table panel, fixture by fixture > own: chat history 1`] = `
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Start with bots</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -5444,7 +5704,7 @@ exports[`the table panel, fixture by fixture > own: chat history 1`] = `
     {
       "change": {
         "at": 57,
-        "cut": 4,
+        "cut": 14,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Starting…</button>",
         ],
@@ -5458,7 +5718,7 @@ exports[`the table panel, fixture by fixture > own: chat history 1`] = `
     },
     {
       "change": {
-        "at": 63,
+        "at": 73,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id1»" open="">",
@@ -5575,7 +5835,17 @@ exports[`the table panel, fixture by fixture > own: chat sent 1`] = `
     "</div>",
     "<div class="tp-acts" inert="">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Start with bots</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -5776,7 +6046,7 @@ exports[`the table panel, fixture by fixture > own: chat sent 1`] = `
     {
       "change": {
         "at": 90,
-        "cut": 4,
+        "cut": 14,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Starting…</button>",
         ],
@@ -5790,7 +6060,7 @@ exports[`the table panel, fixture by fixture > own: chat sent 1`] = `
     },
     {
       "change": {
-        "at": 96,
+        "at": 106,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id2»" open="">",
@@ -5867,7 +6137,17 @@ exports[`the table panel, fixture by fixture > own: guest 1`] = `
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Start with bots</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -6001,7 +6281,7 @@ exports[`the table panel, fixture by fixture > own: guest 1`] = `
     {
       "change": {
         "at": 50,
-        "cut": 4,
+        "cut": 14,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Starting…</button>",
         ],
@@ -6016,7 +6296,7 @@ exports[`the table panel, fixture by fixture > own: guest 1`] = `
     },
     {
       "change": {
-        "at": 56,
+        "at": 66,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id1»" open="">",
@@ -6101,7 +6381,17 @@ exports[`the table panel, fixture by fixture > own: leave sheet 1`] = `
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Start with bots</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -6142,7 +6432,7 @@ exports[`the table panel, fixture by fixture > own: leave sheet 1`] = `
     {
       "change": {
         "at": 39,
-        "cut": 29,
+        "cut": 39,
         "put": [
           "<button type="button" class="tp-set tp-settings" aria-expanded="true" aria-label="Table settings" aria-controls="«id1»">",
           "<span class="tp-settings-label" aria-hidden="true">Table settings</span>",
@@ -6176,7 +6466,17 @@ exports[`the table panel, fixture by fixture > own: leave sheet 1`] = `
           "</button>",
           "<div class="tp-acts">",
           "<button type="button" class="tp-primary">",
-          "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+          "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+          "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+          "<span class="timer-ring-half l">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "<span class="timer-ring-half r">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "</span>",
           "<span class="timer-ring-secs">60</span>",
           "</span>Start with bots</button>",
           "<button type="button" class="tp-secondary">Leave</button>",
@@ -6193,7 +6493,7 @@ exports[`the table panel, fixture by fixture > own: leave sheet 1`] = `
     {
       "change": {
         "at": 2,
-        "cut": 66,
+        "cut": 76,
         "put": [
           "<div class="play-mode" role="group" aria-label="Mode" inert="">",
           "<button type="button" class="play-mode-opt on" aria-pressed="true" disabled="">Ranked</button>",
@@ -6284,7 +6584,17 @@ exports[`the table panel, fixture by fixture > own: leave sheet 1`] = `
           "</div>",
           "<div class="tp-acts" inert="">",
           "<button type="button" class="tp-primary">",
-          "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+          "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+          "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+          "<span class="timer-ring-half l">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "<span class="timer-ring-half r">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "</span>",
           "<span class="timer-ring-secs">60</span>",
           "</span>Start with bots</button>",
           "<button type="button" class="tp-secondary">Leave</button>",
@@ -6301,7 +6611,7 @@ exports[`the table panel, fixture by fixture > own: leave sheet 1`] = `
     {
       "change": {
         "at": 58,
-        "cut": 4,
+        "cut": 14,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Starting…</button>",
         ],
@@ -6320,7 +6630,7 @@ exports[`the table panel, fixture by fixture > own: leave sheet 1`] = `
     },
     {
       "change": {
-        "at": 64,
+        "at": 74,
         "cut": 11,
         "put": [],
       },
@@ -6330,10 +6640,20 @@ exports[`the table panel, fixture by fixture > own: leave sheet 1`] = `
     {
       "change": {
         "at": 58,
-        "cut": 17,
+        "cut": 27,
         "put": [
           "<button type="button" class="tp-primary" disabled="">",
-          "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+          "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+          "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+          "<span class="timer-ring-half l">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "<span class="timer-ring-half r">",
+          "<span>",
+          "</span>",
+          "</span>",
+          "</span>",
           "<span class="timer-ring-secs">60</span>",
           "</span>Start with bots</button>",
           "<button type="button" class="tp-secondary" disabled="">Leave</button>",
@@ -6405,7 +6725,17 @@ exports[`the table panel, fixture by fixture > own: no code 1`] = `
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Start with bots</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -6539,7 +6869,7 @@ exports[`the table panel, fixture by fixture > own: no code 1`] = `
     {
       "change": {
         "at": 50,
-        "cut": 4,
+        "cut": 14,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Starting…</button>",
         ],
@@ -6553,7 +6883,7 @@ exports[`the table panel, fixture by fixture > own: no code 1`] = `
     },
     {
       "change": {
-        "at": 56,
+        "at": 66,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id1»" open="">",
@@ -6638,7 +6968,17 @@ exports[`the table panel, fixture by fixture > own: ranked 1`] = `
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Start with bots</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -6797,7 +7137,7 @@ exports[`the table panel, fixture by fixture > own: ranked 1`] = `
     {
       "change": {
         "at": 58,
-        "cut": 4,
+        "cut": 14,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Starting…</button>",
         ],
@@ -6811,7 +7151,7 @@ exports[`the table panel, fixture by fixture > own: ranked 1`] = `
     },
     {
       "change": {
-        "at": 64,
+        "at": 74,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id1»" open="">",
@@ -6896,7 +7236,17 @@ exports[`the table panel, fixture by fixture > own: ranked, wide 1`] = `
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Start with bots</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -7055,7 +7405,7 @@ exports[`the table panel, fixture by fixture > own: ranked, wide 1`] = `
     {
       "change": {
         "at": 58,
-        "cut": 4,
+        "cut": 14,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Starting…</button>",
         ],
@@ -7069,7 +7419,7 @@ exports[`the table panel, fixture by fixture > own: ranked, wide 1`] = `
     },
     {
       "change": {
-        "at": 64,
+        "at": 74,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id1»" open="">",
@@ -11249,7 +11599,17 @@ exports[`the table panel, fixture by fixture > shared: just joined, timer 1`] = 
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="42 seconds left" style="--ring-deg: 249deg;">",
+    "<span class="timer-ring" role="timer" aria-label="42 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: -18s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">42</span>",
     "</span>Start</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -11437,7 +11797,7 @@ exports[`the table panel, fixture by fixture > shared: just joined, timer 1`] = 
     {
       "change": {
         "at": 13,
-        "cut": 50,
+        "cut": 60,
         "put": [
           "<button type="button" class="tp-seat open bare team0" aria-label="Open seat, your team. Move here" disabled="">",
           "<span class="tp-av" aria-hidden="true">+</span>",
@@ -11497,7 +11857,7 @@ exports[`the table panel, fixture by fixture > shared: just joined, timer 1`] = 
     },
     {
       "change": {
-        "at": 65,
+        "at": 75,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id1»" aria-describedby="«id2»" open="">",

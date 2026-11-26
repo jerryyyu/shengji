@@ -10,6 +10,9 @@ import WatchScreen from "./WatchScreen";
 import { watch } from "./store";
 import { canWatch } from "./store";
 
+// a watcher shown the Collection still sees no portraits: the feed carries no looks
+vi.mock("../companion/feature", () => ({ useCollection: () => true }));
+
 const joined: string[] = [];
 vi.mock("../audio", () => ({ prewarmAudio: () => {}, isMuted: () => true, setMuted: () => {},
   subscribeMuted: () => () => {}, play: () => {}, resetAnnouncer: () => {}, announceState: () => {} }));
@@ -115,6 +118,9 @@ describe("the watch screen", () => {
     const card = document.querySelector(".round-end")!;
     expect(card).not.toBeNull();
     expect(card.textContent).toContain("Round 4 in play");
+    // another table's round end reads nothing of the watcher's account, and draws no portrait
+    expect(urls.filter((u) => u.startsWith("/api/me"))).toEqual([]);
+    expect(document.querySelector(".portrait")).toBeNull();
     const labels = [...card.querySelectorAll(".round-end-actions button:not(.round-end-view-btn)")].map((b) => b.textContent);
     expect(labels).toEqual(["Take a seat", "Leave"]);
     await act(async () => { (card.querySelectorAll(".round-end-actions button:not(.round-end-view-btn)")[0] as HTMLButtonElement).click(); });

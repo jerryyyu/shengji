@@ -204,7 +204,8 @@ export function OpponentPanel({ player, state, readOnly = false }: { player: Sta
         {player.is_banker ? (
           <span className="banker-crown" role="img" aria-label={bankerText(player, state.you)}>👑</span>
         ) : null}
-        {!companions || player.is_bot || player.left ? null : (
+        {/* a watcher's table carries no looks, so its seats keep their names alone */}
+        {!companions || readOnly || player.is_bot || player.left ? null : (
           <span className="opp-portrait" aria-hidden="true"><Portrait look={player.look} size={20} /></span>
         )}
         {/* a seat whose owner left is the bot's now: "Bot (Alice left)" is its name */}

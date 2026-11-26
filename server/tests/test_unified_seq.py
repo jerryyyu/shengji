@@ -10,6 +10,7 @@ import copy
 import hashlib
 import json
 import random
+import threading
 from collections import Counter
 from pathlib import Path
 
@@ -27,6 +28,7 @@ from shengji.train import belief_history as bh  # noqa: E402
 from shengji.train import belief_labels as bl  # noqa: E402
 from shengji.train import belief_seq as bs  # noqa: E402
 from shengji.train import suit_perm as sp  # noqa: E402
+from shengji.train import unified_readout as ur  # noqa: E402
 from shengji.train import unified_seq as us  # noqa: E402
 
 SMALL = dict(d=32, heads=4, enc_layers=2, xattn_layers=2, x_hidden=32, card_self_attn=True)
@@ -172,6 +174,34 @@ def _loaded(world):
 def _batch_of(part, perm=None):
     rids = np.unique(part["row_round"])
     return us.make_unified_batch(part, rids, np.arange(len(part["X"])), perm=perm)
+
+
+def test_stream_prebuilds_weighted_augmented_leaves_in_the_loader(world):
+    entries = us.entries_for([str(world["data"])], "train")
+    weights = np.arange(1, len(ur.CORPUS_HEADS) + 1, dtype=np.float32)
+    for entry in entries:
+        entry["corpus_w"] = weights
+    options = dict(index=us.OutcomeIndex(), verified=bs._Verified(), suit_aug=True,
+                   threads=1, buffer_chunks=1, rounds_per_batch=2, row_frac=1.0)
+    caller = threading.get_ident()
+    producers = []
+
+    def build(part, round_ids, rows, *, perm):
+        assert perm is not None
+        producers.append(threading.get_ident())
+        return ur.make_batch(part, round_ids, rows, perm=perm)
+
+    baseline = us.Stream(entries, **options).batches(7, 1, prefetch=1)
+    prefetched = us.Stream(entries, batch_builder=build, **options).batches(7, 1, prefetch=1)
+    for (old_buffer, old), (new_buffer, new) in zip(baseline, prefetched, strict=True):
+        assert new_buffer == old_buffer
+        assert "leaf_row" not in old
+        expected = {**old, **{f"leaf_{key}": value for key, value in ur.leaf_batch(old).items()}}
+        assert new.keys() == expected.keys()
+        np.testing.assert_array_equal(new["row_w"], np.broadcast_to(weights, new["row_w"].shape))
+        for key, value in expected.items():
+            np.testing.assert_array_equal(new[key], value, err_msg=key)
+    assert producers and all(producer != caller for producer in producers)
 
 
 # ------------------------------------------------------------------ suit permutation

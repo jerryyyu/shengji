@@ -5,6 +5,7 @@ they are installed on."""
 from __future__ import annotations
 
 import copy
+import json
 
 import numpy as np
 import pytest
@@ -22,6 +23,7 @@ from shengji.train import unified_slots as us  # noqa: E402
 from shengji.train.belief_eval import known_counts  # noqa: E402
 from tests.test_pv_search_serving import SMALL as PV_SMALL  # noqa: E402
 from tests.test_pv_search_serving import _play_state, package  # noqa: E402,F401
+from tests.test_unified_seq import world  # noqa: E402,F401
 
 ARCH = dict(d=32, heads=4, enc_layers=1, xattn_layers=1, x_hidden=32, card_self_attn=True)
 READOUT = {"dp": 8, "dc": 12, "width": 24, "hidden": 40, "blocks": 2}
@@ -302,3 +304,328 @@ def test_mixture_nll_is_the_nll_of_the_mean_distribution_and_reaches_the_body(tm
     assert torch.allclose(v[2, 3], one[0], atol=1e-5)
     ur.mixture_nll(v, t).mean().backward()
     assert float(m.readout.stem.weight.grad.abs().sum()) > 0
+
+
+# ---- per-corpus loss weights
+
+def test_corpus_weights_parse_tag_every_entry_and_refuse_ambiguity():
+    spec = ur.parse_corpus_weights(["/x/utg=policy:2,reply:2", "/x/pvs/=policy:0.5,reply:0.5,value:0.5"])
+    assert spec == [("/x/utg", [1.0, 1.0, 2.0, 1.0, 2.0]), ("/x/pvs", [1.0, 1.0, 0.5, 0.5, 0.5])]
+    for bad in ("/x/utg", "/x/utg=", "=policy:2", "/x/utg=polcy:2", "/x/utg=policy", "/x/utg=policy:-1", "/x/utg=policy:nan"):
+        with pytest.raises(ur.UnifiedReadoutError):
+            ur.parse_corpus_weights([bad])
+    entries = [{"dir": d, "rows": 10} for d in ("/x/utg-L01-train", "/x/pvs1-train", "/x/y/part-00")]
+    assert ur.weight_entries([dict(e) for e in entries], []) == entries          # no spec: untouched
+    tagged = ur.weight_entries([dict(e) for e in entries], ur.parse_corpus_weights(["/x/utg=policy:2", "/x/pvs=value:0.5"]))
+    assert [e["corpus_w"] for e in tagged] == [[1, 1, 2, 1, 1], [1, 1, 1, 0.5, 1], [1, 1, 1, 1, 1]]
+    assert ur.weight_summary(tagged)["belief:1,q:1,policy:2,value:1,reply:1"] == 10
+    with pytest.raises(ur.UnifiedReadoutError, match="more than one"):
+        ur.weight_entries([dict(e) for e in entries], ur.parse_corpus_weights(["/x/utg=policy:2", "/x/u=policy:3"]))
+    with pytest.raises(ur.UnifiedReadoutError, match="match no data dir"):
+        ur.weight_entries([dict(e) for e in entries], ur.parse_corpus_weights(["/x/pvz=policy:2"]))
+
+
+def _readout_ckpt(tmp_path, seed=0):
+    torch.manual_seed(seed)
+    m = ur.build(ARCH, READOUT)
+    path = tmp_path / f"init{seed}.pt"
+    torch.save({"schema": ur.CKPT_SCHEMA, "model": m.state_dict(), "config": m.config}, path)
+    return path
+
+
+def _train_run(data, init, out, *extra):
+    args = ["train", "--data", *[str(d) for d in data], "--init-readout-ckpt", str(init), "--out", str(out), "--threads", "1",
+            "--loader-threads", "1", "--rounds-per-batch", "2", "--buffer-chunks", "1", "--calib-rows", "100000", *extra]
+    assert ur.main(args) == 0, (out / "status.log").read_text()
+    return torch.load(out / "best.pt", weights_only=False)["model"]
+
+
+def test_corpus_weights_are_per_row_loss_multipliers_and_ones_change_nothing(world, tmp_path):
+    from tests.test_unified_seq import extract_dir
+    data = extract_dir(world["store"], tmp_path / "xw", calib=0.5, task_clusters=1)
+    init = _readout_ckpt(tmp_path)
+    plain = _train_run([data], init, tmp_path / "plain")
+    assert "corpus_weight" not in json.loads((tmp_path / "plain" / "run.json").read_text())
+    ones = _train_run([data], init, tmp_path / "ones", "--corpus-weight", f"{data}=belief:1,q:1,policy:1,value:1,reply:1")
+    assert all(torch.equal(plain[k], ones[k]) for k in plain)
+    assert "corpus_weights=" in (tmp_path / "ones" / "status.log").read_text()
+    # a weight w on every row of a head is that head's loss weight times w
+    zeroed = _train_run([data], init, tmp_path / "zw", "--corpus-weight", f"{data}=policy:0,reply:0")
+    headless = _train_run([data], init, tmp_path / "zh", "--policy-weight", "0", "--reply-weight", "0")
+    assert all(torch.equal(zeroed[k], headless[k]) for k in zeroed)
+    doubled = _train_run([data], init, tmp_path / "dw", "--corpus-weight", f"{data}=value:2")
+    scaled = _train_run([data], init, tmp_path / "dh", "--value-weight", "2")
+    assert all(torch.allclose(doubled[k], scaled[k], atol=1e-6) for k in doubled)
+    assert not all(torch.equal(plain[k], doubled[k]) for k in plain)
+
+
+def test_objective_weighs_only_the_rows_of_the_weighted_corpus(world):
+    from tests.test_unified_seq import _loaded
+    part, _ = _loaded(world)
+    n = len(part["X"])
+    w = np.ones((n, 5), np.float32)
+    w[: n // 2, 2] = 3.0                              # policy x3 on the first half of the rows
+    w[: n // 2, 3] = 0.0                              # value off on their leaves
+    torch.manual_seed(0)
+    m = ur.build(ARCH, READOUT)
+    b = ur.make_batch(dict(part, row_w=w), np.unique(part["row_round"]), np.arange(n))
+    assert np.array_equal(b["row_w"], w)
+    tb = ur.us.to_device(b, "cpu")
+    L = ur.losses(m, tb)
+    out = L["out"]
+    p_ce = ur.us.policy_loss_terms(out["policy"], tb)
+    v_ce = torch.nn.functional.cross_entropy(out["leaf_value"], tb["q_target"][tb["leaf_row"]], reduction="none")
+    first = tb["leaf_row"] < n // 2
+    assert torch.allclose(L["p_sum_w"], 3 * p_ce[: n // 2].sum() + p_ce[n // 2:].sum())
+    assert torch.allclose(L["v_sum_w"], v_ce[~first].sum())
+    assert torch.equal(L["belief_sum_w"], L["belief_sum"]) and torch.equal(L["q_sum_w"], L["q_sum"])
+
+    class A:
+        belief_weight, q_weight, policy_weight, value_weight, reply_weight = 1.0, 1.0, 0.2, 1.0, 0.2
+    m_w = ur.means([L[k + "_w"] if k + "_w" in L else L[k] for k in ur.SUM_KEYS])
+    assert torch.allclose(ur.objective(L, A), m_w["belief"] + m_w["q"] + 0.2 * m_w["policy"] + m_w["leaf_value"] + 0.2 * m_w["reply"])
+    plain = {k: v for k, v in L.items() if not k.endswith("_w")}
+    m_p = ur.means([plain[k] for k in ur.SUM_KEYS])
+    assert torch.allclose(ur.objective(plain, A), m_p["belief"] + m_p["q"] + 0.2 * m_p["policy"] + m_p["leaf_value"] + 0.2 * m_p["reply"])
+
+
+def test_the_cache_carries_leaf_weights_and_the_polish_uses_them(world, tmp_path):
+    from tests.test_unified_seq import extract_dir
+    data = extract_dir(world["store"], tmp_path / "xc", calib=0.5, task_clusters=1)
+    init = _readout_ckpt(tmp_path)
+    common = ["cache", "--ckpt", str(init), "--data", str(data), "--threads", "1", "--group-chunks", "1"]
+    assert ur.main(common + ["--out", str(tmp_path / "c0")]) == 0
+    assert ur.main(common + ["--out", str(tmp_path / "c1"), "--corpus-weight", f"{data}=value:0.5,reply:2,policy:7"]) == 0
+    z0 = np.load(sorted((tmp_path / "c0").glob("train-*.npz"))[0])
+    z1 = np.load(sorted((tmp_path / "c1").glob("train-*.npz"))[0])
+    assert "leaf_w" not in z0.files and set(z1.files) - set(z0.files) == {"leaf_w"}
+    assert z1["leaf_w"].shape == (len(z1["leaf_row"]), 2) and np.all(z1["leaf_w"] == [0.5, 2.0])
+    assert all(np.array_equal(z0[k], z1[k]) for k in z0.files)
+    assert "leaf_w" not in np.load(tmp_path / "c1" / "calib-0000.npz").files       # selection stays unweighted
+    v, r, has = torch.tensor([1.0, 2.0, 3.0]), torch.tensor([0.5, 0.0, 1.5]), torch.tensor([True, False, True])
+    assert torch.isclose(ur.polish_objective(v, r, has, 0.2), torch.tensor(2.0 + 0.2 * 2.0 / 2))
+    assert torch.isclose(ur.polish_objective(v, r, has, 0.2, np.ones((3, 2))), ur.polish_objective(v, r, has, 0.2))
+    assert torch.isclose(ur.polish_objective(v, r, has, 0.2, [[0.5, 2], [0.5, 2], [0.5, 2]]), torch.tensor(1.0 + 0.2 * 4.0 / 2))
+    pol = ["polish", "--ckpt", str(init), "--epochs", "1", "--threads", "1", "--batch", "64"]
+    assert ur.main(pol + ["--cache", str(tmp_path / "c1"), "--out", str(tmp_path / "p1")]) == 0
+    assert "corpus_weighted=True" in (tmp_path / "p1" / "status.log").read_text()
+    assert ur.main(pol + ["--cache", str(tmp_path / "c0"), "--out", str(tmp_path / "p0")]) == 0
+    assert "corpus_weighted=False" in (tmp_path / "p0" / "status.log").read_text()
+    for f in (tmp_path / "c0").glob("train-*.npz"):
+        f.rename(tmp_path / "c1" / f"train-9{f.name[6:]}")     # mixed shards refuse
+    with pytest.raises(ur.UnifiedReadoutError, match="mixes"):
+        ur.main(pol + ["--cache", str(tmp_path / "c1"), "--out", str(tmp_path / "p2")])
+
+
+def test_accumulated_rounds_preserve_weighted_gradient_and_batch_totals(world):
+    from types import SimpleNamespace
+    from tests.test_unified_seq import _loaded
+
+    part, _ = _loaded(world)
+    rids = np.unique(part["row_round"])[:3]
+    rows = np.concatenate([np.flatnonzero(part["row_round"] == r)[:5 + i] for i, r in enumerate(rids)])
+    assert len(rids) == 3
+    part["row_w"] = np.ones((len(part["X"]), 5), np.float32)
+    part["row_w"][rows[::2], 3:] = 0.25
+    b = ur.make_batch(part, rids, rows)
+    args = SimpleNamespace(belief_weight=1., q_weight=1., policy_weight=.2, value_weight=1., reply_weight=.2)
+    torch.manual_seed(12)
+    whole = ur.build(ARCH, READOUT)
+    split = copy.deepcopy(whole)
+    loss = ur.losses(whole, ur.us.to_device(b, "cpu"))
+    ur.objective(loss, args).backward()
+    expected = [float(loss[k].detach()) for k in ur.SUM_KEYS]
+    args.microbatch_rounds = 2
+    actual = ur._backward_batch(split, b, "cpu", args)
+    np.testing.assert_allclose(actual, expected, rtol=2e-6, atol=2e-6)
+    for p, q in zip(whole.parameters(), split.parameters()):
+        torch.testing.assert_close(p.grad, q.grad, rtol=2e-4, atol=2e-6)
+
+
+def test_trainer_reads_loss_vectors_at_buffer_boundaries(world, tmp_path, monkeypatch):
+    from tests.test_unified_seq import extract_dir
+
+    data = extract_dir(world["store"], tmp_path / "data", calib=0.5, task_clusters=1)
+    reads = []
+    read_totals = ur._buffer_totals
+
+    def record(vectors):
+        assert all(v.shape == (len(ur.SUM_KEYS),) and not v.requires_grad for v in vectors)
+        totals = read_totals(vectors)
+        reads.append((len(vectors), totals))
+        return totals
+
+    monkeypatch.setattr(ur, "_buffer_totals", record)
+    out = tmp_path / "train"
+    _train_run([data], _readout_ckpt(tmp_path), out, "--microbatch-rounds", "1",
+               "--buffer-chunks", "1", "--report-buffer", "1")
+    report = json.loads((out / "epoch-1-buffer-1.json").read_text())
+    assert len(reads) > 1 and reads[0][0] > 1
+    assert report["rows"] == reads[0][1][ur.SUM_KEYS.index("rows")]
+    assert report["train"] == ur.means(reads[0][1])
+    state = torch.load(out / "checkpoint.pt", weights_only=False)["state"]
+    np.testing.assert_allclose(list(state["history"][0]["train"].values()),
+                               list(ur.means(np.sum([v for _, v in reads], axis=0)).values()))
+
+
+@pytest.mark.skipif(not torch.backends.mps.is_available(), reason="requires MPS")
+def test_microbatch_cli_preserves_optimizer_step_count_on_mps(world, tmp_path, monkeypatch):
+    from tests.test_unified_seq import extract_dir
+    data = extract_dir(world["store"], tmp_path / "batch-data", calib=0.5)
+    init = _readout_ckpt(tmp_path)
+    calls = []
+    evaluate = ur.evaluate
+
+    def record(*args, **kwargs):
+        calls.append(kwargs["rounds_per_batch"])
+        return evaluate(*args, **kwargs)
+
+    monkeypatch.setattr(ur, "evaluate", record)
+    for tag, extra in (("whole", []), ("micro", ["--microbatch-rounds", "1"])):
+        calls.clear()
+        _train_run([data], init, tmp_path / tag, "--device", "mps", *extra)
+        assert len(calls) >= 2 and set(calls) == ({1} if extra else {32})
+    def steps(tag):
+        saved = torch.load(tmp_path / tag / "checkpoint.pt", weights_only=False)
+        return [int(p["step"]) for p in saved["opt"]["state"].values()]
+    assert steps("micro") == steps("whole") and min(steps("whole")) > 0
+    assert json.loads((tmp_path / "micro/run.json").read_text())["microbatch_rounds"] == 1
+
+def test_four_round_calibration_matches_full_calibration(world):
+    from tests.test_unified_seq import _loaded
+    part, _ = _loaded(world)
+    assert len(np.unique(part["row_round"])) > 4
+    torch.manual_seed(12)
+    model = ur.build(ARCH, READOUT)
+    ref = ur.evaluate(model, part, rounds_per_batch=32)
+    actual = ur.evaluate(model, part, rounds_per_batch=4)
+    assert actual.keys() == ref.keys()
+    for key in ref:
+        assert actual[key] == pytest.approx(ref[key], abs=5e-6), key
+
+
+@pytest.mark.parametrize("medium", [False, True])
+def test_warm_depth_growth_preserves_all_logits_and_trains_new_blocks(world, tmp_path, medium):
+    import hashlib
+    from scripts.rt4m_deepen import deepen
+    from tests.test_unified_seq import _loaded
+
+    torch.manual_seed(41)
+    original = ur.build(dict(ARCH, d=192, heads=4, enc_layers=4, xattn_layers=4, x_hidden=256)).eval()
+    source = tmp_path / "source.pt"
+    target = tmp_path / "depth.pt"
+    torch.save(dict(schema=ur.CKPT_SCHEMA, model=original.state_dict(), config=original.config), source)
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="SHA256 mismatch"):
+        deepen(source, "0" * 64, target, seed=19, medium_keep_outcome_history=medium)
+    assert not target.exists()
+    deepen(source, digest, target, seed=19, medium_keep_outcome_history=medium)
+    with pytest.raises(FileExistsError):
+        deepen(source, digest, target, seed=19, medium_keep_outcome_history=medium)
+    deepened, saved = ur.load_checkpoint(target)
+    assert saved["initialization"] == dict(source_sha256=digest, depth_seed=19)
+    part, _ = _loaded(world)
+    rounds = np.unique(part["row_round"])[:2]
+    rows = np.concatenate([np.flatnonzero(part["row_round"] == r)[::13] for r in rounds])
+    batch = ur.us.to_device(ur.make_batch(part, rounds, rows), "cpu")
+    with torch.no_grad():
+        expected = original(batch)
+        actual = deepened(batch)
+    assert expected.keys() == actual.keys() == {"belief", "q", "policy", "leaf_value", "leaf_reply"}
+    for name in expected:
+        torch.testing.assert_close(actual[name], expected[name], atol=1e-5 if medium else 0, rtol=0)
+
+    out = tmp_path / "train"
+    assert ur.main(["train", "--init-readout-ckpt", str(target), "--data", str(world["data"]),
+                    "--out", str(out), "--threads", "1", "--loader-threads", "1",
+                    "--rounds-per-batch", "1", "--max-steps", "1", "--epochs", "1"]) == 0
+    trained, _ = ur.load_checkpoint(out / "best.pt")
+    for i in (4, 5):
+        enc = trained.trunk.encoder.layers[i]
+        for projection in (enc.self_attn.out_proj, enc.linear2, trained.trunk.xattn[i].o, trained.trunk.ff[i][-1]):
+            assert torch.count_nonzero(projection.weight) > 0
+
+    if medium:
+        from scripts.sz2_export_parity import measure_parity
+        assert trained.config["heads"]["outcome_history_width"] == 192
+        package = tmp_path / "warm.npz"
+        assert ur.main(["export", "--ckpt", str(out / "best.pt"), "--out", str(package), "--temperature", "1.0189738579997958"]) == 0
+        result = measure_parity(out / "best.pt", package, str(world["data"]), 12, root_heads=True)
+        assert result["parity"] == "OK" and result["rows"] == 12
+
+
+def _history_width_errors(original, batch):
+    from scripts.rt4m_history_width import widen_history
+
+    medium = ur.build(dict(original.config["trunk"], d=288, heads=6, enc_layers=6, xattn_layers=6)).eval()
+    widen_history(original.trunk, medium.trunk)
+
+    def history_inputs(model):
+        kv = []
+        hooks = [layer.register_forward_hook(lambda module, args, out: kv.append(out))
+                 for layer in model.trunk.kv]
+        try:
+            _, enc, _, _ = ur.us.trunk_forward(model.trunk, batch)
+            return enc, kv
+        finally:
+            for hook in hooks:
+                hook.remove()
+
+    with torch.no_grad():
+        enc, kv = history_inputs(original)
+        wide_enc, wide_kv = history_inputs(medium)
+    errors = [(wide_enc[..., :192] - enc).abs().max().item()]
+    assert len(kv) == 4 and len(wide_kv) == 6
+    for old, new in zip(kv, wide_kv):
+        for ref, actual in zip(old.chunk(2, dim=-1), new.chunk(2, dim=-1)):
+            errors.append((actual[..., :192] - ref).abs().max().item())
+    return errors
+
+
+def test_medium_history_preserves_normalized_tokens_and_attention_keys_values(world):
+    from tests.test_unified_seq import _loaded
+
+    torch.manual_seed(43)
+    model = ur.build(dict(ARCH, d=192, heads=4, enc_layers=4, xattn_layers=4, x_hidden=256)).eval()
+    with torch.no_grad():
+        for layer in model.trunk.modules():
+            if isinstance(layer, torch.nn.LayerNorm):
+                layer.weight.uniform_(0.6, 1.4)
+                layer.bias.normal_(std=0.3)
+        model.trunk.null_kv.normal_()
+    part, _ = _loaded(world)
+    rounds = np.unique(part["row_round"])[:2]
+    rows = np.concatenate([np.flatnonzero(part["row_round"] == r)[::13] for r in rounds])
+    batch = ur.us.to_device(ur.make_batch(part, rounds, rows), "cpu")
+    assert max(_history_width_errors(model, batch)) < 1e-5
+
+
+def _card_width_errors(model, batch, grouped):
+    from scripts.rt4m_history_width import widen_card_outputs
+
+    medium = ur.build(dict(model.config["trunk"], d=288, heads=6, enc_layers=6, xattn_layers=6),
+                      model.config["readout"]).eval()
+    widen_card_outputs(model, medium)
+    model.trunk.grouped_xattn = medium.trunk.grouped_xattn = grouped
+    with torch.no_grad():
+        expected, actual = model(batch), medium(batch)
+    return {head: (actual[head] - expected[head]).abs().max().item()
+            for head in ("belief", "policy", "leaf_value", "leaf_reply")}
+
+
+@pytest.mark.parametrize("grouped", [False, True])
+def test_medium_card_outputs_preserve_four_heads(world, grouped):
+    from tests.test_unified_seq import _loaded
+
+    torch.manual_seed(45)
+    model = ur.build(dict(ARCH, d=192, heads=4, enc_layers=4, xattn_layers=4, x_hidden=256)).eval()
+    with torch.no_grad():
+        for layer in model.modules():
+            if isinstance(layer, torch.nn.LayerNorm):
+                layer.weight.uniform_(0.6, 1.4)
+                layer.bias.normal_(std=0.3)
+    part, _ = _loaded(world)
+    rounds = np.unique(part["row_round"])[:2]
+    rows = np.concatenate([np.flatnonzero(part["row_round"] == r)[::13] for r in rounds])
+    batch = ur.us.to_device(ur.make_batch(part, rounds, rows), "cpu")
+    assert max(_card_width_errors(model, batch, grouped).values()) < 1e-5

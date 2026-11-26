@@ -1234,13 +1234,12 @@ cdef object _cheapest_combo_in(list cards, object comp, long min_top,
 
 
 def cheapest_winning(bot, list hand, list lead, incumbent_suit,
-                     incumbent_top, ordering):
+                     incumbent_top, ordering, opposing=True):
     """HeuristicBot._cheapest_winning drop-in.
 
     The high-frequency one-component cases stay in native arrays.  The rare
     multi-component throw retains the existing Python shape picker, then uses
-    the compiled ``beats`` kernel; this deliberately preserves its greedy
-    run/pair/single choice and ``VOID_DUMP``-dependent lowest-card tie-break.
+    the compiled ``beats`` kernel, giving both paths the same trump reply.
     """
     cdef tuple ctx = _get_ctx(ordering)
     cdef dict code2id = <dict>ctx[4]
@@ -1281,7 +1280,7 @@ def cheapest_winning(bot, list hand, list lead, incumbent_suit,
         if len(trumps) < nl:
             return None
         play = bot._trump_shape_match(trumps, lead_dec, ordering,
-                                     incumbent_top if incumbent_suit == "T" else None)
+                                     incumbent_top if opposing and incumbent_suit == "T" else None)
         if play is not None:
             won, _ = beats(play, lead, incumbent_suit, incumbent_top,
                            ordering)

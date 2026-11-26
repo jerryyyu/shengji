@@ -3,7 +3,7 @@
 // first-occurrence order, stable sorts, first-wins min/max, tuple order with
 // strings compared by code point), so it makes the same decision as Python.
 import { type Card, type EffSuit, type Ordering, TRUMP, cardRank, isJoker, points } from "../engine/cards";
-import { type Component, type Decomposition, counter, decompose, findTractorRuns, pairCount } from "../engine/combos";
+import { type Decomposition, counter, decompose, decomposeMatching, findTractorRuns, pairCount } from "../engine/combos";
 import { EngineAssertion, IllegalPlay, beats, suitCards, uniformSuit, validateFollow } from "../engine/legal";
 import { type TrickPlay, trickWinner } from "../engine/round";
 import { type BotView, viewOrdering } from "./view";
@@ -292,20 +292,66 @@ export class HeuristicBot {
     return null;
   }
 
-  /** Fill the throw shape with trumps, clearing the incumbent when possible. */
-  protected trumpShapeMatch(trumps: readonly Card[], leadDec: Decomposition, o: Ordering, incumbentTop: number | null): Card[] | null {
-    const runs = leadDec.components
-      .filter((c: Component) => c.pairLen)
-      .map((c) => c.pairLen)
-      .sort((a, b) => b - a);
-    const nSingles = leadDec.components.filter((c) => !c.pairLen).length;
-    if (incumbentTop !== null && runs.length === 1 && nSingles === 1) {
-      const run = findTractorRuns(trumps, o, runs[0]).find((cards) => o.level(cards[cards.length - 1]) > incumbentTop);
-      if (!run) return null;
-      const remaining = [...trumps];
-      take(remaining, run);
-      return [...run, this.lowest(remaining, o, { avoidPoints: true })];
+  /** Choose the cheapest trump multiset whose matching decomposition wins. */
+  private overruff(trumps: readonly Card[], leadDec: Decomposition, o: Ordering, incumbentTop: number): Card[] | null {
+    const shape = leadDec.shape();
+    const [runs, singles] = shape;
+    const counts = counter(trumps);
+    const levelKey = (card: Card): Key => [o.level(card), card];
+    const fillerKey = (card: Card): Key => [points(card), ...levelKey(card)];
+    let best: Card[] | null = null;
+    let bestKey: Key | null = null;
+
+    const consider = (pairs: Card[], fillers: Card[], top: number) => {
+      if (top <= incumbentTop) return;
+      const cards = [...sortedBy(pairs, levelKey), ...sortedBy(fillers, levelKey)];
+      const key = [top, cards.reduce((sum, card) => sum + points(card), 0),
+        ...cards.map((card) => o.level(card)).sort((a, b) => b - a), ...[...cards].sort()];
+      if (bestKey === null || cmpKey(key, bestKey) < 0) {
+        best = cards;
+        bestKey = key;
+      }
+    };
+
+    if (runs.length === 0) {
+      // Matching an all-single throw allows both copies of the same card.
+      const sorted = sortedBy(trumps, fillerKey);
+      for (const peak of counts.keys()) {
+        const top = o.level(peak);
+        if (top <= incumbentTop || (bestKey && top > Number(bestKey[0]))) continue;
+        const eligible = sorted.filter((card) => o.level(card) <= top);
+        take(eligible, [peak]);
+        if (eligible.length >= singles - 1) consider([], [peak, ...eligible.slice(0, singles - 1)], top);
+      }
+      return best;
     }
+
+    const pairCodes = [...counts].filter(([, n]) => n >= 2).map(([card]) => card);
+    const pairCardsNeeded = 2 * runs.reduce((sum, length) => sum + length, 0);
+    if (pairCodes.length * 2 < pairCardsNeeded) return null;
+    const fillerCodes = sortedBy([...counts.keys()], fillerKey);
+    const winningBits = pairCodes.reduce((mask, card, index) => o.level(card) > incumbentTop ? mask | (1 << index) : mask, 0);
+    if (winningBits === 0) return null;
+    // A two-deck 25-card hand has at most 12 pair codes. Enumerating which
+    // codes use both copies also covers any pairs the matcher splits into singles.
+    for (let mask = 1; mask < 2 ** pairCodes.length; mask++) {
+      if ((mask & winningBits) === 0) continue;
+      const used = pairCodes.filter((_, index) => (mask & (1 << index)) !== 0);
+      const nFillers = leadDec.size - used.length * 2;
+      if (used.length * 2 < pairCardsNeeded || nFillers < 0 || nFillers > fillerCodes.length - used.length) continue;
+      const pairs = used.flatMap((card) => [card, card]);
+      const fillers = fillerCodes.filter((card) => !used.includes(card)).slice(0, nFillers);
+      const match = decomposeMatching([...pairs, ...fillers], o, shape);
+      // A spare duplicate can change the engine's first matching decomposition.
+      if (match !== null) consider(pairs, fillers, match.topLevel());
+    }
+    return best;
+  }
+
+  /** Fill the throw shape with trumps. */
+  protected trumpShapeMatch(trumps: readonly Card[], leadDec: Decomposition, o: Ordering, incumbentTop: number | null): Card[] | null {
+    if (incumbentTop !== null) return this.overruff(trumps, leadDec, o, incumbentTop);
+    const [runs, nSingles] = leadDec.shape();
     const pool = [...trumps];
     const picked: Card[] = [];
     for (const k of runs) {
@@ -329,11 +375,6 @@ export class HeuristicBot {
       const c = this.lowest(pool, o, { avoidPoints: true });
       picked.push(c);
       take(pool, [c]);
-    }
-    if (!runs.length && incumbentTop !== null && picked.every((card) => o.level(card) <= incumbentTop)) {
-      const winning = sortedBy(pool.filter((card) => o.level(card) > incumbentTop), (card) => [o.level(card)]);
-      if (!winning.length) return null;
-      picked[picked.length - 1] = winning[0];
     }
     return picked;
   }

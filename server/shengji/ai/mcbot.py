@@ -1495,7 +1495,7 @@ class MCBot(SmartBot):
             add(self._forced_follow(hand, lead, o, prefer_points=False))
             add(self._forced_follow(hand, lead, o, prefer_points=True))
             win_seat, inc_suit, inc_top = self._current_winner(rnd)
-            add(self._cheapest_winning(hand, lead, inc_suit, inc_top, o))
+            add(self._cheapest_winning(hand, lead, inc_suit, inc_top, o, opposing=win_seat % 2 != seat % 2))
             if self.WIDE_FOLLOW_BALLOT:
                 # Every distinct-code follow (in-suit part maximal, as the
                 # rules force), validated by add(); constructed seeds above

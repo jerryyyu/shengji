@@ -25,6 +25,8 @@ export interface BotRoundRecord {
   trump: [string | null, number];
   bury: Card[];
   plays: Card[][];
+  /** Current expected choices on recorded positions whose policy has changed. */
+  expectedPlayChoices?: [index: number, cards: Card[]][];
   attackerPoints: number;
 }
 
@@ -118,12 +120,13 @@ export class BotReplayer {
     const gotBury = this.ask("bury", () => this.bots[banker].bury(viewFor(rnd, banker)));
     this.check(rec, banker, "bury", gotBury, rec.bury, "bury");
     bury(rnd, banker, rec.bury);
-    rec.plays.forEach((want, idx) => {
+    const expectedChoices = new Map(rec.expectedPlayChoices);
+    rec.plays.forEach((recorded, idx) => {
       const seat = rnd.turn!;
       const type: DecisionType = rnd.trick!.plays.length ? "follow" : "lead";
       const got = this.ask(type, () => this.bots[seat].play(viewFor(rnd, seat)));
-      this.check(rec, seat, type, got, want, `play ${idx}`);
-      applyPlay(rnd, seat, want);
+      this.check(rec, seat, type, got, expectedChoices.get(idx) ?? recorded, `play ${idx}`);
+      applyPlay(rnd, seat, recorded);
     });
     if (rnd.phase !== "round_end" || rnd.attackerPoints !== rec.attackerPoints) {
       throw new Error(`game ${rec.game} round ${rec.round}: round end differs`);

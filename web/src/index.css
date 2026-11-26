@@ -2429,12 +2429,13 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   min-width: 0;
 }
 
-/* the lanes and the Details content both sit centred in the cell, which
-   is as tall as the taller of them: the gap above matches the gap below */
+/* the lanes and the Details content both sit at the foot of the cell,
+   which is as tall as the taller of them: the points bar follows each at
+   the card's own gap, and any spare height falls under the title */
 .round-end-lanes {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 4px;
 }
 
@@ -2450,7 +2451,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   position: relative;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 4px;
   text-align: left;
 }

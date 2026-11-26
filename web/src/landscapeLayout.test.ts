@@ -921,9 +921,9 @@ describe("the round-end card on a phone", () => {
     expect(css).not.toContain(".details-open");
   });
 
-  it("centres the lanes and the Details content in one cell, on the card's own gap, and keeps the bar's 14px rhythm above the buttons", () => {
-    expect(rule(css, ".round-end-lanes")["justify-content"]).toBe("center");
-    expect(rule(css, ".round-end-details")["justify-content"]).toBe("center");
+  it("sets the lanes and the Details content at the foot of one cell, the bar after them at the card's own gap, and keeps the bar's 14px rhythm above the buttons", () => {
+    expect(rule(css, ".round-end-lanes")["justify-content"]).toBe("flex-end");
+    expect(rule(css, ".round-end-details")["justify-content"]).toBe("flex-end");
     // Details sits straight on the card, like the lanes: no box of its own
     expect(rule(css, ".round-end-details").background).toBeUndefined();
     expect(rule(css, ".round-end-details").padding).toBeUndefined();

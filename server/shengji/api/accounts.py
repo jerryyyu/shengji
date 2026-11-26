@@ -158,13 +158,15 @@ DEFAULT_COMPANION = "tractor"
 DEFAULT_COLOUR = "red"
 DEFAULT_LOOK = f"{DEFAULT_COMPANION}/{DEFAULT_COLOUR}"
 # What unlocks a look: (count, at least) over ``look_progress``'s counts.
-# A look not listed is free from the start.
+# A look not listed is free from the start. The Tractor's colours past the
+# three free ones are won by ranked games (Jerry 2026-11-26: "win
+# 10/25/50/100", and Ink black at 1,000, the top), in Collection order.
 LOOK_UNLOCKS: dict[str, tuple[str, int]] = {
-    "tractor/yellow": ("rounds", 10),
-    "tractor/orange": ("rounds", 25),
-    "tractor/jade": ("rounds", 50),
-    "tractor/porcelain": ("rounds", 100),
-    "tractor/ink": ("ranked_wins", 1),
+    "tractor/yellow": ("ranked_games", 10),
+    "tractor/orange": ("ranked_games", 25),
+    "tractor/jade": ("ranked_games", 50),
+    "tractor/porcelain": ("ranked_games", 100),
+    "tractor/ink": ("ranked_games", 1000),
 }
 # The Collection and companion portraits are shown to nobody unless
 # ``COLLECTION_ENABLED=1`` (everyone) or the signed-in account's id is in
@@ -1873,9 +1875,19 @@ class Store:
                                (user_id,)).fetchone()
         return int(row["n"])
 
+    def ranked_games(self, user_id: int) -> int:
+        """Ranked games the account's team won: its rated rounds that took the
+        team past A (``rating_events.game_won``), a left game excluded."""
+        with closing(self._open()) as conn:
+            row = conn.execute("SELECT COUNT(*) AS n FROM rating_events WHERE user_id = ? AND game_won = 1",
+                               (user_id,)).fetchone()
+        return int(row["n"])
+
     def look_progress(self, user_id: int) -> dict[str, int]:
-        """The counts ``LOOK_UNLOCKS`` reads: rounds played and ranked wins."""
-        return {"rounds": self.rounds_played(user_id), "ranked_wins": self.ranked_wins(user_id)}
+        """The counts ``LOOK_UNLOCKS`` reads: rounds played, ranked rounds won
+        and ranked games won."""
+        return {"rounds": self.rounds_played(user_id), "ranked_wins": self.ranked_wins(user_id),
+                "ranked_games": self.ranked_games(user_id)}
 
     def rounds_played(self, user_id: int) -> int:
         """Rounds the account has sat in: its saved-game rounds (each link's
@@ -2473,15 +2485,17 @@ def account_look(user_id: int | None) -> str:
 
 
 def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int = 0,
-                owned: Collection[str] = frozenset(), store_token: str | None = None) -> dict:
+                owned: Collection[str] = frozenset(), store_token: str | None = None,
+                ranked_games: int = 0) -> dict:
     """The ``/api/me`` payload: the Google profile, the chosen display name
     (null when none), ``name_shown``, the effective name, and
     ``rounds_played`` (``Store.rounds_played``), which tells the client
     whether the account is still new, ``linked``: whether it has a
     Google or Apple identity (a device account has neither until it links),
     ``look``, the equipped companion (``look_id``, held to ``owned`` by
-    ``owned_look``), ``ranked_wins`` and ``looks``, every look with whether
-    those counts or ``owned`` unlocked it (``look_catalogue``),
+    ``owned_look``), ``ranked_wins`` (rated rounds won), ``ranked_games``
+    (ranked games won) and ``looks``, every look with whether those counts
+    or ``owned`` unlocked it (``look_catalogue``),
     ``companions`` (``companions_mode``), ``products``, the App Store
     products the account owns (``Store.owned_products``), and
     ``features.collection`` (``collection_for``) and ``features.store``
@@ -2493,12 +2507,12 @@ def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int
     look = shown_look(row, owned)
     if user_id is not None:
         STORE.seen_looks[user_id] = look
-    progress = {"rounds": int(rounds_played), "ranked_wins": int(ranked_wins)}
+    progress = {"rounds": int(rounds_played), "ranked_wins": int(ranked_wins), "ranked_games": int(ranked_games)}
     return {"name": row.get("name") or "", "email": row.get("email") or "",
             "picture": row.get("picture"), "display_name": row.get("display_name"),
             "name_shown": effective_name(row), "rounds_played": int(rounds_played),
             "linked": not is_device_account(row), "look": look,
-            "ranked_wins": int(ranked_wins),
+            "ranked_wins": int(ranked_wins), "ranked_games": int(ranked_games),
             "looks": look_catalogue(progress, look, owned, shop),
             "companions": companions_mode(row),
             "products": sorted(owned),
@@ -2514,7 +2528,8 @@ async def account_payload(store: "Store", row: Mapping[str, Any]) -> dict:
     # a purchase needs an Apple or Google sign-in: a device account gets no token
     token = (await store.run(store.store_token, int(row["id"]))
              if store_for(int(row["id"])) and not is_device_account(row) else None)
-    return public_user(row, progress["rounds"], progress["ranked_wins"], owned, token)
+    return public_user(row, progress["rounds"], progress["ranked_wins"], owned, token,
+                       ranked_games=progress["ranked_games"])
 
 
 def _cookie_secure(request: Request) -> bool:

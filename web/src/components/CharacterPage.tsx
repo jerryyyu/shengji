@@ -5,7 +5,7 @@ import { Companion, Portrait } from "../companion/Companion";
 import type { Pose } from "../companion/Companion";
 import { DRAWINGS } from "../companion/kinds";
 import { parseLook } from "../companion/look";
-import type { Colour, CompanionKind, LookEntry } from "../companion/look";
+import type { Colour, CompanionKind, LookEntry, UnlockCount } from "../companion/look";
 import { guestName } from "../guestName";
 import { locale, useT } from "../i18n";
 import type { MessageKey } from "../i18n";
@@ -34,12 +34,28 @@ export const lookName = (t: ReturnType<typeof useT>, id: string): string => {
   return t("home.lookShown", { kind: kindName(t, kind), colour: colourName(kind, colour) });
 };
 
+/** A count's value for `user`. */
+const countOf = (user: AuthUser | null, count: UnlockCount): number =>
+  count === "rounds" ? user?.rounds_played ?? 0 : count === "ranked_wins" ? user?.ranked_wins ?? 0 : user?.ranked_games ?? 0;
+
+/** A count as the page writes it: 1,000, not 1000. */
+const num = (n: number): string => n.toLocaleString("en-US");
+
 /** How far a locked look's count has come, for a signed-in player only. */
 export function progressText(t: ReturnType<typeof useT>, entry: LookEntry, user: AuthUser | null): string {
   if (!entry.needs || !user) return "";
-  if (entry.needs.count === "ranked_wins") return t("home.lookRankedWin");
-  const n = Math.min(user.rounds_played ?? 0, entry.needs.of);
-  return t("home.lookRounds", { n, of: entry.needs.of });
+  const { count, of } = entry.needs;
+  const n = Math.min(countOf(user, count), of);
+  if (count === "rounds") return t("home.lookRounds", { n, of });
+  return of === 1 ? t("home.lookRankedWin") : t("home.lookRankedGames", { n: num(n), of: num(of) });
+}
+
+/** What unlocks a locked look, as the button says it. */
+function unlockLine(t: ReturnType<typeof useT>, entry: LookEntry, user: AuthUser | null): string {
+  const { count, of } = entry.needs ?? { count: "ranked_games" as const, of: 1 };
+  const n = Math.min(countOf(user, count), of);
+  if (count === "rounds") return t("home.unlockRounds", { of, n });
+  return of === 1 ? t("home.unlockRankedWin") : t("home.unlockRankedGames", { of: num(of), n: num(n) });
 }
 
 /** What the one button may do for `entry` when `inUse` is worn. */
@@ -110,8 +126,7 @@ export function UseButton({ entry, ownership, user, onUse, price }: {
     label = t("home.signInToUse");
     act = () => guestName.open("collection");
   } else if (ownership === "locked") {
-    label = entry.needs?.count === "ranked_wins" ? t("home.unlockRankedWin")
-      : t("home.unlockRounds", { of: entry.needs?.of ?? 0, n: Math.min(user?.rounds_played ?? 0, entry.needs?.of ?? 0) });
+    label = unlockLine(t, entry, user);
   } else if (ownership === "equipped") {
     label = t("home.inUse");
   } else {

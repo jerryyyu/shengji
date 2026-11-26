@@ -33,6 +33,8 @@ export interface AuthUser {
   look?: string;
   /** Rated rounds the account's team won, which unlock a colour. */
   ranked_wins?: number;
+  /** Ranked games won, the count that unlocks the Tractor's colours. */
+  ranked_games?: number;
   /** Every look and whether this account has unlocked it. */
   looks?: LookEntry[];
   /** Where this account's own screen draws companions. */
@@ -54,6 +56,7 @@ function toUser(body: Partial<AuthUser> & { name: string; email: string }): Auth
     ...(typeof body.linked === "boolean" ? { linked: body.linked } : {}),
     ...(typeof body.look === "string" ? { look: body.look } : {}),
     ...(typeof body.ranked_wins === "number" ? { ranked_wins: body.ranked_wins } : {}),
+    ...(typeof body.ranked_games === "number" ? { ranked_games: body.ranked_games } : {}),
     ...(Array.isArray(body.looks) ? { looks: body.looks } : {}),
     ...(COMPANION_MODES.includes(body.companions as CompanionMode) ? { companions: body.companions } : {}),
     ...(body.features?.collection === true ? { features: { collection: true } } : {}),

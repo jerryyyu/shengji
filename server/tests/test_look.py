@@ -148,21 +148,54 @@ def test_the_web_client_draws_the_same_default(accounts_on):
 
 def test_the_catalogue_lists_free_and_earned_colours(accounts_on):
     a = accounts_on
-    fresh = {e["id"]: e for e in a.look_catalogue({"rounds": 0, "ranked_wins": 0})}
+    fresh = {e["id"]: e for e in a.look_catalogue({"rounds": 0, "ranked_wins": 0, "ranked_games": 0})}
     assert list(fresh)[0] == a.DEFAULT_LOOK and len(fresh) >= 6
     assert [k for k, e in fresh.items() if e["unlocked"] and k.startswith("tractor/")] == [
         "tractor/red", "tractor/green", "tractor/blue"]
-    assert fresh["tractor/yellow"]["needs"] == {"count": "rounds", "of": 10}
-    assert fresh["tractor/ink"]["needs"] == {"count": "ranked_wins", "of": 1}
-    played = {e["id"]: e["unlocked"] for e in a.look_catalogue({"rounds": 25, "ranked_wins": 1})}
-    assert played["tractor/yellow"] and played["tractor/orange"] and played["tractor/ink"]
-    assert not played["tractor/jade"] and not played["tractor/porcelain"]
-    # an equipped look stays unlocked when its count falls
-    kept = {e["id"]: e["unlocked"] for e in a.look_catalogue({"rounds": 3}, "tractor/yellow")}
-    assert kept["tractor/yellow"]
+    assert {k: e["needs"] for k, e in fresh.items() if e["needs"]} == {
+        "tractor/yellow": {"count": "ranked_games", "of": 10}, "tractor/orange": {"count": "ranked_games", "of": 25},
+        "tractor/jade": {"count": "ranked_games", "of": 50}, "tractor/porcelain": {"count": "ranked_games", "of": 100},
+        "tractor/ink": {"count": "ranked_games", "of": 1000}}
+    # rounds played and rounds won unlock nothing now: only ranked games won do
+    many = {e["id"]: e["unlocked"] for e in a.look_catalogue({"rounds": 500, "ranked_wins": 300, "ranked_games": 0})}
+    assert not any(many[k] for k in ("tractor/yellow", "tractor/ink"))
+    played = {e["id"]: e["unlocked"] for e in a.look_catalogue({"ranked_games": 25})}
+    assert played["tractor/yellow"] and played["tractor/orange"]
+    assert not played["tractor/jade"] and not played["tractor/porcelain"] and not played["tractor/ink"]
+    # in Collection order, each colour asks for more than the one before
+    needs = [e["needs"]["of"] for e in a.look_catalogue({}) if e["needs"]]
+    assert needs == sorted(needs) == [10, 25, 50, 100, 1000]
+    # an equipped look stays unlocked when its count falls short
+    kept = {e["id"]: e["unlocked"] for e in a.look_catalogue({"ranked_games": 0}, "tractor/porcelain")}
+    assert kept["tractor/porcelain"]
 
 
-def test_a_locked_colour_is_refused_and_unlocks_with_play(accounts_on, keypair, client, monkeypatch):
+def _games_won(store, uid, n, rounds=3):
+    """`n` ranked games won, each its last of `rounds` won rated rounds, plus a won round of a game lost."""
+    with store._open() as conn:
+        for g in range(n):
+            for r in range(rounds):
+                conn.execute(
+                    """INSERT INTO rating_events(game_id, round_no, user_id, created_at, team, banker_team, won,
+                           levels, game_won, expected, actual, k, rating_before, rating_after, delta)
+                       VALUES (?, ?, ?, ?, 0, 1, 1, 1, ?, 0.5, 1, 20, 1000, 1003, 3)""",
+                    (f"g{g}", r + 1, uid, time.time() - 600, 1 if r == rounds - 1 else 0))
+        conn.execute(
+            """INSERT INTO rating_events(game_id, round_no, user_id, created_at, team, banker_team, won,
+                   levels, game_won, expected, actual, k, rating_before, rating_after, delta)
+               VALUES ('lost', 1, ?, ?, 0, 1, 1, 1, 0, 0.5, 1, 20, 1000, 1003, 3)""", (uid, time.time() - 600))
+
+
+def test_ranked_games_counts_games_won_not_rounds(accounts_on):
+    store = accounts_on.STORE
+    uid = store.upsert_user(_claims(sub="sub-games", email="games@example.com"))["id"]
+    _games_won(store, uid, 3)
+    assert store.ranked_wins(uid) == 10            # every won round
+    assert store.ranked_games(uid) == 3            # only the rounds that won a game
+    assert accounts_on.Store(store.path).look_progress(uid)["ranked_games"] == 3
+
+
+def test_a_locked_colour_is_refused_and_unlocks_with_ranked_games(accounts_on, keypair, client, monkeypatch):
     monkeypatch.setenv("COLLECTION_ENABLED", "1")
     private_pem, _ = keypair
     session = {"cookie": _session_cookie(accounts_on, client, private_pem)}
@@ -171,18 +204,31 @@ def test_a_locked_colour_is_refused_and_unlocks_with_play(accounts_on, keypair, 
     resp = client.put("/api/me/look", json={"look": "tractor/blue"}, headers=session)
     assert resp.status_code == 200 and resp.json()["look"] == "tractor/blue"
     assert accounts_on.account_look(1) == "tractor/blue"
-    store = accounts_on.STORE
-    _rounds_at(store, 1, [time.time() - 60 * i for i in range(10)])
-    with store._open() as conn:
-        conn.execute("UPDATE users SET rated_rounds = 10 WHERE id = 1")
-        conn.execute("UPDATE rating_events SET won = 0 WHERE user_id = 1")
+    _games_won(accounts_on.STORE, 1, 10, rounds=1)
     me = client.get("/api/me", headers=session).json()
-    assert me["rounds_played"] == 10 and me["ranked_wins"] == 0
+    # ten ranked rounds won, each the one that won its game, and one more won round of a game lost
+    assert me["ranked_games"] == 10 and me["ranked_wins"] == 11
     unlocked = {e["id"] for e in me["looks"] if e["unlocked"]}
-    assert "tractor/yellow" in unlocked and "tractor/ink" not in unlocked
+    assert "tractor/yellow" in unlocked and not {"tractor/orange", "tractor/ink"} & unlocked
     resp = client.put("/api/me/look", json={"look": "tractor/yellow"}, headers=session)
     assert resp.status_code == 200 and resp.json()["look"] == "tractor/yellow"
-    assert client.put("/api/me/look", json={"look": "tractor/ink"}, headers=session).status_code == 403
+    assert client.put("/api/me/look", json={"look": "tractor/orange"}, headers=session).status_code == 403
+
+
+def test_an_equipped_colour_no_longer_earned_stays_but_cannot_be_picked_again(accounts_on, keypair, client, monkeypatch):
+    monkeypatch.setenv("COLLECTION_ENABLED", "1")
+    private_pem, _ = keypair
+    session = {"cookie": _session_cookie(accounts_on, client, private_pem)}
+    client.get("/api/me", headers=session)
+    # chosen under the old rules: jade, with no ranked game won
+    accounts_on.STORE.set_look(1, "tractor", "jade")
+    me = client.get("/api/me", headers=session).json()
+    assert me["look"] == "tractor/jade"
+    assert next(e for e in me["looks"] if e["id"] == "tractor/jade")["unlocked"]
+    assert client.put("/api/me/look", json={"look": "tractor/jade"}, headers=session).status_code == 200
+    assert client.put("/api/me/look", json={"look": "tractor/green"}, headers=session).status_code == 200
+    assert client.put("/api/me/look", json={"look": "tractor/jade"}, headers=session).status_code == 403
+    assert client.get("/api/me", headers=session).json()["look"] == "tractor/green"
 
 
 def test_where_companions_show_is_stored_on_the_account(accounts_on, keypair, client, monkeypatch):
@@ -328,7 +374,7 @@ def test_the_free_companions_parse_and_are_unlocked_from_the_start(accounts_on):
     for look in FREE_LOOKS:
         assert a.parse_look(look) == tuple(look.split("/"))
         assert look not in a.LOOK_UNLOCKS
-    fresh = {e["id"]: e for e in a.look_catalogue({"rounds": 0, "ranked_wins": 0})}
+    fresh = {e["id"]: e for e in a.look_catalogue({"rounds": 0, "ranked_wins": 0, "ranked_games": 0})}
     assert all(fresh[look]["unlocked"] and fresh[look]["needs"] is None for look in FREE_LOOKS)
     for bad in ("bun/red", "chick/jade", "sparrow/plain", "bun/", "sparrow", "chick/yellow/x", "lamb/jade"):
         assert a.parse_look(bad) is None

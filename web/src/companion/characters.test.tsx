@@ -223,11 +223,16 @@ describe("the Collection, one page", () => {
     signedIn();
     await draw(<CollectionPage />);
     await act(async () => { tile("Tractor").click(); });
-    await act(async () => { swatch("Imperial yellow").click(); });
-    expect(use()?.textContent).toBe("Play 10 rounds to unlock · 3 of 10");
-    expect(use()?.disabled).toBe(true);
     await act(async () => { swatch("Ink black").click(); });
-    expect(use()?.textContent).toBe("Win a ranked game to unlock");
+    expect(use()?.textContent).toBe("Win 1,000 ranked games to unlock · 0 of 1,000");
+    expect(use()?.disabled).toBe(true);
+    await act(async () => { swatch("Imperial yellow").click(); });
+    expect(use()?.textContent).toBe("Win 10 ranked games to unlock · 0 of 10");
+    authState.current = { status: "in", clientId: "cid", user: { ...user, ranked_games: 3 } };
+    await draw(<CollectionPage />);
+    await act(async () => { tile("Tractor").click(); });
+    await act(async () => { swatch("Lantern orange").click(); });
+    expect(use()?.textContent).toBe("Win 25 ranked games to unlock · 3 of 25");
     await settle();
     expect(puts).toEqual([]);
   });
@@ -244,7 +249,7 @@ describe("the Collection, one page", () => {
     await act(async () => { tile("Tractor").click(); });
     await act(async () => { swatch("Lantern orange").click(); });
     expect(use()?.textContent).toBe("Sign in to use");
-    expect(host.textContent).not.toMatch(/of 25|rounds/);
+    expect(host.textContent).not.toMatch(/ of \d|ranked games/);
     expect(swatch("Lantern orange").getAttribute("aria-label")).toBe("Lantern orange");
   });
 

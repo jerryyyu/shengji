@@ -191,7 +191,7 @@ export async function equip(look: string, unlockedHere: boolean): Promise<boolea
     const fresh = await refreshAccount();
     // a later tap (or another session) overtook this one while it read
     if (!fresh || scopeNow() !== scope || fields().look.intent !== token) return false;
-    const entry = lookCatalogue({ rounds: fresh.rounds_played ?? 0, ranked_wins: fresh.ranked_wins ?? 0 },
+    const entry = lookCatalogue({ rounds: fresh.rounds_played ?? 0, ranked_wins: fresh.ranked_wins ?? 0, ranked_games: fresh.ranked_games ?? 0 },
                                 fresh.look ?? "", fresh.looks).find((e) => e.id === look);
     if (!entry?.unlocked) return false;
   }

@@ -8,6 +8,7 @@ export const home = defineMessages({
   // the Collection tab: the one status line under a locked colour previewed,
   // and the swatches' spoken labels
   "home.lookRounds": { en: (p) => `${p.n} of ${p.of} round${Number(p.of) === 1 ? "" : "s"}`, zh: "{n}/{of} 局", hant: "{n}/{of} 局" },
+  "home.lookRankedGames": { en: "{n} of {of} ranked games", zh: "{n}/{of} 局排位", hant: "{n}/{of} 局排位" },
   "home.lookRankedWin": { en: "A ranked win", zh: "赢一局排位", hant: "贏一局排位" },
   "home.companions": { en: "Companions", zh: "伙伴", hant: "夥伴" },
   "home.lookColours": { en: "Colours", zh: "配色", hant: "配色" },
@@ -25,6 +26,7 @@ export const home = defineMessages({
   "home.inUse": { en: "In use", zh: "使用中", hant: "使用中" },
   "home.signInToUse": { en: "Sign in to use", zh: "登录后使用", hant: "登入後使用" },
   "home.unlockRounds": { en: "Play {of} rounds to unlock · {n} of {of}", zh: "打满 {of} 局解锁 · {n}/{of}", hant: "打滿 {of} 局解鎖 · {n}/{of}" },
+  "home.unlockRankedGames": { en: "Win {of} ranked games to unlock · {n} of {of}", zh: "赢 {of} 局排位解锁 · {n}/{of}", hant: "贏 {of} 局排位解鎖 · {n}/{of}" },
   "home.unlockRankedWin": { en: "Win a ranked game to unlock", zh: "赢一局排位解锁", hant: "贏一局排位解鎖" },
   "home.tabMe": { en: "Me", zh: "我", hant: "我" },
   "home.navMain": { en: "Main", zh: "主导航", hant: "主導覽" },

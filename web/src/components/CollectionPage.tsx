@@ -28,7 +28,7 @@ export default function CollectionPage() {
   const phone = !useMediaQuery(WIDE);
   const scroller = useTabScroll("collection", true);
   const inUse = lookId(parseLook(user?.look));
-  const looks = lookCatalogue({ rounds: user?.rounds_played ?? 0, ranked_wins: user?.ranked_wins ?? 0 },
+  const looks = lookCatalogue({ rounds: user?.rounds_played ?? 0, ranked_wins: user?.ranked_wins ?? 0, ranked_games: user?.ranked_games ?? 0 },
                               inUse, user?.looks);
   const [shown, setShown] = useState<string>(inUse);
   useEffect(() => setShown(inUse), [inUse]);

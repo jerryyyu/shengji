@@ -546,8 +546,8 @@ then its replay plays.
   a row on a phone); one status line naming what is shown ("Bun · Taro"); one button; and one switch. No
   leaderboard row, no state chips, no Shop, no prices, no silhouettes or empty slots for what is coming.
 - **One rule for taps:** a tap on a companion or a colour only shows it (the gold ring is "looking at"); the one
-  button puts it in use: Use, In use (inert), for a locked Tractor colour what unlocks it ("Play 10 rounds to
-  unlock · 3 of 10", "Win a ranked game to unlock", inert), and for a guest Sign in to use, which opens the
+  button puts it in use: Use, In use (inert), for a locked Tractor colour what unlocks it ("Win 25 ranked games
+  to unlock · 3 of 25", "Win a ranked game to unlock", inert), and for a guest Sign in to use, which opens the
   identity sheet. A tick marks the companion and the colour in use. A guest sees no counts.
 - **Show at the table** (Jerry 2026-11-26, finding 2: one labelled switch, on by default) replaces Team ·
   Individual · Off. It is stored where the mode was (the account's `companions`, a guest's device), so an older
@@ -570,8 +570,11 @@ then its replay plays.
   while the page is hidden or under Reduce Motion (each stands on its home). A bot, and a seat its owner left, has
   none. They sit under the cards and controls and take no taps.
 - **Colours** are a palette swap of the one Tractor: Icon red (the default), Paddy green and Enamel blue from the
-  start; Imperial yellow at 10 rounds, Lantern orange at 25, Jade at 50, Blue and white at 100, Ink black for a
-  ranked win. The server refuses a locked colour. A gold dot on the tab marks a colour unlocked since the
+  start; the rest are won by ranked games (Jerry 2026-11-26: "win 10/25/50/100", and Ink black the top): Imperial
+  yellow at 10, Lantern orange at 25, Jade at 50, Blue and white at 100, Ink black at 1,000, the swatches in that
+  order (a game won is a ranked round that took your team past A). The server
+  refuses a locked colour; a colour already in use stays in use though its count falls short, but once changed
+  it is locked again until earned. A gold dot on the tab marks a colour unlocked since the
   Collection was last opened on this device.
 - Offline and Nearby tables know no account, so they show the initials until the Collection is on for
   everyone; then every person there has the default portrait.

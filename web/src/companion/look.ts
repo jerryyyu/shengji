@@ -30,15 +30,15 @@ export const COMPANION_KINDS = Object.keys(COMPANIONS) as CompanionKind[];
 export const isKind = (raw: unknown): raw is CompanionKind =>
   typeof raw === "string" && Object.prototype.hasOwnProperty.call(COMPANIONS, raw);
 
-export type UnlockCount = "rounds" | "ranked_wins";
+export type UnlockCount = "rounds" | "ranked_wins" | "ranked_games";
 
 /** What unlocks a look; a look not listed is free from the start. */
 export const LOOK_UNLOCKS: Record<string, { count: UnlockCount; of: number }> = {
-  "tractor/yellow": { count: "rounds", of: 10 },
-  "tractor/orange": { count: "rounds", of: 25 },
-  "tractor/jade": { count: "rounds", of: 50 },
-  "tractor/porcelain": { count: "rounds", of: 100 },
-  "tractor/ink": { count: "ranked_wins", of: 1 },
+  "tractor/yellow": { count: "ranked_games", of: 10 },
+  "tractor/orange": { count: "ranked_games", of: 25 },
+  "tractor/jade": { count: "ranked_games", of: 50 },
+  "tractor/porcelain": { count: "ranked_games", of: 100 },
+  "tractor/ink": { count: "ranked_games", of: 1000 },
 };
 
 /** Where your own screen draws companions at the table (the server's

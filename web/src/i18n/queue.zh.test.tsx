@@ -1,4 +1,4 @@
-// The table panel in Simplified Chinese: your own table, a shared table, a
+// The table panel in Simplified Chinese (and its Traditional mirror): your own table, a shared table, a
 // code's Join panel and the offline table draw their words from the zh table,
 // and the queue's notices are said in zh.
 import { act } from "react";
@@ -143,5 +143,34 @@ describe("the table panel in zh-Hans", () => {
     expect(firstJoinerText({ name: "Li", move_secs: 30, round_end: false }))
       .toBe("Li 加入了牌桌。现在出牌限时，每步 30 秒。");
     expect(presenceParts(null).map((p) => p.text).join("")).toBe("现在没人在玩");
+  });
+});
+
+describe("the table panel in zh-Hant", () => {
+  beforeEach(() => setLanguageChoice("zh-Hant"));
+
+  it("draws your own table in Traditional characters", () => {
+    draw(<TablePanel q={view(own())} guarded={false} />);
+    expect(host.querySelector(".tp-title")?.textContent).toBe("我的牌桌");
+    expect(text()).toContain("對方");
+    expect(text()).toContain("牌桌設定");
+    expect(text()).toContain("打 5 · 高級");
+    expect(text()).toContain("聊天");
+    expect(text()).toContain("邀請");
+    expect(buttons()).toEqual(expect.arrayContaining(["機器人補位開始", "離開"]));
+    expect(labels()).toEqual(expect.arrayContaining([
+      "我，我方", "空位，我方", "空位，對方", "邀請，房間碼 4 N 5 Z", "牌桌設定，打 5，高級", "聊天",
+    ]));
+    expect(text()).not.toMatch(/[A-Za-z]{3,}/);
+  });
+
+  it("opens the table settings with zh-Hant rows", () => {
+    draw(<TablePanel q={view(own())} guarded={false} />);
+    act(() => (host.querySelector(".tp-settings") as HTMLButtonElement).click());
+    expect(text()).toContain("從幾打起");
+    expect(text()).toContain("機器人");
+    expect(text()).toContain("允許中途加入");
+    const options = [...host.querySelectorAll("option")].map((o) => o.textContent);
+    expect(options).toEqual(expect.arrayContaining(["入門", "標準", "高級"]));
   });
 });

@@ -107,7 +107,7 @@ function GoalPicture({ f }: { f: GoalFrame }) {
             <span className="replay-seat-name">{s.name}</span>
           </span>
         ))}
-        <span className="howto-seats-mark" aria-hidden="true">升级</span>
+        <span className="howto-seats-mark" aria-hidden="true">{t("common.mark")}</span>
       </div>
       <div className="howto-ladder" aria-label={t("howto.goal.ladder")}>
         {RANK_LADDER.map((r) => (

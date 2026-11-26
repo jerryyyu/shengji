@@ -23,17 +23,19 @@ export function t(key: MessageKey, params: Params = {}): string {
   return tIn(locale(), key, params);
 }
 
-export function tIn(loc: Locale, key: MessageKey, params: Params = {}): string {
+function pick(loc: Locale, key: MessageKey): Message {
   const entry = MESSAGES[key];
-  return render(loc === "zh-Hans" ? entry.zh : entry.en, params);
+  return loc === "zh-Hans" ? entry.zh : loc === "zh-Hant" ? entry.hant : entry.en;
+}
+
+export function tIn(loc: Locale, key: MessageKey, params: Params = {}): string {
+  return render(pick(loc, key), params);
 }
 
 /** A sentence whose placeholders are elements (a bold delta, a link): the
  *  text around them comes from the table, the pieces from the caller. */
 export function tx(key: MessageKey, parts: Record<string, ReactNode>, params: Params = {}): ReactNode {
-  const entry = MESSAGES[key];
-  const msg = locale() === "zh-Hans" ? entry.zh : entry.en;
-  const text = render(msg, params);
+  const text = render(pick(locale(), key), params);
   const out: ReactNode[] = [];
   let last = 0;
   for (const m of text.matchAll(/\{(\w+)\}/g)) {
@@ -63,6 +65,9 @@ export function displayName(name: string, isBot?: boolean): string {
   return bot ? t("common.botN", { n: bot[1] }) : name;
 }
 
+/** Either Chinese: the punctuation, joins and spacing are the same in both
+ *  scripts. */
 export function isZh(): boolean {
-  return locale() === "zh-Hans";
+  const loc = locale();
+  return loc === "zh-Hans" || loc === "zh-Hant";
 }

@@ -1,5 +1,5 @@
 // The round end, the leave sheet and the connection pill in Simplified
-// Chinese, and the round end's lanes, points bar and status line in both
+// Chinese (the round end in Traditional too), and the round end's lanes, points bar and status line in both
 // languages on both sides of 80.
 import { act } from "react";
 import type { ReactNode } from "react";
@@ -232,5 +232,39 @@ describe("the connection pill in Chinese", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("the round end in Traditional Chinese", () => {
+  beforeEach(() => setLanguageChoice("zh-Hant"));
+
+  it("titles the round, bots as 機器人, and offers Next round and Leave", () => {
+    render(<RoundEndModal state={table(0)} result={result({ winner_team: 0 })} />);
+    expect(title()).toBe("我和 Sam 贏了這一局");
+    render(<RoundEndModal state={table(0, { you: 9 })} result={result({ winner_team: 1 })} />);
+    expect(title()).toBe("Robin 和 機器人 3 贏了這一局");
+    render(<RoundEndModal state={table(0)} result={result({})} />);
+    const buttons = [...host.querySelectorAll<HTMLButtonElement>(".round-end-actions button")];
+    expect(buttons.map((b) => b.textContent)).toEqual(["下一局", "離開牌桌"]);
+    act(() => buttons[1].click());
+    const sheet = [...document.querySelectorAll("dialog")].find((d) => d.querySelector("h2")?.textContent === "離開這盤？")!;
+    expect(sheet.querySelector("p")!.textContent).toBe("這一局的結果會保留。");
+    expect([...sheet.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["留下", "離開"]);
+  });
+
+  it("Details: the kitty, the attackers' 摳底 and the last trick", () => {
+    const kitty = ["S5", "C3", "D10", "C4", "C6", "C7", "C8", "D9"];
+    const last = { leader: 1, winner: 3, points: 10, plays: [
+      { seat: 1, cards: ["H9"] }, { seat: 2, cards: ["H3"] }, { seat: 3, cards: ["HA"] }, { seat: 0, cards: ["HK"] },
+    ] };
+    render(<RoundEndModal state={table(0, { last_trick: last })}
+                          result={result({ attacker_points: 115, kitty_points: 30, kitty_cards: kitty, winner_team: 1 })} />);
+    expect(host.querySelector(".round-end-view-btn .on")!.textContent).toBe("詳情");
+    act(() => host.querySelector<HTMLButtonElement>(".round-end-view-btn")!.click());
+    expect(host.querySelector(".round-end-view-btn .on")!.textContent).toBe("級數");
+    expect(host.querySelector(".round-end-kitty-label")!.textContent).toBe("底牌 · 15 分");
+    expect(host.querySelector(".kitty-bonus")!.textContent).toBe("閒家摳底：15 × 2 × 1 張 = +30");
+    expect(host.querySelector(".round-end-trick-label")!.textContent).toBe("最後一輪 · 機器人 3，10 分");
+    expect([...host.querySelectorAll(".round-end-play-who")].map((e) => e.textContent)).toEqual(["Robin", "Sam", "機器人 3", "我"]);
   });
 });

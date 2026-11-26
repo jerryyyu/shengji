@@ -1,4 +1,5 @@
-// The Play tab and the home shell in Simplified Chinese: the tab bar, the top
+// The Play tab and the home shell in Simplified Chinese (the Play tab in
+// Traditional too): the tab bar, the top
 // bar, the Play block, the code box, the guest chip and its name sheet, the
 // account form and the day labels all read from the home table, and the
 // brand drops its English subtitle.
@@ -172,5 +173,34 @@ describe("the home shell in Chinese", () => {
     expect(dayLabel(new Date(2026, 10, 11, 1).getTime() / 1000, now)).toBe("今天");
     expect(dayLabel(new Date(2026, 10, 10, 23).getTime() / 1000, now)).toBe("昨天");
     expect(dayLabel(new Date(2026, 10, 8, 12).getTime() / 1000, now)).toMatch(/11月8日/);
+  });
+});
+
+describe("the Play tab in Traditional Chinese", () => {
+  beforeEach(() => setLanguageChoice("zh-Hant"));
+
+  it("reads the title, the mode switch, Play, Duo, the code box and the links in zh-Hant", async () => {
+    await render(<><Lobby status="open" /><IdentitySheet /></>);
+    expect(document.documentElement.lang).toBe("zh-Hant");
+    const title = host.querySelector(".game-title")!;
+    expect(title.textContent).toBe("升級");
+    expect(title.querySelector(".game-title-en")).toBeNull();
+    expect(texts(".play-mode button")).toEqual(["排位", "休閒"]);
+    expect(texts(".play-ranked-row button")).toEqual(["開始", "組隊"]);
+    const code = host.querySelector<HTMLInputElement>(".room-input")!;
+    expect(code.placeholder).toBe("房間碼");
+    expect(host.querySelector(".join-row .btn")?.textContent).toBe("加入");
+    expect(host.querySelector(".play-guest-line")?.textContent).toBe("訪客身分 · 登入後計入排位");
+    expect(texts(".howto-link")[0]).toBe("怎麼玩");
+    expect(host.querySelector(".app-store-badge img")?.getAttribute("alt")).toBe("在 App Store 下載");
+    // Apple's zh-cn artwork is Simplified; Traditional keeps the English badge
+    expect(host.querySelector(".app-store-badge img")?.getAttribute("src")).toBe("/badges/app-store-en.svg");
+    expect(host.textContent).not.toMatch(/Sheng Ji|Ranked|Casual|Duo|Join|How to play|Playing as a guest/);
+  });
+
+  it("dates a day in Traditional Chinese", () => {
+    const now = new Date(2026, 10, 20, 12);
+    expect(dayLabel(now.getTime() / 1000, now)).toBe("今天");
+    expect(dayLabel(new Date(2026, 10, 3, 12).getTime() / 1000, now)).toBe("11月3日");
   });
 });

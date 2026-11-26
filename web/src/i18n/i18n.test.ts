@@ -1,5 +1,6 @@
-// The message table: every key has both languages, no key is defined in two
-// areas, and a zh sentence uses exactly the placeholders its English does.
+// The message table: every key has all three languages, no key is defined in
+// two areas, and a Chinese sentence uses exactly the placeholders its English
+// does.
 import { afterEach, describe, expect, it } from "vitest";
 import { AREAS, MESSAGES } from "./messages";
 import { localeFor, reloadLanguage, setLanguageChoice, t, tIn, locale } from ".";
@@ -24,12 +25,25 @@ describe("the message table", () => {
     expect(keys.length).toBeGreaterThan(10);
   });
 
-  it("gives every key a non-empty English and Simplified Chinese message", () => {
+  it("gives every key a non-empty English, Simplified and Traditional Chinese message", () => {
     for (const key of keys) {
       const en = tIn("en", key, SAMPLE);
       const zh = tIn("zh-Hans", key, SAMPLE);
+      const hant = tIn("zh-Hant", key, SAMPLE);
       expect(en.trim(), `${key} en`).not.toBe("");
       expect(zh.trim(), `${key} zh`).not.toBe("");
+      expect(hant.trim(), `${key} hant`).not.toBe("");
+    }
+  });
+
+  it("writes the Traditional table in Traditional characters", () => {
+    // Simplified forms that have a distinct Traditional one; any of them in
+    // the hant table is a missed conversion (简体中文 names its language)
+    const simplified = /[这个们说话时间请设网络级机开关门对号钮点击计积赢输张际听让认识过还没从发层图]/;
+    for (const key of keys) {
+      if (key === "language.zh") continue;
+      const hant = tIn("zh-Hant", key, SAMPLE);
+      expect(hant, key).not.toMatch(simplified);
     }
   });
 
@@ -46,8 +60,9 @@ describe("the message table", () => {
   it("uses the same placeholders in both languages", () => {
     for (const key of keys) {
       const entry = MESSAGES[key];
-      if (typeof entry.en !== "string" || typeof entry.zh !== "string") continue;
-      expect(placeholders(entry.zh), key).toEqual(placeholders(entry.en));
+      if (typeof entry.en !== "string") continue;
+      if (typeof entry.zh === "string") expect(placeholders(entry.zh), key).toEqual(placeholders(entry.en));
+      if (typeof entry.hant === "string") expect(placeholders(entry.hant), `${key} hant`).toEqual(placeholders(entry.en));
     }
   });
 
@@ -55,6 +70,7 @@ describe("the message table", () => {
     for (const key of keys) {
       expect(tIn("en", key, SAMPLE), key).not.toMatch(/\{\w+\}/);
       expect(tIn("zh-Hans", key, SAMPLE), key).not.toMatch(/\{\w+\}/);
+      expect(tIn("zh-Hant", key, SAMPLE), key).not.toMatch(/\{\w+\}/);
     }
   });
 
@@ -65,20 +81,40 @@ describe("the message table", () => {
       expect(zh, key).not.toMatch(/电脑|房间号|扣底|守方|攻方/);
     }
   });
+
+  it("keeps the decided Traditional terms: Taiwan usage, not a bare character conversion", () => {
+    // 機器人, 房間碼, 埋底 as in zh; 帳號 (not 賬號), 登出 and 刪除帳號 (not 退出登入 or
+    // 登出帳號), 斷線, 封鎖, 紅心, 高級, 「」 quotes
+    for (const key of keys) {
+      const hant = tIn("zh-Hant", key, SAMPLE);
+      expect(hant, key).not.toMatch(/電腦|房間號|扣底|守方|攻方|賬號|退出登入|登出帳號|掉線|遮蔽|紅桃|高階|許可權|通過 Apple|[“”]/);
+    }
+    expect(tIn("zh-Hant", "common.botN", { n: 2 })).toBe("機器人 2");
+    expect(tIn("zh-Hant", "home.ranked")).toBe("排位");
+    expect(tIn("zh-Hant", "home.casual")).toBe("休閒");
+    expect(tIn("zh-Hant", "home.codeAria")).toBe("房間碼");
+    expect(tIn("zh-Hant", "queue.invite")).toBe("邀請");
+    expect(tIn("zh-Hant", "me.delete.row")).toBe("刪除帳號");
+    expect(tIn("zh-Hant", "me.signOut")).toBe("登出");
+  });
 });
 
 describe("locale selection", () => {
   afterEach(() => { localStorage.clear(); reloadLanguage(); });
 
-  it("reads Simplified Chinese for any zh tag, Traditional included", () => {
+  it("reads Chinese in the tag's script: Traditional for Hant, TW, HK and MO", () => {
     expect(localeFor(["zh-CN"])).toBe("zh-Hans");
     expect(localeFor(["zh-Hans-CN"])).toBe("zh-Hans");
     expect(localeFor(["zh"])).toBe("zh-Hans");
     expect(localeFor(["zh-SG"])).toBe("zh-Hans");
-    expect(localeFor(["zh-Hant"])).toBe("zh-Hans");
-    expect(localeFor(["zh-TW"])).toBe("zh-Hans");
-    expect(localeFor(["zh-HK"])).toBe("zh-Hans");
-    expect(localeFor(["zh-Hant-TW"])).toBe("zh-Hans");
+    expect(localeFor(["zh-Hans-HK"])).toBe("zh-Hans");
+    expect(localeFor(["zh-Hant"])).toBe("zh-Hant");
+    expect(localeFor(["zh-TW"])).toBe("zh-Hant");
+    expect(localeFor(["zh-HK"])).toBe("zh-Hant");
+    expect(localeFor(["zh-MO"])).toBe("zh-Hant");
+    expect(localeFor(["zh_TW"])).toBe("zh-Hant");
+    expect(localeFor(["zh-Hant-TW"])).toBe("zh-Hant");
+    expect(localeFor(["zh-Hant-CN"])).toBe("zh-Hant");
     expect(localeFor(["en-US", "zh-CN"])).toBe("en");
     expect(localeFor(["fr"])).toBe("en");
     expect(localeFor([])).toBe("en");
@@ -111,7 +147,8 @@ describe("locale selection", () => {
 
     it.each([
       [["zh-CN", "en"], "zh-Hans"],
-      [["zh-TW"], "zh-Hans"],
+      [["zh-TW"], "zh-Hant"],
+      [["zh-HK", "en"], "zh-Hant"],
       [["en-US"], "en"],
       [["fr"], "en"],
     ] as const)("%j gets %s", (tags, want) => {
@@ -135,7 +172,7 @@ describe("locale selection", () => {
       browser(["en-US"]);
       Object.defineProperty(navigator, "languages", { configurable: true, get: () => ["zh-HK"] });
       window.dispatchEvent(new Event("languagechange"));
-      expect(locale()).toBe("zh-Hans");
+      expect(locale()).toBe("zh-Hant");
     });
   });
 

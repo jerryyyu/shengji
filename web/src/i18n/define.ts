@@ -6,12 +6,15 @@ export type Message = string | ((p: Params) => string);
 
 export interface Entry {
   en: Message;
+  /** Simplified Chinese (zh-Hans). */
   zh: Message;
+  /** Traditional Chinese (zh-Hant), in Taiwan usage (帳號, 網路, 登入). */
+  hant: Message;
 }
 
 /** Declares one area's messages. Keys are per use ("home.play",
  *  "table.play"), never per English string: one English word can be three
- *  Chinese ones. Both languages are required by the type. */
+ *  Chinese ones. All three languages are required by the type. */
 export function defineMessages<K extends string>(table: Record<K, Entry>): Record<K, Entry> {
   return table;
 }

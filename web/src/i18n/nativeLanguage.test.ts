@@ -101,6 +101,29 @@ describe("the app's language choice across its two origins", () => {
     expect(localStorage.getItem(KEY)).toBe("zh-Hans");
   });
 
+  it("hosted → offline: 繁體中文 chosen on the hosted page draws the offline page in Traditional", async () => {
+    const hosted = await open("https://playshengji.com");
+    await hosted.loadLanguage();
+    hosted.setLanguageChoice("zh-Hant");
+    await hosted.languageSaved();
+    expect(native.get(KEY)).toBe("zh-Hant");
+
+    const offline = await open("capacitor://localhost");
+    await offline.loadLanguage();
+    expect(offline.locale()).toBe("zh-Hant");
+    expect(document.documentElement.lang).toBe("zh-Hant");
+  });
+
+  it("a Taiwan device that follows the system reads Traditional on both origins", async () => {
+    deviceLanguages(["zh-Hant-TW"]);
+    const hosted = await open("https://playshengji.com");
+    await hosted.loadLanguage();
+    expect(hosted.locale()).toBe("zh-Hant");
+    const offline = await open("capacitor://localhost");
+    await offline.loadLanguage();
+    expect(offline.locale()).toBe("zh-Hant");
+  });
+
   it("offline → hosted: English chosen offline on a Chinese device wins over the hosted page's older 中文", async () => {
     deviceLanguages(["zh-Hans-CN"]);
     const hosted = await open("https://shengji.fly.dev");

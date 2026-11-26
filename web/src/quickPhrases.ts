@@ -21,19 +21,6 @@ export const QUICK_PHRASE_KEY: Record<QuickPhraseId, MessageKey> = {
   luck: "table.quickLuck",
 };
 
-/** Each phrase in Traditional Chinese, for the zh-Hant column of its
- *  message once that locale exists. */
-export const QUICK_PHRASE_HANT: Record<QuickPhraseId, string> = {
-  hi: "大家好！",
-  gg: "GG",
-  nice: "好牌！",
-  more: "再來一局？",
-  brb: "馬上回來",
-  thanks: "謝謝！",
-  sorry: "抱歉！",
-  luck: "加油！",
-};
-
 const KNOWN: ReadonlySet<string> = new Set(QUICK_PHRASE_IDS);
 
 export function isQuickPhrase(value: unknown): value is QuickPhraseId {

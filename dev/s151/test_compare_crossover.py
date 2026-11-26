@@ -80,7 +80,16 @@ class CrossoverTest(unittest.TestCase):
     def test_elapsed_only_crossing_refuses_faster_candidate(self):
         self.check_deadline_drift(greedy_drift=False)
 
-    def check_deadline_drift(self, greedy_drift):
+    def test_fallback_elapsed_jitter_with_matching_work_and_budget(self):
+        self.check_deadline_drift(False, fallback=True)
+
+    def test_fallback_clock_crossing_disqualifies_a_faster_candidate(self):
+        self.check_deadline_drift(False, fallback=True, crosses=True)
+
+    def test_fallback_reason_change_disqualifies_identical_moves(self):
+        self.check_deadline_drift(False, fallback=True, reason_changed=True)
+
+    def check_deadline_drift(self, greedy_drift, *, fallback=False, crosses=False, reason_changed=False):
         with TemporaryDirectory() as temp:
             root = Path(temp)
             order = crossover.block_order(0)
@@ -89,14 +98,17 @@ class CrossoverTest(unittest.TestCase):
                 run_id = f"{pair}-{arm}"
                 store = root / run_id / "store"
                 drift = i == 1
+                decision = {"leaf_greedy_deadline_fired": drift and greedy_drift, "seconds": 3.0 if drift else 2.999}
+                if fallback:
+                    decision = dict(schema="pv-search-fallback-v1", reason="budget" if drift and reason_changed else "search-error", played=["SA"],
+                                    work_complete=False, elapsed_seconds=3.01 if crosses and drift else 0.2 + i / 100)
                 record = schema.finalize_record(dict(
                     source="room-log", source_ref=run_id + ":decision", policy="human:abc",
                     round_seed=7, deck=None, setup=dict(trump_rank="2", banker=0,
                     declarations=[], declaration=None, trump_suit="S", trump_is_nt=False,
                     buried=None), plays_prefix=[], seat=0, ply=0, trick=0, role="banker-team",
                     legal_actions=[["SA"]], legal_actions_complete=True, legal_actions_count=1,
-                    ballot=[["SA"]], action=["SA"], allocation={"serving_decision":
-                    {"leaf_greedy_deadline_fired": drift and greedy_drift, "seconds": 3.0 if drift else 2.999}}, outcome=None))
+                    ballot=[["SA"]], action=["SA"], allocation={"serving_decision": decision}, outcome=None))
                 config = dict(run_id=run_id, seed0=7, round_mix="first", capture_served_budget=True,
                               served_runtime={"SHENGJI_PV_SERVING_BUDGET_SECONDS": "3"})
                 for key in ("PV", "PV_PRIOR", "PV_UNIFIED", "PV_BELIEF"):
@@ -122,19 +134,22 @@ class CrossoverTest(unittest.TestCase):
                 return crossover.read_block(root, 7, order, times, args, 0, None)[0]
             result = read_block()
             self.assertTrue(result["work_matches"])
-            if greedy_drift:
+            if greedy_drift or reason_changed:
                 self.assertEqual(result["first_record_difference"]["compared"], "0-c")
             else:
                 self.assertIsNone(result["first_record_difference"])
-            self.assertEqual(result["first_budget_difference"]["0-c"]["state"], "at_or_over_budget")
+            if not fallback or crosses:
+                self.assertEqual(result["first_budget_difference"]["0-c"]["state"], "at_or_over_budget")
+            else:
+                self.assertIsNone(result["first_budget_difference"])
             self.assertEqual(result["events_by_invocation"]["0-c"]["greedy_deadline_fired"], int(greedy_drift))
             self.assertEqual(result["play_compute_by_invocation"]["0-c"],
-                             dict(timed=1, at_or_over_budget=1, missing=0))
+                             dict(timed=1, at_or_over_budget=int(not fallback or crosses), missing=0))
             self.assertEqual(result["play_compute_by_invocation"]["0-b"]["at_or_over_budget"], 0)
             self.assertEqual(len(result["pairs"]), 2)
             report = crossover.verdict([result])
             self.assertEqual(report["pooled_seconds"], {"base": 20, "candidate": 16})
-            self.assertEqual(report["observed_noise_gate"], "INCONCLUSIVE")
+            self.assertEqual(report["observed_noise_gate"], "PASS" if fallback and not (crosses or reason_changed) else "INCONCLUSIVE")
             last = root / "1-b/store" / side["path"]
             last.chmod(0o600)
             with last.open("a") as out:

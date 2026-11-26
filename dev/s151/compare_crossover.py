@@ -127,6 +127,10 @@ def read_block(root, seed, order, times, args, previous_end, configuration):
                     budget_states.append(state)
                     if row is not None:
                         row = normalize_row(row, manifests[j]["run_id"])
+                        rec = row["allocation"].get("serving_decision") or {}
+                        if row["decision_kind"] == "play" and rec.get("schema") == "pv-search-fallback-v1":
+                            # The budget classification above retains a clock crossing even when the move agrees.
+                            rec.pop("elapsed_seconds", None)
                     rows.append(row)
                     if row is None:
                         continue

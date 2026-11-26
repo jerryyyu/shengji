@@ -24,6 +24,7 @@ export const home = defineMessages({
   "home.tryOnTable": { en: "Try on your table", zh: "在牌桌上试试", hant: "在牌桌上試試" },
   "home.use": { en: "Use", zh: "使用", hant: "使用" },
   "home.inUse": { en: "In use", zh: "使用中", hant: "使用中" },
+  "home.new": { en: "New", zh: "新", hant: "新" },
   "home.signInToUse": { en: "Sign in to use", zh: "登录后使用", hant: "登入後使用" },
   "home.unlockRounds": { en: "Play {of} rounds to unlock · {n} of {of}", zh: "打满 {of} 局解锁 · {n}/{of}", hant: "打滿 {of} 局解鎖 · {n}/{of}" },
   "home.unlockRankedGames": { en: "Win {of} ranked games to unlock · {n} of {of}", zh: "赢 {of} 局排位解锁 · {n}/{of}", hant: "贏 {of} 局排位解鎖 · {n}/{of}" },

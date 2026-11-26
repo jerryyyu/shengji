@@ -97,10 +97,11 @@ export function Tick() {
 }
 
 /** A companion's colours. A tap only shows one (the gold ring); the tick
- *  marks the one in use. A guest hears each colour's name alone. */
-export function Swatches({ entries, shown, inUse, user, size, className = "", onPick }: {
+ *  marks the one in use, and "New" one newly unlocked (`fresh`). A guest
+ *  hears each colour's name alone. */
+export function Swatches({ entries, shown, inUse, user, size, className = "", fresh = [], onPick }: {
   entries: readonly LookEntry[]; shown: string; inUse: string; user: AuthUser | null; size: number; className?: string;
-  onPick: (entry: LookEntry) => void;
+  fresh?: readonly string[]; onPick: (entry: LookEntry) => void;
 }) {
   const t = useT();
   return (
@@ -109,14 +110,16 @@ export function Swatches({ entries, shown, inUse, user, size, className = "", on
         const { kind, colour } = parseLook(entry.id);
         const name = colourName(kind, colour);
         const progress = entry.unlocked ? "" : progressText(t, entry, user);
+        const isNew = entry.unlocked && fresh.includes(entry.id);
         return (
           <button key={entry.id} type="button" role="radio" aria-checked={entry.id === shown}
-                  aria-label={progress ? t("home.lookLocked", { name, progress }) : name}
+                  aria-label={progress ? t("home.lookLocked", { name, progress }) : isNew ? `${name} ${t("home.new")}` : name}
                   className={`coll-swatch${entry.id === shown ? " on" : ""}${entry.unlocked ? "" : " locked"}`}
                   onClick={() => onPick(entry)}>
             <Portrait look={entry.id} size={size} />
             {entry.unlocked ? null : <LockBadge />}
             {entry.id === inUse ? <Tick /> : null}
+            {isNew ? <span className="coll-new" aria-hidden="true">{t("home.new")}</span> : null}
           </button>
         );
       })}
@@ -210,11 +213,11 @@ const TRY_PARTNER: Record<CompanionKind, { kind: CompanionKind; colour: Colour }
  *  the live figure on felt, Try on your table, `strip`, the colours, the one
  *  status line (the look shown) and the one button, or for a store character
  *  not owned `price` (Buy, Sign in to buy). A tap on a colour only shows it;
- *  the button puts it in use. */
-export default function CharacterPage({ kind, shown, entries, inUse, user, phone, strip, onShow, onUse, price,
+ *  the button puts it in use. "New" marks the colours in `fresh`. */
+export default function CharacterPage({ kind, shown, entries, inUse, user, phone, strip, fresh, onShow, onUse, price,
   status = "", cheer = 0 }: {
   kind: CompanionKind; shown: string; entries: readonly LookEntry[]; inUse: string; user: AuthUser | null; phone: boolean;
-  strip?: ReactNode; onShow: (entry: LookEntry) => void; onUse: (entry: LookEntry) => void; price?: ReactNode;
+  strip?: ReactNode; fresh?: readonly string[]; onShow: (entry: LookEntry) => void; onUse: (entry: LookEntry) => void; price?: ReactNode;
   /** Replaces the status line while set (a purchase waiting or refused). */
   status?: string;
   /** Each new value plays the cheer (a purchase granted). */
@@ -236,7 +239,7 @@ export default function CharacterPage({ kind, shown, entries, inUse, user, phone
         </button>
       </div>
       {strip}
-      <Swatches entries={entries} shown={entry.id} inUse={inUse} user={user} size={56} className="char-swatches" onPick={onShow} />
+      <Swatches entries={entries} shown={entry.id} inUse={inUse} user={user} size={56} className="char-swatches" fresh={fresh} onPick={onShow} />
       <p className="coll-status" role="status">{status || lookName(t, entry.id)}</p>
       <UseButton entry={entry} ownership={ownershipOf(entry, inUse, user)} user={user} onUse={() => onUse(entry)} price={price} />
     </div>

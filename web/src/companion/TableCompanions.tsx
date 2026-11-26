@@ -3,9 +3,11 @@
 // "You") and now and then walks a few steps within a small zone there that
 // keeps clear of the cards played, the hand, the buttons and the HUD
 // (`seatZones.ts`). A figure stands on its team's pad in its team's scarf,
-// so a team reads by shape as well as colour, and grows with its team's level,
-// only at round end. A team's companions hop when it takes a trick, and
-// cheer when the trick is worth 10 points or more or the team climbs; a
+// so a team reads by shape as well as colour, and grows with its team's level.
+// A level gained shows once the round-end sheet has closed and the table is
+// in view: each of the team's companions pops to its new size, cheers, and
+// flashes the new level by its head. A team's companions hop when it takes
+// a trick, and cheer when the trick is worth 10 points or more; a
 // companion sleeps while its person is away. Between moves they stand
 // still, each with a short fidget every 6 to 10 s on its own clock, so a
 // table at rest draws almost no frames; a hidden page moves nothing, and
@@ -40,7 +42,8 @@ export const FIDGET_MS = 600;
 const FIDGET_GAP: readonly [number, number] = [6000, 10000];
 
 /** What each seat's companion does on this frame: its team took a trick
- *  (a hop, a cheer for 10 points or more), or at round end climbed (a cheer). */
+ *  (a hop, a cheer for 10 points or more). A level gained is not here: it
+ *  waits for the round-end sheet to close (`useLevelUps`). */
 function reactions(state: GameState, prev: GameState | null): Record<number, Pose> {
   const out: Record<number, Pose> = {};
   if (!prev) return out;
@@ -49,9 +52,6 @@ function reactions(state: GameState, prev: GameState | null): Record<number, Pos
     const team = state.players.find((p) => p.seat === done.winner)?.team;
     const pose: Pose = done.points >= CHEER_POINTS ? "cheer" : "hop";
     for (const p of state.players) if (p.team === team && p.connected && !p.away) out[p.seat] = pose;
-  }
-  if (state.phase === "round_end" && prev.phase !== "round_end" && state.round_result && state.round_result.level_change > 0) {
-    for (const p of state.players) if (p.team === state.round_result.winner_team && p.connected && !p.away) out[p.seat] = "cheer";
   }
   return out;
 }
@@ -73,13 +73,30 @@ const MOVES: Record<"fidget" | "hop" | "cheer", { frames: Keyframe[]; ms: number
     { transform: "translateY(0) scale(1, 1)" }] },
 };
 
-/** Play one move on `el`; resolves when it ends (at once where the element
- *  cannot animate, or under Reduce Motion, after the move's length). */
-function play(el: HTMLElement | null, name: keyof typeof MOVES): { done: Promise<void>; stop: () => void } {
-  const m = MOVES[name];
+/** A level gained: the figure pops from its old size (`from`, old over new)
+ *  past its new one and settles, then cheers; one animation of the box. */
+export const POP_MS = 500;
+export const LEVEL_UP_MS = POP_MS + MOVES.cheer.ms;
+function levelUpFrames(from: number): Keyframe[] {
+  const pop = POP_MS / LEVEL_UP_MS;
+  const cheer = MOVES.cheer.frames;
+  return [
+    { transform: `translateY(0) scale(${from.toFixed(3)})`, offset: 0, easing: "cubic-bezier(0.3, 0.7, 0.3, 1)" },
+    { transform: "translateY(0) scale(1.22)", offset: pop * 0.5 },
+    { transform: "translateY(0) scale(0.95)", offset: pop * 0.78 },
+    ...cheer.map((f, i) => ({ ...f, offset: pop + (1 - pop) * (f.offset ?? i / (cheer.length - 1)) })),
+  ];
+}
+
+/** Play one move on `el`, or a level gained from `from` (old size over new);
+ *  resolves when it ends (at once where the element cannot animate, or under
+ *  Reduce Motion, after the move's length: a level gained holds its still
+ *  badge as long as the move would have taken). */
+function play(el: HTMLElement | null, name: keyof typeof MOVES | "levelup", from = 1): { done: Promise<void>; stop: () => void } {
+  const m = name === "levelup" ? { frames: levelUpFrames(from), ms: LEVEL_UP_MS, easing: "linear" } : MOVES[name];
   if (!el || typeof el.animate !== "function" || prefersReducedMotion()) {
     let timer = 0;
-    const done = new Promise<void>((r) => { timer = window.setTimeout(r, Math.min(m.ms, FIDGET_MS)); });
+    const done = new Promise<void>((r) => { timer = window.setTimeout(r, name === "levelup" ? m.ms : Math.min(m.ms, FIDGET_MS)); });
     return { done, stop: () => window.clearTimeout(timer) };
   }
   const a = el.animate(m.frames, { duration: m.ms, easing: m.easing });
@@ -116,8 +133,13 @@ function useFidget(el: RefObject<HTMLSpanElement | null>, on: boolean): void {
 }
 
 /** A companion's base size and the most its nameplate's corner allows, by
- *  each player (Individual), in px. */
+ *  each player (Individual), in px; it grows from one to the other over the
+ *  first levels (`companionSize`). */
 export const SEAT_SIZE = { phone: { base: 32, max: 40 }, tablet: { base: 44, max: 56 } } as const;
+
+/** A level its team gained, as one companion shows it: `n` tells one from
+ *  the next, `from` is its old size over its new, `glyph` the new level. */
+export interface LevelUp { n: number; from: number; glyph: string }
 /** The shortest and longest wait before a companion by its player walks again. */
 const WALK_GAP: readonly [number, number] = [8000, 15000];
 /** A walk's shortest and longest time; one hop of its gait. */
@@ -153,9 +175,9 @@ const at = (s: Spot) => `translate(${s.x}px, ${s.y}px)`;
  *  its zone, facing the way it goes; when cards land on it, it walks to the
  *  nearest clear spot. Every move is a Web Animation of a transform. Under
  *  Reduce Motion it stands on its home; while the page is hidden it rests. */
-function Walker({ player, team, level, size, px, pos, zone, layout, pose, you, onEnd }: {
+function Walker({ player, team, level, size, px, pos, zone, layout, pose, up, you, onEnd, onUpEnd }: {
   player: StatePlayer; team: Team; level: number; size: { base: number; max: number }; px: number; pos: SeatPos;
-  zone: Zone; layout: Layout; pose: Pose; you: boolean; onEnd: () => void;
+  zone: Zone; layout: Layout; pose: Pose; up: LevelUp | null; you: boolean; onEnd: () => void; onUpEnd: () => void;
 }) {
   const t = useT();
   const { kind, colour } = parseLook(player.look);
@@ -170,11 +192,13 @@ function Walker({ player, team, level, size, px, pos, zone, layout, pose, you, o
   const path = useRef<{ from: Spot; to: Spot } | null>(null);
   const ended = useRef(onEnd);
   ended.current = onEnd;
+  const upEnded = useRef(onUpEnd);
+  upEnded.current = onUpEnd;
   const layoutNow = useRef(layout);
   layoutNow.current = layout;
   // a figure with nowhere clear to stand is not drawn, and keeps no clock
   const placed = zone.home !== null;
-  useFidget(box, placed && move === "idle");
+  useFidget(box, placed && move === "idle" && !up);
 
   const stop = () => { for (const a of walking.current) a.cancel(); walking.current = []; path.current = null; };
   const place = (s: Spot) => { cur.current = s; if (walk.current) walk.current.style.transform = at(s); };
@@ -238,7 +262,7 @@ function Walker({ player, team, level, size, px, pos, zone, layout, pose, you, o
   // a walk now and then, on its own clock, while the page is shown
   const zoneNow = useRef(zone);
   zoneNow.current = zone;
-  const idle = placed && move === "idle";
+  const idle = placed && move === "idle" && !up;
   useEffect(() => {
     if (!idle || prefersReducedMotion()) return;
     let timer = 0;
@@ -269,15 +293,27 @@ function Walker({ player, team, level, size, px, pos, zone, layout, pose, you, o
     return () => { live = false; run.stop(); };
   }, [move]);
 
+  // a level gained: once per level, when the table is in view
+  const upN = up?.n;
+  useEffect(() => {
+    if (!up || !placed) return;
+    const run = play(box.current, "levelup", up.from);
+    let live = true;
+    void run.done.then(() => { if (live) upEnded.current(); });
+    return () => { live = false; run.stop(); };
+  }, [upN, placed]);
+  const drawn: Pose = away ? "sleep" : up ? "cheer" : move;
+
   if (!zone.home) return null;
   return (
     <span className="tc-seat" data-seat={player.seat} data-pos={pos}>
       <span className="tc-walk" ref={walk}>
         {you ? <span className="tc-you">{t("table.companionYou")}</span> : null}
+        {up && !away ? <span className="tc-level" key={up.n}>{up.glyph}</span> : null}
         <span className="tc-face" ref={face}>
-          <span className="tc-move" ref={box} data-move={move === "react" ? "hop" : move}>
-            <Companion kind={kind} colour={colour} size={size.base} max={size.max} level={level} team={team}
-                       state={move === "cheer" ? "cheer" : move === "sleep" ? "sleep" : "idle"} still idle="rest" />
+          <span className="tc-move" ref={box} data-move={up && !away ? "levelup" : move === "react" ? "hop" : move}>
+            <Companion kind={kind} colour={colour} size={size.base} max={size.max} level={level} team={team} grow={false}
+                       state={drawn === "cheer" ? "cheer" : drawn === "sleep" ? "sleep" : "idle"} still idle="rest" />
           </span>
         </span>
       </span>
@@ -310,6 +346,53 @@ function useLayout(root: RefObject<HTMLDivElement | null>, on: boolean, key: str
   return on ? layout : null;
 }
 
+/** Whether the page is shown, re-read as it is hidden and shown again. */
+function usePageShown(): boolean {
+  const [shown, setShown] = useState(() => document.visibilityState !== "hidden");
+  useEffect(() => {
+    const seen = () => setShown(document.visibilityState !== "hidden");
+    document.addEventListener("visibilitychange", seen);
+    return () => document.removeEventListener("visibilitychange", seen);
+  }, []);
+  return shown;
+}
+
+/** The levels the companions stand at, and each seat's level gained still
+ *  to show. A level changes behind the round-end sheet, so the figures keep
+ *  the old one while it is open (and while the page is hidden); once the
+ *  table is in view a team that climbed shows it, once per companion. A
+ *  level lost (a new game) or one the table opened onto changes the size
+ *  with no move. */
+export function useLevelUps(state: GameState, size: { base: number; max: number }) {
+  const [levels, setLevels] = useState<readonly string[]>(state.levels);
+  const [ups, setUps] = useState<Record<number, LevelUp>>({});
+  const count = useRef(0);
+  const pageShown = usePageShown();
+  const covered = state.phase === "round_end" || !pageShown;
+  useEffect(() => {
+    if (covered || (state.levels[0] === levels[0] && state.levels[1] === levels[1])) return;
+    const add: Record<number, LevelUp> = {};
+    for (const team of [0, 1] as const) {
+      const was = levelIndex(levels[team]);
+      const is = levelIndex(state.levels[team]);
+      if (is <= was) continue;
+      const from = companionSize(size.base, was, size.max) / companionSize(size.base, is, size.max);
+      for (const p of state.players) {
+        if (p.team !== team || p.is_bot || p.left || !p.connected || p.away) continue;
+        add[p.seat] = { n: ++count.current, from, glyph: state.levels[team] };
+      }
+    }
+    setLevels(state.levels);
+    if (Object.keys(add).length) setUps((u) => ({ ...u, ...add }));
+  }, [covered, state.levels, state.players, levels, size.base, size.max]);
+  const done = (seat: number) => () => setUps((u) => {
+    const rest = { ...u };
+    delete rest[seat];
+    return rest;
+  });
+  return { levels, ups, done };
+}
+
 export default function TableCompanions({ state }: { state: GameState }) {
   const shown = useCollection();
   const account = useAuth();
@@ -326,25 +409,26 @@ export default function TableCompanions({ state }: { state: GameState }) {
   // a table you only watch (an open table's newcomer until the next trick)
   // draws none, as the watch feed and a replay draw none
   const on = shown && shownAtTable(mode) && state.joining_you !== true;
-  const key = JSON.stringify([state.phase, state.trick, state.last_trick?.winner, state.players.map((p) => [p.seat, p.is_bot, p.left]), tablet]);
+  const size = tablet ? SEAT_SIZE.tablet : SEAT_SIZE.phone;
+  const { levels, ups, done } = useLevelUps(state, size);
+  const key = JSON.stringify([state.phase, state.trick, state.last_trick?.winner, state.players.map((p) => [p.seat, p.is_bot, p.left]), tablet, levels]);
   const layout = useLayout(root, on, key);
   if (!on) return null;
   const me = state.players.find((p) => p.seat === state.you);
   const ours = me?.team ?? 0;
   const people = state.players.filter((p) => !p.is_bot && !p.left);
   const end = (seat: number) => () => setPoses((p) => ({ ...p, [seat]: "idle" }));
-  const size = tablet ? SEAT_SIZE.tablet : SEAT_SIZE.phone;
   return (
     <div className="table-companions" ref={root} aria-hidden="true">
       {layout ? people.map((p) => {
-        const level = levelIndex(state.levels[p.team]);
+        const level = levelIndex(levels[p.team]);
         const px = companionSize(size.base, level, size.max);
         const pos = SIDES[(p.seat - state.you + 4) % 4];
         const you = p.seat === state.you;
         return (
           <Walker key={p.seat} player={p} team={p.team === ours ? "us" : "them"} level={level} size={size} px={px}
                   pos={pos} zone={zoneFor(pos, px, layout, you)} layout={layout} pose={poses[p.seat] ?? "idle"}
-                  you={you} onEnd={end(p.seat)} />
+                  up={ups[p.seat] ?? null} you={you} onEnd={end(p.seat)} onUpEnd={done(p.seat)} />
         );
       }) : null}
     </div>

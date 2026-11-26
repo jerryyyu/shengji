@@ -14,16 +14,18 @@ export type EyeMode = "open" | "happy" | "sleep" | "fierce";
 
 /** The levels a team climbs, 2 to A; a level's index here is what grows its companions. */
 export const LEVELS = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"] as const;
-const GROW_PER_LEVEL = 0.025, GROW_CAP = 1.3;
+/** The levels a table companion takes to grow from its base to its seat's
+ *  cap: it reaches the cap at 6, so each of the first levels gained is a
+ *  step that shows (2 px on a phone, 3 on a tablet). */
+export const GROW_LEVELS = 4;
 
-/** How much larger a team's companions stand at a level: 2.5% a level, never past 1.3. */
-export const levelScale = (levelIndex: number): number =>
-  Math.min(1 + GROW_PER_LEVEL * Math.max(0, Math.min(levelIndex, LEVELS.length - 1)), GROW_CAP);
-
-/** A table companion's size in px: its base size grown by its team's level,
- *  and never larger than the seat area allows (`layoutMax`). */
-export const companionSize = (base: number, levelIndex: number, layoutMax: number): number =>
-  Math.min(Math.round(base * levelScale(levelIndex)), layoutMax);
+/** A table companion's size in px: its base size, grown an equal step a
+ *  level from 2 until it reaches what the seat area allows (`layoutMax`). */
+export const companionSize = (base: number, levelIndex: number, layoutMax: number): number => {
+  if (!Number.isFinite(layoutMax)) return base;
+  const step = Math.min(Math.max(0, levelIndex), GROW_LEVELS) / GROW_LEVELS;
+  return Math.min(Math.round(base + (layoutMax - base) * step), layoutMax);
+};
 
 /** The side a figure plays for at the table. */
 export type Team = "us" | "them";

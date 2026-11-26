@@ -26,13 +26,14 @@ const STILL_MS = 1000;
  *  play once and then call `onPoseEnd`, so the owner returns it to `idle`.
  *  At the table, `team` stands it on its team's pad in its team's scarf, and
  *  `level` (the team's level index, 2 is 0) grows it from `size` toward
- *  `max`; a level gained pops it from its old size. `still` draws the pose at
+ *  `max`; a level gained pops it from its old size, unless `grow` is false
+ *  (the table plays its own level-up move). `still` draws the pose at
  *  its peak with nothing moving; it is on by itself under Reduce Motion.
  *  `idle` says how idle and sleep move: `loop` (their own endless loops) or
  *  `rest` (still, so a page at rest draws no frames). */
-export function Companion({ kind = "tractor", colour, size, state = "idle", team, level, max, still, idle = "loop", onPoseEnd }: {
+export function Companion({ kind = "tractor", colour, size, state = "idle", team, level, max, still, idle = "loop", grow = true, onPoseEnd }: {
   kind?: CompanionKind; colour: Colour; size: number; state?: Pose; team?: Team; level?: number; max?: number;
-  still?: boolean; idle?: "loop" | "rest"; onPoseEnd?: () => void;
+  still?: boolean; idle?: "loop" | "rest"; grow?: boolean; onPoseEnd?: () => void;
 }) {
   const id = useId().replace(/[^a-zA-Z0-9]/g, "");
   const drawing = DRAWINGS[kind];
@@ -46,9 +47,9 @@ export function Companion({ kind = "tractor", colour, size, state = "idle", team
   const was = useRef(px);
   const [from, setFrom] = useState<number | null>(null);
   useLayoutEffect(() => {
-    if (px > was.current && !prefersReducedMotion()) setFrom(was.current / px);
+    if (grow && px > was.current && !prefersReducedMotion()) setFrom(was.current / px);
     was.current = px;
-  }, [px]);
+  }, [px, grow]);
 
   // a still pose plays no animation, so it ends on a timer
   useEffect(() => {

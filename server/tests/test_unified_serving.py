@@ -1057,6 +1057,15 @@ def test_projected_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp
     if pos < 3 and (width == 1 or pos == 1):
         changed = search.reply_children_fast(stale, seat, candidates)
         assert any(a.history[-1].plays != b.history[-1].plays for a, b in zip(clean, changed))
+    prefix_reads = []
+    winner = us._winner_fast
+
+    def count_prefix(trick, ordering, *args, **kwargs):
+        if kwargs.get("with_level") and len(trick.plays) == pos:
+            prefix_reads.append(tuple((p.seat, tuple(p.cards)) for p in trick.plays))
+        return winner(trick, ordering, *args, **kwargs)
+
+    monkeypatch.setattr(us, "_winner_fast", count_prefix)
     real_features = us._direct_reply_features
     real_probs = model.leaf_value_probs_fused
     real_project = search._reply_fast.project_replies
@@ -1114,7 +1123,7 @@ def test_projected_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp
         clone = clones[0]
         bot.unified_frame = frame = us.LeafFrame(bot, clone, clone.trick.leader)
         frame.pos = pos - 1
-        copies = [copy.deepcopy(c) for c in clones]
+        copies = [copy.deepcopy(c, {id(c.ordering): c.ordering}) for c in clones]
         stats = search.greedy_finish_current_trick(bot, copies, frame.tricks + 1,
                                                    lambda: trace.append("gate"), 3, 7, fast_clone=True,
                                                    guard=lambda: trace.append("guard"))
@@ -1128,7 +1137,10 @@ def test_projected_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp
     for group in groups:
         projected.clear()
         materialized.clear()
+        prefix_reads.clear()
         got = run(group)
+        if group is not mixed:
+            assert len(prefix_reads) == 1
         if pos < 3:
             assert (pos, width) in projected
         if group is mixed and width in (2, 4):

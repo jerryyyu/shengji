@@ -4,8 +4,9 @@
 // In the app they live in its native store (UserDefaults), which the
 // bundled offline page and the live site share; elsewhere in this origin's
 // storage. Every read-change-write takes the origin's Web Lock, so two tabs
-// that come online together send the counts once. Nothing else about an
-// offline round is kept or sent.
+// that come online together send the counts once. A page that could share
+// the store with another and has no Web Locks leaves it alone. Nothing else
+// about an offline round is kept or sent.
 import { nativeStore } from "./i18n/locale";
 import { isNative } from "./native";
 import type { OfflineCounts } from "./telemetry";
@@ -95,9 +96,10 @@ export class OfflineDigest {
   /** One read-change-write at a time: in call order on this page, and under
    *  the origin's lock across pages. A failure changes nothing. `change`
    *  runs after the read and returns null to write nothing. With no lock
-   *  where another page could share the store, `exclusive` work (a send)
-   *  is not done, and the counts wait for a page that can. */
-  private run(change: (c: OfflineCounts) => OfflineCounts | null, exclusive: boolean): Promise<void> {
+   *  where another page could share the store (a browser without Web
+   *  Locks), nothing is read or written: neither a count nor a send, and any
+   *  stored counts stay as they are. Such a page's device rounds go uncounted. */
+  private run(change: (c: OfflineCounts) => OfflineCounts | null): Promise<void> {
     const task = async () => {
       const kv = this.deps.kv();
       if (!kv) return;
@@ -108,7 +110,7 @@ export class OfflineDigest {
     this.chain = this.chain.then(() => {
       const locks = this.deps.locks();
       if (locks) return locks.request(DIGEST_LOCK, task);
-      if (exclusive && !this.deps.onePage()) return undefined;
+      if (!this.deps.onePage()) return undefined;
       return task();
     }).catch(() => undefined);
     return this.chain;
@@ -118,7 +120,7 @@ export class OfflineDigest {
   count(what: "started" | "finished", nearby: boolean): Promise<void> {
     return this.run((c) => what === "started"
       ? { ...c, rounds_started: c.rounds_started + 1, nearby_rounds: c.nearby_rounds + (nearby ? 1 : 0) }
-      : { ...c, rounds_finished: c.rounds_finished + 1 }, false);
+      : { ...c, rounds_finished: c.rounds_finished + 1 });
   }
 
   /** Offers any counts to `send`, after the stored ones are read, and takes
@@ -132,7 +134,7 @@ export class OfflineDigest {
     return this.run((c) => {
       if (!(c.rounds_started || c.rounds_finished || c.nearby_rounds)) return null;
       return send(c) ? { ...ZERO } : null;
-    }, true);
+    });
   }
 }
 

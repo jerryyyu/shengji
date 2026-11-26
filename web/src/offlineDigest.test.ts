@@ -142,14 +142,23 @@ describe("two pages over one store", () => {
     expect(data[DIGEST_KEY]).toBe("0,0,0");
   });
 
-  it("with no lock where other tabs could share the store, nothing is sent and the counts wait", async () => {
+  it("two pages with no lock where tabs could share the store: no count, no send, the stored counts untouched", async () => {
     const data: Record<string, string> = { [DIGEST_KEY]: "1,1,0" };
-    const d = new OfflineDigest({ kv: () => slowKv(data), locks: () => null, onePage: () => false });
+    let reads = 0, writes = 0;
+    const watched = (): Kv => ({
+      get: async (k) => { reads += 1; return data[k] ?? null; },
+      set: async (k, v) => { writes += 1; data[k] = v; },
+    });
+    const tabA = new OfflineDigest({ kv: watched, locks: () => null, onePage: () => false });
+    const tabB = new OfflineDigest({ kv: watched, locks: () => null, onePage: () => false });
     const wire: unknown[] = [];
-    await d.drain((c) => { wire.push(c); return true; });
-    await d.count("finished", false);
+    await Promise.all([tabA.count("started", false), tabB.count("started", false),
+                       tabA.drain((c) => { wire.push(c); return true; }),
+                       tabB.drain((c) => { wire.push(c); return true; }),
+                       tabA.count("finished", true)]);
     expect(wire).toEqual([]);
-    expect(data[DIGEST_KEY]).toBe("1,2,0");
+    expect(data[DIGEST_KEY]).toBe("1,1,0");
+    expect([reads, writes]).toEqual([0, 0]);
   });
 
   it("reads the browser's Web Locks when it has them, and none otherwise", () => {

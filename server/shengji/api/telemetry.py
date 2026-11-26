@@ -36,7 +36,10 @@ site and the bundled offline page, each count on their own. So
 ``device_account.first_round_before`` says only whether this origin saw a
 round, never a round played on the app's other origin, and a device's
 ``days_since_first`` restarts on cleared site data. Only the offline digest's
-counts are shared across the app's two origins (its native store).
+counts are shared across the app's two origins (its native store). The
+digest's counts are read and written only under the origin's Web Lock, or
+on a page that is alone with its store (the iOS app); a browser without Web
+Locks counts no device rounds and sends no digest.
 
 ``round_finish.tricks_played`` is the server's own ``tricks_done`` count; a
 round whose page saw any state without it sends no count. ``by: closed`` is

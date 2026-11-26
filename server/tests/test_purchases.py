@@ -622,3 +622,49 @@ def test_the_refusal_reasons_say_which_are_permanent():
     from shengji.api import purchases
 
     assert purchases.PERMANENT_REFUSALS == frozenset({"held_by_other", "revoked", "wrong_app"})
+
+
+# ------------------------------------------------------------ signed-in buyers only
+def _device_session(accounts_on, client, monkeypatch) -> tuple[dict, int]:
+    from tests.test_device_accounts import _cookie, _create
+
+    monkeypatch.setenv("SHENGJI_DEVICE_ACCOUNTS", "1")
+    resp = _create(client)
+    assert resp.status_code == 200
+    cookie = {"cookie": _cookie(resp)}
+    device_id = max(r["id"] for r in [accounts_on.STORE.user(i) for i in range(1, 5)] if r)
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", f"1,{device_id}")
+    return cookie, device_id
+
+
+def test_a_device_account_sees_the_shop_but_gets_no_token_and_cannot_buy(accounts_on, client, shop, chain, monkeypatch):
+    client.cookies.clear()
+    device, device_id = _device_session(accounts_on, client, monkeypatch)
+    me = client.get("/api/me", headers=device).json()
+    assert me["linked"] is False and me["features"]["store"] is True
+    assert "store_token" not in me
+    resp = client.post("/api/store/verify", json={"jws": chain.sign(_txn(originalTransactionId="121", transactionId="121"))},
+                       headers=device)
+    assert resp.status_code == 409 and resp.json()["detail"] == "sign_in_required"
+    with accounts_on.STORE._open() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM entitlements").fetchone()[0] == 0
+    from shengji.api import purchases
+    assert "sign_in_required" not in purchases.PERMANENT_REFUSALS
+
+
+def test_a_transaction_refused_to_a_device_account_is_delivered_after_it_links(accounts_on, client, shop, chain, monkeypatch):
+    store = accounts_on.STORE
+    signed_in = shop
+    client.cookies.clear()
+    device, device_id = _device_session(accounts_on, client, monkeypatch)
+    pending = chain.sign(_txn(originalTransactionId="131", transactionId="131"))
+    assert client.post("/api/store/verify", json={"jws": pending}, headers=device).json()["detail"] == "sign_in_required"
+    # the player signs in with Apple or Google: the device account merges into the signed-in one
+    with store._open() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        store._merge_device(conn, device_id, 1)
+        conn.execute("COMMIT")
+    client.cookies.clear()
+    resp = client.post("/api/store/verify", json={"jws": pending}, headers=signed_in)
+    assert resp.status_code == 200, resp.text
+    assert client.get("/api/me", headers=signed_in).json()["products"] == [GOAT]

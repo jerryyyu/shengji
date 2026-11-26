@@ -79,8 +79,9 @@ MAX_JWS_BYTES = 64 * 1024
 # The refusals no later presentation of the same transaction can turn into a
 # grant: the app may finish (acknowledge) the transaction on these. Every
 # other refusal (a signature or storefront check, an environment not
-# accepted, a product not sold yet, no session, the store off) may pass
-# later, so the app keeps the transaction and presents it again.
+# accepted, a product not sold yet, no session, the store off, a device
+# account that has not signed in yet) may pass later, so the app keeps the
+# transaction and presents it again.
 PERMANENT_REFUSALS = frozenset({"held_by_other", "revoked", "wrong_app"})
 
 
@@ -246,7 +247,9 @@ async def verify(body: VerifyBody, request: Request) -> dict:
     """Grant the purchase in a StoreKit 2 signed transaction to the signed-in
     account; the account payload (``accounts.account_payload``) with the
     product in ``products``. Presenting the same purchase again is a no-op.
-    Refused: a guest (401), an account without the store (404), a JWS that
+    Refused: a guest (401), an account without the store (404), a device
+    account with no Apple or Google sign-in (409 ``sign_in_required``,
+    retryable once it links), a JWS that
     fails verification or names another app or product (400), the China
     mainland storefront by the client's word or the signed one (403), and a
     purchase that was refunded or that another account holds (409). A
@@ -265,6 +268,10 @@ async def verify(body: VerifyBody, request: Request) -> dict:
     user_id = int(user["id"])
     if not accounts.store_for(user_id):
         raise HTTPException(status_code=404, detail="Not found.")
+    if accounts.is_device_account(user):
+        # buying needs an Apple or Google sign-in; the app keeps the
+        # transaction and presents it again once the player has signed in
+        raise HTTPException(status_code=409, detail="sign_in_required")
     if (body.storefront or "").upper() in BLOCKED_STOREFRONTS:
         raise HTTPException(status_code=403, detail="storefront")
     try:

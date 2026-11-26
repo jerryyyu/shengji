@@ -2481,8 +2481,9 @@ def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int
     ``companions`` (``companions_mode``), ``products``, the App Store
     products the account owns (``Store.owned_products``), and
     ``features.collection`` (``collection_for``) and ``features.store``
-    (``store_for``), and, where the store is on, ``store_token``, which the
-    app passes to every purchase so Apple signs which account paid."""
+    (``store_for``), and, where the store is on for an account signed in
+    with Apple or Google, ``store_token``, which the app passes to every
+    purchase so Apple signs which account paid."""
     user_id = int(row["id"]) if row.get("id") is not None else None
     shop = store_for(user_id)
     look = shown_look(row, owned)
@@ -2506,7 +2507,9 @@ async def account_payload(store: "Store", row: Mapping[str, Any]) -> dict:
     """``public_user`` with the account's counts and purchases read off the loop."""
     progress = await store.run(store.look_progress, int(row["id"]))
     owned = await store.run(store.owned_products, int(row["id"]))
-    token = await store.run(store.store_token, int(row["id"])) if store_for(int(row["id"])) else None
+    # a purchase needs an Apple or Google sign-in: a device account gets no token
+    token = (await store.run(store.store_token, int(row["id"]))
+             if store_for(int(row["id"])) and not is_device_account(row) else None)
     return public_user(row, progress["rounds"], progress["ranked_wins"], owned, token)
 
 

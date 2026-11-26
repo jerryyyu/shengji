@@ -569,3 +569,360 @@ def test_check_init_belief_ll_rules():
     for bad in ({"belief_ll": 0.97}, {"belief_ll": float("inf")}, {"belief_ll": None}, {}, None):
         with pytest.raises(us.UnifiedSeqError):
             us.check_init_belief_ll(bad, 0.98782)
+
+
+def _candidate_fixture(world, entry, tmp_path, *, distinct_deals=False):
+    from shengji.harvest.legal import enumerate_legal
+    from shengji.harvest.rebuild import state_for_record
+    from shengji.train import search_free_play as sf
+
+    verified = bs._Verified()
+    part = us.load_unified_part(entry, verified, us.OutcomeIndex())
+    tokens, row, slot, mean, played = [], [], [], [], []
+    for i, ply in enumerate(part["row_ply"]):
+        if distinct_deals and row and part["deal"][i] == part["deal"][row[0]]:
+            continue
+        if ply not in (0, 4):
+            continue
+        records = bl.game_order(world["clusters"][part["cluster"][i]])
+        rec = records[part["decision"][i]]
+        rnd = state_for_record(rec)
+        seat = rec["seat"]
+        actions = enumerate_legal(rnd, seat, cap=20).actions
+        if len(actions) < 2:
+            continue
+        alternatives = [a for a in actions if Counter(a) != Counter(rec["action"])]
+        needed = 2 if row else 1
+        if len(alternatives) < needed:
+            continue
+        for j, action in enumerate([rec["action"], *alternatives[:needed]]):
+            tokens.append(sf.candidate_token(rnd, seat, action))
+            row.append(i)
+            slot.append(j)
+            mean.append(0.2 * j)
+            played.append(j == 0)
+        if len(set(row)) == 2:
+            break
+    assert len(set(row)) == 2
+    key = hashlib.sha256((str(entry["dir"]) + "|" + entry["sha256"]).encode()).hexdigest()[:20]
+    arrays = dict(zip(("tok_int", "tok_f", "tok_cards", "tok_att"), map(np.stack, zip(*tokens))))
+    shard = tmp_path / (key + ".npz")
+    data = dict(n_rows=len(part["X"]), row=row, slot=slot, mean=mean, played=played, **arrays)
+    np.savez(shard, **data)
+    return shard, data, tokens, rnd, seat
+
+
+def test_fixed_trunk_candidate_update_exports_served_scores(world, tmp_path, monkeypatch):
+    from shengji.train import search_free_head as trainer
+    from shengji.train import search_free_play as sf
+    from shengji.train import unified_readout
+
+    entry = us.entries_for([str(world["data"])], "train")[0]
+    shard, data, tokens, rnd, seat = _candidate_fixture(world, entry, tmp_path)
+    verified = bs._Verified()
+    b, c = next(trainer.candidate_batches(entry, tmp_path, verified, rounds_per_batch=16))
+    torch.manual_seed(5)
+    m = unified_readout.build(SMALL).eval()
+    head = trainer.build_head(m.config["trunk"])
+    before = {k: v.clone() for k, v in m.state_dict().items()}
+    pred = trainer.score_batch(m, head, b, c)
+    opt = torch.optim.SGD(head.parameters(), lr=0.01)
+    reference = copy.deepcopy(head)
+    full = trainer.score_batch(m, reference, b, c)
+    trainer.candidate_loss(*full, c).backward()
+    torch.optim.SGD(reference.parameters(), lr=0.01).step()
+    group_sizes, trunk_calls = [], []
+    with head.register_forward_pre_hook(lambda _, args: group_sizes.append(len(args[0]))), \
+            m.trunk.encoder.register_forward_pre_hook(lambda *_: trunk_calls.append(1)):
+        assert trainer.fit_shard(m, head, opt, entry, tmp_path, verified,
+                                 rounds_per_batch=16, candidate_target=2) == 2
+    assert group_sizes == [2, 3] and trunk_calls == [1]
+    for actual, expected in zip(head.parameters(), reference.parameters()):
+        torch.testing.assert_close(actual.grad, expected.grad, atol=1e-5, rtol=1e-5)
+        torch.testing.assert_close(actual, expected, atol=1e-6, rtol=1e-5)
+    assert all(p.grad is None for p in m.parameters())
+    assert all(torch.equal(v, before[k]) for k, v in m.state_dict().items())
+    with torch.no_grad():
+        after = torch.stack(trainer.score_batch(m, head, b, c)).numpy()
+    assert not np.allclose(after, torch.stack(pred).detach().numpy())
+    path = tmp_path / "sf.npz"
+    sha = trainer.export(path, m, head, {})
+    runtime = sf.load_package(path, sha256=sha)
+    for i in range(len(b["X"])):
+        inp = un.batch_inputs(b, i, with_play=False)
+        keep = c["row"] == i
+        ballot = [tokens[k] for k in np.flatnonzero(keep)]
+        live = runtime.score(inp, runtime.trunk_states(inp), ballot)
+        np.testing.assert_allclose(live, after[:, keep], atol=1e-4, rtol=1e-4)
+
+    from shengji.harvest.legal import is_legal
+    from shengji.train import relaxed_play as rp
+    for builder in (rp.build_casual, rp.build_beginner):
+        bot = builder(tbl.HeuristicBot(), path, seed=17, sha256=sha)
+        assert is_legal(rnd, seat, bot.decide_play(rnd, seat))
+        assert bot.last_decision_record["schema"] == rp.RECORD_SCHEMA
+
+    from shengji.ai import unified_readout_numpy as rn
+    from shengji.api import server
+    from shengji.train import unified_serving
+
+    trunk_path = tmp_path / "advanced.npz"
+    readout = {k: v.detach().numpy() for k, v in m.readout.state_dict().items()}
+    pin = rn.save_package(trunk_path, m.config, runtime.unified.trunk.w, runtime.unified.h, readout, {})
+    shared = unified_serving.load_unified(str(trunk_path), pin)
+    head_path = tmp_path / "head.npz"
+    head_sha = trainer.export(head_path, m, head, {}, shared_unified=shared)
+    with np.load(head_path) as z:
+        assert str(z["unified_sha256"]) == pin
+        assert not any(k.startswith(("w:", "h:", "r:")) for k in z.files)
+    assert head_path.stat().st_size < path.stat().st_size
+    monkeypatch.setattr(server, "RELAXED_SF_PACKAGE", str(head_path))
+    monkeypatch.setattr(server, "RELAXED_SF_SHA256", head_sha)
+    served = tbl.HeuristicBot()
+    served.unified_prior_model = shared
+    for builder in (server.make_relaxed_bot, server.make_beginner_bot):
+        bot = builder(served, seed=17)
+        attached = bot.player.model
+        assert attached.unified is shared
+        np.testing.assert_array_equal(attached.score(inp, attached.trunk_states(inp), ballot), live)
+        assert is_legal(rnd, seat, bot.decide_play(rnd, seat))
+        assert bot.last_decision_record["schema"] == rp.RECORD_SCHEMA
+
+    from shengji.ai import registry
+    monkeypatch.setattr(registry, "REGISTRY", {**registry.REGISTRY, "fixture-base": lambda: served})
+    monkeypatch.setenv("SHENGJI_BOT", "fixture-base")
+    monkeypatch.setenv(sf.ENV_CKPT, str(head_path))
+    monkeypatch.setenv(sf.ENV_SHA256, head_sha)
+    registry._register_search_free_from_env()
+    name = f"fixture-base-{sf.TOKEN}{head_sha[:8]}"
+    registered = registry.make_bot(name, seed=17)
+    assert registered.model.unified is shared
+    assert registry.make_bot(name, seed=18).model is registered.model
+    assert is_legal(rnd, seat, registered.decide_play(rnd, seat))
+    assert registered.last_decision_record["schema"] == sf.DECISION_SCHEMA
+
+    # A different loaded package with identical weights is still a different runtime pin.
+    other_path = tmp_path / "other.npz"
+    other_pin = rn.save_package(other_path, m.config, runtime.unified.trunk.w, runtime.unified.h, readout, {"other": True})
+    served.unified_prior_model = unified_serving.load_unified(str(other_path), other_pin)
+    with pytest.raises(sf.SearchFreeError, match="pinned unified model"):
+        registry.make_bot(name, seed=17)
+    assert server.make_relaxed_bot(served, seed=17) is served
+    del served.unified_prior_model
+    assert server.make_beginner_bot(served, seed=17) is served
+    with torch.no_grad():
+        next(m.p_head.parameters()).add_(0.01)
+    with pytest.raises(ValueError, match="training and serving weights differ"):
+        trainer.export(tmp_path / "wrong.npz", m, head, {}, shared_unified=shared)
+
+    data["played"] = np.asarray(data["slot"]) == 1
+    np.savez(shard, **data)
+    with pytest.raises(ValueError, match="recorded attempt"):
+        next(trainer.candidate_batches(entry, tmp_path, verified))
+
+def test_candidate_scores_use_only_completed_plays_and_ignore_targets(world, tmp_path):
+    from shengji.train import search_free_head as trainer
+    from shengji.train import unified_readout
+
+    entry = us.entries_for([str(world["data"])], "train")[0]
+    _candidate_fixture(world, entry, tmp_path)
+    batch, ballot = next(trainer.candidate_batches(entry, tmp_path, bs._Verified(), rounds_per_batch=16))
+    torch.manual_seed(5)
+    model = unified_readout.build(SMALL).eval()
+    head = trainer.build_head(model.config["trunk"]).eval()
+
+    @torch.no_grad()
+    def scores(b, c):
+        return torch.stack(trainer.score_batch(model, head, b, c))
+
+    original = scores(batch, ballot)
+    decision = int(np.argmax(batch["ply"]))
+    ply = batch["ply"][decision]
+    assert ply > 0
+    rr = batch["rr"][decision]
+    keep = ballot["row"] == decision
+    later = {key: value.copy() for key, value in batch.items()}
+    for key in ("tok_f", "tok_cards", "tok_att"):
+        later[key][rr, ply:] = 1 - later[key][rr, ply:]
+    later["tok_int"][rr, ply:, 0] = (later["tok_int"][rr, ply:, 0] + 1) % 4
+    later["Y"] = np.roll(later["Y"], 1, axis=-1)
+    other_targets = dict(ballot, mean=-ballot["mean"], played=~ballot["played"])
+    torch.testing.assert_close(scores(later, other_targets)[:, keep], original[:, keep], rtol=0, atol=0)
+
+    later["tok_f"][rr, ply - 1] += 1
+    assert not torch.allclose(scores(later, other_targets)[:, keep], original[:, keep])
+
+
+def test_candidate_schedule_recovers_from_an_interrupted_update(world, tmp_path, monkeypatch):
+    from shengji.ai import unified_readout_numpy as rn
+    from shengji.train import search_free_head as trainer
+    from shengji.train import search_free_schedule as schedule
+    from shengji.train import unified_readout
+
+    m = unified_readout.build(SMALL).eval()
+    base = tmp_path / "base.npz"
+    weights = {k: v.detach().numpy() for k, v in m.state_dict().items()}
+    pin = rn.save_package(base, m.config, {k[6:]: v for k, v in weights.items() if k.startswith("trunk.")},
+                          {k: v for k, v in weights.items() if k.startswith(("p_head.", "q_head."))},
+                          {k[8:]: v for k, v in weights.items() if k.startswith("readout.")}, {})
+    sums = tmp_path / "SHA256SUMS"
+    entries = us.entries_for([str(world["data"])], "train")
+    lines = []
+    for entry in entries:
+        shard, _, _, rnd, seat = _candidate_fixture(world, entry, tmp_path)
+        lines.append(f"{us.sha256_file(shard)}  {shard.name}")
+    sums.write_text("\n".join(lines))
+    args = ["--base", str(base), "--sha256", pin, "--data", str(world["data"]),
+            "--candidates", str(tmp_path), "--candidate-sums", str(sums), "--seed", "7",
+            "--epochs", "2", "--lr", "0.0005", "--threads", "1"]
+    clean, resumed = tmp_path / "clean", tmp_path / "resumed"
+    assert schedule.main(args + ["--out", str(clean)]) == 0
+    calls = []
+    fit = trainer.fit_shard
+
+    def interrupt(*a, **kw):
+        decisions = fit(*a, **kw)
+        calls.append(a[3]["sha256"])
+        if len(calls) == 2:
+            raise InterruptedError("fixture stopped before checkpoint")
+        return decisions
+
+    import fcntl
+    resumed.mkdir()
+    with (resumed / ".writer.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(BlockingIOError):
+            schedule.main(args + ["--out", str(resumed)])
+    assert not (resumed / "checkpoint.pt").exists()
+    with monkeypatch.context() as patch:
+        patch.setattr(trainer, "fit_shard", interrupt)
+        with pytest.raises(InterruptedError):
+            schedule.main(args + ["--out", str(resumed)])
+    assert torch.load(resumed / "checkpoint.pt", weights_only=True)["next_shard"] == 1
+    assert not (resumed / "head.npz").exists()
+    with pytest.raises(ValueError, match="different training recipe"):
+        schedule.main(args + ["--lr", "0.01", "--out", str(resumed)])
+    blob = shard.read_bytes()
+    shard.write_bytes(blob + b"modified")
+    with pytest.raises(bs.BeliefSeqError, match="sha256 mismatch"):
+        schedule.main(args + ["--out", str(tmp_path / "bad-data")])
+    assert not (tmp_path / "bad-data/head.npz").exists()
+    shard.write_bytes(blob)
+    assert schedule.main(args + ["--out", str(resumed)]) == 0
+    a, b = [torch.load(d / "checkpoint.pt", weights_only=True) for d in (clean, resumed)]
+    assert a["next_shard"] == b["next_shard"] == len(entries) * 2
+    assert a["decisions"] == b["decisions"] == len(entries) * 4
+    assert all(torch.equal(v, b["head"][k]) for k, v in a["head"].items())
+    for k, state in a["optimizer"]["state"].items():
+        for key, v in state.items():
+            assert torch.equal(v, b["optimizer"]["state"][k][key])
+    from shengji.harvest.legal import is_legal
+    from shengji.train import relaxed_play as rp
+    sha = us.sha256_file(resumed / "head.npz")
+    assert us.sha256_file(clean / "head.npz") == sha
+    served = tbl.HeuristicBot()
+    served.unified_prior_model = rn.load_unified_readout_numpy(base, pin)
+    for builder in (rp.build_casual, rp.build_beginner):
+        bot = builder(served, resumed / "head.npz", seed=7, sha256=sha)
+        assert is_legal(rnd, seat, bot.decide_play(rnd, seat))
+        assert bot.last_decision_record["schema"] == rp.RECORD_SCHEMA
+    from shutil import copytree
+    relocated = copytree(world["data"], tmp_path / "copied-extract")
+    moved_args = [str(relocated) if arg == str(world["data"]) else arg for arg in args]
+    moved_args += ["--out", str(tmp_path / "moved")]
+    with pytest.raises(KeyError):
+        schedule.main(moved_args)
+    assert schedule.main(moved_args + ["--candidate-source-dir", str(relocated), str(world["data"])]) == 0
+    moved_state = torch.load(tmp_path / "moved" / "checkpoint.pt", weights_only=True)
+    assert all(torch.equal(v, moved_state["head"][k]) for k, v in a["head"].items())
+    subset = tmp_path / "subset-sums"
+    extra_data = extract_dir(world["store"], tmp_path / "extra-extract")
+    extra_entry, = us.entries_for([str(extra_data)], "train")
+    subset.write_text(lines[-1])
+    selected_out = tmp_path / "selected"
+    selected_args = args + ["--data", str(extra_data), "--candidate-sums", str(subset), "--out", str(selected_out)]
+    with pytest.raises(KeyError):
+        schedule.main(selected_args)
+    selected_args.append("--select-from-candidate-sums")
+    assert schedule.main(selected_args) == 0
+    saved = torch.load(selected_out / "checkpoint.pt", weights_only=True)
+    assert saved["next_shard"] == 2 and saved["decisions"] == 4
+    for builder in (rp.build_casual, rp.build_beginner):
+        bot = builder(served, selected_out / "head.npz", seed=7, sha256=us.sha256_file(selected_out / "head.npz"))
+        assert is_legal(rnd, seat, bot.decide_play(rnd, seat))
+    subset.write_text(lines[-1] + "\n" + "0" * 64 + "  unknown.npz")
+    with pytest.raises(ValueError, match="outside the training extracts"):
+        schedule.main(selected_args)
+    subset.write_text(f"{'0' * 64}  {trainer.candidate_name(extra_entry)}")
+    with pytest.raises(FileNotFoundError):
+        schedule.main(selected_args + ["--out", str(tmp_path / "missing")])
+    with pytest.raises(ValueError, match="different training recipe"):
+        schedule.main(selected_args)
+    monkeypatch.setattr(trainer, "fit_shard", lambda *a, **kw: pytest.fail("replayed a completed shard"))
+    assert schedule.main(args + ["--out", str(resumed)]) == 0
+
+def test_candidate_head_skips_reserved_deals_before_joining_history(world, tmp_path):
+    from shengji.train import search_free_head as trainer
+    from shengji.train import unified_readout
+
+    data = extract_dir(world["store"], tmp_path / "extract")
+    entry, = us.entries_for([str(data)], "train")
+    _, shard, _, _, _ = _candidate_fixture(world, entry, tmp_path, distinct_deals=True)
+    first, second = np.unique(shard["row"])
+    with np.load(entry["path"]) as z:
+        seed = int(z["seed"][first])
+        assert z["seed"][second] != seed
+    verified = bs._Verified()
+    original, = trainer.candidate_batches(entry, tmp_path, verified, rounds_per_batch=32)
+    entry["exclude_seed_windows"] = [(seed, seed + 1)]
+    (batch, ballot), = trainer.candidate_batches(entry, tmp_path, verified, rounds_per_batch=32)
+    np.testing.assert_array_equal(batch["X"], original[0]["X"][1:])
+    np.testing.assert_array_equal(ballot["tok_cards"], original[1]["tok_cards"][original[1]["row"] == 1])
+    assert len(ballot["row"]) == 3 and np.all(ballot["row"] == 0)
+    model = unified_readout.build(SMALL).eval()
+    head = trainer.build_head(model.config["trunk"])
+    optimizer = torch.optim.AdamW(head.parameters())
+    assert trainer.fit_shard(model, head, optimizer, entry, tmp_path, verified) == 1
+    entry["exclude_seed_windows"] = [(0, 2**32)]
+    assert trainer.fit_shard(model, head, optimizer, entry, tmp_path, verified) == 0
+
+
+def test_candidate_schedule_trains_from_producer_filtered_shard(world, tmp_path):
+    from types import SimpleNamespace
+    from shengji.train import search_free_head as trainer
+    from shengji.train import search_free_schedule as schedule
+    from shengji.train import unified_readout
+
+    data = extract_dir(world["store"], tmp_path / "extract")
+    entry, = us.entries_for([str(data)], "train")
+    with np.load(entry["path"]) as rows:
+        first = int(rows["seed"][0])
+        producer_window = [(first, first + 1)]
+        retained = bs.seed_keep(rows, producer_window)
+        producer_seeds = rows["seed"][retained]
+    entry["exclude_seed_windows"] = producer_window
+    path, shard, _, _, _ = _candidate_fixture(world, entry, tmp_path, distinct_deals=True)
+    assert shard["n_rows"] == retained.sum() < entry["rows"]
+    counts = tmp_path / "SHA256SUMS"
+    counts.write_text(f"{us.sha256_file(path)}  {path.name}\n")
+    args = SimpleNamespace(data=[str(data)], candidate_sums=counts,
+                           candidate_exclude_seed_window=[], exclude_seed_window=[], select_from_candidate_sums=False,
+                           candidate_source_dir=[])
+    original, = schedule._entries(args)
+    with pytest.raises(ValueError, match="does not match the extract rows"):
+        list(trainer.candidate_batches(original, tmp_path, bs._Verified()))
+
+    args.candidate_exclude_seed_window = producer_window
+    prepared, = schedule._entries(args)
+    (both, ballots), = trainer.candidate_batches(prepared, tmp_path, bs._Verified(), rounds_per_batch=32)
+    assert len(both["X"]) == 2
+    drop = int(producer_seeds[shard["row"][0]])
+    args.exclude_seed_window = [(drop, drop + 1)]
+    prepared, = schedule._entries(args)
+    (one, ballot), = trainer.candidate_batches(prepared, tmp_path, bs._Verified(), rounds_per_batch=32)
+    np.testing.assert_array_equal(one["X"], both["X"][1:])
+    np.testing.assert_array_equal(ballot["tok_cards"], ballots["tok_cards"][ballots["row"] == 1])
+    model = unified_readout.build(SMALL).eval()
+    head = trainer.build_head(model.config["trunk"])
+    assert trainer.fit_shard(model, head, torch.optim.AdamW(head.parameters()), prepared,
+                             tmp_path, bs._Verified()) == 1

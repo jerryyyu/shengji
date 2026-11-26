@@ -266,20 +266,23 @@ def casual_suffix(sha256: str = CASUAL_SHA256, tau: float = CASUAL_TAU, delta: f
     return f"relax-sf{sha256[:8]}-t{tau:g}-d{delta:g}"
 
 
-def casual_model(path, sha256: str = CASUAL_SHA256):
+def casual_model(path, sha256: str = CASUAL_SHA256, *, shared_unified=None):
     """The search-free model at ``path``, sha256-checked, loaded once per process (read-only)."""
     key = (str(path), sha256)
-    if key not in _CASUAL_MODELS:
+    model = _CASUAL_MODELS.get(key)
+    if model is None or (model.requires_shared_trunk and model.unified is not shared_unified):
         from . import search_free_play as SF
-        _CASUAL_MODELS[key] = SF.load_package(path, sha256=sha256)
-    return _CASUAL_MODELS[key]
+        model = SF.load_package(path, sha256=sha256, shared_unified=shared_unified)
+        _CASUAL_MODELS[key] = model
+    return model
 
 
 def build_casual(served, path, *, seed: int, sha256: str = CASUAL_SHA256,
                  tau: float = CASUAL_TAU, delta: float = CASUAL_DELTA) -> RelaxedBot:
     """``served`` declares and buries; the search-free scorer plays with near-best noise."""
     from . import search_free_play as SF
-    player = SF.SearchFreeBot(served, casual_model(path, sha256))
+    model = casual_model(path, sha256, shared_unified=getattr(served, "unified_prior_model", None))
+    player = SF.SearchFreeBot(served, model)
     name = f"{getattr(served, 'policy_name', type(served).__name__)}-{casual_suffix(sha256, tau, delta)}"
     return RelaxedBot(served, player, mode="search_free", tau=tau, delta=delta, seed=seed, policy_name=name)
 

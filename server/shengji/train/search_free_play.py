@@ -27,7 +27,8 @@ policy, ``<SHENGJI_BOT>-sf<sha8>`` (``ai.registry``); no existing name, recipe d
 changes, and without the two variables nothing here is imported by the registry.
 
 A package is one ``.npz``: the unified package's arrays (``w:`` trunk, ``h:`` heads) plus the
-candidate head under ``c:``, schema ``shengji-search-free-numpy-v1``.
+candidate head under ``c:``, schema ``shengji-search-free-numpy-v1``. A shared-head package
+contains only candidate weights and the required unified package digest.
 """
 from __future__ import annotations
 
@@ -43,6 +44,7 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 
 SCHEMA = "shengji-search-free-numpy-v1"
+HEAD_SCHEMA = "shengji-search-free-shared-head-v1"
 DECISION_SCHEMA = "search-free-decision-v1"
 FALLBACK_SCHEMA = "search-free-fallback-v1"
 ENV_CKPT = "SHENGJI_SEARCH_FREE_CKPT"
@@ -90,8 +92,20 @@ class SearchFreeModel:
                  head_weights: Mapping[str, np.ndarray], cand_weights: Mapping[str, np.ndarray],
                  metadata: Mapping[str, Any], dtype=np.float32):
         from ..ai.unified_numpy import UnifiedNumpy
-        self.unified = UnifiedNumpy(config, trunk_weights, head_weights, metadata, dtype=dtype)
-        self.config = self.unified.config
+        self._bind(UnifiedNumpy(config, trunk_weights, head_weights, metadata, dtype=dtype), cand_weights, metadata)
+
+    @classmethod
+    def from_shared(cls, unified, cand_weights, metadata):
+        model = cls.__new__(cls)
+        model._bind(unified, cand_weights, metadata)
+        model.requires_shared_trunk = True
+        return model
+
+    def _bind(self, unified, cand_weights, metadata):
+        self.unified = unified
+        self.config = unified.config
+        dtype = unified.dtype
+        self.requires_shared_trunk = False
         self.metadata = dict(metadata)
         want = cand_shapes(self.config)
         if set(cand_weights) != set(want):
@@ -198,6 +212,10 @@ def save_package(path: str | os.PathLike, config: Mapping[str, Any], trunk_weigh
     arrays["schema"] = np.asarray(SCHEMA)
     arrays["config"] = np.asarray(json.dumps(model.config, sort_keys=True))
     arrays["metadata"] = np.asarray(json.dumps(dict(metadata, dims=DIMS), sort_keys=True, default=str))
+    return _write_package(path, arrays)
+
+
+def _write_package(path, arrays):
     tmp = Path(str(path) + ".tmp")
     with open(tmp, "wb") as fh:
         np.savez(fh, **arrays)
@@ -205,7 +223,21 @@ def save_package(path: str | os.PathLike, config: Mapping[str, Any], trunk_weigh
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def load_package(path: str | os.PathLike, sha256: str | None = None, dtype=np.float32) -> SearchFreeModel:
+def save_shared_head(path, unified, cand_weights, metadata):
+    """Write candidate weights and the digest of their verified serving dependency."""
+    from ..ai.belief_numpy import DIMS
+    pin = getattr(unified, "package_sha256", None)
+    if not isinstance(pin, str) or len(pin) != 64 or any(c not in "0123456789abcdef" for c in pin):
+        raise SearchFreeError("shared candidate head requires a verified unified package")
+    model = SearchFreeModel.from_shared(unified, cand_weights, metadata)
+    payload = {f"c:{k}": v for k, v in model.c.items()}
+    payload.update(schema=np.asarray(HEAD_SCHEMA), unified_sha256=np.asarray(pin),
+                   metadata=np.asarray(json.dumps(dict(metadata, dims=DIMS), sort_keys=True, default=str)))
+    return _write_package(path, payload)
+
+
+def load_package(path: str | os.PathLike, sha256: str | None = None, dtype=np.float32, *,
+                 shared_unified=None) -> SearchFreeModel:
     from ..ai.belief_numpy import DIMS
     p = Path(path)
     if p.stat().st_size > PACKAGE_MAX_BYTES:
@@ -215,14 +247,23 @@ def load_package(path: str | os.PathLike, sha256: str | None = None, dtype=np.fl
     if sha256 is not None and digest != sha256:
         raise SearchFreeError(f"package sha256 {digest} != expected {sha256}")
     with np.load(io.BytesIO(raw), allow_pickle=False) as z:
-        if str(z["schema"]) != SCHEMA:
-            raise SearchFreeError(f"schema {z['schema']} != {SCHEMA}")
-        config = json.loads(str(z["config"]))
+        schema = str(z["schema"])
+        if schema not in (SCHEMA, HEAD_SCHEMA):
+            raise SearchFreeError(f"unknown search-free package schema {schema}")
         metadata = json.loads(str(z["metadata"]))
         if metadata.get("dims") != DIMS:
             raise SearchFreeError("package input widths differ from this runtime")
-        parts = {tag: {k[2:]: z[k] for k in z.files if k.startswith(tag + ":")} for tag in "whc"}
-    model = SearchFreeModel(config, parts["w"], parts["h"], parts["c"], metadata, dtype=dtype)
+        cand = {k[2:]: z[k] for k in z.files if k.startswith("c:")}
+        if schema == HEAD_SCHEMA:
+            required = str(z["unified_sha256"])
+            if (len(required) != 64 or getattr(shared_unified, "package_sha256", None) != required
+                    or shared_unified.dtype != np.dtype(dtype)):
+                raise SearchFreeError("candidate head requires its pinned unified model")
+            model = SearchFreeModel.from_shared(shared_unified, cand, metadata)
+        else:
+            config = json.loads(str(z["config"]))
+            parts = {tag: {k[2:]: z[k] for k in z.files if k.startswith(tag + ":")} for tag in "wh"}
+            model = SearchFreeModel(config, parts["w"], parts["h"], cand, metadata, dtype=dtype)
     model.package_sha256 = digest
     return model
 
@@ -421,12 +462,11 @@ def registry_entries(registry: Mapping[str, Any], environ: Mapping[str, str] | N
         raise SearchFreeError(f"SHENGJI_BOT {base_name!r} is not a registered policy")
     base_factory = registry[base_name]
     name = f"{base_name}-{TOKEN}{sha[:8]}"
-    cache: list[SearchFreeModel] = []
 
     def make(**kw):
         import inspect
-        if not cache:
-            cache.append(load_package(path, sha256=sha))
+        from .relaxed_play import casual_model
+
         try:
             params = inspect.signature(base_factory).parameters
         except (TypeError, ValueError):
@@ -438,7 +478,8 @@ def registry_entries(registry: Mapping[str, Any], environ: Mapping[str, str] | N
                 base.policy_name = base_name
             except AttributeError:
                 pass
-        bot = SearchFreeBot(base, cache[0])
+        model = casual_model(path, sha, shared_unified=getattr(base, "unified_prior_model", None))
+        bot = SearchFreeBot(base, model)
         bot.policy_name = name
         return bot
     return {name: make}

@@ -160,12 +160,19 @@ def seed_keep(arrays, windows):
 
 
 def load_part(entry: Mapping[str, Any], keys: Sequence[str], verified: _Verified, *,
-              sampler_rows_only: bool = False) -> dict[str, np.ndarray]:
+              sampler_rows_only: bool = False, include_source_rows: bool = False, source_seed_windows=()) -> dict[str, np.ndarray]:
     """One chunk's rows (residualized: unknown copies only) joined with its
     history; round arrays keep their chunk-local indices."""
     with np.load(io.BytesIO(verified.read(entry["path"], entry["sha256"]))) as z:
         part = {k: z[k] for k in keys}
         keep = np.ones(len(part["X"]), dtype=bool)
+        source_rows = None
+        if source_seed_windows:
+            source_keep = seed_keep(z, source_seed_windows)
+            if source_keep.shape != keep.shape:
+                raise BeliefSeqError("seed metadata row count differs from features")
+            source_rows = np.flatnonzero(source_keep)
+            keep &= source_keep
         if entry.get("exclude_seed_windows"):
             selected = seed_keep(z, entry["exclude_seed_windows"])
             if selected.shape != keep.shape:
@@ -184,6 +191,9 @@ def load_part(entry: Mapping[str, Any], keys: Sequence[str], verified: _Verified
         keep &= part["S_n"] > 0
     if not keep.all():
         part = {k: v[keep] for k, v in part.items()}
+    if include_source_rows:
+        part["source_row"] = np.flatnonzero(keep if source_rows is None else keep[source_rows])
+        part["source_count"] = n if source_rows is None else len(source_rows)
     if len(part["X"]):
         residualize(part)
         if np.any((part["Y"] > 0) & ~part["M"]):

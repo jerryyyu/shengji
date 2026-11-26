@@ -42,6 +42,7 @@ trump: NT
 rank: 2
 winner: 4
 notes: | | | big jokers
+hint: 4
 caption: From position 4. The big jokers win this trick for sure. Spending them on it cost about two-thirds of a level on average.
 ```
 

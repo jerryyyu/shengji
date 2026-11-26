@@ -6,6 +6,7 @@ order: 14
 related: [toughest-decisions, scoring-and-levels, burying-the-kitty, counting-cards]
 updated: 2026-11-25
 lang: en
+answer: B C D
 ---
 
 ## The situation
@@ -24,12 +25,23 @@ lift: 0 1 | |
 caption: Your 12 cards. The raised pair wins this trick for sure.
 ```
 
+```cards
+kind: trick
+names: Attacker | Partner | Attacker
+plays: H5 H5 | H4 HQ | H7 H7
+trump: NT
+rank: 2
+winner: 3
+winlabel: winning so far
+caption: The trick so far, with 10 points in it. You play last.
+```
+
 ## What would you play?
 
 You're out of hearts, so any two cards will do.
 
 - **A.** The big joker pair. It wins the trick and its 10 points. This is the rule-based bot's play.
-- **B.** ♣K ♠J. Our bot's play: the attackers win the trick, 20 points with your ♣K.
+- **B.** ♣K ♠J. The attackers win the trick, 20 points with your ♣K. This is our bot's play.
 - **C.** ♠4 ♠9. The attackers win it, 10 points.
 - **D.** ♠8 ♠9. The same as C.
 

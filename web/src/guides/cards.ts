@@ -344,5 +344,8 @@ export function renderBlock(src: string, lang: Lang, inline: (text: string) => s
   counter += 1;
   const id = `gv${counter}`;
   const caption = fields.caption ? `<figcaption>${inline(fields.caption)}</figcaption>` : "";
-  return `<figure class="gv" style="--gv-w:${r.width}px">${svgWrap(r, id, cls)}${caption}</figure>`;
+  // `hint: N` marks a figure that gives away puzzle N's answer (puzzle.ts hides it until then)
+  if (fields.hint !== undefined && !/^[1-9]$/.test(fields.hint)) throw new DiagramError("hint must name a puzzle, 1 to 9");
+  const hint = fields.hint ? ` data-pz-later="${fields.hint}"` : "";
+  return `<figure class="gv"${hint} style="--gv-w:${r.width}px">${svgWrap(r, id, cls)}${caption}</figure>`;
 }

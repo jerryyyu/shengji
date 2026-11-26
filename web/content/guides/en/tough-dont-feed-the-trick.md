@@ -6,6 +6,7 @@ order: 13
 related: [toughest-decisions, counting-cards, pairs-tractors-throws, scoring-and-levels]
 updated: 2026-11-25
 lang: en
+answer: A
 ---
 
 ## The situation
@@ -19,8 +20,18 @@ lang: en
 ```cards
 cards: LJ C9 DJ D10 D8 D7 D3 | H10
 labels: Trumps (7) | Hearts (1)
-lift: 3 |
-caption: Your hand. The raised card is our bot's play.
+caption: Your hand.
+```
+
+```cards
+kind: trick
+names: Partner | Attacker
+plays: S10 | S10
+trump: D
+rank: 9
+winner: 1
+winlabel: winning so far
+caption: The trick so far. You play third, and the last player is still to come.
 ```
 
 ## What would you play?

@@ -42,6 +42,7 @@ trump: NT
 rank: 2
 winner: 4
 notes: | | | 一对大王
+hint: 4
 caption: 第 4 题。一对大王稳拿这一轮，但为这一轮花掉它们，平均要少升大约三分之二级。
 ```
 

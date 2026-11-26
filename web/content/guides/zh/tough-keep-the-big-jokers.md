@@ -6,6 +6,7 @@ order: 14
 related: [toughest-decisions, scoring-and-levels, burying-the-kitty, counting-cards]
 updated: 2026-11-25
 lang: zh
+answer: B C D
 ---
 
 ## 局面
@@ -24,12 +25,23 @@ lift: 0 1 | |
 caption: 你的 12 张牌。抬起的这对稳拿这一轮。
 ```
 
+```cards
+kind: trick
+names: 闲家 | 对家 | 闲家
+plays: H5 H5 | H4 HQ | H7 H7
+trump: NT
+rank: 2
+winner: 3
+winlabel: 目前最大
+caption: 这一轮到目前为止，里面有 10 分。你最后出。
+```
+
 ## 你出什么？
 
 你没有红桃，随便出两张都可以。
 
 - **A.** 一对大王。拿下这一轮和里面的 10 分。这是规则机器人的出法。
-- **B.** ♣K ♠J。我们 AI 的出法：这一轮归闲家，加上你的 ♣K 一共 20 分。
+- **B.** ♣K ♠J。这一轮归闲家，加上你的 ♣K 一共 20 分。这是我们 AI 的出法。
 - **C.** ♠4 ♠9。这一轮归闲家，10 分。
 - **D.** ♠8 ♠9。和 C 一样。
 

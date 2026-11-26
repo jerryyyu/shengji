@@ -6,6 +6,7 @@ order: 12
 related: [toughest-decisions, pairs-tractors-throws, counting-cards, scoring-and-levels]
 updated: 2026-11-25
 lang: en
+answer: A
 ---
 
 ## The situation
@@ -18,8 +19,19 @@ lang: en
 ```cards
 cards: SA SJ S9 S7 S5 S4 | HA HK H10 H10 H9 H6 H2 | DQ DJ D10 D9
 labels: Trumps (6) | Hearts (7) | Diamonds (4)
-lift: 4 | 1 2 3 | 2
-caption: Your hand. The raised cards are our bot's play: 45 points.
+caption: Your hand.
+```
+
+```cards
+kind: trick
+names: Partner | Banker's partner
+plays: C3 C3 CJ CJ CA | C5 CA H3 H4 HJ
+trump: S
+rank: 8
+winner: 1
+winlabel: winning so far
+notes: throw |
+caption: The trick so far. You play third and the banker plays last.
 ```
 
 ## What would you play?

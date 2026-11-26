@@ -352,3 +352,30 @@ def test_joint_lengths_reach_returned_hands_and_kitty(offset):
     with pytest.raises(BeliefSeqError, match="infeasible state"):
         proposal(rnd, seat, None)
     assert not proposal.queue
+
+
+def test_learned_length_scores_change_hands_at_the_proposal_boundary():
+    torch = pytest.importorskip("torch")
+    from collections import Counter
+    from shengji.train.belief_lengths import build_length_head
+    from test_world_history_legal import started
+
+    class Uniform:
+        def marginals(self, inp):
+            return np.ones_like(inp["M"], dtype=float)
+
+    rnd, _ = started(7)
+    seat = (rnd.banker + 1) % 4
+    head = build_length_head(width=8)
+    totals = []
+    for sign in (-1, 1):
+        with torch.no_grad():
+            head.output[-1].weight.zero_()
+            head.output[-1].bias.copy_(sign * 100 * torch.arange(26))
+        proposal = bn.SuitLengthProposal(Uniform(), rnd, seat, seed=13, batch=3,
+                                         draw_lengths=head.draw_lengths)
+        hands, kitty = proposal(rnd, seat, None)
+        assert len(kitty) == len(rnd.buried)
+        assert all(len(cards) == len(rnd.hands[s]) for s, cards in hands.items())
+        totals.append([Counter(map(rnd.ordering.eff_suit, hand)) for hand in hands.values()])
+    assert totals[0] != totals[1]

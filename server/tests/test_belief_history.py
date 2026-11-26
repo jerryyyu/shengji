@@ -505,3 +505,58 @@ def test_prepare_belief_partitions_preserve_full_training_rows(tmp_path, capsys)
     with pytest.raises(SystemExit):
         main(common + ['--out', str(invalid), '--cluster-stride', '2', '--cluster-offset', '2'])
     assert not invalid.exists()
+
+
+def test_joint_length_loss_from_residualized_history_rows(chunk):
+    torch = pytest.importorskip("torch")
+    from shengji.train import belief_seq as bs
+    from shengji.train.belief_lengths import build_length_head
+
+    part = {k: np.copy(chunk["rows"][k]) for k in bs.ROW_KEYS}
+    bs.residualize(part)
+    part.update({k: chunk["hist"][k] for k in ("row_round", "row_ply", "row_seat")})
+    part["_rounds"] = chunk["hist"]
+    # Reverse the local round table so indexing features by row would be wrong.
+    rounds = np.unique(part["row_round"])[::-1]
+    rows = np.array([np.flatnonzero(part["row_round"] == r)[0] for r in rounds])
+    batch = bs.make_batch(part, rounds, rows)
+    head = build_length_head(width=8)
+    loss = head.loss(batch)
+    loss.backward()
+    assert torch.isfinite(loss) and loss.item() > 0
+    assert head.output[-1].bias.grad.abs().sum().item() > 0
+
+
+def test_joint_length_support_matches_complete_allocations():
+    from itertools import product
+    from shengji.train.belief_lengths import _allocation_steps
+
+    # Overlapping allowed receivers, a duplicate, and a single permitted holder.
+    possible = [(0, 1), (0, 1), (1, 2), (0, 2), (2,)]
+    capacities = [2, 1, 2, 0]
+    suits = [0, 0, 1, 1, 2]
+    valid = set()
+    for assignment in product(*possible):
+        if np.bincount(assignment, minlength=4).tolist() == capacities:
+            table = np.zeros((5, 4), int)
+            np.add.at(table, (suits, assignment), 1)
+            valid.add(tuple(table.ravel()))
+
+    mask = np.zeros((4, 4), bool)
+    for i, receivers in enumerate([possible[0], *possible[2:]]):
+        mask[i, list(receivers)] = True
+    feat = np.zeros((4, 11))
+    feat[np.arange(4), [1, 2, 2, 3]] = 1
+
+    def completions(prefix):
+        steps = _allocation_steps(feat, mask, [2, 1, 1, 1], capacities)
+        try:
+            step = next(steps)
+            for k in prefix:
+                step = steps.send(k)
+        except StopIteration as done:
+            return {tuple(done.value.ravel())}
+        return set().union(*(completions([*prefix, k]) for k in step.choices))
+
+    assert len(valid) > 1
+    assert completions([]) == valid

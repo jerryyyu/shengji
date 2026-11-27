@@ -13,7 +13,10 @@ import { SEAT_SIZE } from "./TableCompanions";
 import { companionSize } from "./rig";
 
 // the hand as the table measures it: from its cards' top, raised by a chosen card's lift
-const handOf = (m: Measured): Rect => ({ x: m.hand.x, y: m.firstCard.y - HAND_LIFT, w: m.hand.w, h: m.hand.y + m.hand.h - m.firstCard.y + HAND_LIFT });
+const handOf = (m: Measured): Rect => {
+  const top = Math.min(m.hand.y, m.firstCard.y - HAND_LIFT);
+  return { x: m.hand.x, y: top, w: m.hand.w, h: m.hand.y + m.hand.h - top };
+};
 const layoutOf = (m: Measured, extra: Rect[] = []): Layout => ({
   felt: m.felt, plates: m.plates, tagline: m.tagline, row: m.row, hand: m.firstCard,
   safe: { x0: m.plates.left.x, x1: m.plates.right.x + m.plates.right.w },
@@ -77,6 +80,19 @@ describe("the walking zone", () => {
       expect(home.y + px, name).toBeGreaterThan(m.firstCard.y - HAND_LIFT - px);
       // and nowhere near the left seat's played card and its LEAD label
       for (const o of [...m.trick, ...m.tags]) expect(meets(figureBox(home, px, true), o), name).toBe(false);
+    }
+  });
+
+  it("on a tablet, with a hint line beside your name line, yours still has a place, at full size", () => {
+    for (const name of ["ipad11-land-lead1", "desktop-lead1"]) {
+      const m = TABLES[name];
+      const tag = m.tagline!;
+      const hint: Rect = { x: tag.x + tag.w + 8, y: tag.y - 6, w: 420, h: tag.h + 12 };
+      const px = SEAT_SIZE.tablet.max;
+      const zone = zonesFor(seats(px), layoutOf(m, [hint])).bottom;
+      expect(zone.home, name).not.toBeNull();
+      expect(zone.size, name).toBe(px);
+      expect(meets(figureBox(zone.home!, px, true), hint), name).toBe(false);
     }
   });
 

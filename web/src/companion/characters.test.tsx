@@ -556,7 +556,7 @@ describe("the table", () => {
     return { x, y };
   };
   const layout = (): Layout => ({ felt: m.felt, plates: m.plates, tagline: null, row: m.row, hand: m.firstCard,
-    obstacles: [rects["trick-play"], { ...m.hand, y: m.firstCard.y - HAND_LIFT, h: m.hand.y + m.hand.h - m.firstCard.y + HAND_LIFT },
+    obstacles: [rects["trick-play"], { ...m.hand, y: Math.min(m.hand.y, m.firstCard.y - HAND_LIFT), h: m.hand.y + m.hand.h - Math.min(m.hand.y, m.firstCard.y - HAND_LIFT) },
                 ...Object.values(m.plates)].filter((r) => r.w > 0) });
   // each seat's zone as the table works it out: yours first, every seat at its team's level
   const homeOf = (pos: SeatPos) => zonesFor([{ pos: "bottom", size: 44, tag: true }, { pos: "left", size: 56, tag: false },

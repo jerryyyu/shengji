@@ -90,10 +90,23 @@ export function ideal(pos: SeatPos, size: number, layout: Layout): Spot | null {
 
 /** Where else a seat's figure may stand when its own corner is taken: by
  *  a side seat's nameplate on its inner side or above it, by your partner's
- *  on its left. */
+ *  on its left; yours over or beside your name line, or on the open felt
+ *  left of your hand. */
 export function fallbacks(pos: SeatPos, size: number, layout: Layout): Spot[] {
+  if (pos === "bottom") {
+    // yours: over your name line, beside it, then the open felt left of your hand, then over the hand's left end
+    const out: Spot[] = [];
+    const tag = layout.tagline;
+    if (tag && tag.w > 0) out.push({ x: tag.x, y: tag.y - 6 - size }, { x: tag.x - 10 - size, y: tag.y + tag.h - size });
+    const hand = layout.hand;
+    if (hand && hand.w > 0) {
+      out.push({ x: hand.x - size - 14, y: hand.y + 8 });
+      if (tag && tag.w > 0) out.push({ x: hand.x + 4, y: hand.y - HAND_LIFT - GAP - size });
+    }
+    return out;
+  }
   const p = layout.plates[pos];
-  if (!p || pos === "bottom") return [];
+  if (!p) return [];
   if (pos === "left") return [{ x: p.x + p.w + 4, y: p.y + p.h - size }, { x: p.x + 10, y: p.y - 4 - size }];
   if (pos === "right") return [{ x: p.x - 4 - size, y: p.y + p.h - size }, { x: p.x + p.w - 10 - size, y: p.y - 4 - size }];
   return [{ x: p.x - 8 - size, y: Math.max(4, p.y + p.h - size + 8) }];

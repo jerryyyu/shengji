@@ -201,7 +201,7 @@ function measure(felt: HTMLElement): Layout {
   const hand = one(".hand");
   const first = one(".hand .hand-slot");
   if (hand) {
-    const top = (first?.y ?? hand.y) - HAND_LIFT;
+    const top = Math.min(hand.y, (first?.y ?? hand.y) - HAND_LIFT);
     obstacles.push({ x: hand.x, y: top, w: hand.w, h: hand.y + hand.h - top });
   }
   const plates: Layout["plates"] = {};

@@ -1555,6 +1555,13 @@ def test_reserved_deck_cli_scores_both_mirrors_and_publishes_once(
     with pytest.raises(FileExistsError):
         bank.main(argv)
     argv[argv.index(str(output))] = str(tmp_path / "incomplete.json")
+    if substitution:
+        # A repeated valid row replaces a different reserved turn immediately before publication.
+        with monkeypatch.context() as patch:
+            patch.setattr(bank, "score_bank_root", lambda *a, **kw: result["rows"][0])
+            with pytest.raises(ValueError, match="missing, repeated or unreserved turn"):
+                bank.main(argv)
+            assert not (tmp_path / "incomplete.json").exists()
     path.write_text(json.dumps(manifest) + " ")
     with pytest.raises(ValueError, match="digest mismatch"):
         bank.main(argv)

@@ -191,6 +191,11 @@ def test_launcher_hold_then_guarded_resume_preserves_completed_shard(release50_p
     assert len(kept) == 2
     spec.update(resume=True, run_id=json.loads((out/'run.json').read_text())['run_id'],
                 workers=2, split_tail_mirrors=True)
+    # Exercise tranche supervision on the small hold/resume fixture.
+    quality_path = launch_path.with_name('shard_quality.py')
+    spec['files'][str(quality_path)] = launcher.sha256(quality_path)
+    spec['tranche_reservation'] = {}
+    monkeypatch.setattr(launcher, '_check_tranche_reservation', lambda spec: None)
     monkeypatch.setattr(launcher.time, 'sleep', real_sleep)
     hold.unlink()
     assert released_run() == 0

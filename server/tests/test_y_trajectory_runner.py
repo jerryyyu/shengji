@@ -215,12 +215,28 @@ def test_launcher_hold_then_guarded_resume_preserves_completed_shard(release50_p
     archive_python = '/usr/bin/python3' if sys.platform == 'darwin' else sys.executable
     archive_cmd = [archive_python, str(source/'tools/y_datagen/archive_leg.py'),
                    str(out), str(terminal), launcher.sha256(terminal)]
+    quality_cmd = [archive_python, str(source/'tools/y_datagen/check_leg.py'),
+                   str(out), str(terminal), launcher.sha256(terminal)]
+    quality = json.loads(subprocess.check_output(quality_cmd))
+    assert quality['play_rows'] == manifest['counts']['decisions'] and quality['rounds'] == 4
     receipt = json.loads(subprocess.check_output([*archive_cmd, str(archive)]))
     assert receipt['verified_members'] == 7
     assert receipt['raw_member_bytes'] > receipt['compressed_bytes'] == archive.stat().st_size
     # Exercise the same producer and consumer with a tranche-bound external mount.
     monkeypatch.syspath_prepend(str(source/'tools/y_datagen'))
     import archive_leg
+    from check_leg import check_play
+    with (out/manifest['shards'][0]['path']).open() as stream:
+        play = next(row for row in map(json.loads, stream) if row['decision_kind'] == 'play')
+    decision = play['allocation']['serving_decision']
+    assert decision['belief_fallback'] == 0
+    decision['belief_fallback_by_stage']['adaptive_worlds'] = 1
+    decision.update(belief_fallback_all_draws=1, belief_fallback_any=1)
+    with pytest.raises(ValueError, match='play belief fallback'):
+        check_play(decision)
+    del decision['belief_fallback_by_stage']
+    with pytest.raises(KeyError, match='belief_fallback_by_stage'):
+        check_play(decision)
     ssd = tmp_path/'external'
     ssd.mkdir()
     def external_volume(uuid, *, internal):

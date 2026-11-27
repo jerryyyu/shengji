@@ -29,7 +29,7 @@ import type { Pose } from "./Companion";
 import { useCollection } from "./feature";
 import { parseLook } from "./look";
 import { shownAtTable, useCompanionMode } from "./mode";
-import { HAND_LIFT, clear, figureBox, nearest, nearestClear, nextSpot, pathClear, TAPPED_HIGH, TAPPED_WIDE, zoneAround, zonesFor } from "./seatZones";
+import { HAND_LIFT, LIFT, clear, figureBox, nearest, nearestClear, nextSpot, pathClear, TAPPED_HIGH, TAPPED_WIDE, zoneAround, zonesFor } from "./seatZones";
 import type { Layout, Rect, SeatPos, Spot, Zone } from "./seatZones";
 import { useT } from "../i18n";
 import { LEVELS, companionSize } from "./rig";
@@ -60,6 +60,24 @@ function reactions(state: GameState, prev: GameState | null): Record<number, Pos
   return out;
 }
 
+/** A hop's peak, as a share of the figure's height: the highest of these
+ *  whose rise stays clear where it stands (`hopPeak`). */
+export const HOP_PEAKS = [0.28, 0.2, 0.13] as const;
+export function hopFrames(peak: number): Keyframe[] {
+  return [
+    { transform: "translateY(0) scale(1, 1)" }, { transform: "translateY(0) scale(1.03, 0.96)", offset: 0.18 },
+    { transform: `translateY(-${Math.round(peak * 100)}%) scale(0.99, 1.02)`, offset: 0.5 },
+    { transform: "translateY(0) scale(1.02, 0.98)", offset: 0.82 }, { transform: "translateY(0) scale(1, 1)" }];
+}
+/** The highest hop a figure `px` wide standing at `s` has room for: its
+ *  box raised by the rise past the zone's own headroom (`LIFT`) stays
+ *  clear of the table, the nameplates and the felt's top edge. */
+export function hopPeak(s: Spot | null, px: number, tag: boolean, layout: Layout): number {
+  const low = HOP_PEAKS[HOP_PEAKS.length - 1];
+  if (!s) return low;
+  return HOP_PEAKS.find((k) => clear({ x: s.x, y: s.y - Math.max(0, Math.ceil((k - LIFT) * px)) }, px, tag, layout)) ?? low;
+}
+
 /** The moves at the table, as Web Animations of the box round a still
  *  drawing: no class or style changes as one starts or ends, so the
  *  compositor plays it and nothing is laid out or repainted. */
@@ -69,10 +87,7 @@ export const MOVES: Record<"fidget" | "nudge" | "hop" | "cheer", { frames: Keyfr
   nudge: { ms: 420, easing: "cubic-bezier(0.3, 0.7, 0.3, 1)", frames: [
     { transform: "translateY(0) scale(1, 1)" }, { transform: "translateY(-7%) scale(0.99, 1.02)", offset: 0.45 },
     { transform: "translateY(0) scale(1.02, 0.98)", offset: 0.8 }, { transform: "translateY(0) scale(1, 1)" }] },
-  hop: { ms: 500, easing: "cubic-bezier(0.3, 0.7, 0.3, 1)", frames: [
-    { transform: "translateY(0) scale(1, 1)" }, { transform: "translateY(0) scale(1.03, 0.96)", offset: 0.18 },
-    { transform: "translateY(-13%) scale(0.99, 1.02)", offset: 0.5 }, { transform: "translateY(0) scale(1.02, 0.98)", offset: 0.82 },
-    { transform: "translateY(0) scale(1, 1)" }] },
+  hop: { ms: 500, easing: "cubic-bezier(0.3, 0.7, 0.3, 1)", frames: hopFrames(HOP_PEAKS[HOP_PEAKS.length - 1]) },
   cheer: { ms: 1200, easing: "cubic-bezier(0.3, 0.7, 0.3, 1)", frames: [
     { transform: "translateY(0) scale(1, 1)" }, { transform: "translateY(0) scale(1.09, 0.89)", offset: 0.08 },
     { transform: "translateY(-9%) scale(0.95, 1.05)", offset: 0.26 }, { transform: "translateY(0) scale(1.1, 0.88)", offset: 0.44 },
@@ -99,8 +114,9 @@ function levelUpFrames(from: number): Keyframe[] {
  *  resolves when it ends (at once where the element cannot animate, or under
  *  Reduce Motion, after the move's length: a level gained holds its still
  *  badge as long as the move would have taken). */
-function play(el: HTMLElement | null, name: keyof typeof MOVES | "levelup", from = 1): { done: Promise<void>; stop: () => void } {
-  const m = name === "levelup" ? { frames: levelUpFrames(from), ms: LEVEL_UP_MS, easing: "linear" } : MOVES[name];
+function play(el: HTMLElement | null, name: keyof typeof MOVES | "levelup", from = 1, frames: Keyframe[] | null = null): { done: Promise<void>; stop: () => void } {
+  const m = name === "levelup" ? { frames: levelUpFrames(from), ms: LEVEL_UP_MS, easing: "linear" }
+    : frames ? { ...MOVES[name], frames } : MOVES[name];
   if (!el || typeof el.animate !== "function" || prefersReducedMotion()) {
     let timer = 0;
     const done = new Promise<void>((r) => { timer = window.setTimeout(r, name === "levelup" ? m.ms : Math.min(m.ms, FIDGET_MS)); });
@@ -110,6 +126,8 @@ function play(el: HTMLElement | null, name: keyof typeof MOVES | "levelup", from
   return { done: a.finished.then(() => undefined, () => undefined), stop: () => a.cancel() };
 }
 
+/** How soon a fidget or walk that fell due mid-move looks again. */
+const RETRY_MS = 1000;
 /** The fidgets a companion at rest plays in turn. */
 const FIDGETS = ["sway", "blink", "nudge"] as const;
 /** How long a blink keeps the eyes shut. */
@@ -121,24 +139,33 @@ const BLINK_MS = 160;
 function useFidget(el: RefObject<HTMLSpanElement | null>, on: boolean, onBlink: (shut: boolean) => void): void {
   const blink = useRef(onBlink);
   blink.current = onBlink;
+  // the clock runs while the figure is drawn; a fidget due mid-move waits
+  // for the move to end, so hops for tricks do not keep putting it off
+  const onNow = useRef(on);
+  onNow.current = on;
+  const seenOn = useRef(false);
+  if (on) seenOn.current = true;
+  const live = seenOn.current;
   useEffect(() => {
-    if (!on || prefersReducedMotion()) return;
+    if (!live || prefersReducedMotion()) return;
     let timer = 0;
     let shut = 0;
     let turn = 0;
     let running: { stop: () => void } | null = null;
     const wait = () => {
       window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        const kind = FIDGETS[turn++ % FIDGETS.length];
-        if (kind === "blink") {
-          blink.current(true);
-          shut = window.setTimeout(() => blink.current(false), BLINK_MS);
-        } else {
-          running = play(el.current, kind === "sway" ? "fidget" : "nudge");
-        }
-        wait();
-      }, FIDGET_GAP[0] + Math.random() * (FIDGET_GAP[1] - FIDGET_GAP[0]));
+      timer = window.setTimeout(due, FIDGET_GAP[0] + Math.random() * (FIDGET_GAP[1] - FIDGET_GAP[0]));
+    };
+    const due = () => { if (onNow.current) fire(); else timer = window.setTimeout(due, RETRY_MS); };
+    const fire = () => {
+      const kind = FIDGETS[turn++ % FIDGETS.length];
+      if (kind === "blink") {
+        blink.current(true);
+        shut = window.setTimeout(() => blink.current(false), BLINK_MS);
+      } else {
+        running = play(el.current, kind === "sway" ? "fidget" : "nudge");
+      }
+      wait();
     };
     const seen = () => {
       window.clearTimeout(timer);
@@ -155,7 +182,7 @@ function useFidget(el: RefObject<HTMLSpanElement | null>, on: boolean, onBlink: 
       running?.stop();
       document.removeEventListener("visibilitychange", seen);
     };
-  }, [el, on]);
+  }, [el, live]);
 }
 
 /** A companion's base size and the most its nameplate's corner allows, by
@@ -220,7 +247,7 @@ function framedPoint(el: Element, x: number, y: number): Spot {
   return el.closest(".app.rotated") ? { x: y, y: window.innerWidth - x } : { x, y };
 }
 
-function measure(felt: HTMLElement, phone = false): Layout {
+function measure(felt: HTMLElement, phone = false, dealing = false): Layout {
   const f = framed(felt, felt.getBoundingClientRect());
   const rel = (e: Element): Rect => {
     const b = framed(e, e.getBoundingClientRect());
@@ -240,7 +267,9 @@ function measure(felt: HTMLElement, phone = false): Layout {
   const first = one(".hand .hand-slot");
   if (hand) {
     const top = Math.min(hand.y, (first?.y ?? hand.y) - HAND_LIFT);
-    obstacles.push({ x: hand.x, y: top, w: hand.w, h: hand.y + hand.h - top });
+    // while it is dealt the hand is weighed across the felt, where its cards
+    // will be, so no figure steps into its row only to be pushed out again
+    obstacles.push(dealing ? { x: 0, y: top, w: f.w, h: hand.y + hand.h - top } : { x: hand.x, y: top, w: hand.w, h: hand.y + hand.h - top });
   }
   const plates: Layout["plates"] = {};
   for (const pos of ["left", "top", "right"] as const) {
@@ -365,8 +394,8 @@ export const TAP_THROTTLE_MS = 500;
  *  played as a special once any level-up has ended. Every move is a Web
  *  Animation of a transform. Under Reduce Motion it stands on its home;
  *  while the page is hidden it rests. */
-function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal, tapped, wins, onEnd, onUpEnd, onGoal, onTapped, onStray }: {
-  player: StatePlayer; team: Team; px: number; pos: SeatPos;
+function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal, tapped, wins, dealing, onEnd, onUpEnd, onGoal, onTapped, onStray }: {
+  player: StatePlayer; team: Team; px: number; pos: SeatPos; dealing: boolean;
   zone: Zone; layout: Layout; roam: Layout; pose: Pose; up: LevelUp | null; you: boolean; goal: { spot: Spot; n: number } | null;
   tapped: Spot | null; wins: number; onEnd: () => void; onUpEnd: () => void; onGoal?: (n: number) => void;
   onTapped?: (s: Spot | null) => void; onStray?: (s: Spot | null) => void;
@@ -443,6 +472,7 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
       return;
     }
     stop();
+    if (Math.hypot(to.x - from.x, to.y - from.y) < 1 && !via) { place(to); return; }
     const leg = via ? Math.hypot(via.x - from.x, via.y - from.y) : 0;
     const dist = via ? leg + Math.hypot(to.x - via.x, to.y - via.y) : Math.hypot(to.x - from.x, to.y - from.y);
     const ms = quick ? Math.min(QUICK_MS[1], Math.max(QUICK_MS[0], QUICK_MS[0] + (dist / px) * 80))
@@ -475,6 +505,10 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
   useLayoutEffect(() => {
     const now = cur.current;
     const drawn = now !== null && !!walk.current?.style.transform;
+    // while the hand is dealt the cards keep arriving and flying over the
+    // felt: a drawn figure holds still under them, and steps aside, if it
+    // must, once the deal is done
+    if (dealing && drawn) return;
     const quick = { under: true, quick: true };
     if (tapped && !clear(tapped, px, you, roam)) {
       // with no clear spot near it the tapped home is dropped: yours goes back
@@ -515,7 +549,7 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     // covered (a control or a bubble appeared over it): out by the nearest
     // way, upward before downward
     if (off || !clear(now, px, you, room)) goTo(off ? home : nearest(here, now, true) ?? home, quick);
-  }, [zone, here, layout, roam, px, you]);
+  }, [zone, here, layout, roam, px, you, dealing]);
 
   // a tap on the felt sends yours there, once, and makes it the home: each
   // tap is taken (or dropped) the first time it is seen, and one whose spot
@@ -544,35 +578,45 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
   roomNow.current = room;
   const roamNow = useRef(roam);
   roamNow.current = roam;
-  const idle = placed && move === "idle" && !up && !playing;
+  // the clock runs while the figure is drawn: a walk due mid-move (a hop for
+  // a trick, a special) or while the hand is dealt waits for it to end, so
+  // the moves do not keep putting it off
+  const idle = placed && move === "idle" && !up && !playing && !dealing;
+  const idleNow = useRef(idle);
+  idleNow.current = idle;
   useEffect(() => {
-    if (!idle || prefersReducedMotion()) return;
+    if (!placed || prefersReducedMotion()) return;
     let timer = 0;
+    const due = () => {
+      if (!idleNow.current || walking.current.length > 0) { timer = window.setTimeout(due, RETRY_MS); return; }
+      const from = cur.current;
+      // a spot it can reach without crossing anything; it stays put when none is
+      for (let i = 0; from && i < 6; i++) {
+        const to = nextSpot(zoneNow.current, from, px, Math.random());
+        if (to && pathClear(from, to, px, you, roomNow.current)) { goTo(to); break; }
+      }
+      wait();
+    };
     const wait = () => {
       window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        const from = cur.current;
-        // a spot it can reach without crossing anything; it stays put when none is
-        for (let i = 0; from && i < 6; i++) {
-          const to = nextSpot(zoneNow.current, from, px, Math.random());
-          if (to && pathClear(from, to, px, you, roomNow.current)) { goTo(to); break; }
-        }
-        wait();
-      }, WALK_GAP[0] + Math.random() * (WALK_GAP[1] - WALK_GAP[0]));
+      timer = window.setTimeout(due, WALK_GAP[0] + Math.random() * (WALK_GAP[1] - WALK_GAP[0]));
     };
     const seen = () => { window.clearTimeout(timer); if (document.visibilityState !== "hidden") wait(); };
     seen();
     document.addEventListener("visibilitychange", seen);
     return () => { window.clearTimeout(timer); document.removeEventListener("visibilitychange", seen); };
-  }, [idle, px]);
+  }, [placed, px]);
   useEffect(() => stop, []);
 
   useEffect(() => {
     if (move !== "hop" && move !== "cheer") return;
-    const run = play(box.current, move);
+    // a hop as high as stays clear where it stands
+    const run = move === "hop" ? play(box.current, "hop", 1, hopFrames(hopPeak(cur.current, px, you, roamNow.current))) : play(box.current, move);
     let live = true;
     void run.done.then(() => { if (live) ended.current(); });
     return () => { live = false; run.stop(); };
+  // a hop's height is read where it stands as it starts
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [move]);
 
   // a level gained: once per level, when the table is in view
@@ -648,7 +692,7 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
 /** The walking zones, measured from the felt and measured again whenever
  *  the cards, the phase or the layout change (and twice more as cards
  *  finish flying in). */
-function useLayout(root: RefObject<HTMLDivElement | null>, on: boolean, key: string, phone = false): Layout | null {
+function useLayout(root: RefObject<HTMLDivElement | null>, on: boolean, key: string, phone = false, dealing = false): Layout | null {
   const [layout, setLayout] = useState<Layout | null>(null);
   useLayoutEffect(() => {
     if (!on) return;
@@ -657,7 +701,7 @@ function useLayout(root: RefObject<HTMLDivElement | null>, on: boolean, key: str
     // a measure that finds nothing moved keeps the layout as it was
     let last = "";
     const read = () => {
-      const next = measure(felt, phone);
+      const next = measure(felt, phone, dealing);
       const seen = JSON.stringify(next);
       if (seen === last) return;
       last = seen;
@@ -689,7 +733,7 @@ function useLayout(root: RefObject<HTMLDivElement | null>, on: boolean, key: str
       window.clearTimeout(later); window.clearTimeout(slow); window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", read); ro?.disconnect(); mo?.disconnect();
     };
-  }, [root, on, key, phone]);
+  }, [root, on, key, phone, dealing]);
   return on ? layout : null;
 }
 
@@ -788,7 +832,7 @@ export default function TableCompanions({ state }: { state: GameState }) {
   const ours = me?.team ?? 0;
   const wins = useRoundWins(state, ours);
   const key = JSON.stringify([state.phase, state.trick, state.last_trick?.winner, state.players.map((p) => [p.seat, p.is_bot, p.left]), tablet, levels]);
-  const layout = useLayout(root, on, key, !tablet);
+  const layout = useLayout(root, on, key, !tablet, state.phase === "deal");
   const people = state.players.filter((p) => !p.is_bot && !p.left);
   // the spot your last tap chose, at this table; yours stands round it, at
   // its full size, whatever room its zone by your hand has
@@ -894,7 +938,7 @@ export default function TableCompanions({ state }: { state: GameState }) {
                   px={you && home ? myPx : zone.size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max)}
                   pos={pos} zone={zone} layout={layout} roam={rooms ? rooms[pos] : layout} pose={poses[p.seat] ?? "idle"}
                   up={ups[p.seat] ?? null} you={you} goal={you ? goal : null} tapped={you ? home : null}
-                  wins={p.team === ours ? wins : 0} onEnd={end(p.seat)} onUpEnd={done(p.seat)}
+                  wins={p.team === ours ? wins : 0} dealing={state.phase === "deal"} onEnd={end(p.seat)} onUpEnd={done(p.seat)}
                   onGoal={you ? takeGoal : undefined} onTapped={you ? takeHome : undefined}
                   onStray={stepped(pos, you && home ? myPx : zone.size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max))} />
         );

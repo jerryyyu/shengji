@@ -23,7 +23,7 @@ import { DRAWINGS } from "./kinds";
 import { COMPANIONS, COMPANION_KINDS, FREE_KINDS, lookCatalogue, parseLook } from "./look";
 import { companionSize } from "./rig";
 import { parseArt } from "./Tractor";
-import TableCompanions, { LEVEL_UP_MS, MOVES, SEAT_SIZE, STROLL_MS_PER_FIGURE, TAP_WALK_MS, around, levelIndex, strollMs } from "./TableCompanions";
+import TableCompanions, { HOP_PEAKS, LEVEL_UP_MS, MOVES, SEAT_SIZE, STROLL_MS_PER_FIGURE, TAP_WALK_MS, around, hopPeak, levelIndex, strollMs } from "./TableCompanions";
 import { hasNewLook } from "./seen";
 import type { LookEntry } from "./look";
 import { HAND_LIFT, LIFT, clear, figureBox, meets, pathClear, zonesFor } from "./seatZones";
@@ -899,10 +899,10 @@ describe("the table", () => {
       // it did walk, each walk a small one round the tapped spot, every spot clear
       expect(after.length).toBeGreaterThanOrEqual(2);
       for (const s of after) {
-        expect(near(s, end)).toBeLessThanOrEqual(44);
+        expect(near(s, end)).toBeLessThanOrEqual(1.5 * 44);
         expect(clear(s, 44, true, layout())).toBe(true);
       }
-      expect(near(spotOf(0), end)).toBeLessThanOrEqual(44);
+      expect(near(spotOf(0), end)).toBeLessThanOrEqual(1.5 * 44);
     });
 
     it("with only its old area by your hand covered, yours stays drawn on its tapped home and takes a second tap", async () => {
@@ -1250,7 +1250,7 @@ describe("the table", () => {
       const after = stops(taken);
       expect(after.length).toBeGreaterThanOrEqual(2);
       for (const s of after) {
-        expect(near(s, adopted)).toBeLessThanOrEqual(44);
+        expect(near(s, adopted)).toBeLessThanOrEqual(1.5 * 44);
         expect(clear(s, 44, true, layout())).toBe(true);
       }
     });
@@ -1484,6 +1484,101 @@ describe("the table", () => {
       expect(tw.ms).toBeLessThan(TAP_WALK_MS[1]);
       for (const iw of idle) expect(pxPerS(iw)).toBeCloseTo(pxPerS(tw), 6);
       expect(pxPerS(tw)).toBeCloseTo((44 * 1000) / STROLL_MS_PER_FIGURE, 6);
+    });
+
+    // px a second over a walk's way, leg by leg
+    const speed = (w: { ms: number; frames: Keyframe[] }) => {
+      const at = w.frames.map((f) => /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(String(f.transform))!.slice(1).map(Number));
+      return at.slice(1).reduce((n, b, i) => n + Math.hypot(b[0] - at[i][0], b[1] - at[i][1]), 0) / (w.ms / 1000);
+    };
+    // the tapped stroll: 0.5 s a 44 px figure
+    const TAP_PX_S = 88;
+
+    it("through a deal it holds still as the hand grows and cards pass over it: at most one move, never faster than the tapped pace", async () => {
+      const full = { ...rects.hand };
+      const dealt = (n: number) => {
+        // the hand grows from the middle a card at a time
+        const w = Math.round((full.w * n) / 25);
+        rects.hand = { ...full, x: full.x + (full.w - w) / 2, w };
+        rects["hand-slot"] = { ...rects["hand-slot"], x: rects.hand.x };
+      };
+      dealt(1);
+      await render(state({ phase: "deal", trick: null } as unknown as Partial<GameState>));
+      await advance(1000);
+      const n = walks("0").length;
+      const spots = [spotOf(0)];
+      for (let c = 2; c <= 25; c++) {
+        dealt(c);
+        // dealt cards over its spot for a moment, part way through: over
+        // its whole corner, for one card
+        rects["trick-play"] = c === 12 ? { x: 0, y: spots[0].y - 30, w: spots[0].x + 140, h: 90 } : { x: 0, y: 0, w: 0, h: 0 };
+        await render(state({ phase: "deal", trick: null, players: [player(0, { cards_left: c }), player(1), player(2), player(3)] } as unknown as Partial<GameState>));
+        // the table measures again as each card lands (the page's own observers)
+        await act(async () => { window.dispatchEvent(new Event("resize")); });
+        await advance(600);
+        const s = spotOf(0);
+        if (near(s, spots.at(-1)!) > 0) spots.push(s);
+      }
+      const during = walks("0").slice(n);
+      expect(spots.length - 1).toBeLessThanOrEqual(1);
+      for (const w of during) expect(speed(w)).toBeLessThanOrEqual(TAP_PX_S + 1e-6);
+      // no walk on its own clock while the hand is dealt
+      expect(during.length).toBeLessThanOrEqual(1);
+    });
+
+    it("after a tap sets its home it still wanders round it, a figure or so away, and fidgets, while its team takes tricks", async () => {
+      await render(state());
+      tap(felt(), 420, 220);
+      await advance(3500);
+      const home = spotOf(0);
+      const n = walks("0").length;
+      const fidgets = anims.filter((a) => a.seat === "0" && a.box === "tc-move").length;
+      cycle([0.05, 0.95, 0.3, 0.7]);
+      // its team takes a trick every 3 s, each a hop
+      for (let k = 0; k < 6; k++) {
+        await render(state({ last_trick: { leader: 0, winner: 0, points: 0, plays: [{ seat: 0, cards: [`H${k + 3}`] }] } } as Partial<GameState>));
+        for (let i = 0; i < 3; i++) await advance(1000);
+      }
+      const after = stops(n);
+      expect(after.length).toBeGreaterThanOrEqual(1);
+      for (const s of after) {
+        expect(near(s, home)).toBeLessThanOrEqual(1.5 * 44 + 1);
+        expect(clear(s, 44, true, layout())).toBe(true);
+      }
+      expect(Math.max(...after.map((s) => near(s, home)))).toBeGreaterThanOrEqual(0.75 * 44);
+      for (const w of walks("0").slice(n)) expect(speed(w)).toBeCloseTo(TAP_PX_S, 6);
+      // a fidget (a sway or a nudge) besides the trick hops
+      const fid = anims.filter((a) => a.seat === "0" && a.box === "tc-move").slice(fidgets)
+        .filter((a) => String(a.frames[1]?.transform).startsWith("rotate") || a.ms === 420);
+      expect(fid.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("the other companions wander and fidget on their own clocks while tricks are taken, with no tap", async () => {
+      await render(state());
+      for (let k = 0; k < 6; k++) {
+        await render(state({ last_trick: { leader: k % 4, winner: k % 4, points: 0, plays: [{ seat: k % 4, cards: [`S${k + 3}`] }] } } as Partial<GameState>));
+        for (let i = 0; i < 3; i++) await advance(1000);
+      }
+      for (const seat of ["1", "2", "3"]) {
+        expect(walks(seat).length, seat).toBeGreaterThanOrEqual(1);
+        expect(anims.filter((a) => a.seat === seat && a.box === "tc-move" && (String(a.frames[1]?.transform).startsWith("rotate") || a.ms === 420)).length, seat)
+          .toBeGreaterThanOrEqual(1);
+      }
+    });
+
+    it("a hop for a trick rises about 28% of the figure where it has room, lower where the room above is short, and stays clear", async () => {
+      await render(state());
+      const s = spotOf(0);
+      await render(state({ last_trick: { leader: 0, winner: 0, points: 0, plays: [{ seat: 0, cards: ["H3"] }] } } as Partial<GameState>));
+      const peak = (a: { frames: Keyframe[] }) => Number(/translateY\(-(\d+)%\)/.exec(String(a.frames[2]?.transform))?.[1] ?? 0);
+      const hop = moves("0").at(-1)!;
+      expect(peak(hop)).toBe(28);
+      // raised by its rise past the zone's headroom, it is still clear
+      expect(clear({ x: s.x, y: s.y - Math.ceil((0.28 - 0.15) * 44) }, 44, true, layout())).toBe(true);
+      // a plate just over its head: a lower hop
+      await advance(1000);
+      expect(hopPeak(s, 44, true, { ...layout(), obstacles: [...layout().obstacles, { x: s.x, y: s.y - 30, w: 44, h: 4 }] })).toBeLessThan(0.28);
+      expect(hopPeak({ x: s.x, y: 18 }, 44, true, layout())).toBe(HOP_PEAKS[HOP_PEAKS.length - 1]);
     });
 
     it("a second tap mid-stroll turns it from where it is drawn", async () => {

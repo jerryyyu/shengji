@@ -195,6 +195,9 @@ export const SEAT_SIZE = { phone: { base: 44, max: 56 }, tablet: { base: 60, max
 export interface LevelUp { n: number; from: number; glyph: string }
 /** The shortest and longest wait before a companion by its player walks again. */
 const WALK_GAP: readonly [number, number] = [8000, 15000];
+/** How long the spot a figure stepped out from must stay clear before it
+ *  walks back: an obstacle that comes and goes does not walk it out and back. */
+export const RETURN_MS = 1000;
 /** A quick hop-walk off cards that landed or a layout that moved, and its step. */
 const QUICK_MS: readonly [number, number] = [300, 500];
 const QUICK_STEP_MS = 150;
@@ -247,8 +250,23 @@ function framedPoint(el: Element, x: number, y: number): Spot {
   return el.closest(".app.rotated") ? { x: y, y: window.innerWidth - x } : { x, y };
 }
 
+/** Where each side seat's played cards and their label have landed at this
+ *  felt size, kept as one box per seat: no figure stands there, so the left
+ *  and right seats' companions are not chased off by every card their
+ *  person plays. A new felt size forgets them. */
+interface Slots { size: string; seen: Partial<Record<"left" | "right", Rect>> }
+const union = (a: Rect, b: Rect): Rect => {
+  const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+};
+/** Whether a played card's wrapper is still flying in (it carries a transform until it lands). */
+const inFlight = (e: Element): boolean => {
+  const t = getComputedStyle(e).transform;
+  return !!t && t !== "none" && t !== "matrix(1, 0, 0, 1, 0, 0)";
+};
+
 function measure(felt: HTMLElement, phone = false, dealing = false, insets: SafeEdges | null = null,
-  seen: ((e: Element, b: DOMRect) => void) | null = null): Layout {
+  seen: ((e: Element, b: DOMRect) => void) | null = null, slots: Slots | null = null): Layout {
   const fb = felt.getBoundingClientRect();
   seen?.(felt, fb);
   const f = framed(felt, fb);
@@ -287,6 +305,19 @@ function measure(felt: HTMLElement, phone = false, dealing = false, insets: Safe
   const x0 = Math.max(plates.left?.x ?? 0, inset.l);
   const x1 = Math.min(plates.right ? plates.right.x + plates.right.w : f.w, f.w - inset.r);
   const safe = plates.left && plates.right || inset.l > 0 || inset.r > 0 ? { x0, x1 } : undefined;
+  if (slots) {
+    const size = `${Math.round(f.w)}x${Math.round(f.h)}`;
+    if (slots.size !== size) { slots.size = size; slots.seen = {}; }
+    for (const pos of ["left", "right"] as const) {
+      const play = felt.querySelector(`.trick-play.pos-${pos}`);
+      if (play && !inFlight(play)) {
+        const boxes = [play, ...play.querySelectorAll(".trick-tag")].map(rel).filter((r) => r.w > 2 && r.h > 2);
+        for (const r of boxes) slots.seen[pos] = slots.seen[pos] ? union(slots.seen[pos], r) : r;
+      }
+      const kept = slots.seen[pos];
+      if (kept) obstacles.push(kept);
+    }
+  }
   if (inset.t > 0) obstacles.push({ x: 0, y: 0, w: f.w, h: inset.t });
   if (inset.b > 0) obstacles.push({ x: 0, y: f.h - inset.b, w: f.w, h: inset.b });
   return { felt: { w: f.w, h: f.h }, plates, tagline: one(".you-tagline"), row: one(".you-row"), hand: first,
@@ -453,6 +484,14 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
   useEffect(() => () => strayDone.current?.(null), []);
   // a figure taken off the table is drawn again only with a spot to stand on
   const [, redraw] = useState(0);
+  // a walk back to its zone waits until the zone has stayed where it is for
+  // RETURN_MS: `settled` counts each wait that ran out, and `back` is set as
+  // one does, so the next look at the zone walks back
+  const [settled, setSettled] = useState(0);
+  const back = useRef(false);
+  const waiting = useRef(0);
+  const unwait = () => { window.clearTimeout(waiting.current); waiting.current = 0; };
+  useEffect(() => unwait, []);
   // a tapped home stands on its own: the zone only matters without one; a
   // drawn figure stays drawn until it has been moved or taken off
   const placed = (tapped ?? zone.home ?? stray ?? cur.current) !== null;
@@ -526,6 +565,9 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     // must, once the deal is done
     if (dealing && drawn) return;
     const quick = { under: true, quick: true };
+    const due = back.current;
+    back.current = false;
+    unwait();
     if (tapped && !clear(tapped, px, you, roam)) {
       // with no clear spot near it the tapped home is dropped: yours goes back
       // to its zone, at the zone's own spot and size
@@ -548,8 +590,18 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
       if (stray) setStray(null);
       return;
     }
-    if (stray) setStray(null);
     const home = (tapped ?? zone.home)!;
+    // clear where it stands but off its zone (it stepped out and the way
+    // back opened): it walks back only once that has held for RETURN_MS
+    if (!tapped && drawn && !due && !path.current) {
+      const near = nearest(here, now, false);
+      const off = !near || Math.hypot(near.x - now.x, near.y - now.y) > px / 2;
+      if (off && clear(now, px, you, room)) {
+        waiting.current = window.setTimeout(() => { waiting.current = 0; back.current = true; setSettled((n) => n + 1); }, RETURN_MS);
+        return;
+      }
+    }
+    if (stray) setStray(null);
     if (!now || !drawn) {
       place(now && clear(now, px, you, room) ? now : home);
       if (face.current && !now) face.current.style.transform = `scaleX(${pos === "right" ? -1 : 1})`;
@@ -565,7 +617,7 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     // covered (a control or a bubble appeared over it): out by the nearest
     // way, upward before downward
     if (off || !clear(now, px, you, room)) goTo(off ? home : nearest(here, now, true) ?? home, quick);
-  }, [zone, here, layout, roam, px, you, dealing]);
+  }, [zone, here, layout, roam, px, you, dealing, settled]);
 
   // a tap on the felt sends yours there, once, and makes it the home: each
   // tap is taken (or dropped) the first time it is seen, and one whose spot
@@ -742,6 +794,8 @@ function useLayout(root: RefObject<HTMLDivElement | null>, on: boolean, key: str
     const screen = felt.closest(".table-screen") ?? felt;
     // the safe-area insets, read once for each window size and turn
     let insets: SafeEdges | null = null;
+    // the side seats' landed cards, kept for this felt size
+    const slots: Slots = { size: "", seen: {} };
     // a measure that finds nothing moved keeps the layout as it was
     let last = "";
     let ro: ResizeObserver | null = null;
@@ -766,7 +820,7 @@ function useLayout(root: RefObject<HTMLDivElement | null>, on: boolean, key: str
       frame = 0;
       mo?.takeRecords();
       insets ??= safeEdges(felt);
-      const next = measure(felt, opts.current.phone, opts.current.dealing, insets, ro ? note : null);
+      const next = measure(felt, opts.current.phone, opts.current.dealing, insets, ro ? note : null, slots);
       watch();
       const seen = JSON.stringify(next);
       if (seen === last) return;
@@ -775,10 +829,7 @@ function useLayout(root: RefObject<HTMLDivElement | null>, on: boolean, key: str
     };
     const soon = () => { if (!frame) frame = window.requestAnimationFrame(read); };
     // whether cards are still flying in: their wrappers carry a transform until they land
-    const flying = () => [...felt.querySelectorAll(".trick-play")].some((e) => {
-      const t = getComputedStyle(e).transform;
-      return !!t && t !== "none" && t !== "matrix(1, 0, 0, 1, 0, 0)";
-    });
+    const flying = () => [...felt.querySelectorAll(".trick-play")].some(inFlight);
     ask.current = { now: read, soon, flying };
     const resized = () => { insets = null; soon(); };
     if (typeof ResizeObserver === "function") {

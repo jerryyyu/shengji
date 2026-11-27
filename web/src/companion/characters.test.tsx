@@ -24,7 +24,7 @@ import { DRAWINGS } from "./kinds";
 import { COMPANIONS, COMPANION_KINDS, FREE_KINDS, lookCatalogue, parseLook } from "./look";
 import { companionSize } from "./rig";
 import { parseArt } from "./Tractor";
-import TableCompanions, { HOP_PEAKS, LEVEL_UP_MS, MOVES, SEAT_SIZE, STROLL_MS_PER_FIGURE, TAP_WALK_MS, around, hopPeak, levelIndex, strollMs } from "./TableCompanions";
+import TableCompanions, { HOP_PEAKS, LEVEL_UP_MS, MOVES, RETURN_MS, SEAT_SIZE, STROLL_MS_PER_FIGURE, TAP_WALK_MS, around, hopPeak, levelIndex, strollMs, translateOf } from "./TableCompanions";
 import { hasNewLook } from "./seen";
 import type { LookEntry } from "./look";
 import { HAND_LIFT, LIFT, clear, figureBox, meets, pathClear, zonesFor } from "./seatZones";
@@ -784,7 +784,7 @@ describe("the table", () => {
     expect(clear(now, 56, false, layout())).toBe(true);
   });
 
-  it("a figure whose whole zone cards cover steps out to the nearest clear spot, never off the table, and goes home when they clear", async () => {
+  it("a figure whose whole zone cards cover steps out to the nearest clear spot, never off the table, and goes home once they have been clear for 1 s", async () => {
     const mm = window.matchMedia;
     window.matchMedia = ((q: string) => ({ matches: q.includes("reduce"), addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
     try {
@@ -801,6 +801,8 @@ describe("the table", () => {
       rects["trick-play"] = { x: 0, y: 0, w: 0, h: 0 };
       await draw(table(state({ trick: { leader: 2, plays: [] } } as Partial<GameState>)));
       const w = host.querySelector<HTMLElement>('.tc-seat[data-seat="1"] .tc-walk')!;
+      expect(spotOf(1)).toEqual(out);
+      await act(async () => { await new Promise((r) => setTimeout(r, RETURN_MS + 100)); });
       expect(w.style.transform).toBe(`translate(${home.x}px, ${home.y}px)`);
     } finally {
       window.matchMedia = mm;
@@ -1478,6 +1480,81 @@ describe("the table", () => {
       } finally {
         window.matchMedia = mm;
       }
+    });
+
+    it("50 tricks at 844×390: the left seat's figure steps off at most once in 10 tricks and never walks back within 1 s", async () => {
+      // the boxes measured on the real phone table (headless Chrome, 844×390):
+      // the left nameplate, Last trick, the HUD, and where each seat's cards and the LEAD label land
+      const at: Record<string, Rect> = {
+        "pos-left": { x: 8, y: 130, w: 115, h: 32 }, "last-trick-btn": { x: 8, y: 44, w: 84, h: 32 }, "hud-group": { x: 4, y: 6, w: 199, h: 32 },
+        "play-left": { x: 169, y: 106, w: 58, h: 82 }, "play-top": { x: 393, y: 46, w: 58, h: 82 }, "play-right": { x: 617, y: 106, w: 58, h: 82 },
+        "play-bottom": { x: 182, y: 195, w: 74, h: 98 }, "tag-left": { x: 172, y: 191, w: 52, h: 19 },
+      };
+      Object.assign(rects, { "pos-left": at["pos-left"], "last-trick-btn": at["last-trick-btn"], "hud-group": at["hud-group"] });
+      spy.mockImplementation(function (this: Element) {
+        const cls = [...this.classList];
+        const pos = cls.find((c) => c.startsWith("pos-"))?.slice(4);
+        const r = cls.includes("trick-tag") ? at[`tag-${this.closest(".trick-play")?.className.split("pos-")[1]}`]
+          : cls.includes("trick-play") ? at[`play-${pos}`]
+          : rects[Object.keys(rects).find((c) => c !== "trick-play" && cls.includes(c)) ?? ""] ?? { x: 0, y: 0, w: 0, h: 0 };
+        return { left: r.x, top: r.y, width: r.w, height: r.h, right: r.x + r.w, bottom: r.y + r.h, x: r.x, y: r.y, toJSON: () => ({}) } as DOMRect;
+      });
+      const order = [1, 2, 3, 0];
+      const felted = (s: GameState) => (
+        <div className="felt">
+          <div className="hud-group" /><button type="button" className="last-trick-btn" />
+          <div className="opponent pos-left" /><div className="opponent pos-top" /><div className="opponent pos-right" />
+          <div className="trick-area">
+            {(s.trick?.plays ?? []).map((p) => {
+              const pos = ["bottom", "left", "top", "right"][p.seat];
+              return <div key={p.seat} className={`trick-play pos-${pos}`}>{pos === "left" ? <span className="trick-tag" /> : null}</div>;
+            })}
+          </div>
+          <div className="you-row" /><div className="hand"><div className="hand-slot" /></div>
+          <TableCompanions state={s} />
+        </div>
+      );
+      const show = async (s: GameState) => { await act(async () => { root.render(felted(s)); }); };
+      const state2 = (over: Partial<GameState> = {}) => state({ levels: ["2", "2"], ...over } as Partial<GameState>);
+      await show(state2());
+      await advance(2000);
+      const px = Number(host.querySelector('.tc-seat[data-seat="1"] svg')!.getAttribute("width"));
+      const start = anims.length;
+      for (let n = 0; n < 50; n++) {
+        const plays: { seat: number; cards: string[] }[] = [];
+        for (const seat of order) {
+          plays.push({ seat, cards: ["HA"] });
+          await show(state2({ trick: { leader: 1, plays: [...plays] } } as Partial<GameState>));
+          await advance(700);
+        }
+        await show(state2({ trick: { leader: 1, plays: [] }, last_trick: { leader: 1, winner: n % 4, points: 5, plays } } as Partial<GameState>));
+        await advance(1500);
+      }
+      // a step-off is a quick hop-walk (300 to 500 ms for its distance); a wander is a stroll
+      const left = anims.slice(start).filter((a) => a.seat === "1" && a.box.split(" ").includes("tc-walk")).map((a) => {
+        const [from, to] = [a.frames[0], a.frames[a.frames.length - 1]].map((f) => translateOf(String(f.transform))!);
+        const d = Math.hypot(to.x - from.x, to.y - from.y);
+        return { at: a.at, from, to, quick: Math.abs(a.ms - Math.min(500, Math.max(300, 300 + (d / px) * 80))) < 0.5 && Math.abs(a.ms - strollMs(d, px)) >= 0.5 };
+      });
+      expect(left.filter((w) => w.quick).length).toBeLessThanOrEqual(5);
+      const back = left.filter((w, i) => i > 0 && w.at - left[i - 1].at < 1000 && Math.hypot(w.to.x - left[i - 1].from.x, w.to.y - left[i - 1].from.y) < px / 2);
+      expect(back).toEqual([]);
+    });
+
+    it("a real new obstacle over a figure still walks it clear within half a second, and it does not walk back within 1 s", async () => {
+      await render(state());
+      const was = spotOf(1);
+      rects["trick-play"] = { x: was.x + 4, y: was.y + 10, w: 24, h: 24 };
+      await render(state({ trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>));
+      expect(walks("1")).toHaveLength(1);
+      await advance(500);
+      const out = spotOf(1);
+      expect(meets(boxOf(1, 56), rects["trick-play"])).toBe(false);
+      rects["trick-play"] = { x: 0, y: 0, w: 0, h: 0 };
+      await render(state({ trick: { leader: 2, plays: [] } } as Partial<GameState>));
+      await advance(RETURN_MS - 100);
+      expect(spotOf(1)).toEqual(out);
+      expect(walks("1")).toHaveLength(1);
     });
 
     it("cards landing on a companion's spot send it on a quick hop-walk from where it stands, never a jump", async () => {

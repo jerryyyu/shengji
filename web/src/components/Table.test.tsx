@@ -6,8 +6,6 @@ import Table, { OpponentPanel } from "./Table";
 
 // the viewer is shown the Collection: a person's seat draws their portrait
 vi.mock("../companion/feature", () => ({ useCollection: () => true }));
-// the companions' telemetry starts a flush timer these timer counts would see
-vi.mock("../companion/usage", () => ({ countPoke: () => {}, countWalk: () => {}, roundEnded: () => {}, seenTable: () => {} }));
 
 function makePlayer(overrides: Partial<StatePlayer> = {}): StatePlayer {
   return {

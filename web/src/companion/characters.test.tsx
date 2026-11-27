@@ -32,9 +32,9 @@ import type { Layout, Rect, SeatPos } from "./seatZones";
 import { TABLES } from "./seatZones.fixtures";
 import CollectionPage from "../components/CollectionPage";
 import { SettingsGroup } from "../components/SettingsList";
-import { forgetHomeSession } from "../home/session";
+import { forgetHomeSession, forgetPrivateSession } from "../home/session";
 import { telemetry } from "../telemetry";
-import { resetUsage } from "./usage";
+import { companionUsage } from "./usage";
 
 // the settings list loads the audio module, whose first tap unlocks an AudioContext
 beforeAll(() => {
@@ -1378,36 +1378,91 @@ describe("the table", () => {
       expect(walks("0")).toHaveLength(2);
     });
 
+    // App's part: every state frame goes to the companion telemetry, drawn or not
+    const frame = async (s: GameState, drawn = true) => {
+      await act(async () => { root.render(drawn ? table(s) : <></>); });
+      companionUsage.observe(s);
+    };
+    const at = (over: Partial<GameState> = {}) => state({ room: "TELE", ...over } as Partial<GameState>);
+    const ended = (over: Partial<GameState> = {}) =>
+      at({ phase: "round_end", round_result: { winner_team: 1, level_change: 0, new_levels: ["2", "A"] }, ...over } as unknown as Partial<GameState>);
+    const sentOf = (name: "companions" | "companion_round") =>
+      telemetry.pending().filter((e) => e.e === name).map(({ t: _t, ...rest }) => rest);
+    const mineWalk = () => host.querySelector('.tc-seat[data-seat="0"] .tc-walk')!;
+    const fresh = () => { companionUsage.sessionChanged(); companionUsage.observe(null); telemetry.reset(); };
+
     it("reports the table once and each round's taps at its end, as counts with no id, name or room", async () => {
-      resetUsage();
-      telemetry.reset();
-      const at = (over: Partial<GameState> = {}) => state({ room: "TELE", ...over } as Partial<GameState>);
-      await render(at());
+      fresh();
+      await frame(at());
       tap(felt(), 420, 220);
       await advance(700);
       tap(felt(), 300, 230);
       await advance(700);
-      const mine = () => host.querySelector('.tc-seat[data-seat="0"] .tc-walk')!;
-      tap(mine(), 0, 0);
+      tap(mineWalk(), 0, 0);
       await advance(1800);
       // in the special's cooldown: a nudge, not a second special
-      tap(mine(), 0, 0);
-      await render(at({ phase: "round_end", round_result: { winner_team: 1, level_change: 0, new_levels: ["2", "A"] } } as unknown as Partial<GameState>));
+      tap(mineWalk(), 0, 0);
+      await frame(ended());
       // a later frame of the same round end sends nothing more
-      await render(at({ phase: "round_end", round_result: { winner_team: 1, level_change: 0, new_levels: ["2", "A"] }, ready: [0] } as unknown as Partial<GameState>));
-      const sent = telemetry.pending().filter((e) => e.e === "companions" || e.e === "companion_round")
-        .map(({ t: _t, ...rest }) => rest);
+      await frame(ended({ ready: [0] } as unknown as Partial<GameState>));
+      const sent = [...sentOf("companions"), ...sentOf("companion_round")];
       expect(sent).toEqual([
         { e: "companions", shown: true, setting: "on", kind: "bun", figures: 4 },
         { e: "companion_round", walk_taps: 2, specials: 1, nudges: 1 },
       ]);
       expect(JSON.stringify(sent)).not.toMatch(/TELE|P0|bun\/plain|seat/);
       // the next round counts from zero
-      await render(at({ phase: "play" }));
-      await render(at({ phase: "round_end", round_result: { winner_team: 0, level_change: 0, new_levels: ["2", "A"] } } as unknown as Partial<GameState>));
-      expect(telemetry.pending().filter((e) => e.e === "companion_round").map(({ t: _t, ...rest }) => rest).at(-1))
-        .toEqual({ e: "companion_round", walk_taps: 0, specials: 0, nudges: 0 });
-      expect(telemetry.pending().filter((e) => e.e === "companions")).toHaveLength(1);
+      await frame(at({ phase: "play" }));
+      await frame(ended());
+      expect(sentOf("companion_round").at(-1)).toEqual({ e: "companion_round", walk_taps: 0, specials: 0, nudges: 0 });
+      expect(sentOf("companions")).toHaveLength(1);
+    });
+
+    it("a tap before companions are switched off never reaches a later round", async () => {
+      fresh();
+      await frame(at());
+      tap(felt(), 420, 220);
+      window.localStorage.setItem("shengji.companions", "off");
+      await frame(at());
+      await frame(ended());
+      // off at the round end: nothing sent, and the count is spent
+      expect(sentOf("companion_round")).toEqual([]);
+      window.localStorage.setItem("shengji.companions", "individual");
+      await frame(at({ phase: "play" }));
+      await frame(ended());
+      expect(sentOf("companion_round")).toEqual([{ e: "companion_round", walk_taps: 0, specials: 0, nudges: 0 }]);
+    });
+
+    it("a round that ends while a home tab has the table unmounted is still reported, once", async () => {
+      fresh();
+      await frame(at());
+      tap(felt(), 420, 220);
+      await advance(700);
+      // a home tab opened: the table is not drawn, its frames still arrive
+      await frame(at(), false);
+      await frame(ended(), false);
+      await frame(ended({ ready: [0] } as unknown as Partial<GameState>), false);
+      expect(sentOf("companion_round")).toEqual([{ e: "companion_round", walk_taps: 1, specials: 0, nudges: 0 }]);
+      // back at the table for the next round, which starts at zero
+      await frame(at({ phase: "play" }));
+      await frame(ended());
+      expect(sentOf("companion_round").at(-1)).toEqual({ e: "companion_round", walk_taps: 0, specials: 0, nudges: 0 });
+    });
+
+    it("an account switch at the same seat starts the new viewer at zero and reports the table for it", async () => {
+      fresh();
+      await frame(at());
+      tap(felt(), 420, 220);
+      await advance(700);
+      tap(mineWalk(), 0, 0);
+      // the sign-in keeps the seat; the session changes as auth does it
+      authState.current = { status: "in", clientId: "cid", user: { id: 2, email: "two@example.com", name: "Two" } as unknown as AuthUser,
+                            collection: true } as AuthState;
+      forgetPrivateSession();
+      await frame(at());
+      await frame(ended());
+      expect(sentOf("companion_round")).toEqual([{ e: "companion_round", walk_taps: 0, specials: 0, nudges: 0 }]);
+      expect(sentOf("companions")).toHaveLength(2);
     });
 
     // the special is the drawing's own signature, animated (not the still peak)

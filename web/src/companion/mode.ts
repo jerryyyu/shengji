@@ -34,6 +34,11 @@ export function useCompanionMode(user: AuthUser | null): CompanionMode {
   return user ? user.companions ?? COMPANION_MODES[0] : guest;
 }
 
+/** The mode in force for `user` (null for a guest) now, outside React. */
+export function companionModeNow(user: AuthUser | null): CompanionMode {
+  return user ? user.companions ?? COMPANION_MODES[0] : guestMode();
+}
+
 /** Store a new mode: on the account, or for a guest on this device. */
 export async function setCompanionMode(user: AuthUser | null, mode: CompanionMode): Promise<void> {
   if (user) {

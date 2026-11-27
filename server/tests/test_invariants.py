@@ -477,6 +477,36 @@ def test_failed_throw_does_not_desync_the_room_at_the_SERVER_boundary():
                 "exercising the regression")
 
 
+@pytest.mark.parametrize("human", [True, False])
+def test_recorded_throw_recreates_live_public_notice_without_a_policy_receipt(human):
+    import asyncio
+    from copy import deepcopy
+    from shengji.api import server
+    from shengji.api.saved_games import public_event
+
+    room, rnd = _room_at_play(0)
+    seat = rnd.turn
+    attempt, forced = _find_failing_throw(rnd, seat)
+    assert attempt and forced
+    replay = deepcopy(rnd)
+    events = []
+    room.log_event = lambda kind, **data: events.append({"e": kind, **data})
+    room.seats = [server.Seat(name=str(i), is_bot=not human) for i in range(4)]
+    if human:
+        ids = room.ids_for_codes(seat, attempt)
+        asyncio.run(server.handle_action(room, seat, {"type": "play", "card_ids": ids}))
+    else:
+        room.bot = HeuristicBot()
+        room.bot.decide_play = lambda r, s: list(attempt)
+        assert server.bot_step(room, seat)
+    event = next(e for e in events if e["e"] == "play")
+    public = public_event(event, (seat + 1) % 4, False, rnd.banker)
+    assert public["cards"] == forced
+    assert public["engine_resolution"] == "failed_throw_forced"
+    replay.play(seat, public["attempted_cards"])
+    assert replay.notice == rnd.notice and replay.hands == rnd.hands
+
+
 def test_failed_throw_stays_in_sync_through_speculative_commit_boundary():
     """The production off-loop path must mirror the same forced component."""
     from shengji.api import server

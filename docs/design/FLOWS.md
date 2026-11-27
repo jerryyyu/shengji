@@ -63,6 +63,10 @@ The host role passes on, and a ranked leave keeps "at best a draw".
   - leaving a table you joined *during the round you joined* costs a **1-minute** wait (was 5);
   - leaving at a round end, or from a **casual** table, is free;
   - the "never offered that table again" bar stays;
+  - no rating cost (Jerry 2026-11-27: "For joiners that come mid round, can we not punish them if they join a
+    table that has bad cards?"): the round joined mid-way is unranked for the joiner, and leaving or abandoning
+    it carries no leaver cap into their next rated round; from their first rated round on, the leaver rules
+    apply as to anyone;
   - copy: "Stay until this round ends, or wait 1 minute to play again."
 
 **Section 4, connection.** One "Reconnecting…" pill, Retry after 10 s, a full-screen state after 30 s (when the bot takes a dropped seat), and a

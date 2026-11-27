@@ -1857,9 +1857,7 @@ def otenv(accounts_on, tmp_path, monkeypatch):  # noqa: F811
     monkeypatch.setattr(srv, "run_deal", no_deal)
     env.mm.open_tables = srv.open_tables
     env.mm.join_table = srv.join_open_table
-    ratings.CARRIED_CAPS.clear()
     yield srv, accounts_on.STORE, env
-    ratings.CARRIED_CAPS.clear()
 
 
 class OpenRoom:
@@ -2044,6 +2042,37 @@ def test_a_joiner_is_unranked_for_the_round_joined_mid_way_and_ranked_from_the_n
     run(go())
 
 
+def test_a_joiner_who_stays_then_leaves_its_first_rated_round_is_capped_as_anyone(
+        otenv, monkeypatch):
+    """Joined mid-round 1 and stayed: round 2 is the joiner's first rated round,
+    and abandoning it is scored as any seat's leave, at most the leaver cap,
+    even when the team wins."""
+    from tests.test_ratings import _events, _force_outcome
+
+    srv, store, env = otenv
+    host, _ = _user(store, "host")
+    new, _ = _user(store, "alice", "Alice")
+    _force_outcome(monkeypatch, 30)            # the bankers (seats 0 and 2) win by 2 levels
+
+    async def go():
+        t = OpenRoom(srv, [host, "bot", "bot", "bot"])
+        t.first_round(banker=0)
+        await t.until(lambda r: r.phase == "play" and len(r.history) == 2)
+        await _newcomer_joins(env, new, 2, "Alice")
+        await t.finish()
+        await t.next_round(banker=0)
+        assert t.room.seats[2].joined_round is None
+        await t.until(lambda r: r.phase == "play" and len(r.history) == 1)
+        ratings.seat_left(t.room, 2)
+        t.room.seats[2].connected = False
+        await t.finish()
+        mine = [e for e in _events(store) if e["user_id"] == new]
+        # an abandon is stored as not won; levels > 0 is the team's win
+        assert [(e["round_no"], e["abandoned"], e["levels"]) for e in mine] == [(2, 1, 2)]
+        assert mine[0]["actual"] == ratings.LEAVER_SCORE_CAP and mine[0]["delta"] <= 0
+    run(go())
+
+
 def test_at_a_round_end_the_newcomer_sits_at_once_and_is_ranked_next_round(otenv, monkeypatch):
     from tests.test_ratings import _events, _force_outcome
 
@@ -2178,11 +2207,10 @@ def _wait_until(pred, timeout=15.0):
     raise AssertionError("condition never held")
 
 
-def test_ws_join_then_leave_gives_the_seat_back_to_a_bot_with_a_cooldown_and_a_carried_cap(
+def test_ws_join_then_leave_gives_the_seat_back_to_a_bot_with_a_cooldown(
         wsenv, monkeypatch):
     srv, store, client, clock = wsenv
     monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
-    ratings.CARRIED_CAPS.clear()
     host, host_headers = _user(store, "host", "Host")
     alice, alice_headers = _user(store, "alice", "Alice")
     with client.websocket_connect("/ws", headers=host_headers) as h, \
@@ -2207,7 +2235,6 @@ def test_ws_join_then_leave_gives_the_seat_back_to_a_bot_with_a_cooldown_and_a_c
         _drain(a, "left")
         seat = room.seats[2]
         assert seat.is_bot and seat.user_id is None and seat.name == "Bot 2"
-        assert alice in ratings.CARRIED_CAPS
         a.send_json({"type": "queue_join"})
         err = _drain(a, "error")
         assert err["code"] == "cooldown"
@@ -2215,7 +2242,56 @@ def test_ws_join_then_leave_gives_the_seat_back_to_a_bot_with_a_cooldown_and_a_c
         a.send_json({"type": "queue_join"})
         state = _drain(a, "queue_state")
         assert state["queued"] and state["offer"] is None and state["open_tables"] == 0
-    ratings.CARRIED_CAPS.clear()
+
+
+@pytest.mark.parametrize("how", ["leave", "away"])
+def test_ws_leaving_the_round_joined_mid_way_leaves_the_next_rated_round_uncapped(
+        wsenv, monkeypatch, how):
+    """A newcomer who leaves (or goes away for the rest of) the round they
+    joined mid-way, at a ranked open table, is scored in full in their next
+    rated round anywhere: a win there counts as a win."""
+    from tests.test_ratings import Table, _events, _force_outcome
+
+    srv, store, client, clock = wsenv
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    _force_outcome(monkeypatch, 30)            # the bankers win by 2 levels
+    host, host_headers = _user(store, "host", "Host")
+    alice, alice_headers = _user(store, "alice", "Alice")
+    with client.websocket_connect("/ws", headers=host_headers) as h, \
+            client.websocket_connect("/ws", headers=alice_headers) as a:
+        h.send_json({"type": "queue_join"})
+        _drain(h, "queue_state")
+        h.send_json({"type": "table_start_bots"})
+        code = _drain(h, "match_started")["room"]
+        room = srv.rooms[code]
+        room.seats[0].away = True                    # the bot plays the host's seat too
+        client.portal.call(srv.kick_bots, room)
+        _wait_until(lambda: room.round is not None and room.round.phase == "play")
+        a.send_json({"type": "queue_join"})
+        assert _drain(a, "queue_state")["offer"]["room"] == code
+        a.send_json({"type": "open_table_join", "room": code, "seat": 2})
+        _drain(a, "match_started")
+        _wait_until(lambda: room.seats[2].user_id == alice)
+        round_no = room.game.round_no
+        assert room.seats[2].joined_round == round_no
+        if how == "leave":
+            a.send_json({"type": "table_leave"})
+            _drain(a, "left")
+        else:
+            room.seats[2].away = True                # the bot plays the round out for her
+            client.portal.call(srv.kick_bots, room)
+            _wait_until(lambda: room.round.phase == "round_end")
+            assert room.game.round_no == round_no
+        # the table's own guard still holds: a ranked open table's queue cooldown
+        _wait_until(lambda: srv.MATCHMAKER.cooldowns.get(alice, 0.0) > clock())
+    ratings.flush()
+    assert [e for e in _events(store) if e["user_id"] == alice] == []
+    Table(srv, [alice, "bot", "bot", "bot"], code="NEXT").play_round(banker=0)
+    ratings.flush()
+    (event,) = [e for e in _events(store) if e["user_id"] == alice]
+    assert event["won"] == 1 and event["abandoned"] == 0
+    assert event["actual"] == pytest.approx(ratings.round_score(True, 2))
+    assert event["actual"] > ratings.LEAVER_SCORE_CAP and event["delta"] > 0
 
 
 def test_ws_a_joined_opener_passing_then_leaving_passes_controls_again(wsenv, monkeypatch):
@@ -2228,7 +2304,6 @@ def test_ws_a_joined_opener_passing_then_leaving_passes_controls_again(wsenv, mo
     # the round end plays from the next round (joined_round None). The pace
     # keeps the round going for seconds while they join.
     monkeypatch.setattr(srv, "BOT_DELAY", 0.05)
-    ratings.CARRIED_CAPS.clear()
     host, host_headers = _user(store, "host", "Host")
     bob, bob_headers = _user(store, "bob", "Bob")
     cara, cara_headers = _user(store, "cara", "Cara")
@@ -2269,16 +2344,14 @@ def test_ws_a_joined_opener_passing_then_leaving_passes_controls_again(wsenv, mo
         on = room.allow_joiners
         c.send_json({"type": "table_allow_joiners", "on": not on})
         _wait_until(lambda: room.allow_joiners is (not on))
-    ratings.CARRIED_CAPS.clear()
 
 
-def test_a_newcomer_leaving_at_the_end_of_the_round_it_joined_carries_no_cap(
+def test_a_newcomer_leaving_at_the_end_of_the_round_it_joined_has_no_cooldown(
         wsenv, monkeypatch):
     """The round joined mid-way was played out: Leave on its round-end screen
-    is an ordinary between-rounds leave, with no carried cap and no cooldown."""
+    is an ordinary between-rounds leave, with no cooldown."""
     srv, store, client, clock = wsenv
     monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
-    ratings.CARRIED_CAPS.clear()
     host, host_headers = _user(store, "host", "Host")
     alice, alice_headers = _user(store, "alice", "Alice")
     with client.websocket_connect("/ws", headers=host_headers) as h, \
@@ -2306,14 +2379,12 @@ def test_a_newcomer_leaving_at_the_end_of_the_round_it_joined_carries_no_cap(
         client.portal.call(srv.kick_bots, room)
         _wait_until(lambda: room.round.phase == "round_end")
         room.seats[2].away = False
-        assert room.game.round_no == round_no and alice not in ratings.CARRIED_CAPS
+        assert room.game.round_no == round_no
         a.send_json({"type": "table_leave"})
         _drain(a, "left")
-        assert alice not in ratings.CARRIED_CAPS
         a.send_json({"type": "queue_join"})
         state = _drain(a, "queue_state")
         assert state["queued"]
-    ratings.CARRIED_CAPS.clear()
 
 
 @pytest.mark.parametrize("left", [True, False])
@@ -2380,10 +2451,8 @@ def test_ws_an_invite_link_seats_a_signed_in_friend_even_with_joiners_off(wsenv,
         _drain(f, "left")
         assert room.seats[2].is_bot
         assert srv.MATCHMAKER.cooldowns[friend] > clock()
-        assert friend in ratings.CARRIED_CAPS
         f.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Friend", "seat": 2})
         assert _drain(f, "error")["code"] == "cooldown"
-    ratings.CARRIED_CAPS.clear()
 
 
 def test_ws_a_guest_with_a_ranked_invite_joins_as_a_newcomer(wsenv, monkeypatch):
@@ -2779,10 +2848,9 @@ def test_ws_a_guest_who_joins_then_leaves_gets_the_cooldown(wsenv, monkeypatch):
         g.send_json({"type": "queue_join"})
         err = _drain(g, "error")
         assert err["code"] == "cooldown" and err["cooldown_until"] > clock()
-    # a guest seated mid-round who leaves it: the cooldown, and no carried cap
-    caps = set(ratings.CARRIED_CAPS)
-    srv._joined_leave_penalty(room, None, -5)
-    assert srv.MATCHMAKER.cooldowns[-5] > clock() and ratings.CARRIED_CAPS == caps
+    # a guest seated mid-round who leaves it: the cooldown
+    srv._joined_leave_penalty(room, -5)
+    assert srv.MATCHMAKER.cooldowns[-5] > clock()
 
 
 # ------------------------------------------------- the move timer and one human
@@ -4295,7 +4363,6 @@ def test_ws_leaving_a_casual_table_one_joined_is_free_but_the_table_stays_barred
         wsenv, monkeypatch):
     srv, store, client, clock = wsenv
     monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
-    ratings.CARRIED_CAPS.clear()
     host, host_headers = _user(store, "host", "Host")
     alice, alice_headers = _user(store, "alice", "Alice")
     with client.websocket_connect("/ws", headers=host_headers) as h, \
@@ -4324,13 +4391,12 @@ def test_ws_leaving_a_casual_table_one_joined_is_free_but_the_table_stays_barred
         assert srv.state_for(room, 2)["joined_round"] is False
         a.send_json({"type": "table_leave"})
         _drain(a, "left")
-        assert room.seats[2].is_bot and alice not in ratings.CARRIED_CAPS
+        assert room.seats[2].is_bot
         assert alice not in srv.MATCHMAKER.cooldowns
         assert code in srv.MATCHMAKER.barred[alice]
         a.send_json({"type": "queue_join", "mode": "casual"})
         state = _drain(a, "queue_state")
         assert state["queued"] and state["offer"] is None
-    ratings.CARRIED_CAPS.clear()
 
 
 def test_leaving_a_casual_table_before_the_handover_is_free(otenv):

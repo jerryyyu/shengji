@@ -369,26 +369,18 @@ def test_a_ranked_saved_game_resumes_ranked_from_its_rated_segment(env):
 def test_a_ranked_continuation_rates_its_rounds_as_rounds_of_the_one_saved_game(env):
     """Rated as game rounds 3 and 4 of the same rated segment, with the
     round-end rating line, and listed as one game: every round, the final
-    levels and the whole rating change. A leaver cap the account carried
-    into Continue caps the continuation's first rated round."""
+    levels and the whole rating change."""
     from shengji.api import ratings, saved_games
 
     srv, store, _client, _cookie, uid, _pem = env
     original = Ranked(srv, "RANK", (uid, None, None, None)).play(2)
-    ratings.CARRIED_CAPS.clear()
-    ratings.carry_leaver_cap(uid)
-    try:
-        cont = _continued(srv, uid, original, code="CONT", rounds=2)
-    finally:
-        capped_left = set(ratings.CARRIED_CAPS)
-        ratings.CARRIED_CAPS.clear()
-    assert capped_left == set()
+    cont = _continued(srv, uid, original, code="CONT", rounds=2)
     room = cont.room
     assert room.saved_game.id == original.game_id and room.ratings.round_offset == 2
     events = _events(store, original.game_id)
     assert [(e["game_id"], e["round_no"]) for e in events] == [
         (f"{original.game_id}/0", n) for n in (1, 2, 3, 4)]
-    assert events[2]["actual"] <= ratings.LEAVER_SCORE_CAP and events[2]["abandoned"] == 0
+    assert events[2]["abandoned"] == 0
     line = ratings.round_payload(room, 0)["rating"]
     assert line["delta"] == round(events[3]["delta"])
     assert line["rating"] == round(events[3]["rating_after"])

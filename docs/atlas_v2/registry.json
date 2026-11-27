@@ -5296,12 +5296,12 @@
    "comparator": "release 55 as served (3e00a55a); head to head",
    "vs": 55,
    "vs_group": "release 55 as served, head to head: the formal seat-swapped screen (two-stage duel bar, screen stage), not a common-control screen",
-   "instrument": "3,920 seat-swapped deal pairs [2674020000, 2674023920), 7,840 rounds on Mini. Screen requires mean ≥ +0.005 levels/round and one-sided 80% lower bound > 0.",
+   "instrument": "3,920 seat-swapped deal pairs [2674020000, 2674023920), 7,840 rounds on Mini. Screen requires mean \u2265 +0.005 levels/round and one-sided 80% lower bound > 0.",
    "seeds": "2674020000 (mini)",
    "point": -0.0010204081632653062,
    "lo": -0.004081632653061225,
    "hi": 0.0017857142857142857,
-   "takeaway": "FAIL at −0.00102 levels/round (LB80 −0.00230), with the full 95% interval below the required +0.005 gain.",
+   "takeaway": "FAIL at \u22120.00102 levels/round (LB80 \u22120.00230), with the full 95% interval below the required +0.005 gain.",
    "note": "Both arms recorded 249,342 play decisions and 3,920 buries. The candidate had one play fallback and the control had one bury fallback. Validity passed. Saved readout at readouts/overruff-1875-screen, result SHA-256 0296ad2215ac6b9dcfe15743c2868b7f56ecdbf3b8edccfe97e31f238a8c543f. https://github.com/jerryyyu/shengji/pull/1875#issuecomment-7198765444"
   },
   {
@@ -5325,6 +5325,27 @@
    "takeaway": "VALID / FAIL: RT4 minus FT-200k +0.0157 [+0.0027, +0.0291], LB80 +0.0099 (bar +0.020, LB80 > 0; mean short by 0.0043); DEV closes without promotion.",
    "note": "Read once by Codex on the Ultra (reader r4ft-read-r1 sha256 73fd068f), VALID on the pilot and the main run: 249,408 search decisions per arm, 3,920 buries and 14,459 declarations per arm, 0 play/belief/bury fallbacks, 0 declare abandons. n 3920, mean 0.015688775510204082, CI95 [0.0026785714285714286, 0.029081632653061223], LB80 0.009948979591836734, LB95 0.004591836734693878; points +0.495 [+0.032, +0.966]; decision FAIL. Mean decision seconds 0.05683 (RT4) vs 0.05704 (FT-200k), Ultra wall time, not serving latency. Claim limits: RT4 is release 55's own model pair and FT-200k a challenger, not a release, so this row measures a modest RT4 margin on this matchup only and says nothing about a gain over release 55 as served. Terminal 'UTD DONE 2026-11-27T00:18:29Z ... rows=7840 ... rc=0'; producer seal ae6243ecf39202718d1734b5166ef7b7e1e6c7261f89f336b18f65195b358468; packet d383a50c540f7060f9fddf1b6815746609ce9b80c600625d9355a231326d17b9; reservation PR #1918. Readout sha256 ff7658707f45a83b0e99ec65cb0356250975bfa7b7c078851b3395021e01f61e; #1918 issuecomment-7206361661. Archive readouts/r4ft3920/ (SHA256SUMS sha256 60634ae32c1c343f9d46c32e3140bed7c1ad892d71f13e619f10846ccfb3a4e6).",
    "named_comparator": "FT-200k (RT3-FT, RT2 fine-tuned on 200k rounds)"
+  },
+  {
+   "status": "sealed",
+   "box": "ultra",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "confidence": 0.95,
+   "date": "2026-11-27",
+   "id": "x1r55cert",
+   "title": "Wide-search teacher vs release 55, 600 deals",
+   "candidate": "X1-R55 teacher: release 55's served models and search with W256/K16/LCC32 and a 5 s play budget (bury 3 s); M5 Ultra",
+   "comparator": "release 55 as served (W64/K8, 3 s/3 s), same weights and packages; head to head",
+   "vs": 55,
+   "vs_group": "release 55 as served: a 600-deal seat-swapped teacher certification (expert-then-distill gate), not a common-control screen",
+   "instrument": "600 fresh seat-swapped deal pairs [2709000000, 2709000600) (1,200 rounds), deal-key cleared against both lineages (#1960); one look; 8 workers; predeclared bar mean >= +0.15 AND one-sided 95% lower bound > 0; preceded by an outcome-blind 48-deal timing run (gate passed, projection 1,526 s)",
+   "seeds": "2709000000 (ultra)",
+   "point": 0.0425,
+   "lo": 0.01,
+   "hi": 0.07416666666666667,
+   "takeaway": "VALID / PARK: +0.0425 [+0.010, +0.074] over R55, far below the +0.15 teacher bar; no certified expert to distil.",
+   "note": "Read once by Codex on the Ultra (reader_once.py sha256 a9875a6a). All 12 checks VALID; per arm 37,774 searches, 2,217 declarations, 600 buries, 0 play/belief/bury fallbacks, 0 declare abandons; one-sided LB95 +0.0150. Lead confirmation on 9,500 applicable teacher decisions: 201 applied, 188 rejected, 7 abandoned, 2,528 exact, 6,136 no challenger, 435 no pool, 5 budget-skipped. Claim limits: this measures the whole recipe (wider worlds, more candidates, lead confirmation, a longer budget together) as a latency-free teacher; no feature has a separate estimate, and it says nothing about a served-latency change. Terminal 'LANE DONE codex-r55-teacher-cert-v1 2026-11-27T11:31:06Z ...'; identity c2d158edcc9a43a7448cfe43ef118b8aa7e7865327419e6d3269d29c9b48ee08; handoff sha256 137456807b361c1b0e3277bb7f34589ccab12b9456d862446419993b8d6f1969; result sha256 ea9155b16057aaadb08704277b37adb6bc2b34727951f98211c8956edf4f243c; lead-confirm sha256 c5af7a66c157877d8d0a3b85a93e89d1b1fafef17b8c5d3fb8f3be16e131a7ca. #1263 issuecomment-7217188693. Archive readouts/r55-teacher-cert/."
   }
  ],
  "context_screens": [

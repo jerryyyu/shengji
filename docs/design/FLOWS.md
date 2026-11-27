@@ -571,8 +571,9 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   appears once: buying one sends its tile up into Yours. No Shop segment, button or page, no leaderboard row, no
   state chips.
 - **One rule for taps:** a tap on a companion or a colour only shows it (the gold ring is "looking at"); the one
-  button puts it in use: Use, In use (inert), for a locked Tractor colour what unlocks it ("Win 25 ranked rounds
-  to unlock · 3 of 25", "Win a ranked round to unlock", inert), for a guest Sign in to use, which opens the
+  button puts it in use: Use, In use (inert), for a locked Tractor colour Use (inert, one size) with what unlocks
+  it on the stage's status line ("Win 25 ranked rounds to unlock · 3 of 25", "Win a ranked round to unlock"), for
+  a guest Sign in to use, which opens the
   identity sheet, and for a store character not owned Buy with StoreKit's price (Soon, inert, for one not
   launched). A tick marks the companion and the colour in use. A guest sees no counts.
 - **The store** (store plumbing, behind `features.store`: the Collection allowlist plus `STORE_ENABLED=1`, or

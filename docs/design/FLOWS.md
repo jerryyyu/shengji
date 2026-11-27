@@ -613,7 +613,9 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   your name line on a tablet), tagged You 你. Every 8 to 15 s, on its own clock, it walks a few hopping steps,
   facing the way it goes, to another spot in a small zone by the nameplate that keeps clear of the cards played
   and their LEAD / WINS labels, the hand (and a chosen card's lift), the buttons, the HUD, the nameplates and the
-  other companions; the zone is worked out again as cards land, and a companion they land on steps aside. Where
+  other companions; the zone is worked out again as cards land, and a companion they land on (or a
+  layout that moves under it) hops quickly aside, 0.3 to 0.5 s from where it is drawn, never jumping; only a
+  figure drawn for the first time, a hidden page or Reduce Motion is placed at once. Where
   a corner is too cramped, its companion stands on another side of its nameplate, and failing that a step smaller. It stands on its team's pad (a disc for Us, a diamond for
   Them) in its team's scarf. A team's companions grow an equal step a level from 2 to the seat cap at 6 (44 to 56 px
   on a phone, 3 px a level; 60 to 76 px on a tablet, 4 px a level; the same size from 6 to A; Jerry 2026-11-26: "a

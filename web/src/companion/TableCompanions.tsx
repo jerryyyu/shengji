@@ -171,6 +171,22 @@ const WALK_GAP: readonly [number, number] = [8000, 15000];
 /** A walk's shortest and longest time; one hop of its gait. */
 const WALK_MS: readonly [number, number] = [800, 1500];
 const STEP_MS = 260;
+/** A quick hop-walk off cards that landed or a layout that moved, and its step. */
+const QUICK_MS: readonly [number, number] = [300, 500];
+const QUICK_STEP_MS = 150;
+
+/** The translation in a computed transform (`matrix(a, b, c, d, x, y)`) or
+ *  an inline one (`translate(xpx, ypx)`); null for none. */
+export function translateOf(t: string | null | undefined): Spot | null {
+  if (!t || t === "none") return null;
+  const m = /matrix\(([^)]+)\)/.exec(t);
+  if (m) {
+    const v = m[1].split(",").map((n) => Number(n.trim()));
+    return v.length === 6 && v.every(Number.isFinite) ? { x: v[4], y: v[5] } : null;
+  }
+  const tr = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(t);
+  return tr ? { x: Number(tr[1]), y: Number(tr[2]) } : null;
+}
 
 /** What the table measures for the walking zones, in px relative to the felt. */
 const OBSTACLES = ".trick-play, .trick-tag, .you-row .btn, .action-bar .btn, .you-tagline, .opponent, .last-trick-btn, .deal-deck, .hand-line";
@@ -270,10 +286,20 @@ function Walker({ player, team, px, pos, zone, layout, pose, up, you, goal, wins
 
   const stop = () => { for (const a of walking.current) a.cancel(); walking.current = []; path.current = null; };
   const place = (s: Spot) => { cur.current = s; if (walk.current) walk.current.style.transform = at(s); };
-  /** Walk to `to`; one that would cross cards goes there at once, unless
-   *  `under` lets it pass beneath them (the table's layer is under the cards). */
-  const goTo = (to: Spot, under = false) => {
-    const from = cur.current;
+  /** Where the figure is drawn now: mid-walk, where the walk has it (its
+   *  rendered transform), else the spot it stands on. */
+  const shown = (): Spot | null => {
+    const el = walk.current;
+    if (!el || walking.current.length === 0) return cur.current;
+    return translateOf(getComputedStyle(el).transform) ?? cur.current;
+  };
+  /** Walk to `to`, from wherever the figure is drawn now. A walk that would
+   *  cross cards goes there at once, unless `under` lets it pass beneath them
+   *  (the table's layer is under the cards); `quick` is a short hop-walk for
+   *  stepping off cards or a moved layout. Only a figure with nowhere drawn
+   *  yet, a hidden page or Reduce Motion goes there at once. */
+  const goTo = (to: Spot, { under = false, quick = false }: { under?: boolean; quick?: boolean } = {}) => {
+    const from = shown();
     const el = walk.current;
     if (!from || !el || typeof el.animate !== "function" || prefersReducedMotion() || document.visibilityState === "hidden"
         || (!under && !pathClear(from, to, px, you, layoutNow.current))) {
@@ -284,13 +310,15 @@ function Walker({ player, team, px, pos, zone, layout, pose, up, you, goal, wins
     }
     stop();
     const dist = Math.hypot(to.x - from.x, to.y - from.y);
-    const ms = Math.min(WALK_MS[1], Math.max(WALK_MS[0], WALK_MS[0] + (dist / px) * 250));
+    const ms = quick ? Math.min(QUICK_MS[1], Math.max(QUICK_MS[0], QUICK_MS[0] + (dist / px) * 80))
+      : Math.min(WALK_MS[1], Math.max(WALK_MS[0], WALK_MS[0] + (dist / px) * 250));
     const dir = to.x < from.x ? -1 : 1;
     if (face.current) face.current.style.transform = `scaleX(${dir})`;
     const a = el.animate([{ transform: at(from) }, { transform: at(to) }], { duration: ms, easing: "ease-in-out" });
+    const step = quick ? QUICK_STEP_MS : STEP_MS;
     const gait = face.current?.animate([
       { transform: `scaleX(${dir}) translateY(0)` }, { transform: `scaleX(${dir}) translateY(-12%)`, offset: 0.45 },
-      { transform: `scaleX(${dir}) translateY(0)` }], { duration: STEP_MS, iterations: Math.max(2, Math.round(ms / STEP_MS)) });
+      { transform: `scaleX(${dir}) translateY(0)` }], { duration: step, iterations: Math.max(2, Math.round(ms / step)) });
     walking.current = gait ? [a, gait] : [a];
     path.current = under ? null : { from, to };
     place(to);
@@ -302,9 +330,10 @@ function Walker({ player, team, px, pos, zone, layout, pose, up, you, goal, wins
 
   // stand on the home, or step off a spot cards have landed on. A figure with
   // no clear spot is not drawn and forgets where it stood, so the next one
-  // drawn is placed afresh; a walk in flight whose way or end the cards now
-  // block stops where it was going and steps to the nearest clear spot. A
-  // figure a tap sent away keeps its spot while it stays clear.
+  // drawn is placed afresh; a figure that must move (cards landing on it, a
+  // walk whose way they now block, a moved layout) hops there quickly from
+  // where it is drawn, passing under the cards, never jumping. A figure a tap
+  // sent away keeps its spot while it stays clear.
   useLayoutEffect(() => {
     if (!zone.home) {
       stop();
@@ -318,19 +347,19 @@ function Walker({ player, team, px, pos, zone, layout, pose, up, you, goal, wins
       if (face.current && !now) face.current.style.transform = `scaleX(${pos === "right" ? -1 : 1})`;
       return;
     }
+    const quick = { under: true, quick: true };
     if (roaming.current) {
-      if (!clear(now, px, you, layout)) goTo(nearestClear({ x: now.x + px / 2, y: now.y + px }, px, you, layout) ?? zone.home, true);
+      if (!clear(now, px, you, layout)) goTo(nearestClear({ x: now.x + px / 2, y: now.y + px }, px, you, layout) ?? zone.home, quick);
       return;
     }
     const flight = path.current;
     if (flight && !pathClear(flight.from, flight.to, px, you, layout)) {
-      stop();
-      place(clear(now, px, you, layout) ? now : nearest(zone, now) ?? zone.home);
+      goTo(clear(now, px, you, layout) ? now : nearest(zone, now) ?? zone.home, quick);
       return;
     }
     const near = nearest(zone, now);
     const off = !near || Math.hypot(near.x - now.x, near.y - now.y) > px / 2;
-    if (off || !clear(now, px, you, layout)) goTo(off ? zone.home : near);
+    if (off || !clear(now, px, you, layout)) goTo(off ? zone.home : near, quick);
   }, [zone, layout, px, you]);
 
   // a tap on the felt sends yours there
@@ -338,7 +367,7 @@ function Walker({ player, team, px, pos, zone, layout, pose, up, you, goal, wins
   useEffect(() => {
     if (!goal || !placed) return;
     roaming.current = true;
-    goTo(goal.spot, true);
+    goTo(goal.spot, { under: true });
   }, [goalN, placed]);
 
   // a walk now and then, on its own clock, while the page is shown; one a
@@ -356,7 +385,7 @@ function Walker({ player, team, px, pos, zone, layout, pose, up, you, goal, wins
         const home = zoneNow.current.home;
         if (roaming.current && home) {
           roaming.current = false;
-          goTo(home, true);
+          goTo(home, { under: true });
         } else {
           // a spot it can reach without crossing anything; it stays put when none is
           for (let i = 0; from && i < 6; i++) {

@@ -816,7 +816,7 @@ describe("the table", () => {
   describe("taps and moves", () => {
     // every Web Animation started on a figure: its seat, which box, its frames;
     // each ends after its own duration on the fake clock
-    let anims: { seat: string | null; box: string; move: string | null; frames: Keyframe[]; cancel: ReturnType<typeof vi.fn> }[];
+    let anims: { seat: string | null; box: string; move: string | null; frames: Keyframe[]; ms: number; cancel: ReturnType<typeof vi.fn> }[];
     let had: unknown;
     let rnd: ReturnType<typeof vi.spyOn>;
     const proto = Element.prototype as unknown as { animate?: unknown };
@@ -830,7 +830,7 @@ describe("the table", () => {
         const finished = new Promise<void>((r) => { timer = window.setTimeout(r, Number(opts?.duration ?? 0) * Number(opts?.iterations ?? 1)); });
         const cancel = vi.fn(() => window.clearTimeout(timer));
         anims.push({ seat: this.closest(".tc-seat")?.getAttribute("data-seat") ?? null, box: this.className.toString(),
-                     move: this.getAttribute("data-move"), frames, cancel });
+                     move: this.getAttribute("data-move"), frames, ms: Number(opts?.duration ?? 0), cancel });
         return { finished, cancel };
       };
     });
@@ -929,6 +929,41 @@ describe("the table", () => {
       await advance(LEVEL_UP_MS + 20);
       expect(moves("0").map((a) => a.move)).toEqual(["levelup"]);
       expect(specialOn("0")).toBe(true);
+    });
+
+    it("cards landing on a companion's spot send it on a quick hop-walk from where it stands, never a jump", async () => {
+      await render(state());
+      const was = spotOf(1);
+      rects["trick-play"] = { x: was.x + 4, y: was.y + 10, w: 24, h: 24 };
+      await render(state({ trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>));
+      const step = walks("1");
+      expect(step).toHaveLength(1);
+      expect(step[0].frames[0].transform).toBe(`translate(${was.x}px, ${was.y}px)`);
+      expect(step[0].ms).toBeGreaterThanOrEqual(300);
+      expect(step[0].ms).toBeLessThanOrEqual(500);
+      const now = spotOf(1);
+      expect(step[0].frames[1].transform).toBe(`translate(${now.x}px, ${now.y}px)`);
+      expect(now).not.toEqual(was);
+    });
+
+    it("a walk cut short goes on from where it is drawn, not from its start or its end", async () => {
+      await render(state());
+      tap(felt(), 420, 220);
+      expect(walks("0")).toHaveLength(1);
+      const dest = spotOf(0);
+      // mid-walk, the figure is drawn part of the way there
+      const css = vi.spyOn(window, "getComputedStyle").mockImplementation(((el: Element) =>
+        ({ transform: el.classList.contains("tc-walk") ? "matrix(1, 0, 0, 1, 111, 222)" : "none" } as CSSStyleDeclaration)) as typeof window.getComputedStyle);
+      try {
+        rects["trick-play"] = { x: dest.x + 4, y: dest.y + 10, w: 24, h: 24 };
+        await render(state({ trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>));
+      } finally {
+        css.mockRestore();
+      }
+      const ws = walks("0");
+      expect(ws).toHaveLength(2);
+      expect(ws[0].cancel).toHaveBeenCalled();
+      expect(ws[1].frames[0].transform).toBe("translate(111px, 222px)");
     });
 
     it("at rest each companion fidgets in turn: a sway, a blink, a small hop", async () => {

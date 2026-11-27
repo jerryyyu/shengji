@@ -5,7 +5,7 @@
 // is the flutter: both wings beat and it lifts off the felt.
 import { CHICK_COLOURS } from "./storePalette";
 import type { ChickColour, ChickColourId } from "./storePalette";
-import { ball, confetti, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, sharedDefs, teamPad } from "./rig";
+import { ball, confetti, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, sharedDefs } from "./rig";
 import type { CharOpts, CharPose, EyeMode } from "./rig";
 
 /** A colour by id, or a palette given whole (the CSS-variable master passes one). */
@@ -55,7 +55,7 @@ export function chickMarkup(colour: ChickColourId | ChickColour, id: string, { p
 
   const body = part("cmp-body", part("cmp-torso", feet) + part("cmp-head", head, at.head) + (team ? kerchief(team, 100, 280, 274, 9, 150) : "")
     + part("cmp-arm-l", wing(86, 1), at.armL) + part("cmp-arm-r", wing(294, -1), at.armR), at.body);
-  return defs + (team ? teamPad(team, 190, 112) : "") + (shadow ? groundShadow(id, 190, 112) : "") + body + (pose === "cheer" ? confetti(190, 190) : "");
+  return defs + (shadow ? groundShadow(id, 190, 112) : "") + body + (pose === "cheer" ? confetti(190, 190) : "");
 }
 
 const portraits = new Map<string, string>();

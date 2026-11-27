@@ -6,7 +6,7 @@
 // bite: it sits down hard and chomps the stalk like corn on the cob.
 import { PANDA_COLOURS } from "./storePalette";
 import type { PandaColour, PandaColourId } from "./storePalette";
-import { ball, bits, confetti, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, ramp, sharedDefs, spark, teamPad } from "./rig";
+import { ball, bits, confetti, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, ramp, sharedDefs, spark } from "./rig";
 import type { CharOpts, CharPose, EyeMode } from "./rig";
 
 /** A colour by id, or a palette given whole (the CSS-variable master passes one). */
@@ -81,7 +81,7 @@ export function pandaMarkup(colour: PandaColourId | PandaColour, id: string, { p
 
   const body = part("cmp-body", part("cmp-torso", torso, at.torso) + part("cmp-head", head, at.head) + (team ? kerchief(team, 106, 254, 216, 17, 150) : "")
     + part("cmp-arm-l", arm(92, 1), at.armL) + (front ? "" : prop) + part("cmp-arm-r", arm(268, -1), at.armR) + (front ? prop : "") + dust, at.body);
-  return defs + (team ? teamPad(team, 184, 128) : "") + (shadow ? groundShadow(id, 184, 132) : "") + body + (pose === "react" ? bits("cmp-crumbs", 180, 236, 62, 6, [p.leaf[0], p.bamboo[1], p.leaf[1]], 10, 170, 0.8) : "") + (pose === "cheer" ? confetti(180, 150) : "");
+  return defs + (shadow ? groundShadow(id, 184, 132) : "") + body + (pose === "react" ? bits("cmp-crumbs", 180, 236, 62, 6, [p.leaf[0], p.bamboo[1], p.leaf[1]], 10, 170, 0.8) : "") + (pose === "cheer" ? confetti(180, 150) : "");
 }
 
 const portraits = new Map<string, string>();

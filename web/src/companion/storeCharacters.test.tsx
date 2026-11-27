@@ -67,13 +67,15 @@ describe("the store characters' drawings", () => {
     }
   });
 
-  it("at the table a team stands on its own pad shape and wears its colour", () => {
+  it("at the table a team wears its colour and stands on its ground shadow, with no team pad", () => {
     for (const kind of KINDS) {
       const colour = STORE[kind][0] as never;
       const us = DRAWINGS[kind].markup(colour, "t", { team: "us" });
       const them = DRAWINGS[kind].markup(colour, "t", { team: "them" });
-      expect(us).toMatch(/<g class="cmp-pad"><ellipse/);
-      expect(them).toMatch(/<g class="cmp-pad"><path/);
+      for (const svg of [us, them]) {
+        expect(svg).not.toContain("cmp-pad");
+        expect(svg).toContain('class="cmp-shadow"');
+      }
       expect(us).toContain("#5b9dff");
       expect(them).toContain("#ff9d4d");
       expect(DRAWINGS[kind].markup(colour, "t", {})).not.toContain("cmp-pad");

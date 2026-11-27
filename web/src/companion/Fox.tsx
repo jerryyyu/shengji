@@ -6,7 +6,7 @@
 // the flap shut.
 import { FOX_COLOURS } from "./storePalette";
 import type { FoxColour, FoxColourId } from "./storePalette";
-import { ball, confetti, spark, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, ramp, sharedDefs, teamPad } from "./rig";
+import { ball, confetti, spark, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, ramp, sharedDefs } from "./rig";
 import type { CharOpts, CharPose, EyeMode } from "./rig";
 
 /** A colour by id, or a palette given whole (the CSS-variable master passes one). */
@@ -84,7 +84,7 @@ export function foxMarkup(colour: FoxColourId | FoxColour, id: string, { pose = 
     + `<ellipse cx="180" cy="239" rx="4.6" ry="2.6" fill="#fff" opacity=".8" transform="rotate(-30 180 239)"/>`, still ? COINS[i - 1] : "");
   const coins = pose === "react" ? coin(1) + coin(2) + coin(3) + coin(4) + `<g class="cmp-glint">${spark(96, 232, 1.5, "#fff6d6")}${spark(280, 226, 1.3, "#fff6d6")}</g>` : "";
   const body = part("cmp-body", part("cmp-torso", torso) + (team ? kerchief(team, 124, 248, 226, 10, 240) : "") + part("cmp-prop", envelope, at.prop) + part("cmp-head", head, at.head) + coins, at.body);
-  return defs + (team ? teamPad(team, 196, 124) : "") + (shadow ? groundShadow(id, 200, 126) : "") + body + (pose === "cheer" ? confetti(186, 150) : "");
+  return defs + (shadow ? groundShadow(id, 200, 126) : "") + body + (pose === "cheer" ? confetti(186, 150) : "");
 }
 
 const portraits = new Map<string, string>();

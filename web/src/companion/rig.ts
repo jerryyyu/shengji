@@ -86,18 +86,6 @@ export function groundShadow(id: string, cx: number, rx: number): string {
   return `<ellipse class="cmp-shadow" cx="${cx}" cy="356" rx="${rx}" ry="17" fill="url(#shadow-${id})"/>`;
 }
 
-/** The team's pad under a figure. The two teams differ in shape as well as
- *  colour: a disc for Us, a diamond for Them. */
-export function teamPad(team: Team, cx: number, rx: number): string {
-  const t = TEAM[team], ry = 36;
-  const shape = team === "us"
-    ? `<ellipse class="cmp-team" cx="${cx}" cy="350" rx="${rx + 6}" ry="${ry}" fill="${t.base}" stroke="#0e2a5c" stroke-opacity=".55" stroke-width="5"/>`
-      + `<ellipse cx="${cx}" cy="350" rx="${n(rx - 6)}" ry="${ry - 9}" fill="none" stroke="#fff" stroke-width="5" opacity=".6"/>`
-    : `<path class="cmp-team" d="M${n(cx - rx - 26)} 350L${cx} ${350 - ry - 12}L${n(cx + rx + 26)} 350L${cx} ${350 + ry + 12}Z" fill="${t.base}" stroke="#4a2204" stroke-opacity=".7" stroke-width="7" stroke-linejoin="round"/>`
-      + `<path d="M${n(cx - rx + 2)} 350L${cx} ${350 - ry + 2}L${n(cx + rx - 2)} 350L${cx} ${350 + ry - 2}Z" fill="none" stroke="#4a2204" stroke-width="5" opacity=".45" stroke-linejoin="round"/>`;
-  return `<g class="cmp-pad">${shape}</g>`;
-}
-
 /** The paint of a shape that turns team colour at the table: its own fill off the table. */
 export const teamPaint = (team: Team | undefined, own: string, lo = false): string =>
   team ? `class="${lo ? "cmp-team-lo" : "cmp-team"}" fill="${lo ? TEAM[team].lo : TEAM[team].base}"` : `fill="${own}"`;

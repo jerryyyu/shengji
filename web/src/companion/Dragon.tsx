@@ -7,7 +7,7 @@
 // small puff of flame with a smoke ring, and lands.
 import { DRAGON_COLOURS } from "./storePalette";
 import type { DragonColour, DragonColourId } from "./storePalette";
-import { ball, confetti, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, puff, ramp, sharedDefs, spark, teamPad } from "./rig";
+import { ball, confetti, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, puff, ramp, sharedDefs, spark } from "./rig";
 import type { CharOpts, CharPose, EyeMode } from "./rig";
 
 /** A colour by id, or a palette given whole (the CSS-variable master passes one). */
@@ -94,7 +94,7 @@ export function dragonMarkup(colour: DragonColourId | DragonColour, id: string, 
   const puffs = pose === "cheer" ? `<g class="cmp-puffs">${spark(232, 222, 1.5, "#ffd76a")}${spark(256, 200, 1, "#fff6e6")}${spark(250, 240, 0.8, "#ff9d4d")}</g>` : "";
 
   const body = part("cmp-body", part("cmp-spin", part("cmp-torso", torso) + (team ? kerchief(team, 124, 256, 222, 9, 144) : "") + part("cmp-head", head, at.head)) + flame, at.body);
-  return defs + (team ? teamPad(team, 190, 120) : "") + (shadow ? groundShadow(id, 180, 126) : "") + body + puffs + (pose === "cheer" ? confetti(190, 150) : "");
+  return defs + (shadow ? groundShadow(id, 180, 126) : "") + body + puffs + (pose === "cheer" ? confetti(190, 150) : "");
 }
 
 const portraits = new Map<string, string>();

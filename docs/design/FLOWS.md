@@ -622,8 +622,9 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   aside, upward first, 0.3 to 0.5 s from where it is drawn, never jumping; one whose whole zone is covered steps
   out to the nearest clear spot and comes back when there is room, never leaving the table; only a
   figure drawn for the first time, a hidden page or Reduce Motion is placed at once. Where
-  a corner is too cramped, its companion stands on another side of its nameplate, and failing that a step smaller. It stands on its team's pad (a disc for Us, a diamond for
-  Them) in its team's scarf. A team's companions grow an equal step a level from 2 to the seat cap at 6 (44 to 56 px
+  a corner is too cramped, its companion stands on another side of its nameplate, and failing that a step smaller. It wears its team's scarf and stands on a soft ground
+  shadow; there is no team pad under it (Jerry 2026-11-27: "not very intuitive for teams", removed at the table and
+  in every preview). A team's companions grow an equal step a level from 2 to the seat cap at 6 (44 to 56 px
   on a phone, 3 px a level; 60 to 76 px on a tablet, 4 px a level; the same size from 6 to A; Jerry 2026-11-26: "a
   bit small"). A level gained
   (Jerry 2026-11-26, red team finding 7) shows only once the round-end sheet has closed and the page is in view,

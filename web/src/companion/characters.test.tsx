@@ -96,13 +96,14 @@ describe("the free companions", () => {
     expect(decodeURIComponent(DRAWINGS.tractor.portraitUrl("red", false))).toContain("cmp-rider");
   });
 
-  it("at the table a team stands on its own pad shape and wears its colour", () => {
+  it("at the table a team wears its colour and stands on its ground shadow, with no team pad", () => {
     for (const kind of FREE_KINDS) {
       const us = DRAWINGS[kind].markup(COMPANIONS[kind][0], "t", { team: "us" });
       const them = DRAWINGS[kind].markup(COMPANIONS[kind][0], "t", { team: "them" });
-      expect(us).toContain('class="cmp-pad"');
-      expect(us).toMatch(/<g class="cmp-pad"><ellipse/);
-      expect(them).toMatch(/<g class="cmp-pad"><path/);
+      for (const svg of [us, them]) {
+        expect(svg).not.toContain("cmp-pad");
+        expect(svg).toContain('class="cmp-shadow"');
+      }
       expect(us).toContain("#5b9dff");
       expect(them).toContain("#ff9d4d");
       expect(DRAWINGS[kind].markup(COMPANIONS[kind][0], "t", {})).not.toContain("cmp-pad");

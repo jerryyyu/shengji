@@ -764,8 +764,13 @@ keeps the table on screen.
   two legs; under Reduce Motion it stays at home. Taps are half a second apart at least, and a tap while the menu,
   Chat or Last trick is open (or the tap that closes one) is not one. A tap on your own companion plays its
   special, drawn up to 1.5 times larger for its length where that stays clear, at most once every 3 s; a tap in
-  between answers with a small hop. Nothing else at the table changes with these taps, and
-  no other companion takes one.
+  between answers with a small hop. Nothing else at the table changes with these taps. These two are shared
+  with the table (Jerry 2026-11-27: "Yea special on tap and where I park it can be shared- yea it doesn't need to be
+  perfect"): everyone else at the table sees yours play its special, and walk to the spot you parked it and stay
+  there, mapped across each screen's own safe area and round its own companions, and a rejoin finds it parked
+  there. Best effort, at most a special every 5 s and a parked spot a second; the idle walks, fidgets and the rest
+  stay on your screen. A viewer with Show companions at the table off sees none of it, and Reduce Motion draws the
+  still special and the parked spot at once.
 - **Colours** are a palette swap of the one Tractor: Icon red (the default), Paddy green and Enamel blue from the
   start; the rest are won by ranked rounds won (Jerry 2026-11-26: "win 10/25/50/100", and Ink black the top;
   Jerry 2026-11-27: "it should be rounds won rather than full games won"): Imperial yellow at 10, Lantern orange

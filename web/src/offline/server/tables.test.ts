@@ -173,6 +173,7 @@ const SENDABLE = {
   im_back: LOCAL,
   report_player: "moderation, a service of the game server",
   block_player: "moderation, a service of the game server",
+  companion: "a companion move shared with the table, which the device's own tables do not relay",
   client_event: "telemetry, collected by the game server",
   queue_status: QUEUE, queue_join: QUEUE, table_here: QUEUE, queue_wait_players: QUEUE,
   queue_allow_bots: QUEUE, party_leave: QUEUE,

@@ -1372,3 +1372,77 @@ def test_registered_tree_bot_on_a_real_package_plays_a_whole_deal(package):
         assert evaluator.score([rnd], seat)[0] == \
             float(terminal_distribution(rnd, seat) @ evaluator.support)
     assert evaluator.model_rows == rows
+
+
+def test_belief_reply_backup_weights_actor_replies_on_original_root_world(monkeypatch):
+    from shengji.engine.round import actual_play_after
+    from shengji.train.belief_tree_backup import root_reply_backup
+
+    root = deal(13)
+    seat = root.turn
+    prior = np.arange(54, dtype=float) / 21
+
+    class Marginals:
+        def marginals(self, inp):
+            return inp["M"].astype(float)
+
+    class Evaluator:
+        def score(self, leaves, perspective):
+            values = []
+            for leaf in leaves:
+                reply_actor = (seat + 1) % 4
+                reply = actual_play_after(leaf, reply_actor, root.last_trick)
+                v = CARD_INDEX[reply[0]] / 13
+                if perspective == seat:
+                    assert sorted(leaf.buried) == sorted(root.buried)
+                    values.append(-v * v)
+                else:
+                    assert perspective == reply_actor
+                    values.append(v)
+            return np.array(values)
+
+    bot = bot_of(evaluator=Evaluator(), policy=lambda rows: np.tile(prior, (len(rows), 1)))
+    def node(child, ledger, model, replies):
+        return np.array([prior[CARD_INDEX[r[0]]] for r in replies]), bot.evaluator.score
+    monkeypatch.setattr("shengji.train.belief_tree_backup._reply_node", node)
+    worlds, _ = bot._worlds(root, seat)
+    worlds = worlds[:2]
+    actions = [[code] for code in sorted(set(root.hands[seat]))[:3]]
+    def state_bytes():
+        return pickle.dumps((root.hands, root.buried, root.history, root.trick, root.turn, root.notice))
+    original = state_bytes()
+    for tilt in (0., 2.):
+        opts = dict(belief=Marginals(), model=None, reply_cap=bot.cap, batch_size=64, refusals=(), seed=473, depth_worlds=3, reply_value_weight=tilt)
+        values = root_reply_backup(root, actions, worlds, **opts)
+        expected = np.empty_like(values)
+        for w, (hands, buried) in enumerate(worlds):
+            for i, action in enumerate(actions):
+                child = afterstate(root, seat, hands, buried, action)
+                replies, _ = tree.legal_replies(bot, child, child.turn, None)
+                codes = np.array([CARD_INDEX[r[0]] for r in replies])
+                weights = np.exp(prior[codes] + tilt * codes / 13)
+                expected[w, i] = np.average(-(codes / 13) ** 2, weights=weights)
+        assert values.shape == (2, 3)
+        np.testing.assert_allclose(values, expected)
+        np.testing.assert_allclose(root_reply_backup(root, actions[::-1], worlds, **opts),
+                                   values[:, ::-1])
+    assert state_bytes() == original
+
+
+def test_belief_reply_backup_loads_the_unified_policy_value_and_belief(tmp_path):
+    from test_unified_serving import _random_pair
+    from shengji.ai.belief_numpy import load_belief_numpy
+    from shengji.ai.unified_readout_numpy import load_unified_readout_numpy
+    from shengji.train.belief_tree_backup import root_reply_backup
+
+    pair = _random_pair(tmp_path)
+    root = deal(13)
+    worlds, _ = bot_of()._worlds(root, root.turn)
+    args = dict(model=load_unified_readout_numpy(*pair["unified"]),
+                belief=load_belief_numpy(*pair["belief"]), refusals=(), seed=41,
+                reply_cap=4, batch_size=3, depth_worlds=2, reply_value_weight=1.)
+    actions = [[c] for c in sorted(set(root.hands[root.turn]))[:2]]
+    values = root_reply_backup(root, actions, worlds[:2], **args)
+    assert values.shape == (2, 2) and np.isfinite(values).all()
+    np.testing.assert_allclose(root_reply_backup(root, actions[::-1], worlds[:2], **args),
+                               values[:, ::-1])

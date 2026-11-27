@@ -27,8 +27,10 @@ const isSoon = (k: Selected | null): k is SoonKind => (SOON as readonly string[]
 const isSelectable = (k: string | null): k is Selected =>
   k !== null && (Object.prototype.hasOwnProperty.call(COMPANIONS, k) || (SOON as readonly string[]).includes(k));
 
-/** One character's tile in the grid: its figure idling on felt, its name,
- *  and in More companions its price or Soon. A ring marks the one selected
+/** One character's tile in the grid: its figure standing still on felt
+ *  (only the stage's figure moves at rest, so a page left open draws no
+ *  frames), its name, and in More companions its price or Soon. A tap hops
+ *  the tile's figure once. A ring marks the one selected
  *  into the stage, the tick the one in use,
  *  and "New" one with a colour newly unlocked and not yet seen; a tile just
  *  bought rises into Yours (`arrive`). */
@@ -37,12 +39,14 @@ function Tile({ kind, colour, label, sub, gold, dim, worn, isNew, selected, arri
   worn?: boolean; isNew?: boolean; selected?: boolean; arrive?: boolean; onOpen: () => void; onArrived?: () => void;
 }) {
   const t = useT();
+  const [hop, setHop] = useState(0);
   return (
     <button type="button" className={`coll-tile${dim ? " dim" : ""}${arrive ? " arrive" : ""}${selected ? " selected" : ""}`}
-            aria-pressed={selected ? "true" : "false"} onClick={onOpen}
+            aria-pressed={selected ? "true" : "false"} onClick={() => { setHop((n) => n + 1); onOpen(); }}
             onAnimationEnd={(e) => { if (e.currentTarget === e.target) onArrived?.(); }}>
       <span className="coll-tile-stage">
-        <Companion kind={kind} colour={colour} size={88} state="idle" />
+        <Companion key={hop} kind={kind} colour={colour} size={88} state={hop ? "hop" : "idle"} idle="rest"
+                   onPoseEnd={() => setHop(0)} />
         {worn ? <Tick /> : null}
         {isNew ? <span className="coll-new">{t("home.new")}</span> : null}
       </span>

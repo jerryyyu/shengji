@@ -67,7 +67,7 @@ export function Companion({ kind = "tractor", colour, size, state = "idle", team
 
   const resting = !ONCE.has(state);
   const poseCls = calm && ONCE.has(state) ? "" : resting && idle === "rest" ? `cmp-${state} cmp-rest` : `cmp-${state}`;
-  const cls = ["cmp", drawing.char ? "cmp-char" : "", `cmp-${kind}`, poseCls,
+  const cls = ["cmp", drawing.char ? "cmp-char" : "", `cmp-${kind}`, poseCls, calm ? "cmp-still" : "",
     team ? `cmp-${team}` : "", from !== null ? "cmp-grow" : ""].filter(Boolean).join(" ");
   const [zx, zy] = drawing.z;
   return (

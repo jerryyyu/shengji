@@ -73,6 +73,11 @@
 .cmp-rest:not(.cmp-grow),
 .cmp-rest * { animation: none !important; }
 
+/* drawn still (the table's figures, Reduce Motion): no part of the drawing
+   moves in any pose; only the figure's own level-up pop may play */
+.cmp-still:not(.cmp-grow),
+.cmp-still * { animation: none !important; }
+
 @media (prefers-reduced-motion: reduce) {
   .cmp .cmp-body,
   .cmp .cmp-eye,

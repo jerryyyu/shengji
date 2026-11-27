@@ -12,7 +12,7 @@ import type { DrawnKind } from "./kinds";
 import { SOLD_COLOURS, SOON, SOON_COLOURS, soonColour } from "./characters";
 import { COMPANIONS, isKind, lookCatalogue, parseLook } from "./look";
 import { parseArt } from "./Tractor";
-import storeCss from "./companion.store.css?raw";
+import { readFileSync } from "node:fs";
 
 const STORE: Record<string, readonly string[]> = {
   lamb: Object.keys(SOLD_COLOURS.lamb), panda: Object.keys(SOLD_COLOURS.panda),
@@ -21,6 +21,10 @@ const STORE: Record<string, readonly string[]> = {
 const KINDS = Object.keys(STORE) as DrawnKind[];
 type Node = ReturnType<typeof parseArt>[number];
 const flat = (nodes: Node[]): Node[] => nodes.flatMap((n) => [n, ...flat(n[2])]);
+/** A sheet with its comments taken out. */
+const sheet = (name: string) => readFileSync(`${import.meta.dirname}/${name}`, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+const storeCss = sheet("companion.store.css");
+const baseCss = sheet("companion.css");
 const classes = (markup: string) => new Set(flat(parseArt(markup)).flatMap((n) => String(n[1].class ?? "").split(" ")));
 
 describe("the store characters' drawings", () => {
@@ -89,9 +93,9 @@ describe("the store characters' drawings", () => {
   });
 
   it("every animation shorthand names its keyframes, which the minifier would otherwise drop", () => {
-    const defined = new Set([...storeCss.matchAll(/@keyframes ([\w-]+)/g)].map((m) => m[1]));
+    const defined = new Set([...(baseCss + storeCss).matchAll(/@keyframes ([\w-]+)/g)].map((m) => m[1]));
     for (const [, value] of storeCss.matchAll(/animation:\s*([^;]+);/g)) {
-      if (value.trim() === "none") continue;
+      if (value.trim().startsWith("none")) continue;
       const names = value.split(/[\s,]+/).filter((w) => defined.has(w));
       expect([value, names.length]).toEqual([value, 1]);
     }
@@ -133,6 +137,38 @@ describe("the figure", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("a figure drawn still with the table's props moves no part of its drawing, for every kind, colour and pose", () => {
+    // the sheets' one guarantee: a still figure's descendants animate nothing,
+    // and no other rule can outrank it
+    const css = baseCss + storeCss;
+    expect(css).toMatch(/\.cmp-still:not\(\.cmp-grow\),\s*\.cmp-still \* \{ animation: none !important; \}/);
+    for (const [, value] of css.matchAll(/animation[\w-]*:\s*([^;]+);/g)) {
+      if (value.includes("!important")) expect(value.trim()).toBe("none !important");
+    }
+    // the only animation a still figure's own svg may take is the level-up pop
+    const animates = (body: string) => [...body.matchAll(/\banimation(?:-name)?:\s*([^;]+);/g)].some((d) => !d[1].trim().startsWith("none"));
+    const svgLevel = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => animates(m[2]))
+      .flatMap((m) => m[1].split(",")).map((sel) => sel.trim())
+      .filter((sel) => sel && !sel.startsWith("@") && !sel.includes(" ") && !/^[\d.]+%|^from$|^to$/.test(sel));
+    expect(svgLevel).toEqual([".cmp-grow"]);
+    const colours: Record<string, readonly string[]> = { ...COMPANIONS, ...Object.fromEntries(SOON.map((k) => [k, Object.keys(SOON_COLOURS[k])])) };
+    for (const kind of Object.keys(DRAWINGS) as DrawnKind[]) {
+      for (const colour of colours[kind]) {
+        for (const state of ["idle", "hop", "cheer", "sleep", "react"] as const) {
+          act(() => root.render(<Companion kind={kind} colour={colour as never} size={40} max={48} level={12} team="us"
+                                           grow={false} state={state} still idle="rest" />));
+          const svg = host.querySelector("svg")!;
+          expect([kind, colour, state, svg.classList.contains("cmp-still")]).toEqual([kind, colour, state, true]);
+          expect(svg.classList.contains("cmp-grow")).toBe(false);
+        }
+      }
+    }
+    // an animated figure (a special played with animated markup) is not still
+    act(() => root.render(<Companion kind="panda" colour="gilded" size={40} team="us" grow={false} state="react" still={false} />));
+    expect(host.querySelector("svg")!.classList.contains("cmp-still")).toBe(false);
+    expect(host.querySelector("svg")!.classList.contains("cmp-react")).toBe(true);
   });
 
   it("under Reduce Motion a reaction is drawn still, its moment left out", () => {

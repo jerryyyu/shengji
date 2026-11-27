@@ -1491,6 +1491,69 @@ def test_trajectory_test_roots_reach_the_unified_reply_backup(tmp_path):
         assert values.shape == (1, 2) and np.isfinite(values).all()
 
 
+@pytest.mark.parametrize("seed,tricks_by_mirror,substitution", [
+    (1295, ((14, 15), (15, 16)), False),
+    (1062, ((12, 13), (12, 13)), True),
+])
+def test_reserved_deck_cli_scores_both_mirrors_and_publishes_once(
+        tmp_path, paired_flat_probe, monkeypatch, seed, tricks_by_mirror, substitution):
+    import hashlib
+    import json
+    from shengji.harvest.common import write_jsonl
+    from shengji.harvest.trajectory import build_config, play_trajectory_cluster
+    from shengji.train import belief_tree_bank as bank
+    from shengji.train.belief_labels import SPLIT_SALT, deal_key, iter_decisions
+
+    make, _ = paired_flat_probe
+    config = build_config(seed0=seed, select_worlds=2, report_worlds=30, explore_rate=0)
+    records, _ = play_trajectory_cluster(config, 0, seed)
+    shard = "shards/cluster-000000.jsonl"
+    _, sha = write_jsonl(tmp_path / shard, records)
+    targets = []
+    for decision in iter_decisions(records):
+        tricks = len(decision.rnd.history)
+        if tricks in tricks_by_mirror[decision.round_index] and not decision.rnd.trick.plays:
+            targets.append(dict(decision_index=decision.decision_index, mirror=decision.round_index,
+                                ply=decision.record["ply"], seat=decision.seat, completed_tricks=tricks))
+    assert [row["mirror"] for row in targets] == [0, 0, 1, 1]
+    deck = dict(key=deal_key(records[0]["deck"]), seed=seed, sha256=sha, shard=shard, targets=targets)
+    source = dict(seed0=seed, policy=config["policy"], run_id=config["run_id"])
+    manifest = dict(deals=[deck], source=source, split=dict(calib=.06, test=.04, salt=SPLIT_SALT))
+    path = tmp_path / "bank.json"
+    path.write_text(json.dumps(manifest))
+    pin = hashlib.sha256(path.read_bytes()).hexdigest()
+    output = tmp_path / "deck.json"
+    argv = ["--bank", str(path), "--bank-sha256", pin, "--round-seed", str(seed),
+            "--store", str(tmp_path), "--output", str(output), "--seed", "29",
+            "--depth-worlds", "2", "--reply-cap", "4", "--batch-size", "32", "--reply-value-weight", "1"]
+
+    def make_registered(policy, *, seed):
+        bot = make()
+        bot.policy_name = policy
+        bot.sampler.rng.seed(seed)
+        return bot
+
+    monkeypatch.setattr(bank, "make_bot", make_registered)
+    if substitution:
+        with pytest.raises(ValueError, match="substituted"):
+            bank.main(argv)
+        assert not output.exists()
+        return
+    bank.main(argv)
+    result = json.loads(output.read_bytes())
+    assert result["bank_sha256"] == pin and result["shard_sha256"] == sha
+    assert [r["decision_index"] for r in result["rows"]] == [t["decision_index"] for t in targets]
+    assert all(row["deal_key"] == deck["key"] for row in result["rows"])
+    assert [row["eligible"] for row in result["rows"]] == [True, False, True, False]
+    with pytest.raises(FileExistsError):
+        bank.main(argv)
+    argv[argv.index(str(output))] = str(tmp_path / "incomplete.json")
+    path.write_text(json.dumps(manifest) + " ")
+    with pytest.raises(ValueError, match="digest mismatch"):
+        bank.main(argv)
+    assert not (tmp_path / "incomplete.json").exists()
+
+
 def test_trajectory_test_roots_bind_the_split_pin_mirror_and_ledger(tmp_path):
     from dataclasses import replace
     from test_belief_labels import synthetic_cluster
@@ -1762,3 +1825,125 @@ def test_true_deal_yardsticks_take_exact_terminal_value(paired_flat_probe):
     values = true_deal_yardsticks(root, [pair, pair[:1]], model=bot.unified_value_model,
                                   make_reply_bot=reply_bot, expected_policy_name=bot.policy_name, seed=29)
     assert values[pair] == (exact, exact)
+
+
+def test_score_bank_root_joins_the_paired_forecasts_and_yardsticks(paired_flat_probe):
+    from shengji.train.belief_tree_bank_score import score_bank_root
+
+    make, root = paired_flat_probe
+    policy = make().policy_name
+    options = dict(policy=policy, seed=29, depth_worlds=2, reply_cap=4,
+                   batch_size=32, reply_value_weight=1.)
+
+    def factory(seed):
+        bot = make()
+        bot.sampler.rng.seed(seed)
+        return bot
+
+    row = score_bank_root(root, make_bot=factory, **options)
+    assert json.loads(json.dumps(row, allow_nan=False)) == row
+    assert row["eligible"] and row["ineligible_reason"] is None
+    assert row["policy"] == policy and row["deal_key"] == root.deal_key
+    assert [row[k] for k in ("decision_index", "mirror", "ply", "seat")] == [52, 0, 52, root.target.seat]
+    assert row["flat_final_action"]
+    assert len(row["ballot"]) == len(row["flat_means"]) == len(row["tree_means"]) == len(row["yardsticks"])
+    assert row["flat_action"] == row["ballot"][np.argmax(row["flat_means"])]
+    assert row["tree_action"] == row["ballot"][np.argmax(row["tree_means"])]
+    yardsticks = {tuple(item["action"]): item for item in row["yardsticks"]}
+    flat, chosen = (yardsticks[tuple(row[key])] for key in ("flat_action", "tree_action"))
+    assert row["sf_gain"] == chosen["sf"] - flat["sf"]
+    assert row["vt_gain"] == chosen["vt"] - flat["vt"]
+
+
+def test_score_bank_root_excludes_only_complete_single_action_passes(paired_flat_probe, monkeypatch):
+    from shengji.train.belief_labels import deal_key
+    from shengji.train.belief_tree_bank_score import score_bank_root
+    from shengji.train.belief_tree_replay import RootTarget, TrancheRoot
+
+    make, root = paired_flat_probe
+    options = dict(policy=make().policy_name, seed=29, depth_worlds=2, reply_cap=4,
+                   batch_size=32, reply_value_weight=1.)
+
+    rnd = deal(14)
+    heuristic = HeuristicBot()
+    ply = 0
+    while rnd.phase == "play" and (rnd.trick.plays or len(rnd.hands[rnd.turn]) > 1):
+        rnd.play(rnd.turn, heuristic.decide_play(rnd, rnd.turn))
+        ply += 1
+    assert rnd.phase == "play" and len(rnd.hands[rnd.turn]) == 1 and not rnd.trick.plays
+    forced = TrancheRoot(RootTarget(ply, 0, ply, rnd.turn), deal_key(rnd.deck), rnd, ())
+    result = score_bank_root(forced, make_bot=lambda seed: pytest.fail("scored forced lead"), **options)
+    assert result["ballot"] == [rnd.hands[rnd.turn]]
+    assert not result["eligible"] and result["ineligible_reason"] == "single_legal_action"
+
+    def singleton_factory(seed):
+        bot = make()
+        admit = bot._admission
+        monkeypatch.setattr(bot, "_admission", lambda *a, **kw: admit(*a, **kw)[:1])
+        return bot
+
+    result = score_bank_root(root, make_bot=singleton_factory, **options)
+    assert not result["eligible"] and result["ineligible_reason"] == "single_admitted_action"
+    assert result["ballot"] == [result["flat_final_action"]] and len(result["flat_means"]) == 1
+
+    def missing_factory(seed):
+        bot = make()
+        monkeypatch.setattr(bot, "_value_means", lambda *a, **kw: (np.zeros(4), 0))
+        return bot
+
+    with pytest.raises(ValueError, match="did not complete unified scoring"):
+        score_bank_root(root, make_bot=missing_factory, **options)
+
+
+def test_score_bank_root_keeps_each_stream_stable_across_root_order(paired_flat_probe, monkeypatch):
+    from dataclasses import replace
+    from types import SimpleNamespace
+    from shengji.train import belief_tree_bank_score as scorer
+    from shengji.train.belief_tree_compare import PairedLeadValues
+
+    _, first = paired_flat_probe
+    other = replace(first, target=replace(first.target, mirror=1, decision_index=156))
+    collected = {}
+    classifier = PairedLeadValues((("D9",), ("CQ",)), np.array([.25, .5]),
+                                 np.tile([.125, .4], (64, 1)), ("CQ",))
+
+    def compare(root, bot, **options):
+        assert options["record_final_action"]
+        collected[root.target.mirror] = [bot.seed, options["seed"]]
+        return classifier
+
+    def truth(root, actions, **options):
+        collected[root.target.mirror].append(options["seed"])
+        return {action: (.25, .5) for action in actions}
+
+    monkeypatch.setattr(scorer, "compare_replayed_lead", compare)
+    monkeypatch.setattr(scorer, "true_deal_yardsticks", truth)
+    options = dict(make_bot=lambda seed: SimpleNamespace(seed=seed, policy_name="served",
+                                                         unified_value_model=None),
+                   policy="served", seed=29, depth_worlds=2, reply_cap=4,
+                   batch_size=32, reply_value_weight=1.)
+    for root in (first, other):
+        assert scorer.score_bank_root(root, **options)["eligible"]
+    trace = collected.copy()
+    for root in (other, first):
+        assert scorer.score_bank_root(root, **options)["eligible"]
+    assert trace == collected and len({seed for streams in trace.values() for seed in streams}) == 6
+
+
+def test_score_bank_root_treats_a_substituted_final_lead_as_a_fault(paired_flat_probe, monkeypatch):
+    from shengji.train import belief_tree_bank_score as scorer
+    from shengji.train.belief_labels import deal_key
+    from shengji.train.belief_tree_compare import PairedLeadValues
+    from shengji.train.belief_tree_replay import RootTarget, TrancheRoot
+    from test_world_history_legal import started
+
+    make, _ = paired_flat_probe
+    rnd, _ = started(13)
+    root = TrancheRoot(RootTarget(0, 0, 0, rnd.turn), deal_key(rnd.deck), rnd, ())
+    paired = PairedLeadValues((("BJ",), ("H10",)), np.array([.25, .5]),
+                              np.tile([.125, .4], (64, 1)), ("BJ", "H10"))
+    monkeypatch.setattr(scorer, "compare_replayed_lead", lambda *a, **kw: paired)
+    policy = make().policy_name
+    with pytest.raises(ValueError, match="engine substituted the final flat lead"):
+        scorer.score_bank_root(root, make_bot=lambda seed: make(), policy=policy, seed=29,
+                               depth_worlds=2, reply_cap=4, batch_size=32, reply_value_weight=1.)

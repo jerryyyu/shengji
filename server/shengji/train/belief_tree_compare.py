@@ -39,6 +39,16 @@ class PairedLeadValues:
                 "sf_gain": float(sf), "vt_gain": float(vt), "sf_regret_change": float(-sf)}
 
 
+class SingleAdmittedLead(ValueError):
+    """A valid base pass with a complete draw priced only one candidate."""
+
+    def __init__(self, action, flat_mean, final_action):
+        super().__init__("flat search admitted only one root action")
+        self.action = action
+        self.flat_mean = flat_mean
+        self.final_action = final_action
+
+
 class _BasePassComplete(Exception):
     """Stop at the flat estimator boundary before final selection rules."""
 
@@ -86,7 +96,7 @@ def compare_replayed_lead(root: TrancheRoot, flat_bot, *, seed: int, depth_world
         nonlocal captured
         if captured is not None:
             return estimate(position, seat, actions, worlds, check_budget)
-        if position is not rnd or seat != rnd.turn or len(worlds) != 64 or len(actions) < 2:
+        if position is not rnd or seat != rnd.turn or len(worlds) != 64 or not actions:
             raise ValueError("missing complete paired root ballot and 64 worlds")
         if flat_bot._draw_tally_record().get("belief_fallback_all_draws") != 0:
             raise ValueError("flat belief draw fell back or did not report its validity")
@@ -97,11 +107,15 @@ def compare_replayed_lead(root: TrancheRoot, flat_bot, *, seed: int, depth_world
             raise ValueError("flat estimator did not run in its unified decision frame")
         value_rows = flat_bot.unified_value_rows
         value_other = flat_bot.unified_value_other
+        value_served = flat_bot.unified_value_served
         reply_served = flat_bot.unified_reply_served
         raw_means, batches = estimate(position, seat, actions, worlds, check_budget)
         means = np.asarray(raw_means, dtype=np.float64)
+        readout_used = flat_bot.unified_value_rows > value_rows
+        terminal_only = len(actions) == 1 and flat_bot.unified_value_served - value_served == len(worlds)
         if (batches < 1 or means.shape != (len(actions),) or not np.isfinite(means).all()
-                or flat_bot.unified_value_rows <= value_rows or flat_bot.unified_value_other != value_other
+                or not (readout_used or terminal_only)
+                or flat_bot.unified_value_other != value_other
                 or flat_bot.unified_reply_served != reply_served):
             raise ValueError("flat estimator did not complete unified scoring")
         ballot = tuple(tuple(cards) for cards in actions)
@@ -135,6 +149,12 @@ def compare_replayed_lead(root: TrancheRoot, flat_bot, *, seed: int, depth_world
     if captured is None:
         raise ValueError("flat search did not price its base ballot")
     actions, worlds, means = captured
+    if len(actions) == 1:
+        action = tuple(sorted(actions[0]))
+        if final_action is not None and (final_action != action
+                or [tuple(sorted(cards)) for cards in (record.get("admitted") or ())] != [action]):
+            raise ValueError("final flat selection disagrees with its single admitted action")
+        raise SingleAdmittedLead(action, float(means[0]), final_action)
     reply_values = root.backup(actions, worlds, model=model, belief=belief, seed=seed,
                                depth_worlds=depth_worlds, reply_cap=reply_cap, batch_size=batch_size,
                                reply_value_weight=reply_value_weight)

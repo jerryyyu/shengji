@@ -3,13 +3,17 @@
 // and counting the rest. None as they leave.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GameState, StatePlayer, Watchers } from "../protocol";
 import Hud from "./Hud";
+import Toast from "./Toast";
 import { clearToast, currentToast } from "../toast";
 import { setLanguageChoice } from "../i18n";
 import { conn } from "../ws";
 import { noteReceipt } from "../stateReceipt";
+
+// the Collection is shown to this account: only the table setting decides the portrait
+vi.mock("../companion/feature", () => ({ useCollection: () => true }));
 
 const player = (seat: number): StatePlayer => ({
   seat, name: `P${seat}`, is_bot: false, connected: true, team: (seat % 2) as 0 | 1, cards_left: 16,
@@ -186,5 +190,27 @@ describe("the toast", () => {
       expect(currentToast()?.text).toBe(people);
       expect(chip()!.getAttribute("aria-label")).toBe(choice === "zh-Hans" ? "5 人观战" : "5 人觀戰");
     }
+  });
+});
+
+describe("a listed watcher's arrival, through the header and the table toast", () => {
+  const arrive = (room: string) => {
+    act(() => root.render(<><Hud state={state(w(0), room)} practice={false} /><Toast place="table" /></>));
+    act(() => root.render(<><Hud state={state(w(1, 1, [{ name: "Mei", look: "panda/gilded" }], ["Mei"]), room)} practice={false} /><Toast place="table" /></>));
+  };
+  afterEach(() => { window.localStorage.removeItem("shengji.companions"); });
+
+  it("leads with the watcher's portrait while Show companions at the table is on", () => {
+    window.localStorage.setItem("shengji.companions", "individual");
+    arrive(`on${n}`);
+    expect(host.querySelector(".toast")!.textContent).toBe("Mei is watching");
+    expect(host.querySelector(".toast .portrait")?.getAttribute("data-look")).toBe("panda/gilded");
+  });
+
+  it("keeps the words and draws no portrait with it off", () => {
+    window.localStorage.setItem("shengji.companions", "off");
+    arrive(`off${n}`);
+    expect(host.querySelector(".toast")!.textContent).toBe("Mei is watching");
+    expect(host.querySelector(".toast .portrait")).toBeNull();
   });
 });

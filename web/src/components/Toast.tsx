@@ -2,6 +2,8 @@ import type { CSSProperties } from "react";
 import { TOAST_MS, useToast } from "../toast";
 import { Portrait } from "../companion/Companion";
 import { useCollection } from "../companion/feature";
+import { shownAtTable, useCompanionMode } from "../companion/mode";
+import { useAuth } from "../auth";
 
 /** The app's one toast, in one fixed spot: at the top of the page, or at the
  *  table centred under the top seat (on a phone table, just above your
@@ -14,8 +16,11 @@ import { useCollection } from "../companion/feature";
  *  has left. */
 export default function Toast({ place = "page" }: { place?: "page" | "table" }) {
   const toast = useToast();
-  // a portrait only where the Collection is shown to this account
-  const portraits = useCollection();
+  // a portrait only where the Collection is shown to this account and its
+  // companions are on at the table (Show companions at the table); the words stay
+  const account = useAuth();
+  const mode = useCompanionMode(account.status === "in" ? account.user : null);
+  const portraits = useCollection() && shownAtTable(mode);
   if (toast === null) return null;
   const style = { "--toast-ms": `${toast.leaving ?? TOAST_MS}ms` } as CSSProperties;
   const hold = toast.held ? " held" : toast.leaving !== undefined ? " leaving" : "";

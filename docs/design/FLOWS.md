@@ -555,7 +555,7 @@ shows the same toast for who watches now. Nothing is told as watchers leave, and
 on screen, or while a player's connection was away, is never told late. A watcher stays counted for as long as its
 watch screen is in the foreground, reading the table every 15 s through the round's playback. A watcher is named only by the leaderboard rule a replay uses; its account id never
 leaves the server, and what it sees is unchanged: the previous round only. A listed watcher's companion portrait leads
-its toast.
+its toast while the player's Show companions at the table is on; with it off the words stay and no portrait shows.
 
 Companions come along (Jerry 2026-11-27: "Do each companion is by hand and spectate brings theirs"). On the watch
 screen each person's companion stands at their seat as at the table, in the look they wore as that round began; a

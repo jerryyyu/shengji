@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import type { AuthUser } from "../auth";
 import { Companion, Portrait } from "../companion/Companion";
@@ -10,7 +10,6 @@ import type { StageBeat } from "../companion/stageBeats";
 import { parseLook } from "../companion/look";
 import type { Colour, CompanionKind, LookEntry, UnlockCount } from "../companion/look";
 import { guestName } from "../guestName";
-import { telemetry } from "../telemetry";
 import { locale, useT } from "../i18n";
 import type { MessageKey } from "../i18n";
 import { STORE_NAMES } from "../companion/characters";
@@ -41,14 +40,10 @@ const SPECIAL_NAME: Record<DrawnKind, MessageKey> = {
   fox: "home.specialFox", lion: "home.specialLion", dragon: "home.specialDragon",
 };
 
-/** The stage's move chips, in order: each plays its move once. */
-const MOVES: readonly { pose: "hop" | "cheer" | "sleep"; name: MessageKey }[] = [
-  { pose: "hop", name: "home.moveHop" }, { pose: "cheer", name: "home.moveCheer" }, { pose: "sleep", name: "home.moveSleep" },
-];
-
-/** The table's moves, after the special: each plays once on the stage. */
-const BEATS: readonly { beat: StageBeat; name: MessageKey }[] = [
-  { beat: "ready", name: "home.moveReady" }, { beat: "watch", name: "home.moveWatch" }, { beat: "big", name: "home.moveBigPlay" },
+/** The stage's move chips, in order: Hop, Cheer, Big play (the table's
+ *  two-bounce jump), then the character's special. */
+const MOVES: readonly { pose: "hop" | "cheer"; name: MessageKey }[] = [
+  { pose: "hop", name: "home.moveHop" }, { pose: "cheer", name: "home.moveCheer" },
 ];
 
 /** The spoken name of a companion's colour, in the app's language. */
@@ -203,20 +198,14 @@ export function UseButton({ ownership, onUse, price }: {
 /** A live figure on felt that cycles through its moves by itself (idle,
  *  hop, cheer, its special, a short sleep: `PAGE_CYCLE`), each once-move for
  *  its own animation's length, while it is on screen; off screen its figure
- *  is paused. Every tap plays its special from the start. With `moves`, a
- *  row of chips under it plays Hop, Cheer, Sleep or the special once, then
- *  the cycle resumes. Under Reduce Motion it stands still, and a tap or a
- *  chip shows that pose drawn still. */
-export function Stage({ kind, colour, size, box = size, label, partner, cheer = 0, moves = false, trail }: {
+ *  is paused. Every tap plays its special from the start. With `moves`, one
+ *  row of chips under it plays Hop, Cheer, Big play or the special once,
+ *  then the cycle resumes. Under Reduce Motion it stands still, and a tap or
+ *  a chip shows that pose drawn still. */
+export function Stage({ kind, colour, size, label, cheer = 0, moves = false }: {
   kind: DrawnKind; colour: DrawnColour; size: number; label: string;
-  /** A row of move chips under the felt (Hop, Cheer, Sleep, the special),
-   *  each playing its move once before the cycle resumes; `trail` ends the row. */
+  /** The row of move chips under the felt, each playing its move once before the cycle resumes. */
   moves?: boolean;
-  trail?: ReactNode;
-  /** The figures' area, in px tall: the full figure's size, kept while a
-   *  try-on stands two smaller figures in it, so nothing below moves. */
-  box?: number;
-  partner?: { kind: CompanionKind; colour: Colour; size: number } | null;
   /** Each new value plays the cheer at once (a purchase). */
   cheer?: number;
 }) {
@@ -227,7 +216,7 @@ export function Stage({ kind, colour, size, box = size, label, partner, cheer = 
   const live = useLivePose(kind, PAGE_CYCLE, felt);
   const { play } = live;
   useEffect(() => () => beat.current?.stop(), []);
-  // a table move: the box plays it while the figure holds the move's own pose
+  // the table's big play: the box jumps while the figure holds the cheer
   const playBeat = (b: StageBeat) => {
     beat.current?.stop();
     // the figure keeps the beat's pose for the whole beat
@@ -236,7 +225,7 @@ export function Stage({ kind, colour, size, box = size, label, partner, cheer = 
     const at = moveBox.current?.getBoundingClientRect().top ?? top;
     beat.current = playStageBeat(moveBox.current, b, { px: size, up: Math.max(0, at - top) });
   };
-  const playPose = (p: "hop" | "cheer" | "sleep" | "react") => {
+  const playPose = (p: "hop" | "cheer" | "react") => {
     beat.current?.stop();
     beat.current = null;
     if (p === "react") live.tap();
@@ -246,19 +235,14 @@ export function Stage({ kind, colour, size, box = size, label, partner, cheer = 
     if (cheer > 0) play("cheer");
   }, [cheer, play]);
   const stage = (
-    <div ref={felt} className={`coll-felt char-stage${partner ? " char-try" : ""}${live.paused ? " live-paused" : ""}`}>
-      <div className="char-figures" style={{ height: box }}>
+    <div ref={felt} className={`coll-felt char-stage${live.paused ? " live-paused" : ""}`}>
+      <div className="char-figures" style={{ height: size }}>
         <button type="button" className="coll-figure" aria-label={label} onClick={() => playPose("react")}>
           <span className="char-box" ref={moveBox}>
             <Companion key={live.key} kind={kind} colour={colour} size={size} state={live.pose}
                        onPoseEnd={live.onPoseEnd} />
           </span>
         </button>
-        {partner ? (
-          <span className="char-partner" aria-hidden="true">
-            <Companion kind={partner.kind} colour={partner.colour} size={partner.size} />
-          </span>
-        ) : null}
       </div>
     </div>
   );
@@ -271,11 +255,8 @@ export function Stage({ kind, colour, size, box = size, label, partner, cheer = 
         {MOVES.map((m) => (
           <button key={m.pose} type="button" className="char-move" onClick={() => playPose(m.pose)}>{t(m.name)}</button>
         ))}
+        <button type="button" className="char-move" onClick={() => playBeat("big")}>{t("home.moveBigPlay")}</button>
         <button type="button" className="char-move" onClick={() => playPose("react")}>{t(SPECIAL_NAME[kind])}</button>
-        {BEATS.map((b) => (
-          <button key={b.beat} type="button" className="char-move" onClick={() => playBeat(b.beat)}>{t(b.name)}</button>
-        ))}
-        {trail}
       </div>
     </>
   );
@@ -288,19 +269,11 @@ export const SHORT_SCREEN = "(max-height: 700px)";
 
 /** The stage's figure size: a phone's, a short phone's, or a wide layout's. */
 export function stageSize(phone: boolean, short: boolean): number {
-  return phone ? (short ? 120 : 176) : 208;
+  return phone ? (short ? 132 : 176) : 208;
 }
 
-/** The partner a try-on stands the character beside: the Tractor, or for
- *  the Tractor itself the Bun. */
-const TRY_PARTNER: Record<CompanionKind, { kind: CompanionKind; colour: Colour }> = {
-  tractor: { kind: "bun", colour: "plain" }, bun: { kind: "tractor", colour: "red" },
-  chick: { kind: "tractor", colour: "red" }, sparrow: { kind: "tractor", colour: "red" },
-  lamb: { kind: "bun", colour: "plain" }, panda: { kind: "bun", colour: "plain" },
-};
-
 /** The selected character at the top of the Collection's one page (a tile
- *  selects it): the live figure on felt, Try on your table, `strip`, the
+ *  selects it): the live figure on felt and its move chips, `strip`, the
  *  colours, the one status line (how an owned look was got, what unlocks a
  *  locked one, else the look shown) and the one button, or for a
  *  store character not owned `price` (Buy, Sign in to buy). A tap on a colour
@@ -317,20 +290,11 @@ export default function CharacterPage({ kind, shown, entries, inUse, user, phone
   cheer?: number;
 }) {
   const t = useT();
-  const [tryOn, setTryOn] = useState(false);
   const entry = entries.find((e) => e.id === shown) ?? entries[0];
   const { colour } = parseLook(entry.id);
-  const partner = tryOn ? { ...TRY_PARTNER[kind], size: phone ? 100 : 118 } : null;
-  const full = stageSize(phone, short);
   return (
     <div className="char-page">
-      <Stage kind={kind} colour={colour} size={tryOn ? (phone ? 112 : 132) : full} box={full} label={lookName(t, entry.id)}
-             partner={partner} cheer={cheer} moves trail={(
-        <button type="button" className={`char-chip${tryOn ? " on" : ""}`} aria-pressed={tryOn}
-                onClick={() => { if (!tryOn) telemetry.tap("try_on"); setTryOn(!tryOn); }}>
-          {t("home.tryOnTable")}
-        </button>
-      )} />
+      <Stage kind={kind} colour={colour} size={stageSize(phone, short)} label={lookName(t, entry.id)} cheer={cheer} moves />
       {strip}
       <Swatches entries={entries} shown={entry.id} inUse={inUse} user={user} size={56} className="char-swatches" fresh={fresh} onPick={onShow} />
       <p className="coll-status" role="status">

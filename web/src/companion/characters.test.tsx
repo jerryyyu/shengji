@@ -222,15 +222,14 @@ describe("the Collection's grid and the character page", () => {
     expect(puts).toEqual([{ look: "chick/yellow" }]);
   });
 
-  it("counts the Collection's screen, a tile selected, Try on and a look put in use, by id only", async () => {
+  it("counts the Collection's screen, a tile selected and a look put in use, by id only", async () => {
     signedIn();
     telemetry.reset();
     telemetry.screenView("play");
     await draw(<CollectionPage />);
     await openTile("Chick");
-    await act(async () => { host.querySelector<HTMLButtonElement>(".char-chip")!.click(); });
-    // turning Try on off again is no tap
-    await act(async () => { host.querySelector<HTMLButtonElement>(".char-chip")!.click(); });
+    // a move chip is no tap
+    await act(async () => { host.querySelector<HTMLButtonElement>(".char-poses .char-move")!.click(); });
     await act(async () => { use()!.click(); });
     await settle();
     const sent = telemetry.pending().filter((e) => e.e === "screen" || e.e === "tap").map((e) => {
@@ -240,7 +239,7 @@ describe("the Collection's grid and the character page", () => {
     });
     expect(sent).toEqual([
       { e: "screen", name: "play" }, { e: "screen", name: "collection", prev: "play" },
-      { e: "tap", id: "collection_tile" }, { e: "tap", id: "try_on" }, { e: "tap", id: "look_use" },
+      { e: "tap", id: "collection_tile" }, { e: "tap", id: "look_use" },
     ]);
   });
 
@@ -301,17 +300,15 @@ describe("the Collection's grid and the character page", () => {
     expect(swatch("Lantern orange").getAttribute("aria-label")).toBe("Lantern orange");
   });
 
-  it("has the move chips, then Try on your table, which stands it beside a partner, with no team pad under either", async () => {
+  it("has the four move chips and no Try on your table: one figure on the stage, with no team pad under it", async () => {
     signedIn();
     await draw(<CollectionPage />);
     await openTile("Bun");
     expect([...host.querySelectorAll(".char-poses button")].map((b) => b.textContent)).toEqual(
-      ["Hop", "Cheer", "Sleep", "Steamer pop", "Ready", "Watch", "Big play", "Try on your table"]);
-    expect([...host.querySelectorAll(".char-chip")].map((b) => b.textContent)).toEqual(["Try on your table"]);
-    await act(async () => { host.querySelector<HTMLButtonElement>(".char-chip")!.click(); });
+      ["Hop", "Cheer", "Big play", "Steamer pop"]);
+    expect(host.textContent).not.toMatch(/Try on/);
     const figs = [...host.querySelectorAll(".char-stage svg.cmp")];
-    expect(figs.map((f) => [...f.classList].filter((c) => /^cmp-(bun|tractor|us|them)$/.test(c)))).toEqual([
-      ["cmp-bun"], ["cmp-tractor"]]);
+    expect(figs.map((f) => [...f.classList].filter((c) => /^cmp-(bun|tractor|us|them)$/.test(c)))).toEqual([["cmp-bun"]]);
   });
 
   it("the stage plays its moves by itself", async () => {

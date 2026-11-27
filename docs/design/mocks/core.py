@@ -619,13 +619,15 @@ def f9_me():
 
 def f11_collection():
     """The Collection tab (Jerry 2026-11-26), for a viewer it is shown to (an allowlisted account until it is on
-    for everyone), one page: the look shown on a corner of felt, Try on your table, the four companions, the shown
+    for everyone), one page: the look shown on a corner of felt, its four move chips, the four companions, the shown
     companion's colours, one status line and the one button (Use / In use / the unlock line / Sign in to use); no
     switch (Show companions at the table is in Me's settings). A tap only shows; the button puts in use; a tick
     marks what is in use."""
     felt_box = ('<div style="border-radius:18px;background:radial-gradient(ellipse at 50% 35%,#2f7a52,#123a26);padding:18px 0 10px;'
                 'display:flex;flex-direction:column;align-items:center;gap:4px"><span style="font-size:96px;line-height:1">{fig}</span></div>')
-    chip = '<div style="text-align:center"><span style="border:1px solid #333b49;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600">Try on your table</span></div>'
+    chip = ('<div style="display:flex;justify-content:center;gap:6px">' + "".join(
+        f'<span style="border:1px solid #333b49;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600">{m}</span>'
+        for m in ("Hop", "Cheer", "Big play", "Steamer pop")) + '</div>')
     kinds = ('<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center;font-size:13px;font-weight:600">' + "".join(
         f'<span><span style="display:inline-flex;width:52px;height:52px;border-radius:26px;background:#2f7a52;align-items:center;justify-content:center;font-size:24px;'
         f'{"box-shadow:0 0 0 2px " + GOLD if on else ""}">{e}</span><br>{n}{" ✓" if tick else ""}</span>'

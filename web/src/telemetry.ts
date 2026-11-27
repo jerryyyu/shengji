@@ -28,7 +28,7 @@ export type TapId =
   | "menu_leave" | "chip_leave" | "leave_confirm" | "leave_keep" | "howto_open"
   | "signin_open" | "coach_on" | "coach_off" | "invite_share" | "copy_code" | "app_store_badge"
   | "hint_preselect" | "rejoin_duo"
-  | "companions_on" | "companions_off" | "look_use" | "collection_tile" | "try_on";
+  | "companions_on" | "companions_off" | "look_use" | "collection_tile";
 
 /** Where the identity sheet (the name, and Sign in) was opened. */
 export type SigninFrom =

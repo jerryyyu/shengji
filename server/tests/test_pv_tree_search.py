@@ -1446,3 +1446,99 @@ def test_belief_reply_backup_loads_the_unified_policy_value_and_belief(tmp_path)
     assert values.shape == (2, 2) and np.isfinite(values).all()
     np.testing.assert_allclose(root_reply_backup(root, actions[::-1], worlds[:2], **args),
                                values[:, ::-1])
+
+
+def test_trajectory_test_roots_reach_the_unified_reply_backup(tmp_path):
+    from test_unified_serving import _random_pair
+    from shengji.ai.belief_numpy import load_belief_numpy
+    from shengji.ai.unified_readout_numpy import load_unified_readout_numpy
+    from shengji.harvest.common import write_jsonl
+    from shengji.harvest.trajectory import build_config, play_trajectory_cluster
+    from shengji.train.belief_labels import deal_key, iter_decisions
+    from shengji.train.belief_tree_replay import RootTarget, replay_tranche_roots
+
+    seed = 1062
+    config = build_config(seed0=seed, select_worlds=2, report_worlds=30, explore_rate=0)
+    rows, _ = play_trajectory_cluster(config, 0, seed)
+    shard = tmp_path / "cluster-000000.jsonl"
+    _, sha = write_jsonl(shard, rows)
+    expected = {}
+    for decision in iter_decisions(rows):
+        if len(decision.rnd.history) == 8 and not decision.rnd.trick.plays:
+            target = RootTarget(decision.decision_index, decision.round_index,
+                                decision.record["ply"], decision.seat)
+            expected[target] = copy.deepcopy(decision.rnd)
+    targets = tuple(reversed(expected))
+    assert [target.mirror for target in targets] == [1, 0]
+    roots = replay_tranche_roots(shard, shard_sha256=sha, run_id=config["run_id"],
+                                 cluster=0, round_seed=seed, policy=config["policy"],
+                                 expected_deal_key=deal_key(rows[0]["deck"]), calib=.06, test=.04,
+                                 min_tricks=8, targets=targets)
+    assert tuple(root.target for root in roots) == targets
+
+    pair = _random_pair(tmp_path)
+    options = dict(model=load_unified_readout_numpy(*pair["unified"]),
+                   belief=load_belief_numpy(*pair["belief"]), seed=41, reply_cap=4,
+                   batch_size=3, depth_worlds=2, reply_value_weight=1.)
+    for root in roots:
+        rnd = root.round
+        assert rnd is not expected[root.target]
+        assert rnd.hands == expected[root.target].hands
+        assert rnd.history == expected[root.target].history
+        assert rnd.turn == root.target.seat and not rnd.trick.plays and len(rnd.history) == 8
+        actions = [[card] for card in sorted(set(rnd.hands[rnd.turn]))[:2]]
+        values = root.backup(actions, [(rnd.hands, rnd.buried)], **options)
+        assert values.shape == (1, 2) and np.isfinite(values).all()
+
+
+def test_trajectory_test_roots_bind_the_split_pin_mirror_and_ledger(tmp_path):
+    from dataclasses import replace
+    from test_belief_labels import synthetic_cluster
+    from shengji.ai.refusal import observe_refusal
+    from shengji.harvest.common import write_jsonl
+    from shengji.train.belief_labels import BeliefLabelError, deal_key, iter_decisions, split_of
+    from shengji.train.belief_tree_replay import RootTarget, replay_tranche_roots
+
+    seed = 1062
+    rows = synthetic_cluster(seed, throw_rate=1)
+    for row in rows:
+        ply = len(row["plays_prefix"])
+        row.update(source="trajectory", policy="synthetic", ply=ply, trick=ply // 4)
+    expected = {}
+    for decision in iter_decisions(rows):
+        if (decision.round_index not in expected and len(decision.rnd.history) >= 2
+                and not decision.rnd.trick.plays and observe_refusal(decision.rnd) is not None):
+            target = RootTarget(decision.decision_index, decision.round_index,
+                                decision.record["ply"], decision.seat)
+            expected[decision.round_index] = (target, decision.refusals)
+    assert set(expected) == {0, 1}
+    targets = tuple(target for target, _ in expected.values())
+    shard = tmp_path / f"cluster-{seed:06d}.jsonl"
+    _, sha = write_jsonl(shard, rows)
+    options = dict(shard_sha256=sha, run_id="syn", cluster=seed, round_seed=seed,
+                   policy="synthetic", expected_deal_key=deal_key(rows[0]["deck"]),
+                   calib=.06, test=.04, min_tricks=2, targets=targets)
+
+    roots = replay_tranche_roots(shard, **options)
+    for root in roots:
+        assert root.refusals == expected[root.target.mirror][1]
+        assert observe_refusal(root.round) in root.refusals
+    with pytest.raises(BeliefLabelError, match="test split"):
+        replay_tranche_roots(tmp_path / "nonexistent", **(options | {"test": .0001}))
+    with pytest.raises(BeliefLabelError, match="digest"):
+        replay_tranche_roots(shard, **(options | {"shard_sha256": "f" * 64}))
+    other_test_key = next(f"deck:{i:064x}" for i in range(500)
+                          if split_of(f"deck:{i:064x}", .06, .04) == "test")
+    with pytest.raises(BeliefLabelError, match="full deal key"):
+        replay_tranche_roots(shard, **(options | {"expected_deal_key": other_test_key}))
+    with pytest.raises(BeliefLabelError, match="disagrees with mirror, ply or actor"):
+        wrong_actor = replace(targets[0], seat=(targets[0].seat + 1) % 4)
+        replay_tranche_roots(shard, **(options | {"targets": (wrong_actor,)}))
+    with pytest.raises(BeliefLabelError, match="lead targets"):
+        shallow = replace(targets[0], ply=0)
+        replay_tranche_roots(shard, **(options | {"targets": (shallow,)}))
+    with pytest.raises(BeliefLabelError, match="absent"):
+        missing = replace(targets[0], decision_index=len(rows))
+        replay_tranche_roots(shard, **(options | {"targets": (missing,)}))
+    with pytest.raises(BeliefLabelError, match="lead targets"):
+        replay_tranche_roots(shard, **(options | {"targets": (targets[0], targets[0])}))

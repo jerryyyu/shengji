@@ -160,6 +160,13 @@ export const queue = defineMessages({
     zh: "{name} 加入了牌桌。现在出牌限时，每步 {seconds} 秒。",
     hant: "{name} 加入了牌桌。現在出牌限時，每步 {seconds} 秒。",
   },
+  // a newcomer seated mid-round, told whose seat it took; held until its first card
+  "queue.first.tookSeat": {
+    en: "You took {took}'s seat · unranked this round",
+    zh: "你坐了 {took} 的位置 · 本局不计排位",
+    hant: "你坐了 {took} 的位置 · 本局不計排位",
+  },
+  "queue.first.tookSeatCasual": { en: "You took {took}'s seat", zh: "你坐了 {took} 的位置", hant: "你坐了 {took} 的位置" },
   "queue.first.joinsNextTimed": {
     en: "{name} joins your table from next round. Moves are timed from next round, {seconds} s each.",
     zh: "{name} 下一局起加入牌桌。下一局起出牌限时，每步 {seconds} 秒。",

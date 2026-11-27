@@ -1,5 +1,5 @@
 // What the table panel says, as plain functions of the queue's state.
-import { isZh, t } from "../i18n";
+import { displayName, isZh, t } from "../i18n";
 import { clock, namesAt, sharedTable, yourReady } from "./store";
 import type { OfferView, Presence, QueueView, TableFrame } from "./store";
 import type { FirstJoinerMsg, QueueMode } from "./messages";
@@ -225,6 +225,13 @@ export function firstJoinerText(m: Pick<FirstJoinerMsg, "name" | "move_secs" | "
   if (m.move_secs === null) return t(m.round_end ? "queue.first.joinsNext" : "queue.first.joined", { name: m.name });
   return t(m.round_end ? "queue.first.joinsNextTimed" : "queue.first.joinedTimed",
            { name: m.name, seconds: m.move_secs });
+}
+
+/** The one toast a newcomer seated mid-round gets: whose seat it took, named
+ *  as the table names it, and at a ranked table that the round is not
+ *  ranked for them. */
+export function tookSeatText(took: { name: string; is_bot: boolean }, ranked: boolean): string {
+  return t(ranked ? "queue.first.tookSeat" : "queue.first.tookSeatCasual", { took: displayName(took.name, took.is_bot) });
 }
 
 /** The idle-seat status, one line: the countdown until the table drops you. */

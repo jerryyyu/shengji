@@ -13,7 +13,8 @@ import { useT } from "../i18n";
 
 /** The table's one `⋯` menu, the same on a phone and a desktop; the header
  *  beside it holds only the game's state. Its rows, in order: the game's
- *  mode as a label (Ranked or Casual, not a switch), the table's
+ *  mode as a label (Ranked or Casual, not a switch; Unranked this round
+ *  for the round a newcomer joined at a ranked table), the table's
  *  own rows as the table panel draws them (the code with its Invite link,
  *  then Allow joiners for the table's opener), the player's settings (the
  *  same list as Me's: Coach, Sound, Haptics in the app, How to play), then
@@ -30,8 +31,9 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
   room: string; ranked?: boolean; offline?: boolean;
   /** A nearby table: offline, with its code and Allow joiners. */
   nearby?: boolean;
-  /** The game's mode, a plain label at the top of the menu; the header carries none. */
-  mode?: "Ranked" | "Casual";
+  /** The game's mode, a plain label at the top of the menu; the header carries none.
+   *  "Unranked": the round a newcomer joined at a ranked table. */
+  mode?: "Ranked" | "Unranked" | "Casual";
   /** A guest seat: the leave sheet speaks of no ranking. */
   guest?: boolean;
   /** The table's "Allow joiners" switch; undefined at a table without one. */
@@ -137,7 +139,7 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
         <div className={`hud-menu${presence.className ? ` ${presence.className}` : ""}`} role="menu"
              aria-label={t("table.more")} aria-hidden={!open || undefined} inert={!open || undefined}
              ref={menuRef} onKeyDown={onMenuKey}>
-          {mode ? <div className={`hud-menu-mode ${mode.toLowerCase()}`} role="none">{mode === "Ranked" ? t("table.modeRanked") : t("table.modeCasual")}</div> : null}
+          {mode ? <div className={`hud-menu-mode ${mode.toLowerCase()}`} role="none">{t(mode === "Ranked" ? "table.modeRanked" : mode === "Unranked" ? "table.modeUnrankedRound" : "table.modeCasual")}</div> : null}
           {showCode ? (
             <div className="hud-menu-code" role="none">
               <span className={`hud-menu-code-text${soakOn ? " soak-on" : ""}`}

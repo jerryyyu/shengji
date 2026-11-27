@@ -68,6 +68,17 @@ The host role passes on, and a ranked leave keeps "at best a draw".
     it carries no leaver cap into their next rated round; from their first rated round on, the leaver rules
     apply as to anyone;
   - copy: "Stay until this round ends, or wait 1 minute to play again."
+  - told at the seat (Jerry 2026-11-27, joiner mock option B: "Yes recommended is good"): the moment a seat
+    becomes yours mid-round, one table toast names it, "You took Bot 2's seat · unranked this round" (a casual
+    table: "You took Bot 2's seat"), the previous holder named as the table names them, held until you play
+    your first card (at least 4 s); for that round the ⋯ menu's mode word reads "Unranked this round" in
+    place of the gold "Ranked". The round end's "Unranked · joined mid-round" and the leave sheet's line are
+    unchanged. The state frame's optional `took_seat` carries the name: the holder before you, from any
+    mid-round claim (an open-table join, or a by-code take of a bot's or a dropped player's seat), sent only
+    during that round. It is presentation only; `joined_round` alone sets the menu word and the rating and
+    leave rules. The hold lives in the toast store, so How to play and back keeps it; the first card, the
+    round end or leaving the table lets it go, and a newer toast supersedes it (the newest wins; the line
+    is not brought back over or after it). No new surface or message.
 
 **Section 4, connection.** One "Reconnecting…" pill, Retry after 10 s, a full-screen state after 30 s (when the bot takes a dropped seat), and a
 bad code shown inline under the code box. The 30 s is one window on both sides (Jerry 2026-11-26, option B):
@@ -281,7 +292,8 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
    under the code box are gone), the queue's notices (`q-toast` is gone), a failed throw (the header notice
    and its close are gone), the engine's table messages (a declaration is not one: its tag under the
    declared cards tells it), a newcomer joining ("Mei joins next trick", once per join; the corner line is
-   gone) and Coach on/off.
+   gone), the newcomer's own line when its seat is handed over mid-round ("You took Bot 2's seat · unranked
+   this round", the one toast held until that seat's first card, then at least 4 s in all) and Coach on/off.
    - At the table, exactly one line stands between the trick and your hand (`components/HandLine.tsx`),
      highest first: why Play is disabled (a refused tap, or a play that does not follow), else the phase's
      help (declaring, burying), else the newcomer coach's cue. The phase's help and the cue are teaching and

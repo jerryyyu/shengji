@@ -7,13 +7,16 @@ import { TOAST_MS, useToast } from "../toast";
  *  table's, else the app's), and it draws whatever `showToast` last showed.
  *  An error is read at once, a notice politely. Each showing is keyed by its
  *  id, so a new one mounts a new element and its fade runs from the start;
- *  the fade's timing is TOAST_MS, the same number that takes it down. */
+ *  the fade's timing is TOAST_MS, the same number that takes it down. A
+ *  held toast only fades in; once released, its fade runs over the time it
+ *  has left. */
 export default function Toast({ place = "page" }: { place?: "page" | "table" }) {
   const toast = useToast();
   if (toast === null) return null;
-  const style = { "--toast-ms": `${TOAST_MS}ms` } as CSSProperties;
+  const style = { "--toast-ms": `${toast.leaving ?? TOAST_MS}ms` } as CSSProperties;
+  const hold = toast.held ? " held" : toast.leaving !== undefined ? " leaving" : "";
   return (
-    <div key={toast.id} className={`toast${toast.info ? " toast-info" : ""}${place === "table" ? " at-table" : ""}`}
+    <div key={toast.id} className={`toast${toast.info ? " toast-info" : ""}${place === "table" ? " at-table" : ""}${hold}`}
          role="status" aria-live={toast.info ? "polite" : "assertive"} style={style}>
       {toast.dot !== undefined ? <i className={`toast-dot team${toast.dot}`} aria-hidden="true" /> : null}
       <span>{toast.text}{toast.sub ? <small>{toast.sub}</small> : null}</span>

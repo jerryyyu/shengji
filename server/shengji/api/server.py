@@ -452,6 +452,12 @@ class Seat:
     # name the seat goes back to if they leave during it.
     joined_round: int | None = None
     bot_name: str | None = None
+    # A seat taken mid-round by anyone (an open-table newcomer or a by-code
+    # claim of a bot's or a dropped player's seat): who held it before, as
+    # (name, is_bot, round_no). Presentation only: the holder's state names
+    # it while that round is in play. Rating and leave rules read
+    # ``joined_round``, never this.
+    took_from: tuple[str, bool, int] | None = None
     # The owner pressed Leave mid-game: the bot covers the seat at once
     # instead of after TAKEOVER_AFTER, and the table names it as left. The
     # reservation window and every rating and penalty rule stay as for a
@@ -1165,6 +1171,12 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
         # client that missed the round end (reconnect) clears its warning.
         "joined_round": (me.joined_round == game.round_no and rnd.phase != "round_end"
                          and ratings.ranked(room)),
+        # the seat's holder before this player took it mid-round, at any
+        # table, sent only during that round: the table names whose hand
+        # they took; an older client ignores it
+        **({"took_seat": {"name": me.took_from[0], "is_bot": me.took_from[1]}}
+           if (me.took_from is not None and me.took_from[2] == game.round_no
+               and rnd.phase != "round_end") else {}),
     }
 
 
@@ -3295,6 +3307,10 @@ async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | Non
             spectate.claimed(target, target.log_event("seat_claimed", seat=pick,
                                                       name=name, bot=False), me.user_id)
             claimed_from_bot = True
+            mid_round = (target.game is not None and target.round is not None
+                         and target.round.phase != "round_end")
+            me.took_from = ((took_from, not took_over_human, target.game.round_no)
+                            if mid_round and target.game is not None else None)
         room = target
         if by_name:
             # HOUSE TRUST MODEL, stated plainly: a dropped
@@ -4299,6 +4315,7 @@ def _seat_newcomer(room: Room, seat: int, pj: PendingJoin) -> None:
     me.timeouts_in_row = me.timeouts_in_round = 0
     me.turn_started = None
     me.joined_round = None if at_round_end else room.game.round_no
+    me.took_from = None if at_round_end else (took, took_bot, room.game.round_no)
     if at_round_end:
         room.round_end_joins[seat] = pj.name
     del room.pending_joins[seat]
@@ -4324,6 +4341,7 @@ def _revert_to_bot(room: Room, seat: int) -> None:
     sd.queue_id = sd.device = None
     sd.token = secrets.token_urlsafe(12)
     sd.joined_round = None
+    sd.took_from = None
     sd.away, sd.away_since = False, None
     sd.bot_announced = False
     sd.timeouts_in_row = sd.timeouts_in_round = 0

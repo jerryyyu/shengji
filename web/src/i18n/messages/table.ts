@@ -191,6 +191,7 @@ export const table = defineMessages({
   "table.moreTitle": { en: "Table, settings, leave", zh: "牌桌、设置、离开", hant: "牌桌、設定、離開" },
   "table.modeRanked": { en: "Ranked", zh: "排位", hant: "排位" },
   "table.modeCasual": { en: "Casual", zh: "休闲", hant: "休閒" },
+  "table.modeUnrankedRound": { en: "Unranked this round", zh: "本局不计排位", hant: "本局不計排位" },
   "table.codeAria": { en: "Table code {code}", zh: "房间码 {code}", hant: "房間碼 {code}" },
   "table.codeAriaSoak": { en: "Table code {code}, soak tools on", zh: "房间码 {code}，测试工具已开", hant: "房間碼 {code}，測試工具已開" },
   "table.linkCopied": { en: "Link copied", zh: "链接已复制", hant: "連結已複製" },

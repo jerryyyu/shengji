@@ -3573,6 +3573,14 @@ def test_ws_a_joined_seat_reconnecting_gets_joined_round_in_its_state_frames(wse
             assert msg["type"] == "state" and msg["you"] == 2
             assert room.game.round_no == round_no and msg["phase"] != "round_end"
             assert msg["joined_round"] is True
+            # and whose seat it was, for the newcomer's own line
+            assert msg["took_seat"] == {"name": "Bot 2", "is_bot": True}
+        # a later round was started with them seated: nothing to tell
+        room.round.phase = "round_end"
+        assert "took_seat" not in srv.state_for(room, 2)
+        room.round.phase = "play"
+        room.game.round_no += 1
+        assert "took_seat" not in srv.state_for(room, 2)
 
 
 def test_ws_an_account_playing_ranked_cannot_press_play_on_a_second_device(wsenv, monkeypatch):
@@ -4389,10 +4397,15 @@ def test_ws_leaving_a_casual_table_one_joined_is_free_but_the_table_stays_barred
         assert room.seats[2].joined_round == room.game.round_no
         # the frame's leave warning is a ranked table's only
         assert srv.state_for(room, 2)["joined_round"] is False
+        # whose seat it was is said at any table, and to the newcomer only
+        assert srv.state_for(room, 2)["took_seat"] == {"name": "Bot 2", "is_bot": True}
+        assert "took_seat" not in srv.state_for(room, 0)
         a.send_json({"type": "table_leave"})
         _drain(a, "left")
         assert room.seats[2].is_bot
         assert alice not in srv.MATCHMAKER.cooldowns
+        # the seat went back to its bot: no newcomer's line survives
+        assert room.seats[2].took_from is None
         assert code in srv.MATCHMAKER.barred[alice]
         a.send_json({"type": "queue_join", "mode": "casual"})
         state = _drain(a, "queue_state")

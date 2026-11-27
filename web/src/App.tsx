@@ -33,7 +33,7 @@ import { openTab, useHomeRoute } from "./home/route";
 import { noteReceipt } from "./stateReceipt";
 import { haptic, hideSplash, lockFor, setBackGesture, setGameMode, startShell } from "./native";
 import { usePhoneLayout } from "./phoneLayout";
-import { showToast as toastShow } from "./toast";
+import { releaseHeldToast, showToast as toastShow } from "./toast";
 import Toast from "./components/Toast";
 import ConnectionPill from "./components/ConnectionPill";
 import QueueLayer from "./queue/QueueLayer";
@@ -123,6 +123,8 @@ export default function App() {
         codes.release();
       }
       setGame(null);
+      // a line held until a card at that table has no card left to wait on
+      releaseHeldToast();
       seededRef.current = false;
       resetAnnouncer();
     };

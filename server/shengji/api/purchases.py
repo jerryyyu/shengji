@@ -222,12 +222,13 @@ def companion_of(product_id: str) -> str | None:
 
 
 def _forget_look(user_id: int | None, companion: str | None) -> None:
-    """Drop a revoked companion from the seat cache of the process's store."""
+    """Drop a revoked companion from the seat cache of the process's store:
+    the seat shows the free look the account is given next (``look_id``)."""
     if user_id is None or companion is None:
         return
     seen = accounts.STORE.seen_looks.get(user_id)
     if seen is not None and seen.partition("/")[0] == companion:
-        accounts.STORE.seen_looks[user_id] = accounts.DEFAULT_LOOK
+        accounts.STORE.seen_looks[user_id] = accounts.first_look(user_id)
 
 
 router = APIRouter(prefix="/api/store")

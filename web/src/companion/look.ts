@@ -3,7 +3,8 @@
 // mirrored here by hand and held to them by server/tests/test_look.py;
 // each companion's colours are its palette's keys, in order). A
 // seat with no look, or one this client cannot draw, shows the default; a
-// bot shows an initial instead.
+// bot shows an initial instead. A guest's own look is drawn from its device
+// key (`freeLook`, the server's `accounts.free_look`).
 import { TRACTOR_COLOURS } from "./palette";
 import type { TractorColourId } from "./palette";
 import { BUN_COLOURS, CHICK_COLOURS, SPARROW_COLOURS } from "./storePalette";
@@ -107,4 +108,38 @@ export function lookCatalogue(progress: Partial<Record<UnlockCount, number>>, eq
     }
   }
   return out;
+}
+
+/** A 32-bit hash of `text`: FNV-1a over its UTF-8 bytes, then the murmur3
+ *  finaliser (the server's `accounts._look_hash`, held to it by the shared
+ *  vectors in look.test.ts). */
+function lookHash(text: string): number {
+  let h = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(text)) h = Math.imul(h ^ byte, 0x01000193) >>> 0;
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+/** A free companion picked by `seed`, in its default colour (its first):
+ *  the server's `free_look`. */
+export function freeLook(seed: string): string {
+  const kind = FREE_KINDS[lookHash(seed) % FREE_KINDS.length];
+  return `${kind}/${COMPANIONS[kind][0]}`;
+}
+
+/** The look a guest's seat shows: the one its device key draws (the
+ *  server's `accounts.guest_look`). */
+export const guestLookFor = (device: string): string => freeLook(`guest:${device}`);
+
+/** The Collection's Yours in order of use: the character in use first, then
+ *  the others by the latest use of any of their looks (`recent`, the latest
+ *  first), then those never used in Collection order (the order of `kinds`). */
+export function yoursOrder(kinds: readonly CompanionKind[], worn: CompanionKind,
+                           recent: readonly string[] | undefined): CompanionKind[] {
+  const used = (recent ?? []).filter((id) => lookId(parseLook(id)) === id).map((id) => parseLook(id).kind);
+  const rank = (k: CompanionKind) => (k === worn ? -1 : used.includes(k) ? used.indexOf(k) : used.length);
+  return [...kinds].sort((a, b) => rank(a) - rank(b));
 }

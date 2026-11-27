@@ -831,7 +831,8 @@ class Matchmaker:
 
     def _look(self, uid: int) -> str:
         c = self.conns.get(uid)
-        return accounts.account_look(c.user_id if c is not None else None)
+        return accounts.account_look(c.user_id if c is not None else None,
+                                     c.device if c is not None else None)
 
     def count(self) -> int:
         return sum(e.size for e in self.entries.values())

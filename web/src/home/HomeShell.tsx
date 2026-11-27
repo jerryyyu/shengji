@@ -18,6 +18,7 @@ import { useT } from "../i18n";
 import type { MessageKey } from "../i18n";
 import GuestChip from "../components/GuestChip";
 import { Portrait } from "../companion/Companion";
+import { ownLook } from "../companion/own";
 import { lookAccount, useNewLook } from "../companion/seen";
 import { useCollection } from "../companion/feature";
 import { refreshAccount } from "../companion/writes";
@@ -25,7 +26,7 @@ import { refreshAccount } from "../companion/writes";
 export { WIDE };
 
 /** A person's picture: where the Collection is shown, the portrait of their
- *  equipped companion (a guest's is the default); elsewhere the account's
+ *  equipped companion (a guest's is the one its device draws); elsewhere the account's
  *  picture, or its initial on a plain disc, and a guest's disc carries the
  *  initial of the name they play under. */
 export function Avatar({ user, size = "sm", guestName = "" }: {
@@ -34,7 +35,7 @@ export function Avatar({ user, size = "sm", guestName = "" }: {
   const companions = useCollection();
   const cls = `avatar avatar-${size}`;
   if (companions) {
-    return <span className={`${cls} avatar-portrait`}><Portrait look={user?.look} size={size === "lg" ? 64 : 28} /></span>;
+    return <span className={`${cls} avatar-portrait`}><Portrait look={ownLook(user)} size={size === "lg" ? 64 : 28} /></span>;
   }
   if (!user) {
     const initial = guestName.trim().slice(0, 1).toUpperCase();
@@ -105,7 +106,7 @@ function goTab(tab: Tab, active: Tab): void {
  *  elsewhere the account's picture, or the initial of the name played under
  *  (an account's or a guest's), drawn by CSS so the tab's text stays "Me". */
 function TabAvatar({ user, guest, companions }: { user: AuthUser | null; guest: string; companions: boolean }) {
-  if (companions) return <span className="avatar avatar-portrait"><Portrait look={user?.look} size={26} /></span>;
+  if (companions) return <span className="avatar avatar-portrait"><Portrait look={ownLook(user)} size={26} /></span>;
   if (user?.picture) return <img className="avatar" src={user.picture} alt="" referrerPolicy="no-referrer" />;
   const shown = user ? effectiveName(user) || user.email : guest.trim();
   return <span className="avatar tabbar-initial" aria-hidden="true" data-initial={shown.slice(0, 1).toUpperCase()} />;

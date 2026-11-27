@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth";
 import { appStoreUrl } from "../appStore";
-import { COMPANIONS, COMPANION_KINDS, COMPANION_PRODUCTS, FREE_KINDS, lookCatalogue, lookId, parseLook } from "../companion/look";
+import { COMPANIONS, COMPANION_KINDS, COMPANION_PRODUCTS, FREE_KINDS, lookCatalogue, lookId, parseLook, yoursOrder } from "../companion/look";
 import type { Colour, CompanionKind, LookEntry } from "../companion/look";
 import type { DrawnColour, DrawnKind } from "../companion/kinds";
 import { Companion } from "../companion/Companion";
 import { SOON, soonColour } from "../companion/characters";
 import type { SoonKind } from "../companion/characters";
+import { ownLook } from "../companion/own";
 import { lookAccount, markLooksSeen, markSeen, newLooks } from "../companion/seen";
 import { equip, intend, refreshAccount } from "../companion/writes";
 import LargeTitlePage from "../home/LargeTitlePage";
@@ -63,7 +64,7 @@ function Tile({ kind, colour, label, sub, gold, dim, worn, isNew, selected, arri
  *  table, the one status line and the one button (Use, In use, the unlock
  *  line, Buy, Sign in to buy, or Soon); then the
  *  grid. Yours: the free companions and the ones bought, a tick on the one in
- *  use. Where the store can sell (`useShop`), More companions: the store's
+ *  use, the one in use first and the rest by last use (`yoursOrder`). Where the store can sell (`useShop`), More companions: the store's
  *  characters with StoreKit's price, or Soon, and Restore purchases as the
  *  last row. Everywhere else (an account the store is off for, a guest, the
  *  website, the China mainland storefront), Coming soon: the store's
@@ -85,7 +86,7 @@ export default function CollectionPage() {
   const short = useMediaQuery(SHORT_SCREEN);
   const scroller = useTabScroll("collection", true);
   useScreen("collection");
-  const inUse = lookId(parseLook(user?.look));
+  const inUse = lookId(parseLook(ownLook(user)));
   const looks = lookCatalogue({ rounds: user?.rounds_played ?? 0, ranked_wins: user?.ranked_wins ?? 0, ranked_games: user?.ranked_games ?? 0 },
                               inUse, user?.looks);
   const shop = useShop();
@@ -290,7 +291,8 @@ export default function CollectionPage() {
     );
   }
 
-  const yours = COMPANION_KINDS.filter((k) => (FREE_KINDS as readonly string[]).includes(k) || owns(k));
+  const yours = yoursOrder(COMPANION_KINDS.filter((k) => (FREE_KINDS as readonly string[]).includes(k) || owns(k)),
+                           worn.kind, user?.recent_looks);
   const forSale = COMPANION_KINDS.filter((k) => COMPANION_PRODUCTS[k] && !owns(k) && entriesOf(k).length > 0);
   const soon: Selected[] = comingSoon ? [...COMPANION_KINDS.filter((k) => COMPANION_PRODUCTS[k] && !owns(k)), ...SOON] : [];
   const getApp = !isNative() && user === null;

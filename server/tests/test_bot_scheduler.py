@@ -936,3 +936,39 @@ def test_changed_turn_or_round_discards_snapshot(stale_change):
     assert room.bot is live_bot
     if stale_change == "round":
         assert room.round is not original_round
+
+
+def test_review_away_manual_play_between_actor_selection_and_snapshot(monkeypatch):
+    """The away player plays its own card after the pump picked that seat but
+    before the pump took its snapshot: the pump finds no turn to search, and
+    goes on to the live turn, so the next bot still moves."""
+    room = _real_room()
+    seat = room.round.turn
+    next_bot = (seat + 1) % 4
+    other_human = (seat + 2) % 4
+    room.move_timer = True
+    room.seats[seat].is_bot = False
+    room.seats[seat].connected = True
+    room.seats[seat].away = True
+    room.seats[other_human].is_bot = False
+    room.seats[other_human].connected = True
+    monkeypatch.setattr(srv, "BOT_DELAY", 0)
+    card = next(iter(room.ids[seat]))
+    next_count = len(room.round.hands[next_bot])
+
+    async def take_turn():
+        async with room.lock:
+            await srv.handle_action(room, seat, {"type": "play", "card_ids": [card]})
+            await srv.broadcast(room)
+            srv.kick_bots(room)
+
+    async def scenario():
+        async with room.lock:
+            srv.kick_bots(room)
+            peer = asyncio.create_task(take_turn())
+            await asyncio.sleep(0)
+        await asyncio.wait_for(peer, 5)
+        await asyncio.wait_for(room.bot_task, 5)
+
+    asyncio.run(scenario())
+    assert len(room.round.hands[next_bot]) < next_count

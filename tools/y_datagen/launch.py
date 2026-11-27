@@ -170,6 +170,10 @@ def _admit(spec):
     for path, expected in spec['files'].items():
         if sha256(path) != expected:
             raise Refused(f'file drift: {path}')
+    if 'tranche_reservation' in spec:
+        quality_path = Path(__file__).resolve().with_name('shard_quality.py')
+        if str(quality_path) not in spec['files']:
+            raise Refused('tranche must pin the live shard quality checker')
     _check_tranche_reservation(spec)
     _census()
     volumes = _tranche_volumes(spec, out)
@@ -299,6 +303,20 @@ def seal_leg(spec, out):
     return seal
 
 
+def tranche_fault(out, checked, check_shard):
+    """A sidecar is published last; shards can finish out of order."""
+    for sidecar in (out / 'shards').glob('cluster-*.json'):
+        if sidecar.name in checked:
+            continue
+        try:
+            side = json.loads(sidecar.read_bytes())
+            check_shard(sidecar.with_suffix('.jsonl'), side, side['sha256'])
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+            return {'shard': sidecar.name, 'reason': str(exc)}
+        checked.add(sidecar.name)
+    return None
+
+
 def execute(spec, spec_sha, launcher):
     own_sha = sha256(launcher)
     _release(spec['release'], own_sha, spec_sha)
@@ -323,6 +341,18 @@ def execute(spec, spec_sha, launcher):
             raise Refused('stop requested before dispatch')
         out = Path(spec['output'])
         attempt, log_path, terminal_path = attempt_paths(out)
+        check_shard = None
+        checked = set()
+        fault = None
+        if 'tranche_reservation' in spec:
+            quality_path = Path(__file__).resolve().with_name('shard_quality.py')
+            check_shard = runpy.run_path(str(quality_path))['check_shard']
+            if spec.get('resume'):
+                fault = tranche_fault(out, checked, check_shard)
+                if fault:
+                    raise Refused(f"existing shard {fault['shard']}: {fault['reason']}")
+        if requested or any(present(path) for path in spec['holds']):
+            raise Refused('stop requested before dispatch')
         with log_path.open('x') as log:
             proc = subprocess.Popen(command(spec), cwd=spec['source_dir'], stdout=log,
                                     stderr=subprocess.STDOUT, start_new_session=True)
@@ -330,7 +360,7 @@ def execute(spec, spec_sha, launcher):
         started = time.monotonic()
         print(json.dumps({'event': 'started', 'pid': proc.pid, 'spec_sha256': spec_sha, 'attempt': attempt}), flush=True)
         status = 'running'
-        next_progress = started
+        next_quality = next_progress = started
         while proc.poll() is None:
             if requested:
                 status = requested[0]
@@ -340,6 +370,12 @@ def execute(spec, spec_sha, launcher):
                 status = 'disk'
             elif time.monotonic()-started >= spec['max_seconds']:
                 status = 'time-cap'
+            now = time.monotonic()
+            if status == 'running' and check_shard and now >= next_quality:
+                fault = tranche_fault(out, checked, check_shard)
+                next_quality = now + 5
+                if fault:
+                    status = 'invalid-store'
             if status != 'running':
                 try:
                     os.killpg(proc.pid, signal.SIGTERM)
@@ -363,7 +399,11 @@ def execute(spec, spec_sha, launcher):
             status = 'completed' if rc == 0 and (out/'manifest.json').is_file() else 'failed'
         if not safe:
             status = 'containment-unresolved'
-        seal_fields = {}
+        if status == 'completed' and check_shard:
+            fault = tranche_fault(out, checked, check_shard)
+            if fault:
+                status = 'invalid-store'
+        seal_fields = {'shard_fault': fault} if fault else {}
         if status == 'completed' and 'seal_policy' in spec:
             try:
                 seal_fields['leg_seal'] = seal_leg(spec, out)

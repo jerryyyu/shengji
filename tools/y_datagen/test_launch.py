@@ -205,6 +205,10 @@ def test_tranche_admission_uses_published_window_and_runtime_registry(tmp_path, 
     name = 'r55-loop-tranche1-2675000000'
     spec.update(source_dir=str(source), rounds=10_000, seed_registry=str(runtime),
                 tranche_reservation=dict(registry=str(registry), name=name, seed0=2675000000))
+    with pytest.raises(launch.Refused, match='must pin'):
+        launch._admit(spec)
+    quality = Path(launch.__file__).with_name('shard_quality.py').resolve()
+    spec['files'][str(quality)] = launch.sha256(quality)
     for seed in range(2675000000, 2675050000, 5000):
         spec['seed'] = seed
         launch._admit(spec)
@@ -230,3 +234,47 @@ def test_tranche_admission_uses_published_window_and_runtime_registry(tmp_path, 
     spec['tranche_reservation']['registry'] = str(shadow)
     with pytest.raises(launch.Refused, match='another reservation'):
         launch._admit(spec)
+
+
+@pytest.mark.parametrize('exit_after_publish', [False, True])
+def test_tranche_stops_on_late_stage_fallback(tmp_path, monkeypatch, exit_after_publish):
+    out = tmp_path / 'store'
+    release = tmp_path / 'RELEASE'
+    lock = tmp_path / 'lock'
+    launcher = Path(launch.__file__)
+    release.write_text(json.dumps({'launcher_sha256': launch.sha256(launcher), 'spec_sha256': 'test'}))
+    spec = dict(release=str(release), lock=str(lock), source_dir=str(tmp_path), output=str(out),
+                rounds=4, workers=1, holds=[], max_seconds=30, stop_disk_gib=0, tranche_reservation={})
+    row = {'decision_kind': 'play', 'allocation': {'serving_decision': {
+        'schema': 'pv-search-decision-v1', 'belief_fallback': 0, 'belief_fallback_any': 0,
+        'belief_fallback_all_draws': 0, 'belief_fallback_by_stage': {
+            'base': 0, 'adaptive_worlds': 1, 'lead_confirm': 0}}}}
+    payload = json.dumps(row) + '\n'
+    side = json.dumps({'sha256': hashlib.sha256(payload.encode()).hexdigest(), 'counts': {}})
+    code = f"""
+from pathlib import Path
+import time
+out = Path({str(out)!r})
+shards = out / 'shards'
+shards.mkdir(parents=True)
+(shards / 'cluster-000000.jsonl').touch()
+(shards / 'cluster-000001.jsonl').write_text({payload!r})
+(shards / 'cluster-000001.json').write_text({side!r})
+if {exit_after_publish!r}:
+    (out / 'manifest.json').write_text('{{}}')
+else:
+    time.sleep(30)
+"""
+    monkeypatch.setattr(launch, '_admit', lambda spec: None)
+    monkeypatch.setattr(launch, 'command', lambda spec: [sys.executable, '-c', code])
+    assert launch.execute(spec, 'test', launcher) == 1
+    result = json.loads(Path(str(out) + '.terminal.0.json').read_bytes())
+    assert result['status'] == 'invalid-store' and 'leg_seal' not in result
+    assert result['shard_fault'] == {'shard': 'cluster-000001.json', 'reason': 'play belief fallback'}
+    assert (result['returncode'] == 0) == exit_after_publish
+    assert (out/'shards/cluster-000001.jsonl').read_text() == payload
+    assert not lock.exists()
+    spec['resume'] = True
+    with pytest.raises(launch.Refused, match='existing shard cluster-000001.json'):
+        launch.execute(spec, 'test', launcher)
+    assert not Path(str(out) + '.log.1').exists()

@@ -299,10 +299,10 @@ describe("the guide's pictures and copy against today's table", () => {
     expect(host.textContent).not.toContain("Example");
   });
 
-  it("says who the banker is, marks the banker's team with the table's crown and names the round's level", async () => {
+  it("says who the banker is, declared or not, marks the banker's team with the table's crown and names the round's level", async () => {
     await render(<HowTo route={{ step: 4 }} />, "#/howto/4");
     const body = host.querySelector(".howto-body")!.textContent!;
-    expect(body).toContain("Round one's banker is whoever declared trump.");
+    expect(body).toContain("Round one's banker is whoever's declaration stands, or the first seat if no one declares.");
     expect(body).toContain("Each round is played at the banker's level.");
     const pill = host.querySelector(".howto-pill.def")!;
     expect(pill.querySelector(".howto-crown")?.getAttribute("aria-hidden")).toBe("true");
@@ -322,10 +322,10 @@ describe("the guide's pictures and copy against today's table", () => {
     expect([...host.querySelectorAll(".howto-bands li")].map((li) => li.textContent)[3]).toBe("80–115Attackers become banker");
   });
 
-  it("ends on what Ranked and Casual mean", async () => {
+  it("ends on what Ranked and Casual mean, with no promise to a guest or a mid-round joiner", async () => {
     await render(<HowTo route={{ step: 10 }} />, "#/howto/10");
     expect(host.querySelector(".howto-caption")?.textContent)
-      .toBe("The top bar keeps the games score. Ranked rounds move your rating; Casual rounds don't.");
+      .toBe("The top bar keeps the games score. Signed in, a full Ranked round counts toward your rating; Casual rounds don't.");
   });
 
   it("keeps every step's rules to three sentences", async () => {
@@ -333,7 +333,7 @@ describe("the guide's pictures and copy against today's table", () => {
       await render(<HowTo route={{ step }} />, `#/howto/${step}`);
       const body = host.querySelector(".howto-body")!.textContent!;
       expect(body.split(/[.:](?:\s|$)/).filter(Boolean).length, body).toBeLessThanOrEqual(3);
-      expect(body.length, body).toBeLessThanOrEqual(160);
+      expect(body.length, body).toBeLessThanOrEqual(175);
       act(() => root.unmount());
       host.remove();
     }

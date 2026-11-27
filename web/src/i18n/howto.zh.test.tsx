@@ -61,7 +61,7 @@ describe("How to play in zh-Hans", () => {
   it("uses 庄家方 / 闲家 and 埋底 for the banker and kitty", async () => {
     await open(4);
     expect(text(".howto-title")).toBe("庄家和底牌");
-    expect(text(".howto-body")).toBe("第一局谁亮主谁坐庄。庄家拿起 8 张底牌，再任选 8 张埋底，然后先出牌。每一局都打庄家方的级数。");
+    expect(text(".howto-body")).toBe("第一局由亮主成立的人坐庄，没人亮主就由首位坐庄。庄家拿底牌、埋底，然后先出牌。每一局都打庄家方的级数。");
     expect(all()).toContain("庄家方守分");
     expect(all()).toContain("闲家捡分");
     expect(all()).not.toMatch(/守方|攻方|扣底/);
@@ -85,7 +85,7 @@ describe("How to play in zh-Hans", () => {
     act(() => root.unmount());
     host.remove();
     await open(10);
-    expect(text(".howto-caption")).toBe("顶栏记着盘数。排位局会改变积分，休闲局不会。");
+    expect(text(".howto-caption")).toBe("顶栏记着盘数。登录后打完整的一局排位才计入积分，休闲局不计。");
     expect(all()).toContain("盘数 1–0");
     expect([...host.querySelectorAll(".level-chip")].map((c) => c.textContent)).toEqual(["我方 A", "我方 2", "对方 2"]);
     expect(text(".howto-nav button")).toBe("完成");
@@ -136,12 +136,12 @@ describe("How to play in zh-Hant", () => {
 
   it("says who is banker, the round's level and what ranked means in Traditional Chinese", async () => {
     await open(4);
-    expect(text(".howto-body")).toBe("第一局誰亮主誰坐莊。莊家拿起 8 張底牌，再任選 8 張埋底，然後先出牌。每一局都打莊家方的級數。");
+    expect(text(".howto-body")).toBe("第一局由亮主成立的人坐莊，沒人亮主就由首位坐莊。莊家拿底牌、埋底，然後先出牌。每一局都打莊家方的級數。");
     expect(all()).toContain("莊家方守分");
     act(() => root.unmount());
     host.remove();
     await open(10);
-    expect(text(".howto-caption")).toBe("頂欄記著盤數。排位局會改變積分，休閒局不會。");
+    expect(text(".howto-caption")).toBe("頂欄記著盤數。登入後打完整的一局排位才計入積分，休閒局不計。");
     expect([...host.querySelectorAll(".level-chip")].map((c) => c.textContent)).toEqual(["我方 A", "我方 2", "對方 2"]);
   });
 });

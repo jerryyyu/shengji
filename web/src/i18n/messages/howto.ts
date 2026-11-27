@@ -51,9 +51,9 @@ export const howto = defineMessages({
 
   "howto.kitty.title": { en: "Banker and kitty", zh: "庄家和底牌", hant: "莊家和底牌" },
   "howto.kitty.body": {
-    en: "Round one's banker is whoever declared trump. The banker takes the 8 leftover cards, buries any 8, then leads. Each round is played at the banker's level.",
-    zh: "第一局谁亮主谁坐庄。庄家拿起 8 张底牌，再任选 8 张埋底，然后先出牌。每一局都打庄家方的级数。",
-    hant: "第一局誰亮主誰坐莊。莊家拿起 8 張底牌，再任選 8 張埋底，然後先出牌。每一局都打莊家方的級數。",
+    en: "Round one's banker is whoever's declaration stands, or the first seat if no one declares. The banker takes the kitty and leads. Each round is played at the banker's level.",
+    zh: "第一局由亮主成立的人坐庄，没人亮主就由首位坐庄。庄家拿底牌、埋底，然后先出牌。每一局都打庄家方的级数。",
+    hant: "第一局由亮主成立的人坐莊，沒人亮主就由首位坐莊。莊家拿底牌、埋底，然後先出牌。每一局都打莊家方的級數。",
   },
   "howto.kitty.kitty": { en: "The kitty: 8 cards, face down", zh: "底牌：8 张，牌面朝下", hant: "底牌：8 張，牌面朝下" },
   "howto.kitty.pickUp": { en: "↓ the banker picks it up", zh: "↓ 庄家拿起底牌", hant: "↓ 莊家拿起底牌" },
@@ -145,8 +145,8 @@ export const howto = defineMessages({
   "howto.win.wins": { en: "…and wins a game", zh: "…赢下一盘", hant: "…贏下一盤" },
   "howto.win.again": { en: "↓ both teams start again", zh: "↓ 两队重新开始", hant: "↓ 兩隊重新開始" },
   "howto.win.caption": {
-    en: "The top bar keeps the games score. Ranked rounds move your rating; Casual rounds don't.",
-    zh: "顶栏记着盘数。排位局会改变积分，休闲局不会。",
-    hant: "頂欄記著盤數。排位局會改變積分，休閒局不會。",
+    en: "The top bar keeps the games score. Signed in, a full Ranked round counts toward your rating; Casual rounds don't.",
+    zh: "顶栏记着盘数。登录后打完整的一局排位才计入积分，休闲局不计。",
+    hant: "頂欄記著盤數。登入後打完整的一局排位才計入積分，休閒局不計。",
   },
 });

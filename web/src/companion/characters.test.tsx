@@ -282,7 +282,7 @@ describe("the Collection's grid and the character page", () => {
       await act(async () => { tile("Bun").click(); });
       const pose = () => [...host.querySelector(".char-stage svg.cmp")!.classList].find((c) => /^cmp-(idle|hop|cheer|sleep|react)$/.test(c));
       expect(pose()).toBe("cmp-idle");
-      act(() => { vi.advanceTimersByTime(2300); });
+      act(() => { vi.advanceTimersByTime(3100); });       // idle rests 3 s, then the hop
       expect(pose()).toBe("cmp-hop");
     } finally {
       vi.useRealTimers();

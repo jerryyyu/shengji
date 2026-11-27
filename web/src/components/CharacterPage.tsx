@@ -2,15 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { AuthUser } from "../auth";
 import { Companion, Portrait } from "../companion/Companion";
-import type { Pose } from "../companion/Companion";
 import { DRAWINGS } from "../companion/kinds";
 import type { DrawnColour, DrawnKind } from "../companion/kinds";
+import { PAGE_CYCLE, useLivePose } from "../companion/livePose";
 import { parseLook } from "../companion/look";
 import type { Colour, CompanionKind, LookEntry, UnlockCount } from "../companion/look";
 import { guestName } from "../guestName";
 import { locale, useT } from "../i18n";
 import type { MessageKey } from "../i18n";
-import { prefersReducedMotion } from "../motion";
 import { STORE_NAMES } from "../companion/characters";
 import type { SoldKind, SoonKind } from "../companion/characters";
 
@@ -157,44 +156,28 @@ export function UseButton({ entry, ownership, user, onUse, price }: {
   );
 }
 
-/** The moves a stage plays by itself, one after another, each for its
- *  time; the signature reaction runs its own length (`reactMs`) and a beat. */
-const CYCLE: readonly [Pose, number][] = [["idle", 2200], ["hop", 900], ["idle", 1800], ["cheer", 1500], ["idle", 1800],
-  ["react", 0], ["idle", 1800], ["sleep", 2400]];
-const REACT_BEAT = 300;
-const CHEER_STEP = CYCLE.findIndex(([pose]) => pose === "cheer");
-
-/** A live figure on felt that plays its moves in turn by itself (a tap plays
- *  the next at once), still under Reduce Motion and while the page is hidden. */
+/** A live figure on felt that cycles through its moves by itself (idle,
+ *  hop, cheer, its special, a short sleep: `PAGE_CYCLE`), each once-move for
+ *  its own animation's length, while it is on screen; off screen its figure
+ *  is paused. Every tap plays its special from the start. Under Reduce
+ *  Motion it stands still, and a tap shows the special drawn still. */
 export function Stage({ kind, colour, size, label, partner, cheer = 0 }: {
   kind: DrawnKind; colour: DrawnColour; size: number; label: string;
   partner?: { kind: CompanionKind; colour: Colour; size: number } | null;
   /** Each new value plays the cheer at once (a purchase). */
   cheer?: number;
 }) {
-  const [step, setStep] = useState(0);
-  const timer = useRef(0);
+  const felt = useRef<HTMLDivElement>(null);
+  const live = useLivePose(kind, PAGE_CYCLE, felt);
+  const { play } = live;
   useEffect(() => {
-    if (cheer > 0) setStep((s) => s - (s % CYCLE.length) + CYCLE.length + CHEER_STEP);
-  }, [cheer]);
-  const [pose] = CYCLE[step % CYCLE.length];
-  useEffect(() => {
-    if (prefersReducedMotion()) return;
-    const go = () => {
-      window.clearTimeout(timer.current);
-      if (document.visibilityState === "hidden") return;
-      const [now, ms] = CYCLE[step % CYCLE.length];
-      timer.current = window.setTimeout(() => setStep((s) => s + 1), now === "react" ? DRAWINGS[kind].reactMs + REACT_BEAT : ms);
-    };
-    go();
-    document.addEventListener("visibilitychange", go);
-    return () => { window.clearTimeout(timer.current); document.removeEventListener("visibilitychange", go); };
-  }, [step, kind]);
-  const next = () => setStep((s) => s + 1);
+    if (cheer > 0) play("cheer");
+  }, [cheer, play]);
   return (
-    <div className={`coll-felt char-stage${partner ? " char-try" : ""}`}>
-      <button type="button" className="coll-figure" aria-label={label} onClick={next}>
-        <Companion kind={kind} colour={colour} size={size} state={pose} team={partner ? "us" : undefined} />
+    <div ref={felt} className={`coll-felt char-stage${partner ? " char-try" : ""}${live.paused ? " live-paused" : ""}`}>
+      <button type="button" className="coll-figure" aria-label={label} onClick={live.tap}>
+        <Companion key={live.key} kind={kind} colour={colour} size={size} state={live.pose} team={partner ? "us" : undefined}
+                   onPoseEnd={live.onPoseEnd} />
       </button>
       {partner ? (
         <span className="char-partner" aria-hidden="true">

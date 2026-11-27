@@ -128,12 +128,13 @@ describe("the figure", () => {
     try {
       act(() => root.render(<Stage kind="lion" colour={"red" as never} size={176} label="Dancing Lion" />));
       const pose = () => [...host.querySelector("svg")!.classList].find((c) => /^cmp-(idle|hop|cheer|react|sleep)$/.test(c));
-      for (const ms of [2200, 900, 1800, 1500, 1800]) act(() => { vi.advanceTimersByTime(ms); });
+      // idle, hop (its own length and a beat), idle, cheer, idle: then the reaction
+      for (const ms of [3000, 750, 1200, 1450, 1200]) act(() => { vi.advanceTimersByTime(ms); });
       expect(pose()).toBe("cmp-react");
       act(() => { vi.advanceTimersByTime(DRAWINGS.lion.reactMs); });
       expect(pose()).toBe("cmp-react");
       act(() => { vi.advanceTimersByTime(300); });
-      expect(pose()).toBe("cmp-idle");
+      expect(pose()).toBe("cmp-sleep");
     } finally {
       vi.useRealTimers();
     }

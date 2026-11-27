@@ -551,14 +551,17 @@ watcher's card does this; a player's round end still waits for Next or Leave.
 - **The Collection tab** (伙伴 in Chinese; Jerry 2026-11-26 took the red team's call: 收藏 reads as Favourites,
   and the gamer words 装备 and 待机 are gone, the button reading 使用 / 使用中) is the third of four, its icon four
   small tiles with one filled when selected. It is one grid (Jerry 2026-11-26, the unified grid, design B, which
-  replaced the one page with its companions strip): at the top the one in use, small, on felt (a tap opens its
-  page), and the one switch; then **Yours**, the free companions and the ones bought, as tiles idling on felt with
+  replaced the one page with its companions strip): at the top the one in use, small, on felt, idle with a
+  hop now and then, a tap playing its special once (Jerry 2026-11-26: "show the active character on top so
+  clicking it triggers an animation"), and the one switch; then **Yours**, the free companions and the ones bought, as tiles idling on felt with
   their names and a tick on the one in use; then, where the store can sell, **More companions**, the store's
   characters with StoreKit's own price or Soon for one not launched, and Restore purchases as the last, text, row.
   Two tiles across on a phone, three or four on a wide layout. Each character appears once: buying one sends its
   tile up into Yours. No Shop segment, button or page, no leaderboard row, no state chips.
 - **The character page**, opened by any tile, is the same for every character: the look on a corner of felt,
-  playing its moves by itself (a tap plays the next); Try on your table, which stands it beside a partner on your
+  cycling through its moves by itself while on screen (idle, hop, cheer, its special, a short sleep, each move
+  for its own animation's length; Jerry 2026-11-26: "all the animations there like the mock"), a tap playing its
+  special at once, still under Reduce Motion (a tap shows the special drawn still); Try on your table, which stands it beside a partner on your
   team's pads; its colour swatches (56 px, four in a row on a phone); one status line naming what is shown ("Bun ·
   Taro"); and one button. Back (Collection, in the title row) returns to the grid. The page is its own history
   entry, `#/collection/<kind>` (Jerry 2026-11-26: "Collection grid swipe back doesn't work"), so the browser's back,

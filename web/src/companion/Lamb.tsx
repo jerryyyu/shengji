@@ -49,7 +49,6 @@ export function lambMarkup(colour: LambColourId | LambColour, id: string, { pose
 
   const defs = `<defs>${sharedDefs(id)}${ball("wool", id, p.wool)}${ball("skin", id, p.skin, [0.34, 0.28, 0.82])}${ball("bell", id, p.bell, [0.34, 0.28, 0.8])}`
     + ramp("horn", id, [p.horn[0], p.horn[1], p.horn[2], p.horn[3]], [0.1, 0, 0.9, 1])
-    + ramp("scarf", id, [p.scarf[0], p.scarf[1], p.scarf[2]], [0, 0, 1, 1])
     + ramp("leg", id, p.leg, [0, 0, 0, 1]) + ramp("hoof", id, p.hoof, [0, 0, 0, 1]) + glow("ao", id, p.wool[3], 0.75) + glow("under", id, "#3a1f2e", 0.42)
     + glow("muzzle", id, "#fffaf0", 0.96, 0.55) + glow("blush", id, p.blush, 0.78, 0.25)
     + (detail ? `<clipPath id="horns-${id}"><path d="${HORN_L}"/><path d="${HORN_R}"/></clipPath>` : "")
@@ -87,11 +86,11 @@ export function lambMarkup(colour: LambColourId | LambColour, id: string, { pose
     return `<ellipse cx="${x}" cy="${y}" rx="11" ry="6.5" fill="${i % 3 ? "#ffb7c5" : "#ff8fa8"}" transform="rotate(${(i * 67) % 180} ${x} ${y})"/>`;
   }).join("") + `</g>`;
   const head = `<ellipse cx="226" cy="266" rx="84" ry="34" fill="${u("under")}"/>`
-    + `<path d="M178 246C154 256 138 280 130 306L153 312C158 288 170 268 190 256Z" ${teamPaint(team, u("scarf"))}/>`
-    + `<path d="M176 250C166 264 164 282 166 298L186 296C184 280 188 266 196 256Z" ${teamPaint(team, p.scarf[2], true)}/>`
-    + `<path d="M166 222Q236 268 306 222L311 247Q236 296 161 247Z" ${teamPaint(team, u("scarf"))}/>`
-    + `<path d="M176 232Q236 270 298 230L306 222Q236 268 166 222Z" fill="${team ? "#000" : p.scarf[3]}" opacity="${team ? ".25" : ".55"}"/>`
-    + (detail ? `<path d="M164 240Q236 288 308 240" fill="none" stroke="${p.trim}" stroke-width="2.8"/><path d="M133 300l19 5M168 292l17-1.6" stroke="${p.trim}" stroke-width="2.8" stroke-linecap="round"/>` : "")
+    // the scarf is the team's, worn at the table only; the bell hangs at the neck either way
+    + (team ? `<path d="M178 246C154 256 138 280 130 306L153 312C158 288 170 268 190 256Z" ${teamPaint(team, "")}/>`
+      + `<path d="M176 250C166 264 164 282 166 298L186 296C184 280 188 266 196 256Z" ${teamPaint(team, "", true)}/>`
+      + `<path d="M166 222Q236 268 306 222L311 247Q236 296 161 247Z" ${teamPaint(team, "")}/>`
+      + `<path class="cmp-team-shade" d="M176 232Q236 270 298 230L306 222Q236 268 166 222Z" fill="#000" opacity=".25"/>` : "")
     + part("cmp-bell", `<circle cx="236" cy="284" r="15.5" fill="${u("bell")}"/>`
       + `<path d="M225 287h22" stroke="${p.bellInk}" stroke-width="2.8" stroke-linecap="round"/><circle cx="236" cy="293" r="2.7" fill="${p.bellInk}"/>`
       + `<ellipse cx="230" cy="277" rx="4.8" ry="2.8" fill="#fff" opacity=".8" transform="rotate(-30 230 277)"/>`, at.bell)
@@ -120,17 +119,17 @@ export function lambMarkup(colour: LambColourId | LambColour, id: string, { pose
 const portraits = new Map<string, string>();
 
 /** The round portrait as a data URL: the head and horns on the colour's
- *  ground, clipped to a disc. `small` drops the fine detail. */
+ *  ground, clipped to a disc. The textures are drawn at every size, as at the table. */
 export function lambPortraitUrl(colour: LambColourId, small: boolean): string {
   const key = `${colour}/${small ? "s" : "l"}`;
   let url = portraits.get(key);
   if (!url) {
-    url = dataUrl(lambPortraitSvg(colour, small));
+    url = dataUrl(lambPortraitSvg(colour));
     portraits.set(key, url);
   }
   return url;
 }
 
-export function lambPortraitSvg(colour: LambColourId, small: boolean): string {
-  return portraitSvg(lambMarkup(colour, "p", { detail: !small, shadow: false }), 236, 154, 158, colourOf(colour).disc);
+export function lambPortraitSvg(colour: LambColourId): string {
+  return portraitSvg(lambMarkup(colour, "p", { detail: true, shadow: false }), 236, 154, 158, colourOf(colour).disc);
 }

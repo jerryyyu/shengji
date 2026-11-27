@@ -16,7 +16,6 @@ export interface LambColour {
   skin: Tones;
   horn: Tones;
   ridge: string;
-  scarf: Tones;
   bell: Tones;
   bellInk: string;
   /** Front legs top to bottom, then the far pair's flat tone. */
@@ -25,7 +24,7 @@ export interface LambColour {
   hoof: Pair;
   blush: string;
   earIn: string;
-  /** The gold lines: scarf edge, hoof band. */
+  /** The gold line of the hoof band. */
   trim: string;
   /** The portrait's ground, top to bottom. */
   disc: Pair;
@@ -38,22 +37,22 @@ const APRICOT: Tones = ["#fef0d9", "#f8debd", "#e9c29a", "#cf9c7c"];
 
 export const LAMB_COLOURS = {
   newyear: { wool: ["#fffefa", "#fdf3e0", "#eedcc6", "#c6b0c6"], curl: "#d3bba6", skin: APRICOT,
-             horn: GOLD, ridge: "#8a5514", scarf: ["#f4675f", "#da3e43", "#a81d2c", "#6d0f1c"],
+             horn: GOLD, ridge: "#8a5514",
              bell: GOLD, bellInk: "#7a4a12", leg: ["#f6e0c2", "#dcb98f"], backLeg: "#c9a17b", hoof: ["#6a4335", "#35201a"],
              blush: "#f08f84", earIn: "#eea093", trim: "#f2d27c", disc: ["#b42a31", "#5e0d18"],
              name: { en: "New Year", zh: "新年", hant: "新年" } },
   jade: { wool: ["#f9fffa", "#e3f3e8", "#bddccb", "#7fb3a4"], curl: "#86b8a2", skin: ["#fcf3e0", "#f2e1c3", "#dec6a1", "#bfa07d"],
-          horn: ["#dcf7e8", "#63bd9f", "#2a8572", "#12564a"], ridge: "#0f4a40", scarf: ["#49a797", "#2f7d70", "#1b5a52", "#0b332f"],
+          horn: ["#dcf7e8", "#63bd9f", "#2a8572", "#12564a"], ridge: "#0f4a40",
           bell: GOLD, bellInk: "#7a4a12", leg: ["#f2e4ca", "#d2bb98"], backLeg: "#bda582", hoof: ["#4f6a5f", "#1d342e"],
           blush: "#f0a08e", earIn: "#e9a595", trim: "#f2d27c", disc: ["#f0c25a", "#b06f1a"],
           name: { en: "Jade", zh: "翡翠", hant: "翡翠" } },
   ink: { wool: ["#ffffff", "#f3f2ed", "#d8d6cf", "#9ea3aa"], curl: "#6a6e73", skin: ["#fcf8f0", "#eee6d9", "#d8cebf", "#b3a899"],
-         horn: ["#8a8f95", "#44484c", "#1c1d20", "#060607"], ridge: "#000000", scarf: ["#666b71", "#3c4044", "#1c1d1f", "#09090a"],
+         horn: ["#8a8f95", "#44484c", "#1c1d20", "#060607"], ridge: "#000000",
          bell: ["#ffa093", "#e4504a", "#b01f26", "#7c0f16"], bellInk: "#fff1e0", leg: ["#f1ebde", "#cfc5b4"], backLeg: "#b8ae9e", hoof: ["#44484c", "#111213"],
          blush: "#e9a79c", earIn: "#d9b0a6", trim: "#c9ccd0", disc: ["#7d909e", "#33414d"],
          name: { en: "Ink wash", zh: "水墨", hant: "水墨" } },
   lacquer: { wool: ["#ff9382", "#e34d4b", "#b32331", "#6e0f1e"], curl: "#ffd98a", skin: APRICOT,
-             horn: GOLD, ridge: "#8a5514", scarf: ["#5f535a", "#3a3136", "#1d171a", "#0a0708"],
+             horn: GOLD, ridge: "#8a5514",
              bell: GOLD, bellInk: "#7a4a12", leg: ["#f6e0c2", "#dcb98f"], backLeg: "#c9a17b", hoof: ["#6a4335", "#35201a"],
              blush: "#f08f84", earIn: "#eea093", trim: "#f2d27c", disc: ["#33272c", "#0f0b0d"],
              name: { en: "Lacquer red", zh: "朱漆", hant: "朱漆" } },
@@ -137,7 +136,6 @@ export type RabbitColourId = keyof typeof RABBIT_COLOURS;
 export interface CatColour {
   fur: Tones;
   earIn: string;
-  collar: Tones;
   bell: Tones;
   bellInk: string;
   /** The open eye's fill when it is not the rig's dark eye, and its slit pupil. */
@@ -159,16 +157,16 @@ export interface CatColour {
 const CINNABAR: Tones = ["#f4675f", "#da3e43", "#a81d2c", "#6d0f1c"];
 
 export const CAT_COLOURS = {
-  white: { fur: ["#ffffff", "#faf5ea", "#e8dccb", "#bcaac4"], earIn: "#ffb9b0", collar: CINNABAR, bell: GOLD, bellInk: "#7a4a12",
+  white: { fur: ["#ffffff", "#faf5ea", "#e8dccb", "#bcaac4"], earIn: "#ffb9b0", bell: GOLD, bellInk: "#7a4a12",
            lid: "#2b1713", whisker: "#c9b9a6", pad: "#f29a8e", blush: "#f08f84", nose: "#e88a80", trim: "#f2d27c",
            disc: ["#b42a31", "#5e0d18"], name: { en: "White", zh: "白猫", hant: "白貓" } },
-  black: { fur: ["#716b77", "#403b46", "#231f29", "#0c0a10"], earIn: "#9a6470", collar: GOLD, bell: ["#ffa093", "#e4504a", "#b01f26", "#7c0f16"], bellInk: "#fff1e0",
+  black: { fur: ["#716b77", "#403b46", "#231f29", "#0c0a10"], earIn: "#9a6470", bell: ["#ffa093", "#e4504a", "#b01f26", "#7c0f16"], bellInk: "#fff1e0",
            eye: "#f8d76e", pupil: "#231709", lid: "#f8d76e", whisker: "#a39cab", pad: "#f29a8e", blush: "#d9707a", nose: "#e88a80", trim: "#8a5516",
            disc: ["#f0c25a", "#b06f1a"], name: { en: "Black", zh: "黑猫", hant: "黑貓" } },
-  gold: { fur: ["#fff8d2", "#f9d670", "#dfa634", "#a06a18"], earIn: "#fff1c0", collar: CINNABAR, bell: ["#ffffff", "#fff3c0", "#f2c25a", "#b9781f"], bellInk: "#7a4a12",
+  gold: { fur: ["#fff8d2", "#f9d670", "#dfa634", "#a06a18"], earIn: "#fff1c0", bell: ["#ffffff", "#fff3c0", "#f2c25a", "#b9781f"], bellInk: "#7a4a12",
           lid: "#2b1713", whisker: "#b9781f", pad: "#f29a8e", blush: "#f08f84", nose: "#d97f72", trim: "#fff3c0",
           disc: ["#1f6157", "#0b2a28"], name: { en: "Gold", zh: "金猫", hant: "金貓" } },
-  calico: { fur: ["#ffffff", "#faf5ea", "#e8dccb", "#bcaac4"], earIn: "#ffb9b0", collar: ["#49a797", "#2f7d70", "#1b5a52", "#0b332f"], bell: GOLD, bellInk: "#7a4a12",
+  calico: { fur: ["#ffffff", "#faf5ea", "#e8dccb", "#bcaac4"], earIn: "#ffb9b0", bell: GOLD, bellInk: "#7a4a12",
             lid: "#2b1713", whisker: "#c9b9a6", pad: "#f29a8e", blush: "#f08f84", nose: "#e88a80", patches: ["#f09a48", "#45404c"], trim: "#f2d27c",
             disc: ["#34418f", "#121738"], name: { en: "Calico", zh: "三花", hant: "三花" } },
 } as const satisfies Record<string, CatColour>;

@@ -141,9 +141,9 @@ export function renderArt(nodes: ArtNode[]): ReactNode[] {
 const portraits = new Map<string, string>();
 
 /** The round portrait as a data URL: the whole Tractor, a little smaller, on
- *  its colour's ground, clipped to a disc. `small` drops the fine detail. */
-export function tractorPortraitUrl(colour: TractorColourId, small: boolean): string {
-  const key = `${colour}/${small ? "s" : "l"}`;
+ *  its colour's ground, clipped to a disc. The textures are drawn at every size, as at the table. */
+export function tractorPortraitUrl(colour: TractorColourId, _small: boolean): string {
+  const key = colour;
   let url = portraits.get(key);
   if (!url) {
     const p = colourOf(colour);
@@ -151,7 +151,7 @@ export function tractorPortraitUrl(colour: TractorColourId, small: boolean): str
       + `<defs><linearGradient id="disc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${p.disc[0]}"/><stop offset="1" stop-color="${p.disc[1]}"/></linearGradient>`
       + `<clipPath id="clip"><circle cx="200" cy="205" r="196"/></clipPath></defs>`
       + `<g clip-path="url(#clip)"><rect x="4" y="9" width="392" height="392" fill="url(#disc)"/>`
-      + `<g transform="translate(30 44) scale(.86)">${tractorMarkup(colour, "p", { detail: !small, puffs: false, shadow: false, rider: true })}</g></g></svg>`;
+      + `<g transform="translate(30 44) scale(.86)">${tractorMarkup(colour, "p", { detail: true, puffs: false, shadow: false, rider: true })}</g></g></svg>`;
     url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
     portraits.set(key, url);
   }

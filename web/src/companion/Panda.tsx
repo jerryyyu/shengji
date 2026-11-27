@@ -87,17 +87,17 @@ export function pandaMarkup(colour: PandaColourId | PandaColour, id: string, { p
 const portraits = new Map<string, string>();
 
 /** The round portrait as a data URL: the head on the colour's ground,
- *  clipped to a disc. `small` drops the fine detail. */
+ *  clipped to a disc. The textures are drawn at every size, as at the table. */
 export function pandaPortraitUrl(colour: PandaColourId, small: boolean): string {
   const key = `${colour}/${small ? "s" : "l"}`;
   let url = portraits.get(key);
   if (!url) {
-    url = dataUrl(pandaPortraitSvg(colour, small));
+    url = dataUrl(pandaPortraitSvg(colour));
     portraits.set(key, url);
   }
   return url;
 }
 
-export function pandaPortraitSvg(colour: PandaColourId, small: boolean): string {
-  return portraitSvg(pandaMarkup(colour, "p", { detail: !small, shadow: false }), 180, 147, 138, colourOf(colour).disc);
+export function pandaPortraitSvg(colour: PandaColourId): string {
+  return portraitSvg(pandaMarkup(colour, "p", { detail: true, shadow: false }), 180, 147, 138, colourOf(colour).disc);
 }

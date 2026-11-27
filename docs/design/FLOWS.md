@@ -641,7 +641,7 @@ keeps the table on screen.
   wording, a selected one live on the stage (its moves cycle, a tap plays its special) with the one status line
   Coming soon and no button, no colours and no move chips. Two tiles across on a phone, three or four on a wide layout. A tap on a tile selects it into the stage in place:
   the stage crossfades to it (no motion under Reduce Motion), a gold ring marks the selected tile while the tick
-  stays on the one in use, and on a phone the page scrolls back up to the stage. There is no character page, no
+  stays on the one in use, and on a phone the page scrolls back up to the stage, on every tap, the tile already selected included, after the stage has changed and with any fling stopped first (Jerry 2026-11-27: "sometimes clickign lower unit doesnt scroll to top"). There is no character page, no
   back and no edge swipe. A link to `#/collection/<kind>` selects that character and puts the plain address in
   its place (no history entry); while the account loads or the store's check is out for a store character it
   waits, and one the viewer may not see leaves the one in use on the stage; a store character the viewer cannot buy
@@ -718,7 +718,7 @@ keeps the table on screen.
   declaration, which is in the way only while it is shown) stays out of its zone for the rest of the table, so the left and right figures are not chased
   off and back by every card their person plays; only a
   figure drawn for the first time, a hidden page or Reduce Motion is placed at once. Where
-  a corner is too cramped, its companion stands on another side of its nameplate, and failing that a step smaller. It wears its team's scarf and stands on a soft ground
+  a corner is too cramped, its companion stands on another side of its nameplate, and failing that a step smaller. It wears its team's scarf (the Lamb's scarf, the Lucky Cat's collar, a kerchief on the others; the Tractor's stripe and its rider's band take the team colour) and is otherwise the figure every preview shows, curls, ridges and every texture of its colourway drawn at every size (Jerry 2026-11-27: "the lamb in game looks different from in store"; "in game we set a scarf maybe its best not to use scarf in preview"), so no preview (the stage, the tiles, the portraits, the watcher's figure) draws a scarf or collar, and a bell hangs at the neck without one; it stands on a soft ground
   shadow; there is no team pad under it (Jerry 2026-11-27: "not very intuitive for teams", removed at the table and
   in every preview). A team's companions grow an equal step a level from 2 to the seat cap at 6 (44 to 56 px
   on a phone, 3 px a level; 60 to 76 px on a tablet, 4 px a level; the same size from 6 to A; Jerry 2026-11-26: "a

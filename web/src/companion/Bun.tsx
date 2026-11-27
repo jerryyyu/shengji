@@ -77,17 +77,17 @@ export function bunMarkup(colour: BunColourId | BunColour, id: string, { pose = 
 const portraits = new Map<string, string>();
 
 /** The round portrait as a data URL: the bun's face and pleats on the
- *  colour's ground, clipped to a disc. `small` drops the fine detail. */
+ *  colour's ground, clipped to a disc. The textures are drawn at every size, as at the table. */
 export function bunPortraitUrl(colour: BunColourId, small: boolean): string {
   const key = `${colour}/${small ? "s" : "l"}`;
   let url = portraits.get(key);
   if (!url) {
-    url = dataUrl(bunPortraitSvg(colour, small));
+    url = dataUrl(bunPortraitSvg(colour));
     portraits.set(key, url);
   }
   return url;
 }
 
-export function bunPortraitSvg(colour: BunColourId, small: boolean): string {
-  return portraitSvg(bunMarkup(colour, "p", { detail: !small, shadow: false }), 190, 186, 128, colourOf(colour).disc);
+export function bunPortraitSvg(colour: BunColourId): string {
+  return portraitSvg(bunMarkup(colour, "p", { detail: true, shadow: false }), 190, 186, 128, colourOf(colour).disc);
 }

@@ -44,7 +44,7 @@ export function catMarkup(colour: CatColourId | CatColour, id: string, { pose = 
   const [warm, cool] = p.patches ?? ["", ""];
 
   const defs = `<defs>${sharedDefs(id)}${ball("fur", id, p.fur, [0.36, 0.28, 0.8])}${ball("bell", id, p.bell, [0.34, 0.28, 0.8])}`
-    + ramp("limb", id, [p.fur[0], p.fur[1], p.fur[2]], [0, 0, 1, 1]) + ramp("collar", id, [p.collar[0], p.collar[1], p.collar[2]], [0, 0, 1, 1])
+    + ramp("limb", id, [p.fur[0], p.fur[1], p.fur[2]], [0, 0, 1, 1])
     + ramp("card", id, ["#ffffff", "#f1ede4"], [0, 0, 0, 1]) + ramp("back", id, ["#3a9a6c", "#1d5638"], [0, 0, 1, 1]) + glow("under", id, "#3a2a4a", 0.3) + glow("blush", id, p.blush, 0.8, 0.25)
     + (p.patches ? `<clipPath id="head-${id}"><ellipse cx="186" cy="152" rx="96" ry="82"/></clipPath><clipPath id="belly-${id}"><ellipse cx="186" cy="278" rx="82" ry="76"/></clipPath>` : "")
     + `</defs>`;
@@ -74,9 +74,10 @@ export function catMarkup(colour: CatColourId | CatColour, id: string, { pose = 
     + mouth
     + (detail ? `<path d="M108 170l-34-8M108 182l-36 4M264 170l34-8M264 182l36 4" stroke="${p.whisker}" stroke-width="2.6" stroke-linecap="round" opacity=".9"/>` : "");
 
-  const collar = `<path d="M112 214Q186 256 260 214L264 236Q186 282 108 236Z" ${teamPaint(team, u("collar"))}/>`
-    + `<path d="M118 219Q186 258 254 219L260 214Q186 256 112 214Z" fill="${team ? "#000" : p.collar[3]}" opacity="${team ? ".25" : ".5"}"/>`
-    + (detail ? `<path d="M110 230Q186 274 262 230" fill="none" stroke="${p.trim}" stroke-width="2.6"/>` : "")
+  // the collar is the team's, worn at the table only; the bell hangs at the neck either way
+  const collar = (team ? `<path d="M112 214Q186 256 260 214L264 236Q186 282 108 236Z" ${teamPaint(team, "")}/>`
+    + `<path class="cmp-team-shade" d="M118 219Q186 258 254 219L260 214Q186 256 112 214Z" fill="#000" opacity=".25"/>`
+    + (detail ? `<path class="cmp-team-shade" d="M110 230Q186 274 262 230" fill="none" stroke="${p.trim}" stroke-width="2.6"/>` : "") : "")
     + part("cmp-bell", `<circle cx="186" cy="262" r="17.5" fill="${u("bell")}"/>`
       + `<path d="M173 265h26" stroke="${p.bellInk}" stroke-width="3" stroke-linecap="round"/><circle cx="186" cy="272.5" r="3" fill="${p.bellInk}"/>`
       + `<ellipse cx="179" cy="253" rx="5.4" ry="3.2" fill="#fff" opacity=".8" transform="rotate(-30 179 253)"/>`, at.bell);
@@ -105,17 +106,17 @@ export function catMarkup(colour: CatColourId | CatColour, id: string, { pose = 
 const portraits = new Map<string, string>();
 
 /** The round portrait as a data URL: the head and the raised paw on the
- *  colour's ground, clipped to a disc. `small` drops the fine detail. */
+ *  colour's ground, clipped to a disc. The textures are drawn at every size, as at the table. */
 export function catPortraitUrl(colour: CatColourId, small: boolean): string {
   const key = `${colour}/${small ? "s" : "l"}`;
   let url = portraits.get(key);
   if (!url) {
-    url = dataUrl(catPortraitSvg(colour, small));
+    url = dataUrl(catPortraitSvg(colour));
     portraits.set(key, url);
   }
   return url;
 }
 
-export function catPortraitSvg(colour: CatColourId, small: boolean): string {
-  return portraitSvg(catMarkup(colour, "p", { detail: !small, shadow: false }), 198, 146, 138, colourOf(colour).disc);
+export function catPortraitSvg(colour: CatColourId): string {
+  return portraitSvg(catMarkup(colour, "p", { detail: true, shadow: false }), 198, 146, 138, colourOf(colour).disc);
 }

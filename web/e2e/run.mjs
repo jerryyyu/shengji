@@ -54,6 +54,7 @@ if (mode !== "flows") {
   rc |= run("client.mjs", { BASE: base });
   rc |= run("watch.mjs", { BASE: base });
   rc |= run("collection.mjs", { BASE: base });
+  rc |= run("figures.mjs", { BASE: base });
 }
 if (mode === "full" || mode === "flows") {
   let base = process.env.BASE;

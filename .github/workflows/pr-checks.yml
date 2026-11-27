@@ -1019,7 +1019,8 @@ jobs:
       - run: node scripts/audit.mjs
 
   # The interaction suites (web/e2e: the table-state matrix and the scripted-socket
-  # client checks) drive the built app in headless Chromium. Non-blocking while its
+  # client checks) drive the built app in headless Chromium, and the Collection
+  # suite's lower-tile taps also in WebKit. Non-blocking while its
   # known list, made on macOS, settles on Linux fonts: a failure shows as a warning
   # and the job summary, and the screenshots are uploaded. The live flows need the
   # game server and are not run here (`npm run e2e:full` locally).
@@ -1049,9 +1050,10 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ms-playwright-shell-${{ runner.os }}-${{ steps.pw.outputs.version }}
-      - name: Install headless Chromium and its system libraries
-        run: npx playwright-core install --with-deps --only-shell chromium
+          key: ms-playwright-shell-webkit-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      # WebKit too: the Collection suite repeats its lower-tile taps in the iOS app's engine
+      - name: Install headless Chromium, WebKit and their system libraries
+        run: npx playwright-core install --with-deps --only-shell chromium && npx playwright-core install --with-deps webkit
       - run: npm run build
       - name: Interaction suites (matrix + client)
         id: e2e
@@ -1061,7 +1063,7 @@ jobs:
         if: always()
         run: |
           echo "e2e outcome: ${{ steps.e2e.outcome }}" >> "$GITHUB_STEP_SUMMARY"
-          for f in e2e/out/matrix.json e2e/out/client.json; do
+          for f in e2e/out/matrix.json e2e/out/client.json e2e/out/collection.json e2e/out/figures.json; do
             [ -f "$f" ] || continue
             node -e 'const r=require("./"+process.argv[1]); console.log(`- ${r.suite}: ${r.checks} checks, ${r.failed} failed, ${r.known} known, ${r.stale.length} stale known, ${Math.round(r.seconds)} s`)' "$f" >> "$GITHUB_STEP_SUMMARY"
           done

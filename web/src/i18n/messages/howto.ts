@@ -14,14 +14,13 @@ export const howto = defineMessages({
   "howto.anim.still": { en: "Show still image", zh: "显示静态图", hant: "顯示靜態圖" },
 
   "howto.chip.nt": { en: "NT", zh: "无主", hant: "無主" },
-  "howto.chip.level": { en: "Lv {level}", zh: "打 {level}", hant: "打 {level}" },
   "howto.chip.games": { en: "Games {n}–{count}", zh: "盘数 {n}–{count}", hant: "盤數 {n}–{count}" },
 
   "howto.goal.title": { en: "Climb from 2 to Ace", zh: "从 2 打到 A", hant: "從 2 打到 A" },
   "howto.goal.body": {
-    en: "Four players in two teams: you and the partner across from you. Win rounds to climb levels from 2 up to Ace.",
-    zh: "四人分两队：你和坐在对面的队友一队。赢一局就升级，从 2 一直打到 A。",
-    hant: "四人分兩隊：你和坐在對面的隊友一隊。贏一局就升級，從 2 一直打到 A。",
+    en: "Two teams of two; your partner sits across from you. Win rounds to climb from level 2 to Ace.",
+    zh: "四人分两队，对面是你的队友。赢一局就升级，从 2 打到 A。",
+    hant: "四人分兩隊，對面是你的隊友。贏一局就升級，從 2 打到 A。",
   },
   "howto.goal.you": { en: "You", zh: "我", hant: "我" },
   "howto.goal.partner": { en: "{name} · partner", zh: "{name} · 队友", hant: "{name} · 隊友" },
@@ -29,11 +28,10 @@ export const howto = defineMessages({
 
   "howto.trump.title": { en: "Trump beats everything", zh: "主牌最大", hant: "主牌最大" },
   "howto.trump.body": {
-    en: "The level card's rank and the jokers are always trump. One suit is trump too. Highest trump first:",
-    zh: "级牌和大小王永远是主牌。还有一门花色也是主。从大到小：",
-    hant: "級牌和大小王永遠是主牌。還有一門花色也是主。從大到小：",
+    en: "This round's level is 7. The jokers, the 7s and one suit are trump, and count as a single suit. Highest first:",
+    zh: "这一局打 7。大小王、所有的 7 和一门花色都是主牌，算作同一门。从大到小：",
+    hant: "這一局打 7。大小王、所有的 7 和一門花色都是主牌，算作同一門。從大到小：",
   },
-  "howto.trump.example": { en: "Example", zh: "例如", hant: "例如" },
   "howto.trump.bigJoker": { en: "{n} Big Joker", zh: "{n} 大王", hant: "{n} 大王" },
   "howto.trump.littleJoker": { en: "{n} Little Joker", zh: "{n} 小王", hant: "{n} 小王" },
   "howto.trump.otherLevel": { en: "{n} other 7s, equal", zh: "{n} 其他花色的 7，一样大", hant: "{n} 其他花色的 7，一樣大" },
@@ -41,9 +39,9 @@ export const howto = defineMessages({
 
   "howto.declare.title": { en: "Declare to pick trump", zh: "亮主定主", hant: "亮主定主" },
   "howto.declare.body": {
-    en: "While the cards are dealt, show a card of the level's rank to make its suit trump. A stronger show replaces it; a joker pair means no trump suit.",
-    zh: "发牌时亮出一张级牌，它的花色就是主。更强的亮主可以反掉它；亮一对王就是无主。",
-    hant: "發牌時亮出一張級牌，它的花色就是主。更強的亮主可以反掉它；亮一對王就是無主。",
+    en: "During the deal, show a level card to make its suit trump. A stronger declaration replaces it; a joker pair means no trump suit.",
+    zh: "发牌时亮出一张级牌，它的花色就是主。更大的亮主可以反掉它；亮一对王是无主。",
+    hant: "發牌時亮出一張級牌，它的花色就是主。更大的亮主可以反掉它；亮一對王是無主。",
   },
   "howto.declare.stronger": { en: "stronger ↑", zh: "更大 ↑", hant: "更大 ↑" },
   "howto.declare.bigJokers": { en: "Pair of Big Jokers", zh: "一对大王", hant: "一對大王" },
@@ -53,9 +51,9 @@ export const howto = defineMessages({
 
   "howto.kitty.title": { en: "Banker and kitty", zh: "庄家和底牌", hant: "莊家和底牌" },
   "howto.kitty.body": {
-    en: "The banker picks up the 8 leftover cards, then buries any 8 face down. The banker leads the first trick.",
-    zh: "庄家拿起剩下的 8 张底牌，再任选 8 张牌面朝下埋底。第一轮由庄家先出。",
-    hant: "莊家拿起剩下的 8 張底牌，再任選 8 張牌面朝下埋底。第一輪由莊家先出。",
+    en: "Round one's banker is whoever declared trump. The banker takes the 8 leftover cards, buries any 8, then leads. Each round is played at the banker's level.",
+    zh: "第一局谁亮主谁坐庄。庄家拿起 8 张底牌，再任选 8 张埋底，然后先出牌。每一局都打庄家方的级数。",
+    hant: "第一局誰亮主誰坐莊。莊家拿起 8 張底牌，再任選 8 張埋底，然後先出牌。每一局都打莊家方的級數。",
   },
   "howto.kitty.kitty": { en: "The kitty: 8 cards, face down", zh: "底牌：8 张，牌面朝下", hant: "底牌：8 張，牌面朝下" },
   "howto.kitty.pickUp": { en: "↓ the banker picks it up", zh: "↓ 庄家拿起底牌", hant: "↓ 莊家拿起底牌" },
@@ -79,9 +77,9 @@ export const howto = defineMessages({
 
   "howto.pairs.title": { en: "Pairs and tractors", zh: "对子和拖拉机", hant: "對子和拖拉機" },
   "howto.pairs.body": {
-    en: "Two identical cards are a pair; pairs next to each other are a tractor. When a pair is led, you must answer with a pair of that suit if you have one.",
-    zh: "两张完全相同的牌是对子；相连的对子是拖拉机。首家出对子时，你有这门的对子就必须用对子跟。",
-    hant: "兩張完全相同的牌是對子；相連的對子是拖拉機。首家出對子時，你有這門的對子就必須用對子跟。",
+    en: "Two identical cards are a pair; consecutive pairs in one suit are a tractor. When a pair is led, you must answer with a pair of that suit if you have one.",
+    zh: "两张完全相同的牌是对子；同一门里相连的对子是拖拉机。首家出对子时，你有这门的对子就必须用对子跟。",
+    hant: "兩張完全相同的牌是對子；同一門裡相連的對子是拖拉機。首家出對子時，你有這門的對子就必須用對子跟。",
   },
   "howto.pairs.pair": { en: "Pair", zh: "对子", hant: "對子" },
   "howto.pairs.tractor": { en: "Tractor", zh: "拖拉机", hant: "拖拉機" },
@@ -115,9 +113,9 @@ export const howto = defineMessages({
   "howto.points.attackers": { en: "Attackers", zh: "闲家", hant: "閒家" },
   "howto.points.bonusHead": { en: "Last trick bonus", zh: "最后一轮抠底", hant: "最後一輪摳底" },
   "howto.points.bonus": {
-    en: "If attackers win the last trick, they also score the kitty's points, multiplied by twice the cards led:",
-    zh: "闲家赢下最后一轮，底牌里的分也归闲家，乘以首家出牌张数的两倍：",
-    hant: "閒家贏下最後一輪，底牌裡的分也歸閒家，乘以首家出牌張數的兩倍：",
+    en: "If attackers win the last trick, the kitty's points are theirs too, multiplied by what was led:",
+    zh: "闲家赢下最后一轮，底牌里的分也归闲家，按首家的出牌翻倍：",
+    hant: "閒家贏下最後一輪，底牌裡的分也歸閒家，按首家的出牌翻倍：",
   },
   "howto.points.multSingle": { en: "{n} single", zh: "{n} 单张", hant: "{n} 單張" },
   "howto.points.multPair": { en: "{n} pair", zh: "{n} 对子", hant: "{n} 對子" },
@@ -132,14 +130,14 @@ export const howto = defineMessages({
   "howto.score.def3": { en: "Defenders +3", zh: "庄家方升 3 级", hant: "莊家方升 3 級" },
   "howto.score.def2": { en: "Defenders +2", zh: "庄家方升 2 级", hant: "莊家方升 2 級" },
   "howto.score.def1": { en: "Defenders +1", zh: "庄家方升 1 级", hant: "莊家方升 1 級" },
-  "howto.score.takeDeal": { en: "Attackers take the deal", zh: "闲家上台", hant: "閒家上台" },
+  "howto.score.takeDeal": { en: "Attackers become banker", zh: "闲家上台", hant: "閒家上台" },
   "howto.score.att1": { en: "Attackers +1", zh: "闲家升 1 级", hant: "閒家升 1 級" },
   "howto.score.att2": { en: "Attackers +2", zh: "闲家升 2 级", hant: "閒家升 2 級" },
   "howto.score.att3": { en: "Attackers +3, and +1 per 40 more", zh: "闲家升 3 级，每多 40 分再升 1 级", hant: "閒家升 3 級，每多 40 分再升 1 級" },
 
   "howto.win.title": { en: "Win a game", zh: "赢下一盘", hant: "贏下一盤" },
   "howto.win.body": {
-    en: "Reach Ace, then defend it as the banker's team. Winning as attackers at Ace only takes the deal.",
+    en: "Reach Ace, then defend it as the banker's team. Winning as attackers at Ace only makes you banker.",
     zh: "打到 A 后，还要作为庄家方守住 A。闲家就算打到 A，赢了也只是上台。",
     hant: "打到 A 後，還要作為莊家方守住 A。閒家就算打到 A，贏了也只是上台。",
   },
@@ -147,8 +145,8 @@ export const howto = defineMessages({
   "howto.win.wins": { en: "…and wins a game", zh: "…赢下一盘", hant: "…贏下一盤" },
   "howto.win.again": { en: "↓ both teams start again", zh: "↓ 两队重新开始", hant: "↓ 兩隊重新開始" },
   "howto.win.caption": {
-    en: "The top bar keeps the games score, Us first. The table keeps playing.",
-    zh: "顶栏记着盘数，我方在前。牌桌继续打。",
-    hant: "頂欄記著盤數，我方在前。牌桌繼續打。",
+    en: "The top bar keeps the games score. Ranked rounds move your rating; Casual rounds don't.",
+    zh: "顶栏记着盘数。排位局会改变积分，休闲局不会。",
+    hant: "頂欄記著盤數。排位局會改變積分，休閒局不會。",
   },
 });

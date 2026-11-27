@@ -259,8 +259,8 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
    given is never renamed when the language changes; Jerry 2026-11-26, decision mocks section 9 B), then the sign-in buttons with one line under them, "By signing in you agree to the Terms of use."
    (the sheet's only copy; App Store guideline 1.2, Jerry 2026-11-16), then Done. Every Sign in opens that same sheet: the Play tab's guest line
    ("Playing as a guest · Sign in to be ranked", which stays), a guest's one name row on Me, the
-   Leaderboard's one row "Sign in to be ranked ›", a guest's round-end line at a ranked table (same words) (its card and its sentence on ratings are gone; saying
-   what ranked means in How to play is a follow-up) and a lapsed session's "Sign in to see your saved games." The top bar's separate Sign in
+   Leaderboard's one row "Sign in to be ranked ›", a guest's round-end line at a ranked table (same words) (its card and its sentence on ratings are gone;
+   How to play's last step says what ranked means) and a lapsed session's "Sign in to see your saved games." The top bar's separate Sign in
    is gone, and signing in closes the sheet. Over an open modal dialog (a round end, a confirm) the sheet
    is drawn inside the newest one (`modalHosts.ts`), since the browser blocks and hides anything outside
    a `showModal()` dialog; the connection notice stays above it. Signing in at a table keeps the seat: the
@@ -353,6 +353,7 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
   - Partner seat on phones: in the header row's middle (Jerry 11-14, 'Player in header is fine'); a row of its own would shrink the trick cards; desktop/iPad below the header; side pills at the edges.
   - ⋯ opens one menu (`HudMenu.tsx`) in this order: the code with Invite link, Allow joiners (the opener's seat only, from the state's `opener`), then Coach, Sound, How to play, then a red Leave game that opens the one Leave sheet. The opener's controls pass to the next person when the opener leaves, in the lobby or mid-game.
 - How to play's last step (Jerry 2026-11-26, decision mocks section 5 B): where you sit at no table and the socket is open, a gold "Play a practice round" deals a Casual round against Beginner bots (one `create_room` with `bot_level: "beginner"` and `start`, as Play offline's Start sends, under the same name; offline the game stays on this device) and Done goes back; anywhere else Done alone. No new game type, queue or join site.
+- How to play's ten steps teach the game, in the table's own words and marks: the pictures' level chips read Us and Them as the top bar's do, the banker's team carries the crown, and an attackers' win makes them banker (no "the deal"). The app is named once, in the last step's caption: the games score, and that Ranked rounds move your rating and Casual rounds do not. Companions, the Collection and Watch are not in it. Each step is at most three sentences and fits a 375x667 phone with no scroll, the last step's two buttons included (`e2e/client.mjs` `howto-fit-*`); under 700px tall the text slots give up their fixed heights.
 - How to play over a timed game (Jerry 2026-11-26, decision mocks section 10 B): the guide opens as before, the game runs on, and while a decision is yours its header shows your move timer's ring and "Your turn" between the title and the step count. No block, no pause; Back is the way to the table. Alone with bots there is no timer, so nothing shows.
 - Way back to your table (simplification 6, approved on the simplify mock): one "Your table" pill on Leaderboard and Me, in the
   top bar's end on a wide layout and at the end of the large title's row on a phone. It shows while you are queued, at a waiting

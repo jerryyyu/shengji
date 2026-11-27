@@ -58,12 +58,13 @@ function Trump({ suit, rank }: { suit: string | null; rank: string }) {
   );
 }
 
+/** A team's level as the table's top bar shows it: your team is team 0. */
 function Level({ team, level }: { team: 0 | 1; level: string }) {
-  useT();
+  const t = useT();
   return (
     <span className={`chip level-chip team${team}`}>
-      <span className={`team-dot t${team}`} />
-      {tx("howto.chip.level", { level: <span className="level-value">{level}</span> })}
+      <span className={`team-dot t${team}`} aria-hidden="true" />
+      <span className="team-word">{team === 0 ? t("common.us") : t("common.them")}</span> <span className="level-value">{level}</span>
     </span>
   );
 }
@@ -137,7 +138,7 @@ function TrumpPicture({ f }: { f: CountFrame }) {
   const t = useT();
   return (
     <>
-      <div className="howto-row center"><span className="howto-label">{t("howto.trump.example")}</span><Trump suit="H" rank="7" /></div>
+      <div className="howto-row center"><span className="howto-label">{t("howto.trick.trump")}</span><Trump suit="H" rank="7" /></div>
       <div className="howto-order">
         <Group className={at(f.shown >= 1)} label={tx("howto.trump.bigJoker", { n: <b>1</b> })}><Cards codes={["BJ"]} /></Group>
         <Group className={at(f.shown >= 2)} label={tx("howto.trump.littleJoker", { n: <b>2</b> })}><Cards codes={["LJ"]} /></Group>
@@ -210,7 +211,8 @@ function KittyPicture({ f }: { f: KittyFrame }) {
         <Cards codes={KITTY_HAND} size="sm" lift={Array.from({ length: f.lifted }, (_, k) => k)} />
       </Group>
       <div className={`howto-row center ${at(f.teams)}`}>
-        <span className="howto-pill def">{t("howto.kitty.defends")}</span>
+        {/* the crown is the table's mark for the banker */}
+        <span className="howto-pill def"><span className="howto-crown" aria-hidden="true">👑</span>{t("howto.kitty.defends")}</span>
         <span className="howto-pill att">{t("howto.kitty.attacks")}</span>
       </div>
     </>

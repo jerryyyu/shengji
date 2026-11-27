@@ -247,6 +247,8 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
 
   // Caught up: one timer asks about the round in play every FOLLOW_MS until
   // it finishes; that round then plays once the card has held CARD_HOLD_MS.
+  // Stepping back from the end keeps a round already read, and reaching the
+  // end again holds the card afresh and then plays it.
   useEffect(() => {
     if (!loaded || !atEnd) return;
     if (endedAt.current === null) endedAt.current = Date.now();
@@ -281,9 +283,16 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
         }
       });
     };
-    ask();
+    if (next.current) play(next.current);
+    else ask();
     const poll = window.setInterval(ask, FOLLOW_MS);
-    return () => { on = false; window.clearInterval(poll); };
+    return () => {
+      on = false;
+      window.clearInterval(poll);
+      if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+      endedAt.current = null;
+    };
   }, [loaded, atEnd]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   useTurn(root, seat);

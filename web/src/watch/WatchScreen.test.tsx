@@ -293,6 +293,23 @@ describe("caught up", () => {
     expect(follows()).toBeGreaterThanOrEqual(4);
   });
 
+  it("a round that arrives during the hold still plays after the card is closed, stepped back from and reached again", async () => {
+    reply = (url) => (url.startsWith("/api/watch/abc123") ? { ...feed, round: 4, live_round: 5 } : feed);
+    const h = await screen();
+    await toEnd(h);                        // round 4 comes back at once and waits out the hold
+    expect(follows()).toBeGreaterThanOrEqual(1);
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    const dialog = document.querySelector("dialog.modal-backdrop")!;
+    await act(async () => { dialog.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    await act(async () => { btn(h, "Previous trick")!.click(); });
+    await act(async () => { btn(h, "Next trick")!.click(); });
+    await flush();
+    expect(document.querySelector(".round-end")).not.toBeNull();
+    for (let s = 0; s < 20; s++) await act(async () => { vi.advanceTimersByTime(1000); });
+    await flush();
+    expect(h.querySelector(".watch-round")!.textContent).toContain("Round 4");
+  });
+
   it("a switch to another table drops the old table's buffered round", async () => {
     const other = { ...feed, table: "zzz999", round: 7 };
     reply = (url) => url.startsWith("/api/watch/abc123") ? { ...feed, round: 4 }

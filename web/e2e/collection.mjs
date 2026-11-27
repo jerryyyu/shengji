@@ -125,11 +125,12 @@ try {
           status: document.querySelector(".char-page .coll-status")?.textContent,
           button: document.querySelector(".char-page .coll-use") !== null,
           price: /\$|Buy|Shop/.test(document.querySelector(".coll-page").textContent),
+          // a phone scrolls back up to the stage; a wide layout does not
           inView: s.top >= 0 && s.bottom <= innerHeight,
         };
       });
       await rep.check(`${device} a Coming soon tile selects its character with the status Coming soon and no button`,
-        got.tiles === 7 && got.rabbit && got.status === "Coming soon" && !got.button && !got.price && got.inView
+        got.tiles === 7 && got.rabbit && got.status === "Coming soon" && !got.button && !got.price && (got.inView || !phone)
           ? null : JSON.stringify(got), page);
     });
 

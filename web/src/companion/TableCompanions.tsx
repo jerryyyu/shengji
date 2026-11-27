@@ -482,17 +482,21 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     if (face.current) face.current.style.transform = `scaleX(${dir})`;
     const a = el.animate(via && dist > 0 ? [{ transform: at(from) }, { transform: at(via), offset: leg / dist }, { transform: at(to) }]
       : [{ transform: at(from) }, { transform: at(to) }], { duration: ms, easing: "ease-in-out" });
+    // a whole number of hops, at least one, fitted to the walk's time, so
+    // the feet are on the ground as it arrives and no hop runs on after it
     const step = quick ? QUICK_STEP_MS : STROLL_STEP_MS;
+    const hops = Math.max(1, Math.round(ms / step));
     const gait = face.current?.animate([
       { transform: `scaleX(${dir}) translateY(0)` }, { transform: `scaleX(${dir}) translateY(-12%)`, offset: 0.45 },
-      { transform: `scaleX(${dir}) translateY(0)` }], { duration: step, iterations: Math.max(1, Math.round(ms / step)) });
+      { transform: `scaleX(${dir}) translateY(0)` }], { duration: ms / hops, iterations: hops });
     walking.current = gait ? [a, gait] : [a];
     path.current = under ? null : { from, to };
     place(to);
     void a.finished.then(() => {
-      walking.current = walking.current.filter((x) => x !== a && x !== gait);
+      walking.current = walking.current.filter((x) => x !== a);
       if (path.current?.to === to) path.current = null;
     }, () => {});
+    if (gait) void gait.finished.then(() => { walking.current = walking.current.filter((x) => x !== gait); }, () => {});
   };
 
   // stand on the home, or step off a spot cards have landed on. A figure with
@@ -607,6 +611,14 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     return () => { window.clearTimeout(timer); document.removeEventListener("visibilitychange", seen); };
   }, [placed, px]);
   useEffect(() => stop, []);
+  // a walk in flight as the deal starts goes on to where it was going at a
+  // stroll, from where it is drawn: no quick hop runs on into the deal, and
+  // nothing snaps
+  useEffect(() => {
+    if (!dealing || walking.current.length === 0 || !cur.current) return;
+    goTo(cur.current, { under: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dealing]);
 
   useEffect(() => {
     if (move !== "hop" && move !== "cheer") return;

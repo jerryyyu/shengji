@@ -829,7 +829,8 @@ describe("the table", () => {
   describe("taps and moves", () => {
     // every Web Animation started on a figure: its seat, which box, its frames;
     // each ends after its own duration on the fake clock
-    let anims: { seat: string | null; box: string; move: string | null; frames: Keyframe[]; ms: number; cancel: ReturnType<typeof vi.fn> }[];
+    let anims: { seat: string | null; box: string; move: string | null; frames: Keyframe[]; ms: number; iters: number; at: number; done: boolean;
+      cancel: ReturnType<typeof vi.fn> }[];
     let had: unknown;
     let rnd: ReturnType<typeof vi.spyOn>;
     const proto = Element.prototype as unknown as { animate?: unknown };
@@ -840,11 +841,12 @@ describe("the table", () => {
       had = proto.animate;
       proto.animate = function (this: Element, frames: Keyframe[], opts: KeyframeAnimationOptions) {
         let timer = 0;
-        const finished = new Promise<void>((r) => { timer = window.setTimeout(r, Number(opts?.duration ?? 0) * Number(opts?.iterations ?? 1)); });
-        const cancel = vi.fn(() => window.clearTimeout(timer));
-        anims.push({ seat: this.closest(".tc-seat")?.getAttribute("data-seat") ?? null, box: this.className.toString(),
-                     move: this.getAttribute("data-move"), frames, ms: Number(opts?.duration ?? 0), cancel });
-        return { finished, cancel };
+        const rec = { seat: this.closest(".tc-seat")?.getAttribute("data-seat") ?? null, box: this.className.toString(),
+                      move: this.getAttribute("data-move"), frames, ms: Number(opts?.duration ?? 0), iters: Number(opts?.iterations ?? 1),
+                      at: Date.now(), done: false, cancel: vi.fn(() => { window.clearTimeout(timer); rec.done = true; }) };
+        const finished = new Promise<void>((r) => { timer = window.setTimeout(() => { rec.done = true; r(); }, rec.ms * rec.iters); });
+        anims.push(rec);
+        return { finished, cancel: rec.cancel };
       };
     });
     afterEach(() => { proto.animate = had; rnd.mockRestore(); vi.useRealTimers(); });
@@ -1449,9 +1451,10 @@ describe("the table", () => {
       const figures = Math.hypot(to.x - from.x, to.y - from.y) / 44;
       expect(w.ms).toBe(Math.min(TAP_WALK_MS[1], Math.max(TAP_WALK_MS[0], figures * 500)));
       expect(w.ms).toBeGreaterThan(1500);
-      // the gait's step slowed to match: 520 ms a hop, so the feet keep up with the ground
+      // the gait's step slowed to match: about 520 ms a hop, a whole number of them over the walk
       const gait = anims.find((a) => a.seat === "0" && a.box === "tc-face")!;
-      expect(gait.ms).toBe(520);
+      expect(gait.ms * gait.iters).toBeCloseTo(w.ms, 6);
+      expect(Math.abs(gait.ms - 520)).toBeLessThanOrEqual(260);
       // a short tap walk still takes 1.2 s at least
       await advance(3500);
       const here = spotOf(0);
@@ -1460,7 +1463,7 @@ describe("the table", () => {
       expect(short.ms).toBe(TAP_WALK_MS[0]);
     });
 
-    it("a walk on its own clock strolls at the tapped pace: the same px a second and the same 520 ms step", async () => {
+    it("a walk on its own clock strolls at the tapped pace: the same px a second, a whole number of steps near 520 ms", async () => {
       await render(state());
       // the length of a walk's way, leg by leg, over its time
       const length = (w: { frames: Keyframe[] }) => {
@@ -1472,8 +1475,13 @@ describe("the table", () => {
       const idle = walks("0");
       expect(idle.length).toBeGreaterThan(0);
       await advance(3500);
+      // each walk's gait is a whole number of steps near 520 ms that ends as it arrives
       const steps = anims.filter((a) => a.seat === "0" && a.box === "tc-face");
-      for (const g of steps) expect(g.ms).toBe(520);
+      for (const g of steps) {
+        const w = idle.find((x) => x.at === g.at)!;
+        expect(g.ms * g.iters).toBeCloseTo(w.ms, 6);
+        expect(g.iters).toBe(Math.max(1, Math.round(w.ms / 520)));
+      }
       // a wander's time is its distance's time: no floor that would slow a short one
       for (const iw of idle) expect(iw.ms).toBeCloseTo(strollMs(length(iw), 44), 6);
       // a tap's walk over a distance its floor does not reach goes at the same speed
@@ -1579,6 +1587,50 @@ describe("the table", () => {
       await advance(1000);
       expect(hopPeak(s, 44, true, { ...layout(), obstacles: [...layout().obstacles, { x: s.x, y: s.y - 30, w: 44, h: 4 }] })).toBeLessThan(0.28);
       expect(hopPeak({ x: s.x, y: 18 }, 44, true, layout())).toBe(HOP_PEAKS[HOP_PEAKS.length - 1]);
+    });
+
+    it("a short wander (about half a figure, under one step) arrives with its feet on the ground and no hop still running", async () => {
+      await render(state());
+      // random picks swept until a wander shorter than one step is taken
+      let short: (typeof anims)[number] | undefined;
+      for (let t = 0; t < 60000 && !short; t += 500) {
+        await advance(500);
+        short = walks("0").find((w) => w.ms < 520);
+        if (!short) rnd.mockReturnValue(((t / 500) % 20) / 20);
+      }
+      expect(short, "a wander shorter than one step").toBeDefined();
+      const gait = anims.find((a) => a.seat === "0" && a.box === "tc-face" && a.at === short!.at)!;
+      expect(gait.iters).toBe(1);
+      expect(gait.ms).toBeCloseTo(short!.ms, 6);
+      // at arrival the walk and its hop have both ended: grounded, nothing running on
+      await advance(Math.ceil(short!.ms));
+      expect(short!.done).toBe(true);
+      expect(gait.done).toBe(true);
+    });
+
+    it("a quick hop in flight as the deal starts goes on at a stroll, ends grounded, and nothing else moves through the deal", async () => {
+      await render(state());
+      const was = spotOf(0);
+      rects["trick-play"] = { x: was.x - 6, y: was.y - 20, w: 120, h: 70 };
+      await render(state({ trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>));
+      const hop = walks("0").at(-1)!;
+      expect(hop.ms).toBeLessThanOrEqual(500);
+      const n = walks("0").length;
+      await advance(100);
+      // the deal starts mid-hop
+      rects["trick-play"] = { x: 0, y: 0, w: 0, h: 0 };
+      await render(state({ phase: "deal", trick: null } as unknown as Partial<GameState>));
+      expect(hop.done).toBe(true);
+      const on = walks("0").slice(n);
+      expect(on.length).toBeLessThanOrEqual(1);
+      for (const w of on) {
+        expect(speed(w)).toBeLessThanOrEqual(TAP_PX_S + 1e-6);
+        // from where it was drawn, on to where the hop was going: no snap
+        expect(String(w.frames.at(-1)!.transform)).toBe(String(hop.frames.at(-1)!.transform));
+      }
+      for (let t = 0; t < 20000; t += 1000) await advance(1000);
+      expect(walks("0").length).toBe(n + on.length);
+      expect(anims.filter((a) => a.seat === "0" && (a.box.includes("tc-walk") || a.box === "tc-face")).every((a) => a.done)).toBe(true);
     });
 
     it("a second tap mid-stroll turns it from where it is drawn", async () => {

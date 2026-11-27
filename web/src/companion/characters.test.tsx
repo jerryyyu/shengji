@@ -267,15 +267,15 @@ describe("the Collection's grid and the character page", () => {
     expect(swatch("Lantern orange").getAttribute("aria-label")).toBe("Lantern orange");
   });
 
-  it("has no state chips, only Try on your table, which stands it beside a partner on your team's pads", async () => {
+  it("has no state chips, only Try on your table, which stands it beside a partner, with no team pad under either", async () => {
     signedIn();
     await draw(<CollectionPage />);
     await openTile("Bun");
     expect([...host.querySelectorAll(".char-chip")].map((b) => b.textContent)).toEqual(["Try on your table"]);
     await act(async () => { host.querySelector<HTMLButtonElement>(".char-chip")!.click(); });
     const figs = [...host.querySelectorAll(".char-stage svg.cmp")];
-    expect(figs.map((f) => [...f.classList].filter((c) => /^cmp-(bun|tractor|us)$/.test(c)))).toEqual([
-      ["cmp-bun", "cmp-us"], ["cmp-tractor", "cmp-us"]]);
+    expect(figs.map((f) => [...f.classList].filter((c) => /^cmp-(bun|tractor|us|them)$/.test(c)))).toEqual([
+      ["cmp-bun"], ["cmp-tractor"]]);
   });
 
   it("the stage plays its moves by itself", async () => {

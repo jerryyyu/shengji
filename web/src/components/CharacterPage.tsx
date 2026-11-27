@@ -184,12 +184,12 @@ export function Stage({ kind, colour, size, box = size, label, partner, cheer = 
     <div ref={felt} className={`coll-felt char-stage${partner ? " char-try" : ""}${live.paused ? " live-paused" : ""}`}>
       <div className="char-figures" style={{ height: box }}>
         <button type="button" className="coll-figure" aria-label={label} onClick={live.tap}>
-          <Companion key={live.key} kind={kind} colour={colour} size={size} state={live.pose} team={partner ? "us" : undefined}
+          <Companion key={live.key} kind={kind} colour={colour} size={size} state={live.pose}
                      onPoseEnd={live.onPoseEnd} />
         </button>
         {partner ? (
           <span className="char-partner" aria-hidden="true">
-            <Companion kind={partner.kind} colour={partner.colour} size={partner.size} team="us" />
+            <Companion kind={partner.kind} colour={partner.colour} size={partner.size} />
           </span>
         ) : null}
       </div>

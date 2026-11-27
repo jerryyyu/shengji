@@ -180,6 +180,19 @@ export function confetti(cx: number, cy: number): string {
 export const spark = (x: number, y: number, s: number, c = "#fff7d6"): string =>
   `<path transform="translate(${x} ${y}) scale(${s})" d="M0-10Q1.5-1.5 10 0Q1.5 1.5 0 10Q-1.5 1.5-10 0Q-1.5-1.5 0-10Z" fill="${c}"/>`;
 
+/** A small burst for a signature's payoff: `count` bits (dots and sparks)
+ *  in `inks`, on an arc of radius `r` round (cx, cy) from angle `from` to
+ *  `to` in degrees. The pose CSS scales and fades the group (`cls`). */
+export function bits(cls: string, cx: number, cy: number, r: number, count: number, inks: readonly string[], from = -170, to = -10, size = 1): string {
+  let out = "";
+  for (let i = 0; i < count; i++) {
+    const a = ((from + ((to - from) * i) / Math.max(1, count - 1)) * Math.PI) / 180, k = i % 2 ? 1 : 0.72;
+    const x = n(cx + r * k * Math.cos(a)), y = n(cy + r * k * Math.sin(a)), c = inks[i % inks.length];
+    out += i % 3 === 0 ? spark(+x, +y, 1.5 * size, c) : `<circle cx="${x}" cy="${y}" r="${n(8 * size)}" fill="${c}"/>`;
+  }
+  return `<g class="${cls}">${out}</g>`;
+}
+
 /** A round portrait as a data URL: the head crop on its ground, clipped to a disc. */
 export function portraitSvg(markup: string, cx: number, cy: number, r: number, disc: Pair): string {
   const x = n(cx - r), y = n(cy - r), d = n(2 * r);

@@ -1,40 +1,17 @@
 // The store's characters: the ones on sale (one App Store product each,
 // every colour included, ids the server's `accounts.LOOKS` and
 // `COMPANION_PRODUCTS`) and the ones coming, which have a tile and a page
-// but no product yet. Until each character's own art lands it is drawn as
-// the Tractor in the colour its `standIn` names, so every id already travels
-// and renders; the art replaces `standIn` and keeps the ids.
-import type { TractorColourId } from "./palette";
+// drawn in their own art but no look id and no product yet, so nobody can
+// put one in use or buy it. Each character's colours are its palette's keys
+// (`storePalette.ts`), in order.
+import { CAT_COLOURS, DRAGON_COLOURS, FOX_COLOURS, LAMB_COLOURS, LION_COLOURS, PANDA_COLOURS, RABBIT_COLOURS } from "./storePalette";
+import type { CatColourId, DragonColourId, FoxColourId, LambColourId, LionColourId, PandaColourId, RabbitColourId } from "./storePalette";
 
 export type SoldKind = "lamb" | "panda";
 
-export interface Colourway {
-  standIn: TractorColourId;
-  /** Spoken only (the swatch's label), never drawn. */
-  name: { en: string; zh: string; hant: string };
-}
+export const SOLD_COLOURS = { lamb: LAMB_COLOURS, panda: PANDA_COLOURS } as const;
 
-export const SOLD_COLOURS = {
-  lamb: {
-    newyear: { standIn: "red", name: { en: "New Year", zh: "新年", hant: "新年" } },
-    jade: { standIn: "jade", name: { en: "Jade", zh: "翡翠", hant: "翡翠" } },
-    ink: { standIn: "ink", name: { en: "Ink wash", zh: "水墨", hant: "水墨" } },
-    lacquer: { standIn: "orange", name: { en: "Lacquer red", zh: "朱漆", hant: "朱漆" } },
-  },
-  panda: {
-    classic: { standIn: "porcelain", name: { en: "Classic", zh: "黑白", hant: "黑白" } },
-    russet: { standIn: "orange", name: { en: "Russet", zh: "小熊猫棕", hant: "小熊貓棕" } },
-    ink: { standIn: "ink", name: { en: "Ink wash", zh: "水墨", hant: "水墨" } },
-    gilded: { standIn: "yellow", name: { en: "Gold dust", zh: "洒金", hant: "灑金" } },
-  },
-} as const satisfies Record<SoldKind, Record<string, Colourway>>;
-
-export type SoldColourId = keyof (typeof SOLD_COLOURS)["lamb"] | keyof (typeof SOLD_COLOURS)["panda"];
-
-export function colourway(kind: SoldKind, colour: string): Colourway {
-  const set = SOLD_COLOURS[kind] as Record<string, Colourway>;
-  return set[colour] ?? Object.values(set)[0];
-}
+export type SoldColourId = LambColourId | PandaColourId;
 
 /** The App Store product of each character on sale. */
 export const SOLD_PRODUCTS: Record<SoldKind, string> = {
@@ -45,6 +22,12 @@ export const SOLD_PRODUCTS: Record<SoldKind, string> = {
 /** Characters coming to the store: a tile and a page reading Soon, no product. */
 export const SOON = ["rabbit", "cat", "fox", "lion", "dragon"] as const;
 export type SoonKind = (typeof SOON)[number];
+
+export type SoonColourId = RabbitColourId | CatColourId | FoxColourId | LionColourId | DragonColourId;
+
+export const SOON_COLOURS = {
+  rabbit: RABBIT_COLOURS, cat: CAT_COLOURS, fox: FOX_COLOURS, lion: LION_COLOURS, dragon: DRAGON_COLOURS,
+} as const;
 
 /** Each store character's own name. */
 export const STORE_NAMES: Record<SoldKind | SoonKind, { en: string; zh: string; hant: string }> = {
@@ -57,7 +40,5 @@ export const STORE_NAMES: Record<SoldKind | SoonKind, { en: string; zh: string; 
   dragon: { en: "Little Dragon", zh: "小龙", hant: "小龍" },
 };
 
-/** The stand-in a coming character is drawn as until its art lands. */
-export const SOON_STAND_IN: Record<SoonKind, TractorColourId> = {
-  rabbit: "porcelain", cat: "yellow", fox: "orange", lion: "red", dragon: "green",
-};
+/** The colour a coming character's tile and page show. */
+export const soonColour = (kind: SoonKind): SoonColourId => Object.keys(SOON_COLOURS[kind])[0] as SoonColourId;

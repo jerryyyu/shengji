@@ -73,7 +73,6 @@ describe("the free companions", () => {
 
   it("every look draws every pose as elements with one body, and each portrait is its own", () => {
     const urls = new Set<string>();
-    // the store characters draw as stand-ins until their art lands (characters.ts)
     for (const kind of FREE_KINDS) {
       for (const colour of COMPANIONS[kind]) {
         for (const pose of ["idle", "hop", "cheer", "sleep", "react"] as const) {

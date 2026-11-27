@@ -105,7 +105,13 @@
 /* a character's page: the live figure, its states, its colours, its portraits, its foot */
 .char-stage { padding-top: 36px; overflow: hidden; }
 .char-poses { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 12px 16px 0; }
-.char-chip {
+/* a short phone's stage row wraps to two lines: the felt and the row give
+   back that line's height, so the colours and the one button stay above the tab bar */
+@media (max-height: 700px) {
+  .char-stage { padding-top: 26px; }
+  .char-poses { margin-top: 8px; }
+}
+.char-chip, .char-move {
   appearance: none;
   min-height: 36px;
   padding: 0 12px;

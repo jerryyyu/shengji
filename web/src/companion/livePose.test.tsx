@@ -224,3 +224,72 @@ describe("taps on the page, and a stage scrolled away", () => {
     }
   });
 });
+
+describe("the stage's move chips", () => {
+  const chip = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".char-poses .char-move")]
+    .find((b) => b.textContent === name)!;
+  const press = (name: string) => act(async () => { chip(name).click(); });
+  const stage = () => act(async () => {
+    root.render(<Stage kind="bun" colour="plain" size={176} label="Bun" moves trail={<button type="button" className="char-chip">Try</button>} />);
+  });
+
+  it("are Hop, Cheer, Sleep and the special, buttons with their names, then what the row is given", async () => {
+    await stage();
+    const row = host.querySelector(".char-poses")!;
+    expect([...row.children].map((c) => [c.tagName, c.textContent])).toEqual([
+      ["BUTTON", "Hop"], ["BUTTON", "Cheer"], ["BUTTON", "Sleep"], ["BUTTON", "Steamer pop"], ["BUTTON", "Try"]]);
+    expect(row.getAttribute("role")).toBe("group");
+    expect(row.getAttribute("aria-label")).toBe("Bun");
+  });
+
+  it("each plays its move once, then the cycle resumes where it was", async () => {
+    await stage();
+    await press("Hop");
+    expect(pose(".char-stage")).toBe("hop");
+    await tick(poseMs("bun", "hop") + 260);
+    expect(pose(".char-stage")).toBe("idle");
+    await press("Cheer");
+    expect(pose(".char-stage")).toBe("cheer");
+    await ended(".char-stage");
+    expect(pose(".char-stage")).toBe("idle");
+    await press("Sleep");
+    expect(pose(".char-stage")).toBe("sleep");
+    await tick(2399);
+    expect(pose(".char-stage")).toBe("sleep");
+    await tick(1);
+    expect(pose(".char-stage")).toBe("idle");
+    await tick(3000);                                    // the cycle's own idle, then its hop
+    expect(pose(".char-stage")).toBe("hop");
+  });
+
+  it("the special's chip is the figure's tap: the special from its start", async () => {
+    await stage();
+    await press("Steamer pop");
+    expect(pose(".char-stage")).toBe("react");
+    const first = host.querySelector(".char-stage svg.cmp");
+    await press("Steamer pop");                          // again mid-way: from the start, as a tap restarts it
+    expect(host.querySelector(".char-stage svg.cmp")).not.toBe(first);
+    await tick(poseMs("bun", "react") + 260);
+    expect(pose(".char-stage")).toBe("idle");
+    await act(async () => { host.querySelector<HTMLButtonElement>(".char-stage .coll-figure")!.click(); });
+    expect(pose(".char-stage")).toBe("react");
+  });
+
+  it("under Reduce Motion each shows its pose drawn still, then the figure stands again", async () => {
+    reduced();
+    await stage();
+    for (const [name, p, ms] of [["Hop", "hop", 1000], ["Cheer", "cheer", 1000], ["Steamer pop", "react", 1000], ["Sleep", "sleep", 2400]] as const) {
+      await press(name);
+      const svg = host.querySelector(".char-stage svg.cmp")!;
+      expect(svg.getAttribute("data-pose")).toBe(p);
+      expect(svg.classList.contains("cmp-still")).toBe(true);
+      await tick(ms);
+      expect(pose(".char-stage")).toBe("idle");
+    }
+  });
+
+  it("are not drawn on a stage without them", async () => {
+    await act(async () => { root.render(<Stage kind="bun" colour="plain" size={176} label="Bun" />); });
+    expect(host.querySelector(".char-poses, .char-move")).toBeNull();
+  });
+});

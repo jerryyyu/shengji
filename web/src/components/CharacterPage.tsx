@@ -32,6 +32,18 @@ export const kindName = (t: ReturnType<typeof useT>, kind: CompanionKind | SoonK
   return lang === "zh-Hant" ? name.hant : lang === "zh-Hans" ? name.zh : name.en;
 };
 
+/** Each character's special, as its move chip names it. */
+const SPECIAL_NAME: Record<DrawnKind, MessageKey> = {
+  tractor: "home.specialTractor", bun: "home.specialBun", chick: "home.specialChick", sparrow: "home.specialSparrow",
+  lamb: "home.specialLamb", panda: "home.specialPanda", rabbit: "home.specialRabbit", cat: "home.specialCat",
+  fox: "home.specialFox", lion: "home.specialLion", dragon: "home.specialDragon",
+};
+
+/** The stage's move chips, in order: each plays its move once. */
+const MOVES: readonly { pose: "hop" | "cheer" | "sleep"; name: MessageKey }[] = [
+  { pose: "hop", name: "home.moveHop" }, { pose: "cheer", name: "home.moveCheer" }, { pose: "sleep", name: "home.moveSleep" },
+];
+
 /** The spoken name of a companion's colour, in the app's language. */
 export function colourName(kind: CompanionKind, colour: Colour): string {
   const name = DRAWINGS[kind].colourName(colour);
@@ -184,10 +196,16 @@ export function UseButton({ ownership, onUse, price }: {
 /** A live figure on felt that cycles through its moves by itself (idle,
  *  hop, cheer, its special, a short sleep: `PAGE_CYCLE`), each once-move for
  *  its own animation's length, while it is on screen; off screen its figure
- *  is paused. Every tap plays its special from the start. Under Reduce
- *  Motion it stands still, and a tap shows the special drawn still. */
-export function Stage({ kind, colour, size, box = size, label, partner, cheer = 0 }: {
+ *  is paused. Every tap plays its special from the start. With `moves`, a
+ *  row of chips under it plays Hop, Cheer, Sleep or the special once, then
+ *  the cycle resumes. Under Reduce Motion it stands still, and a tap or a
+ *  chip shows that pose drawn still. */
+export function Stage({ kind, colour, size, box = size, label, partner, cheer = 0, moves = false, trail }: {
   kind: DrawnKind; colour: DrawnColour; size: number; label: string;
+  /** A row of move chips under the felt (Hop, Cheer, Sleep, the special),
+   *  each playing its move once before the cycle resumes; `trail` ends the row. */
+  moves?: boolean;
+  trail?: ReactNode;
   /** The figures' area, in px tall: the full figure's size, kept while a
    *  try-on stands two smaller figures in it, so nothing below moves. */
   box?: number;
@@ -195,13 +213,14 @@ export function Stage({ kind, colour, size, box = size, label, partner, cheer = 
   /** Each new value plays the cheer at once (a purchase). */
   cheer?: number;
 }) {
+  const t = useT();
   const felt = useRef<HTMLDivElement>(null);
   const live = useLivePose(kind, PAGE_CYCLE, felt);
   const { play } = live;
   useEffect(() => {
     if (cheer > 0) play("cheer");
   }, [cheer, play]);
-  return (
+  const stage = (
     <div ref={felt} className={`coll-felt char-stage${partner ? " char-try" : ""}${live.paused ? " live-paused" : ""}`}>
       <div className="char-figures" style={{ height: box }}>
         <button type="button" className="coll-figure" aria-label={label} onClick={live.tap}>
@@ -216,6 +235,20 @@ export function Stage({ kind, colour, size, box = size, label, partner, cheer = 
       </div>
     </div>
   );
+  if (!moves) return stage;
+  // the special's chip is the figure's own tap
+  return (
+    <>
+      {stage}
+      <div className="char-poses" role="group" aria-label={label}>
+        {MOVES.map((m) => (
+          <button key={m.pose} type="button" className="char-move" onClick={() => play(m.pose)}>{t(m.name)}</button>
+        ))}
+        <button type="button" className="char-move" onClick={live.tap}>{t(SPECIAL_NAME[kind])}</button>
+        {trail}
+      </div>
+    </>
+  );
 }
 
 /** A screen this short or shorter draws a smaller stage, so the stage, its
@@ -225,7 +258,7 @@ export const SHORT_SCREEN = "(max-height: 700px)";
 
 /** The stage's figure size: a phone's, a short phone's, or a wide layout's. */
 export function stageSize(phone: boolean, short: boolean): number {
-  return phone ? (short ? 132 : 176) : 208;
+  return phone ? (short ? 120 : 176) : 208;
 }
 
 /** The partner a try-on stands the character beside: the Tractor, or for
@@ -262,13 +295,12 @@ export default function CharacterPage({ kind, shown, entries, inUse, user, phone
   return (
     <div className="char-page">
       <Stage kind={kind} colour={colour} size={tryOn ? (phone ? 112 : 132) : full} box={full} label={lookName(t, entry.id)}
-             partner={partner} cheer={cheer} />
-      <div className="char-poses">
+             partner={partner} cheer={cheer} moves trail={(
         <button type="button" className={`char-chip${tryOn ? " on" : ""}`} aria-pressed={tryOn}
                 onClick={() => { if (!tryOn) telemetry.tap("try_on"); setTryOn(!tryOn); }}>
           {t("home.tryOnTable")}
         </button>
-      </div>
+      )} />
       {strip}
       <Swatches entries={entries} shown={entry.id} inUse={inUse} user={user} size={56} className="char-swatches" fresh={fresh} onPick={onShow} />
       <p className="coll-status" role="status">

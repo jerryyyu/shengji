@@ -100,17 +100,17 @@ export function dragonMarkup(colour: DragonColourId | DragonColour, id: string, 
 const portraits = new Map<string, string>();
 
 /** The round portrait as a data URL: the head and horns on the colour's
- *  ground, clipped to a disc. `small` drops the fine detail. */
+ *  ground, clipped to a disc. The textures are drawn at every size, as at the table. */
 export function dragonPortraitUrl(colour: DragonColourId, small: boolean): string {
   const key = `${colour}/${small ? "s" : "l"}`;
   let url = portraits.get(key);
   if (!url) {
-    url = dataUrl(dragonPortraitSvg(colour, small));
+    url = dataUrl(dragonPortraitSvg(colour));
     portraits.set(key, url);
   }
   return url;
 }
 
-export function dragonPortraitSvg(colour: DragonColourId, small: boolean): string {
-  return portraitSvg(dragonMarkup(colour, "p", { detail: !small, shadow: false }), 190, 136, 134, colourOf(colour).disc);
+export function dragonPortraitSvg(colour: DragonColourId): string {
+  return portraitSvg(dragonMarkup(colour, "p", { detail: true, shadow: false }), 190, 136, 134, colourOf(colour).disc);
 }

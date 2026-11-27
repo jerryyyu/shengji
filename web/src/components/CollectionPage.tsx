@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useAuth } from "../auth";
 import { appStoreUrl } from "../appStore";
 import { COMPANIONS, COMPANION_KINDS, COMPANION_PRODUCTS, FREE_KINDS, lookCatalogue, lookId, parseLook, yoursOrder } from "../companion/look";
@@ -28,6 +28,9 @@ type Selected = CompanionKind | SoonKind;
 const isSoon = (k: Selected | null): k is SoonKind => (SOON as readonly string[]).includes(k ?? "");
 const isSelectable = (k: string | null): k is Selected =>
   k !== null && (Object.prototype.hasOwnProperty.call(COMPANIONS, k) || (SOON as readonly string[]).includes(k));
+
+/** How long a smooth scroll back to the stage may take before it is finished at once. */
+const SCROLL_UP_MS = 700;
 
 /** One character's tile in the grid: its figure standing still on felt
  *  (only the stage's figure moves at rest, so a page left open draws no
@@ -218,19 +221,43 @@ export default function CollectionPage() {
     manual.current = false;
     setShown(inUse);
   };
+  // On a phone the stage is above the fold: every tile tap brings it back
+  // into view, the tile already selected included. The scroll waits for the
+  // selection to commit (a Coming soon stage is shorter, and WebKit drops a
+  // smooth scroll when the page shrinks under it), stops a fling first (a
+  // scroll issued while the page still glides is lost), and once it should
+  // have ended goes to the top at once if anything cut it short, unless the
+  // player has put a finger down since.
+  const [scrollUp, setScrollUp] = useState(0);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (scrollUp === 0 || !el || el.scrollTop <= 0) return;
+    // a fling stops only once the page has drawn a frame that cannot scroll
+    el.style.overflowY = "hidden";
+    let frame = window.requestAnimationFrame(() => {
+      frame = window.requestAnimationFrame(() => { el.style.overflowY = ""; });
+    });
+    const smooth = !prefersReducedMotion() && typeof el.scrollTo === "function";
+    if (smooth) el.scrollTo({ top: 0, behavior: "smooth" });
+    else el.scrollTop = 0;
+    let touched = false;
+    const touch = () => { touched = true; };
+    el.addEventListener("touchstart", touch, { passive: true });
+    el.addEventListener("wheel", touch, { passive: true });
+    const done = window.setTimeout(() => { if (!touched && el.scrollTop > 0) el.scrollTop = 0; }, smooth ? SCROLL_UP_MS : 0);
+    return () => {
+      window.clearTimeout(done);
+      window.cancelAnimationFrame(frame);
+      el.style.overflowY = "";
+      el.removeEventListener("touchstart", touch);
+      el.removeEventListener("wheel", touch);
+    };
+  }, [scrollUp, scroller]);
   const select = (k: Selected) => {
     telemetry.tap("collection_tile");
     if (k !== selected) setSwaps((n) => n + 1);
     choose(k);
-    // on a phone the stage is above the fold: bring it back into view
-    const el = scroller.current;
-    if (phone && el && el.scrollTop > 0) {
-      try {
-        el.scrollTo({ top: 0, behavior: prefersReducedMotion() ? "auto" : "smooth" });
-      } catch {
-        el.scrollTop = 0;
-      }
-    }
+    if (phone) setScrollUp((n) => n + 1);
   };
 
   // A link to a character (`#/collection/<kind>`) selects it and leaves the

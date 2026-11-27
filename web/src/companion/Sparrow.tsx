@@ -69,17 +69,17 @@ export function sparrowMarkup(colour: SparrowColourId | SparrowColour, id: strin
 const portraits = new Map<string, string>();
 
 /** The round portrait as a data URL: the head and beak on the colour's
- *  ground, clipped to a disc. `small` drops the fine detail. */
+ *  ground, clipped to a disc. The textures are drawn at every size, as at the table. */
 export function sparrowPortraitUrl(colour: SparrowColourId, small: boolean): string {
   const key = `${colour}/${small ? "s" : "l"}`;
   let url = portraits.get(key);
   if (!url) {
-    url = dataUrl(sparrowPortraitSvg(colour, small));
+    url = dataUrl(sparrowPortraitSvg(colour));
     portraits.set(key, url);
   }
   return url;
 }
 
-export function sparrowPortraitSvg(colour: SparrowColourId, small: boolean): string {
-  return portraitSvg(sparrowMarkup(colour, "p", { detail: !small, shadow: false }), 240, 158, 122, colourOf(colour).disc);
+export function sparrowPortraitSvg(colour: SparrowColourId): string {
+  return portraitSvg(sparrowMarkup(colour, "p", { detail: true, shadow: false }), 240, 158, 122, colourOf(colour).disc);
 }

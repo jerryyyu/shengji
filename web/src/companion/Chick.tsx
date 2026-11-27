@@ -65,17 +65,17 @@ export function chickMarkup(colour: ChickColourId | ChickColour, id: string, { p
 const portraits = new Map<string, string>();
 
 /** The round portrait as a data URL: the face and tuft on the colour's
- *  ground, clipped to a disc. `small` drops the fine detail. */
+ *  ground, clipped to a disc. The textures are drawn at every size, as at the table. */
 export function chickPortraitUrl(colour: ChickColourId, small: boolean): string {
   const key = `${colour}/${small ? "s" : "l"}`;
   let url = portraits.get(key);
   if (!url) {
-    url = dataUrl(chickPortraitSvg(colour, small));
+    url = dataUrl(chickPortraitSvg(colour));
     portraits.set(key, url);
   }
   return url;
 }
 
-export function chickPortraitSvg(colour: ChickColourId, small: boolean): string {
-  return portraitSvg(chickMarkup(colour, "p", { detail: !small, shadow: false }), 190, 206, 132, colourOf(colour).disc);
+export function chickPortraitSvg(colour: ChickColourId): string {
+  return portraitSvg(chickMarkup(colour, "p", { detail: true, shadow: false }), 190, 206, 132, colourOf(colour).disc);
 }

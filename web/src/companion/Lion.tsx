@@ -108,17 +108,17 @@ export function lionMarkup(colour: LionColourId | LionColour, id: string, { pose
 const portraits = new Map<string, string>();
 
 /** The round portrait as a data URL: the head in its mane on the colour's
- *  ground, clipped to a disc. `small` drops the fine detail. */
+ *  ground, clipped to a disc. The textures are drawn at every size, as at the table. */
 export function lionPortraitUrl(colour: LionColourId, small: boolean): string {
   const key = `${colour}/${small ? "s" : "l"}`;
   let url = portraits.get(key);
   if (!url) {
-    url = dataUrl(lionPortraitSvg(colour, small));
+    url = dataUrl(lionPortraitSvg(colour));
     portraits.set(key, url);
   }
   return url;
 }
 
-export function lionPortraitSvg(colour: LionColourId, small: boolean): string {
-  return portraitSvg(lionMarkup(colour, "p", { detail: !small, shadow: false }), 190, 146, 140, colourOf(colour).disc);
+export function lionPortraitSvg(colour: LionColourId): string {
+  return portraitSvg(lionMarkup(colour, "p", { detail: true, shadow: false }), 190, 146, 140, colourOf(colour).disc);
 }

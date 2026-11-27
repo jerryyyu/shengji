@@ -94,17 +94,17 @@ export function foxMarkup(colour: FoxColourId | FoxColour, id: string, { pose = 
 const portraits = new Map<string, string>();
 
 /** The round portrait as a data URL: the head and ears on the colour's
- *  ground, clipped to a disc. `small` drops the fine detail. */
+ *  ground, clipped to a disc. The textures are drawn at every size, as at the table. */
 export function foxPortraitUrl(colour: FoxColourId, small: boolean): string {
   const key = `${colour}/${small ? "s" : "l"}`;
   let url = portraits.get(key);
   if (!url) {
-    url = dataUrl(foxPortraitSvg(colour, small));
+    url = dataUrl(foxPortraitSvg(colour));
     portraits.set(key, url);
   }
   return url;
 }
 
-export function foxPortraitSvg(colour: FoxColourId, small: boolean): string {
-  return portraitSvg(foxMarkup(colour, "p", { detail: !small, shadow: false }), 186, 138, 132, colourOf(colour).disc);
+export function foxPortraitSvg(colour: FoxColourId): string {
+  return portraitSvg(foxMarkup(colour, "p", { detail: true, shadow: false }), 186, 138, 132, colourOf(colour).disc);
 }

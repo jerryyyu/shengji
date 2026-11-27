@@ -86,7 +86,9 @@ export function groundShadow(id: string, cx: number, rx: number): string {
   return `<ellipse class="cmp-shadow" cx="${cx}" cy="356" rx="${rx}" ry="17" fill="url(#shadow-${id})"/>`;
 }
 
-/** The paint of a shape that turns team colour at the table: its own fill off the table. */
+/** The paint of a shape that turns team colour at the table: its own fill off the table.
+ *  Every shape drawn only for the team (a scarf, a kerchief, its shading) carries a
+ *  `cmp-team` class, so the table figure is the preview figure plus those shapes. */
 export const teamPaint = (team: Team | undefined, own: string, lo = false): string =>
   team ? `class="${lo ? "cmp-team-lo" : "cmp-team"}" fill="${lo ? TEAM[team].lo : TEAM[team].base}"` : `fill="${own}"`;
 
@@ -95,7 +97,7 @@ export const teamPaint = (team: Team | undefined, own: string, lo = false): stri
 export function kerchief(team: Team, x1: number, x2: number, y: number, sag: number, knotX: number): string {
   const m = (x1 + x2) / 2, ky = y + sag * 0.72;
   return `<path ${teamPaint(team, "")} d="M${x1} ${y}Q${m} ${y + 2 * sag} ${x2} ${y}L${x2 + 5} ${y + 22}Q${m} ${y + 2 * sag + 30} ${x1 - 5} ${y + 22}Z"/>`
-    + `<path d="M${x1 + 6} ${y + 6}Q${m} ${y + 2 * sag + 4} ${x2 - 6} ${y + 6}L${x2} ${y}Q${m} ${y + 2 * sag} ${x1} ${y}Z" fill="#000" opacity=".22"/>`
+    + `<path class="cmp-team-shade" d="M${x1 + 6} ${y + 6}Q${m} ${y + 2 * sag + 4} ${x2 - 6} ${y + 6}L${x2} ${y}Q${m} ${y + 2 * sag} ${x1} ${y}Z" fill="#000" opacity=".22"/>`
     + `<path ${teamPaint(team, "", true)} d="M${knotX - 4} ${ky + 8}l-16 40l30-12z"/><circle ${teamPaint(team, "")} cx="${knotX}" cy="${ky + 12}" r="11"/>`;
 }
 

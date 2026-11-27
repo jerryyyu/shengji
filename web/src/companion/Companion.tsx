@@ -44,9 +44,9 @@ export function Companion({ kind = "tractor", colour, size, state = "idle", team
   const drawing = DRAWINGS[kind];
   const px = level === undefined ? size : companionSize(size, level, max ?? Number.POSITIVE_INFINITY);
   const calm = still ?? prefersReducedMotion();
-  const detail = px >= 64;
-  const art = useMemo(() => renderArt(parseArt(drawing.markup(colour, id, { pose: state, detail, still: calm, team }))),
-    [drawing, colour, id, state, detail, calm, team]);
+  // the colourway's textures (curls, trims, ridges) are drawn at every size, at the table as on the stage
+  const art = useMemo(() => renderArt(parseArt(drawing.markup(colour, id, { pose: state, detail: true, still: calm, team }))),
+    [drawing, colour, id, state, calm, team]);
 
   // each play of the Lucky Cat's reaction turns up a card of its own
   const suit = useMemo(() => (kind === "cat" && state === "react" ? pickSuit(Math.random()) : undefined), [kind, state]);

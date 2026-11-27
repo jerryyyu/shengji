@@ -89,17 +89,17 @@ export function rabbitMarkup(colour: RabbitColourId | RabbitColour, id: string, 
 const portraits = new Map<string, string>();
 
 /** The round portrait as a data URL: the head and ears on the colour's
- *  ground, clipped to a disc. `small` drops the fine detail. */
+ *  ground, clipped to a disc. The textures are drawn at every size, as at the table. */
 export function rabbitPortraitUrl(colour: RabbitColourId, small: boolean): string {
   const key = `${colour}/${small ? "s" : "l"}`;
   let url = portraits.get(key);
   if (!url) {
-    url = dataUrl(rabbitPortraitSvg(colour, small));
+    url = dataUrl(rabbitPortraitSvg(colour));
     portraits.set(key, url);
   }
   return url;
 }
 
-export function rabbitPortraitSvg(colour: RabbitColourId, small: boolean): string {
-  return portraitSvg(rabbitMarkup(colour, "p", { detail: !small, shadow: false }), 186, 138, 136, colourOf(colour).disc);
+export function rabbitPortraitSvg(colour: RabbitColourId): string {
+  return portraitSvg(rabbitMarkup(colour, "p", { detail: true, shadow: false }), 186, 138, 136, colourOf(colour).disc);
 }

@@ -7,7 +7,8 @@
 // (CDP Input.dispatchTouchEvent) lets the browser's own hit testing pick
 // targets. A guest, who cannot buy, sees the store characters as Coming soon.
 //   node e2e/collection.mjs [device-regex]
-import { Report, launch, open, scenario, sleep, until } from "./lib.mjs";
+import { webkit } from "playwright-core";
+import { BASE, Report, launch, open, scenario, sleep, until } from "./lib.mjs";
 import { fakeSocketScript } from "./fake.mjs";
 
 const only = process.argv[2] ? new RegExp(process.argv[2]) : null;
@@ -171,6 +172,65 @@ try {
       });
     }
 
+    if (phone) {
+      // every tap on a lower tile brings the stage back into view: from any depth, while the page is still
+      // moving from a fling or from the last tap's own scroll, and on the tile already selected
+      await scenario(rep, `${device} every lower tap scrolls up`, page, async () => {
+        const stageInView = () => page.evaluate(() => {
+          const s = document.querySelector(".char-stage").getBoundingClientRect();
+          return { top: Math.round(s.top), scroll: Math.round(document.querySelector(".coll-page").scrollTop) };
+        });
+        const deep = async (y) => { await page.evaluate((y) => { document.querySelector(".coll-page").scrollTop = y; }, y); await sleep(120); };
+        const tile = (sel, n) => page.locator(`${sel} .coll-tile`).nth(n);
+        const misses = [];
+        const settle = async (label) => {
+          await sleep(1000);
+          const got = await stageInView();
+          if (!(got.top >= 0 && got.scroll <= 1)) misses.push(`${label} ${JSON.stringify(got)}`);
+        };
+        // repeated taps from the bottom, each before the last scroll has finished
+        for (const [n, y] of [[1, 9999], [2, 700], [3, 9999], [0, 500]]) {
+          await deep(y);
+          await tile(".coll-yours", n).tap();
+          await sleep(90);
+          await deep(y);
+          await tile(".coll-yours", (n + 1) % 4).tap();
+          await settle(`tap ${n} then ${(n + 1) % 4} from ${y}`);
+        }
+        // the tile already selected
+        await deep(9999);
+        const on = await page.evaluate(() => [...document.querySelectorAll(".coll-yours .coll-tile")].findIndex((t) => t.classList.contains("selected")));
+        await tile(".coll-yours", Math.max(on, 0)).tap();
+        await settle("the selected tile again");
+        // a Coming soon tile
+        await deep(9999);
+        await tile(".coll-soon", 1).tap();
+        await settle("a Coming soon tile");
+        // a tap while a fling is still moving the page; a tap the moving page carries off every tile
+        // selects nothing and is tried again
+        for (const n of [2, 3]) {
+          for (let attempt = 0; attempt < 4; attempt++) {
+            await deep(0);
+            await page.evaluate(() => { window.__tileTaps = 0; document.addEventListener("click", (e) => {
+              if (e.target.closest?.(".coll-tile")) window.__tileTaps += 1; }, { capture: true, once: true }); });
+            const y = Math.round(page.qa.d.h * 0.8);
+            await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 60, y }] });
+            for (let i = 1; i <= 4; i++) {
+              await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: 60, y: y - i * 90 }] });
+              await sleep(8);
+            }
+            await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+            await sleep(60);
+            await tile(".coll-yours", n).tap({ force: true });
+            if (!(await page.evaluate(() => window.__tileTaps > 0))) continue;
+            await settle(`a tap on tile ${n} during a fling`);
+            break;
+          }
+        }
+        await rep.check(`${device} every lower tap leaves the stage in view at the top`, misses.length ? misses.join("; ") : null, page);
+      });
+    }
+
     await scenario(rep, `${device} a link selects`, page, async () => {
       // followed in the open app: the address changes to the character's
       await page.goto(new URL("#/collection/chick", page.url()).href);
@@ -228,6 +288,39 @@ try {
     await until(page, () => document.querySelector(".coll-yours .coll-tile") !== null);
     await stageBeats(page, device);
     await page.context().close();
+  }
+  // the same lower taps in WebKit, the engine of the iOS app: a smooth scroll it is given while the page
+  // shrinks under it (a Coming soon stage is shorter) is dropped there, not in Chrome
+  const wk = await webkit.launch();
+  try {
+    for (const [device, w, h] of [["webkit phone-port", 390, 844], ["webkit phone-port-se", 375, 667]].filter(([d]) => !only || only.test(d))) {
+      const ctx = await wk.newContext({ viewport: { width: w, height: h }, hasTouch: true, deviceScaleFactor: 2 });
+      const page = await ctx.newPage();
+      await page.addInitScript(() => { try { localStorage.setItem("shengji.coach", "off"); localStorage.setItem("shengji.muted", "1"); localStorage.setItem("shengji.automated", "1"); } catch {} });
+      await setup(page);
+      await page.goto(new URL("#/collection", BASE).href);
+      await page.waitForSelector(".coll-yours .coll-tile");
+      await scenario(rep, `${device} every lower tap scrolls up`, page, async () => {
+        const misses = [];
+        const tile = (sel, n) => page.locator(`${sel} .coll-tile`).nth(n);
+        for (let i = 0; i < 12; i++) {
+          await page.evaluate((y) => { document.querySelector(".coll-page").scrollTop = y; }, i % 2 ? 9999 : 600);
+          await sleep(100);
+          await tile(i % 3 === 0 ? ".coll-soon" : ".coll-yours", i % 4).tap();
+          if (i % 4 === 1) { await sleep(80); await tile(".coll-yours", (i + 1) % 4).tap(); }
+          if (i % 4 === 2) { await sleep(1000); await page.evaluate(() => { document.querySelector(".coll-page").scrollTop = 9999; }); await sleep(100);
+            await page.locator(".coll-tile.selected").first().tap(); }
+          await sleep(1000);
+          const got = await page.evaluate(() => ({ top: Math.round(document.querySelector(".char-stage").getBoundingClientRect().top),
+            scroll: Math.round(document.querySelector(".coll-page").scrollTop) }));
+          if (!(got.top >= 0 && got.scroll <= 1)) misses.push(`tap ${i}: ${JSON.stringify(got)}`);
+        }
+        await rep.check(`${device} every lower tap leaves the stage in view at the top`, misses.length ? misses.join("; ") : null, page);
+      });
+      await ctx.close();
+    }
+  } finally {
+    await wk.close();
   }
 } finally {
   await browser.close();

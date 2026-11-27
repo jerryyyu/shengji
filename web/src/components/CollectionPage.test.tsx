@@ -99,6 +99,24 @@ describe("one page", () => {
     expect(window.history.length).toBe(entries);
   });
 
+  it("the tiles stand still and only the stage moves; a tapped tile hops once and rests again", async () => {
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    const figures = [...host.querySelectorAll(".coll-tile svg.cmp")];
+    expect(figures.length).toBeGreaterThan(1);
+    for (const f of figures) expect(f.classList.contains("cmp-rest")).toBe(true);
+    expect(host.querySelector(".char-stage svg.cmp")!.classList.contains("cmp-rest")).toBe(false);
+    await act(async () => { tile("Bun").click(); });
+    const hopping = tile("Bun").querySelector("svg.cmp")!;
+    expect(hopping.getAttribute("data-pose")).toBe("hop");
+    expect(hopping.classList.contains("cmp-rest")).toBe(false);
+    const ended = "AnimationEvent" in window ? "animationend" : "webkitAnimationEnd";
+    await act(async () => { hopping.querySelector(".cmp-body")!.dispatchEvent(new Event(ended, { bubbles: true })); });
+    const after = tile("Bun").querySelector("svg.cmp")!;
+    expect(after.getAttribute("data-pose")).toBe("idle");
+    expect(after.classList.contains("cmp-rest")).toBe(true);
+  });
+
   it("on a phone a selection scrolls the page back up to the stage", async () => {
     authState.current = { status: "in", clientId: "cid", user };
     await draw();

@@ -641,7 +641,8 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   sit under the cards and controls.
 - **Taps** (Jerry 2026-11-26: "If you tap on the board (outside of cards), the character walks there"): a tap on
   empty felt (not a card, a played trick, a seat, a button or any panel) walks your companion, facing its way, to
-  the clear spot nearest the tap inside the safe area; it passes under the cards if they are in the way. That
+  the clear spot nearest the tap inside the safe area, at a stroll (Jerry 2026-11-27: "it's fun; make it go
+  slower": about half a second a figure's width, 1.2 to 3 s; a new tap turns it from where it is); it passes under the cards if they are in the way. That
   spot is its home for the rest of the table (Jerry 2026-11-26: "The companion shouldn't walk home, just try to
   stay in the safe zone where it was last clicked"): its walks are small ones round it, and when cards or a moved
   layout cover it, it hops to the nearest clear spot and that becomes its home. A new table starts it by your

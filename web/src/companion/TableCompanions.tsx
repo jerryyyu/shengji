@@ -29,7 +29,7 @@ import type { Pose } from "./Companion";
 import { useCollection } from "./feature";
 import { parseLook } from "./look";
 import { shownAtTable, useCompanionMode } from "./mode";
-import { HAND_LIFT, clear, figureBox, nearest, nearestClear, nextSpot, pathClear, zoneAround, zonesFor } from "./seatZones";
+import { HAND_LIFT, clear, figureBox, nearest, nearestClear, nextSpot, pathClear, TAPPED_HIGH, TAPPED_WIDE, zoneAround, zonesFor } from "./seatZones";
 import type { Layout, Rect, SeatPos, Spot, Zone } from "./seatZones";
 import { useT } from "../i18n";
 import { LEVELS, companionSize } from "./rig";
@@ -174,6 +174,11 @@ const STEP_MS = 260;
 /** A quick hop-walk off cards that landed or a layout that moved, and its step. */
 const QUICK_MS: readonly [number, number] = [300, 500];
 const QUICK_STEP_MS = 150;
+/** A walk a tap sent: an unhurried stroll, about half a second a figure's
+ *  width, with a slower step to match; its shortest and longest time. */
+export const TAP_WALK_MS: readonly [number, number] = [1200, 3000];
+const TAP_MS_PER_FIGURE = 500;
+const TAP_STEP_MS = 520;
 
 /** The translation in a computed transform (`matrix(a, b, c, d, x, y)`) or
  *  an inline one (`translate(xpx, ypx)`); null for none. */
@@ -219,13 +224,12 @@ function measure(felt: HTMLElement, phone = false): Layout {
   const rel = (e: Element): Rect => {
     const b = framed(e, e.getBoundingClientRect());
     const r = { x: b.x - f.x, y: b.y - f.y, w: b.w, h: b.h };
-    // played cards fly in as a transform: they are measured where they land
-    if (e.classList.contains("trick-play")) {
-      const t = translateOf(getComputedStyle(e).transform);
-      if (t) { r.x -= t.x; r.y -= t.y; }
-    }
-    return r;
+    // played cards (and their LEAD / WINS label) fly in as a transform of
+    // their wrapper: they are measured where they land
+    const flying = e.closest(".trick-play");
+    return flying ? landed(flying as HTMLElement, e === flying, r, rel0(flying)) : r;
   };
+  const rel0 = (e: Element): Rect => { const b = framed(e, e.getBoundingClientRect()); return { x: b.x - f.x, y: b.y - f.y, w: b.w, h: b.h }; };
   const one = (sel: string): Rect | null => { const e = felt.querySelector(sel); if (!e) return null; const r = rel(e); return r.w > 0 && r.h > 0 ? r : null; };
   const screen = felt.closest(".table-screen") ?? felt;
   const obstacles = [...felt.querySelectorAll(OBSTACLES), ...screen.querySelectorAll(OVERLAYS)]
@@ -252,6 +256,39 @@ function measure(felt: HTMLElement, phone = false): Layout {
   if (inset.b > 0) obstacles.push({ x: 0, y: f.h - inset.b, w: f.w, h: inset.b });
   return { felt: { w: f.w, h: f.h }, plates, tagline: one(".you-tagline"), row: one(".you-row"), hand: first,
            ...(safe ? { safe } : {}), ...(phone ? { phone } : {}), obstacles };
+}
+
+/** A rect drawn inside a flying wrapper (`wrap`, itself when `self`),
+ *  where it will be once the wrapper's transform is gone: the wrapper's own
+ *  box at its laid-out size, and anything inside it carried back with it.
+ *  Any affine transform (a move, a scale, a turn) about its transform-origin
+ *  is undone; a rect with none, or one that cannot be undone, is as drawn. */
+export function landed(wrap: HTMLElement, self: boolean, r: Rect, box: Rect): Rect {
+  const cs = getComputedStyle(wrap);
+  const m = /^matrix\(([^)]+)\)$/.exec(cs.transform ?? "");
+  if (!m) return r;
+  const [a, b, c, d, tx, ty] = m[1].split(",").map((n) => Number(n.trim()));
+  const det = a * d - b * c;
+  if (![a, b, c, d, tx, ty].every(Number.isFinite) || Math.abs(det) < 1e-6) return r;
+  if (a === 1 && b === 0 && c === 0 && d === 1 && tx === 0 && ty === 0) return r;
+  // laid-out size (no transform), else the drawn box scaled back
+  const w = wrap.offsetWidth || box.w / Math.max(1e-6, Math.hypot(a, b));
+  const h = wrap.offsetHeight || box.h / Math.max(1e-6, Math.hypot(c, d));
+  const [ox, oy] = (cs.transformOrigin || `${w / 2}px ${h / 2}px`).split(" ").map((v) => parseFloat(v));
+  const O = { x: Number.isFinite(ox) ? ox : w / 2, y: Number.isFinite(oy) ? oy : h / 2 };
+  // the drawn centre is the origin plus the turned and scaled centre, moved
+  const C = { x: w / 2 - O.x, y: h / 2 - O.y };
+  const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+  const p0 = { x: cx - O.x - (a * C.x + c * C.y) - tx, y: cy - O.y - (b * C.x + d * C.y) - ty };
+  if (self) return { x: p0.x, y: p0.y, w, h };
+  // a point drawn at q lands at p0 + O + inverse(q - t - p0 - O)
+  const back = (qx: number, qy: number) => {
+    const vx = qx - tx - p0.x - O.x, vy = qy - ty - p0.y - O.y;
+    return { x: p0.x + O.x + (d * vx - c * vy) / det, y: p0.y + O.y + (-b * vx + a * vy) / det };
+  };
+  const pts = [back(r.x, r.y), back(r.x + r.w, r.y), back(r.x, r.y + r.h), back(r.x + r.w, r.y + r.h)];
+  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+  return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
 }
 
 /** How far the screen's safe-area insets reach into the felt, each with
@@ -327,11 +364,11 @@ export const TAP_THROTTLE_MS = 500;
  *  played as a special once any level-up has ended. Every move is a Web
  *  Animation of a transform. Under Reduce Motion it stands on its home;
  *  while the page is hidden it rests. */
-function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal, tapped, wins, onEnd, onUpEnd, onGoal, onTapped }: {
+function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal, tapped, wins, onEnd, onUpEnd, onGoal, onTapped, onStray }: {
   player: StatePlayer; team: Team; px: number; pos: SeatPos;
   zone: Zone; layout: Layout; roam: Layout; pose: Pose; up: LevelUp | null; you: boolean; goal: { spot: Spot; n: number } | null;
   tapped: Spot | null; wins: number; onEnd: () => void; onUpEnd: () => void; onGoal?: (n: number) => void;
-  onTapped?: (s: Spot | null) => void;
+  onTapped?: (s: Spot | null) => void; onStray?: (s: Spot | null) => void;
 }) {
   const t = useT();
   const { kind, colour } = parseLook(player.look);
@@ -367,6 +404,11 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
   // where a figure whose whole zone is covered stepped out to, until its
   // zone has room again: it is never taken off the table while drawn
   const [stray, setStray] = useState<Spot | null>(null);
+  // the table keeps the others clear of where it stepped out to
+  const strayDone = useRef(onStray);
+  strayDone.current = onStray;
+  useEffect(() => { strayDone.current?.(stray); }, [stray]);
+  useEffect(() => () => strayDone.current?.(null), []);
   // a figure taken off the table is drawn again only with a spot to stand on
   const [, redraw] = useState(0);
   // a tapped home stands on its own: the zone only matters without one; a
@@ -388,7 +430,8 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
    *  (the table's layer is under the cards); `quick` is a short hop-walk for
    *  stepping off cards or a moved layout. Only a figure with nowhere drawn
    *  yet, a hidden page or Reduce Motion goes there at once. */
-  const goTo = (to: Spot, { under = false, quick = false, via = null }: { under?: boolean; quick?: boolean; via?: Spot | null } = {}) => {
+  const goTo = (to: Spot, { under = false, quick = false, slow = false, via = null }:
+    { under?: boolean; quick?: boolean; slow?: boolean; via?: Spot | null } = {}) => {
     const from = shown();
     const el = walk.current;
     if (!from || !el || typeof el.animate !== "function" || prefersReducedMotion() || document.visibilityState === "hidden"
@@ -402,12 +445,13 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     const leg = via ? Math.hypot(via.x - from.x, via.y - from.y) : 0;
     const dist = via ? leg + Math.hypot(to.x - via.x, to.y - via.y) : Math.hypot(to.x - from.x, to.y - from.y);
     const ms = quick ? Math.min(QUICK_MS[1], Math.max(QUICK_MS[0], QUICK_MS[0] + (dist / px) * 80))
+      : slow ? Math.min(TAP_WALK_MS[1], Math.max(TAP_WALK_MS[0], (dist / px) * TAP_MS_PER_FIGURE))
       : Math.min(WALK_MS[1], Math.max(WALK_MS[0], WALK_MS[0] + (dist / px) * 250));
     const dir = to.x < from.x ? -1 : 1;
     if (face.current) face.current.style.transform = `scaleX(${dir})`;
     const a = el.animate(via && dist > 0 ? [{ transform: at(from) }, { transform: at(via), offset: leg / dist }, { transform: at(to) }]
       : [{ transform: at(from) }, { transform: at(to) }], { duration: ms, easing: "ease-in-out" });
-    const step = quick ? QUICK_STEP_MS : STEP_MS;
+    const step = quick ? QUICK_STEP_MS : slow ? TAP_STEP_MS : STEP_MS;
     const gait = face.current?.animate([
       { transform: `scaleX(${dir}) translateY(0)` }, { transform: `scaleX(${dir}) translateY(-12%)`, offset: 0.45 },
       { transform: `scaleX(${dir}) translateY(0)` }], { duration: step, iterations: Math.max(2, Math.round(ms / step)) });
@@ -487,7 +531,7 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     // round the other companions, in two legs, where the straight way meets one
     const from = shown();
     const others: Layout = { ...layout, obstacles: roam.obstacles.slice(layout.obstacles.length) };
-    goTo(goal.spot, { under: true, via: from ? around(from, goal.spot, px, you, others) : null });
+    goTo(goal.spot, { under: true, slow: true, via: from ? around(from, goal.spot, px, you, others) : null });
     tappedDone.current?.(goal.spot);
   }, [goalN]);
 
@@ -725,6 +769,8 @@ export default function TableCompanions({ state }: { state: GameState }) {
   const [goal, setGoal] = useState<{ spot: Spot; n: number } | null>(null);
   // the spot your last tap chose: yours stays round it for the rest of this table
   const [tapped, setTapped] = useState<{ room: string; spot: Spot } | null>(null);
+  // where a figure whose whole zone is covered stepped out to, by seat
+  const [strays, setStrays] = useState<Partial<Record<SeatPos, { spot: Spot; px: number }>>>({});
   const prev = useRef<GameState | null>(null);
   const root = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -743,33 +789,54 @@ export default function TableCompanions({ state }: { state: GameState }) {
   const key = JSON.stringify([state.phase, state.trick, state.last_trick?.winner, state.players.map((p) => [p.seat, p.is_bot, p.left]), tablet, levels]);
   const layout = useLayout(root, on, key, !tablet);
   const people = state.players.filter((p) => !p.is_bot && !p.left);
-  // the zones, worked out again only when the layout, the people or their sizes change
+  // the spot your last tap chose, at this table; yours stands round it, at
+  // its full size, whatever room its zone by your hand has
+  const home = tapped && tapped.room === state.room ? tapped.spot : null;
+  const myPx = companionSize(size.base, levelIndex(levels[ours]), size.max);
+  // what yours takes round a tapped home, as far as it wanders there: no
+  // other seat's zone or step-out comes into it
+  const homeKey = home ? `${home.x},${home.y},${myPx}` : "";
+  const taken = useMemo(() => {
+    if (!home) return null;
+    const b = figureBox(home, myPx, true);
+    const dx = Math.ceil(TAPPED_WIDE * myPx);
+    const dy = Math.ceil(TAPPED_HIGH * myPx);
+    return { x: b.x - dx, y: b.y - dy, w: b.w + 2 * dx, h: b.h + 2 * dy };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [homeKey]);
+  // the zones, worked out again only when the layout, the people, their sizes or a tapped home change
   const seatsKey = JSON.stringify(people.map((p) => [p.seat, p.team]));
   const zones = useMemo(() => (layout ? zonesFor(people.map((p) => ({
     pos: SIDES[(p.seat - state.you + 4) % 4], size: companionSize(size.base, levelIndex(levels[p.team]), size.max),
-    tag: p.seat === state.you })), layout) : null),
+    tag: p.seat === state.you })), taken ? { ...layout, obstacles: [...layout.obstacles, taken] } : layout) : null),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [layout, seatsKey, state.you, size.base, size.max, levels[0], levels[1]]);
+  [layout, seatsKey, state.you, size.base, size.max, levels[0], levels[1], taken]);
   const mine = me && !me.is_bot && !me.left ? zones?.bottom ?? null : null;
   // where yours may go off its zone (a tap, or stepping off cards there):
   // clear of the other companions' zones as well as the table
   // and for each seat, the table with every other seat's zone in it: where a
   // special drawn larger must stay clear
+  // (with where each stands: a tapped home, a step out of a covered zone)
   const rooms = useMemo(() => {
     if (!layout || !zones) return null;
-    const boxes = (pos: SeatPos) => zones[pos].spots.map((s) => figureBox(s, zones[pos].size ?? size.base, pos === "bottom"));
+    const boxes = (pos: SeatPos) => {
+      const own = zones[pos].spots.map((s) => figureBox(s, zones[pos].size ?? size.base, pos === "bottom"));
+      const out = strays[pos];
+      if (out) own.push(figureBox(out.spot, out.px, pos === "bottom"));
+      if (pos === "bottom" && taken) own.push(taken);
+      return own;
+    };
     const out = {} as Record<SeatPos, Layout>;
     for (const pos of SIDES) out[pos] = { ...layout, obstacles: [...layout.obstacles, ...SIDES.filter((q) => q !== pos).flatMap(boxes)] };
     return out;
-  }, [layout, zones, size.base]);
+  }, [layout, zones, size.base, strays, taken]);
   const roam = rooms?.bottom ?? null;
 
-  // a tap on empty felt walks yours to the clear spot nearest the tap
-  // the spot your last tap chose, at this table; yours stands round it, at
-  // its full size, whatever room its zone by your hand has
-  const home = tapped && tapped.room === state.room ? tapped.spot : null;
-  const myPx = companionSize(size.base, levelIndex(levels[ours]), size.max);
-  const tapState = useRef({ layout: roam, mine, home, px: myPx, last: -Infinity, n: 0 });
+  // a tap on empty felt walks yours to the clear spot nearest the tap: yours
+  // drawn anywhere (by your hand, on a tapped home, stepped out) takes it
+  const out = strays.bottom?.spot ?? null;
+  const tapState = useRef({ layout: roam, mine, home, out, px: myPx, last: -Infinity, n: 0 });
+  tapState.current.out = out;
   tapState.current.layout = roam;
   tapState.current.mine = mine;
   tapState.current.home = home;
@@ -781,7 +848,7 @@ export default function TableCompanions({ state }: { state: GameState }) {
       const at = tapState.current;
       const target = e.target as Element | null;
       // under Reduce Motion nothing walks: yours stays at home
-      if (!at.layout || !at.mine || !(at.home ?? at.mine.home) || !target || target.closest(NOT_FELT) || prefersReducedMotion()) return;
+      if (!at.layout || !at.mine || !(at.home ?? at.mine.home ?? at.out) || !target || target.closest(NOT_FELT) || prefersReducedMotion()) return;
       // a tap while a menu or panel is open closes it, or is for it: yours stays
       if (panelAtDown || document.querySelector(PANELS)) return;
       const now = Date.now();
@@ -808,6 +875,13 @@ export default function TableCompanions({ state }: { state: GameState }) {
   // a tap's goal is cleared once yours has taken it, so no later render replays it
   const takeGoal = (n: number) => setGoal((g) => (g && g.n === n ? null : g));
   const takeHome = (s: Spot | null) => setTapped(s ? { room: state.room, spot: s } : null);
+  const stepped = (pos: SeatPos, px: number) => (s: Spot | null) => setStrays((m) => {
+    const was = m[pos];
+    if (s ? was && was.spot.x === s.x && was.spot.y === s.y && was.px === px : !was) return m;
+    const next = { ...m };
+    if (s) next[pos] = { spot: s, px }; else delete next[pos];
+    return next;
+  });
   return (
     <div className="table-companions" ref={root} aria-hidden="true">
       {layout && zones ? people.map((p) => {
@@ -820,7 +894,8 @@ export default function TableCompanions({ state }: { state: GameState }) {
                   pos={pos} zone={zone} layout={layout} roam={rooms ? rooms[pos] : layout} pose={poses[p.seat] ?? "idle"}
                   up={ups[p.seat] ?? null} you={you} goal={you ? goal : null} tapped={you ? home : null}
                   wins={p.team === ours ? wins : 0} onEnd={end(p.seat)} onUpEnd={done(p.seat)}
-                  onGoal={you ? takeGoal : undefined} onTapped={you ? takeHome : undefined} />
+                  onGoal={you ? takeGoal : undefined} onTapped={you ? takeHome : undefined}
+                  onStray={stepped(pos, you && home ? myPx : zone.size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max))} />
         );
       }) : null}
     </div>

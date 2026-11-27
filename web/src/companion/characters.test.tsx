@@ -23,7 +23,7 @@ import { DRAWINGS } from "./kinds";
 import { COMPANIONS, COMPANION_KINDS, FREE_KINDS, lookCatalogue, parseLook } from "./look";
 import { companionSize } from "./rig";
 import { parseArt } from "./Tractor";
-import TableCompanions, { LEVEL_UP_MS, MOVES, SEAT_SIZE, around, levelIndex } from "./TableCompanions";
+import TableCompanions, { LEVEL_UP_MS, MOVES, SEAT_SIZE, TAP_WALK_MS, around, levelIndex } from "./TableCompanions";
 import { hasNewLook } from "./seen";
 import type { LookEntry } from "./look";
 import { HAND_LIFT, LIFT, clear, figureBox, meets, pathClear, zonesFor } from "./seatZones";
@@ -1124,12 +1124,92 @@ describe("the table", () => {
       const landing: Rect = { x: was.x + 4, y: was.y + 10, w: 30, h: 30 };
       const flying = { x: 400, y: 300 };
       rects["trick-play"] = { ...landing, x: flying.x, y: flying.y };
-      (host.querySelector(".trick-play") as HTMLElement).style.transform = `translate(${flying.x - landing.x}px, ${flying.y - landing.y}px)`;
+      (host.querySelector(".trick-play") as HTMLElement).style.transform = `matrix(1, 0, 0, 1, ${flying.x - landing.x}, ${flying.y - landing.y})`;
       await render(state({ trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>));
       expect(walks("1")).toHaveLength(1);
       await advance(500);
       expect(meets(boxOf(1, 56), landing)).toBe(false);
     });
+
+    // the four people's figures, each at its drawn size
+    const figure = (seat: number) => {
+      const w = Number(host.querySelector(`.tc-seat[data-seat="${seat}"] svg`)!.getAttribute("width"));
+      return figureBox(spotOf(seat), w, seat === 0);
+    };
+
+    it("a tapped home and a figure stepped out of its covered zone never overlap (tap 295,148, cover 0,40 250×225)", async () => {
+      await render(state());
+      tap(felt(), 295, 148);
+      await advance(2000);
+      const cover: Rect = { x: 0, y: 40, w: 250, h: 225 };
+      rects["trick-play"] = cover;
+      await render(state({ trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>));
+      await advance(2000);
+      for (const seat of [0, 1]) expect(host.querySelector(`.tc-seat[data-seat="${seat}"]`), `seat ${seat}`).not.toBeNull();
+      expect(meets(figure(0), figure(1))).toBe(false);
+      for (const seat of [0, 1, 2, 3]) {
+        expect(meets(figure(seat), cover), `seat ${seat}`).toBe(false);
+        for (const other of [0, 1, 2, 3]) if (other > seat) expect(meets(figure(seat), figure(other)), `${seat}/${other}`).toBe(false);
+      }
+    });
+
+    it("yours stepped out of a covered zone still takes a tap on clear felt (cover 0,40 250×225, tap 580,190)", async () => {
+      await render(state());
+      rects["trick-play"] = { x: 0, y: 40, w: 250, h: 225 };
+      await render(state({ trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>));
+      await advance(2000);
+      expect(host.querySelector('.tc-seat[data-seat="0"]')).not.toBeNull();
+      const before = walks("0").length;
+      tap(felt(), 580, 190);
+      expect(walks("0").length).toBe(before + 1);
+      await advance(2000);
+      const at = spotOf(0);
+      expect(Math.hypot(at.x + 22 - 580, at.y + 44 - 190)).toBeLessThan(80);
+    });
+
+    // a flight drawn as `matrix(a, b, c, d, tx, ty)` about the wrapper's centre, from where it lands (`r`)
+    const drawnAs = (r: Rect, k: [number, number, number, number, number, number], centre: { x: number; y: number }): Rect => {
+      const [a, b, c, d, tx, ty] = k;
+      const pts = [[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]].map(([x, y]) => {
+        const vx = x - centre.x, vy = y - centre.y;
+        return [centre.x + a * vx + c * vy + tx, centre.y + b * vx + d * vy + ty];
+      });
+      const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
+      return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+    };
+    const turn = (deg: number, tx: number, ty: number, k = 1): [number, number, number, number, number, number] => {
+      const r = (deg * Math.PI) / 180;
+      return [k * Math.cos(r), k * Math.sin(r), -k * Math.sin(r), k * Math.cos(r), tx, ty];
+    };
+    for (const [name, k] of [
+      ["half size, 120 px above", [0.5, 0, 0, 0.5, 0, -120]],
+      ["turned 30° at 0.4, moved", turn(30, 40, -100, 0.4)],
+      ["turned −15° at 0.5, moved", turn(-15, -60, 80, 0.5)],
+    ] as const) {
+      it(`cards flying in (${name}) are measured where they land, their label too: the companion there clears both`, async () => {
+        await render(state());
+        const was = spotOf(1);
+        // the final 93×82 card box and its LEAD label under it, over the left seat's companion
+        const card: Rect = { x: was.x + 10, y: was.y - 20, w: 93, h: 82 };
+        const label: Rect = { x: card.x + 20, y: card.y + card.h + 4, w: 52, h: 19 };
+        const wrap: Rect = { x: card.x, y: card.y, w: 93, h: 105 };
+        const centre = { x: wrap.x + wrap.w / 2, y: wrap.y + wrap.h / 2 };
+        const el = host.querySelector(".trick-play") as HTMLElement;
+        el.style.transform = `matrix(${k.join(", ")})`;
+        Object.defineProperty(el, "offsetWidth", { configurable: true, value: wrap.w });
+        Object.defineProperty(el, "offsetHeight", { configurable: true, value: wrap.h });
+        const tag = document.createElement("div");
+        tag.className = "trick-tag";
+        el.appendChild(tag);
+        rects["trick-play"] = drawnAs(wrap, k as never, centre);
+        rects["trick-tag"] = drawnAs(label, k as never, centre);
+        await render(state({ trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>));
+        await advance(1000);
+        expect(meets(figure(1), card), "card").toBe(false);
+        expect(meets(figure(1), label), "label").toBe(false);
+        tag.remove();
+      });
+    }
 
     it("a new table forgets the tapped spot: yours goes back by your hand", async () => {
       await render(state({ room: "A" } as Partial<GameState>));
@@ -1354,6 +1434,49 @@ describe("the table", () => {
       expect(ws).toHaveLength(2);
       expect(ws[0].cancel).toHaveBeenCalled();
       expect(ws[1].frames[0].transform).toBe("translate(111px, 222px)");
+    });
+
+    it("a walk a tap sent is an unhurried stroll (about 0.5 s a figure's width, 1.2 to 3 s, a slower step); idle walks keep their pace", async () => {
+      await render(state());
+      const from = spotOf(0);
+      tap(felt(), 420, 220);
+      const [w] = walks("0");
+      const to = spotOf(0);
+      const figures = Math.hypot(to.x - from.x, to.y - from.y) / 44;
+      expect(w.ms).toBe(Math.min(TAP_WALK_MS[1], Math.max(TAP_WALK_MS[0], figures * 500)));
+      expect(w.ms).toBeGreaterThan(1500);
+      // the gait's step slowed to match: 520 ms a hop, so the feet keep up with the ground
+      const gait = anims.find((a) => a.seat === "0" && a.box === "tc-face")!;
+      expect(gait.ms).toBe(520);
+      // a short tap walk still takes 1.2 s at least
+      await advance(3500);
+      const here = spotOf(0);
+      tap(felt(), here.x + 22 + 30, here.y + 44);
+      const short = walks("0").at(-1)!;
+      expect(short.ms).toBe(TAP_WALK_MS[0]);
+      // an idle walk keeps its own pace (0.8 to 1.5 s)
+      const n = walks("0").length;
+      await advance(16000);
+      const idle = walks("0").slice(n);
+      expect(idle.length).toBeGreaterThan(0);
+      for (const iw of idle) expect(iw.ms).toBeLessThanOrEqual(1500);
+    });
+
+    it("a second tap mid-stroll turns it from where it is drawn", async () => {
+      await render(state());
+      tap(felt(), 420, 220);
+      await advance(600);
+      const css = vi.spyOn(window, "getComputedStyle").mockImplementation(((el: Element) =>
+        ({ transform: el.classList.contains("tc-walk") ? "matrix(1, 0, 0, 1, 150, 190)" : "none" } as CSSStyleDeclaration)) as typeof window.getComputedStyle);
+      try {
+        tap(felt(), 600, 200);
+      } finally {
+        css.mockRestore();
+      }
+      const ws = walks("0");
+      expect(ws).toHaveLength(2);
+      expect(ws[0].cancel).toHaveBeenCalled();
+      expect(ws[1].frames[0].transform).toBe("translate(150px, 190px)");
     });
 
     it("at rest each companion fidgets in turn: a sway, a blink, a small hop", async () => {

@@ -974,6 +974,53 @@ describe("the table", () => {
     const settle = async (ms = 500) => { await act(async () => { await Promise.resolve(); }); await advance(ms); };
     const boxOf = (seat: number, px = 44) => figureBox(spotOf(seat), px, seat === 0);
 
+    it("a chat bubble that appears over yours sends it on a quick walk clear within half a second", async () => {
+      await render(state());
+      const was = spotOf(0);
+      const bubble: Rect = { x: was.x + 20, y: was.y - 30, w: 200, h: 50 };
+      add("chat-bubble", bubble);
+      await settle(500);
+      const w = walks("0");
+      expect(w).toHaveLength(1);
+      expect(w[0].ms).toBeLessThanOrEqual(500);
+      expect(meets(boxOf(0), bubble)).toBe(false);
+    });
+
+    it("a commit that plays a card measures once, not again for the nodes it added", async () => {
+      await render(state());
+      await settle(1500);
+      // one read of the felt's own box per measure
+      const measures = () => spy.mock.instances.filter((el: unknown) => (el as Element).classList?.contains("felt")).length;
+      const n = measures();
+      // the commit adds the card's label and plays the card, in one task
+      await act(async () => {
+        add("trick-tag", { x: 300, y: 150, w: 40, h: 16 });
+        root.render(table(state({ trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>)));
+      });
+      await settle(100);
+      expect(measures() - n).toBe(1);
+    });
+
+    it("a commit that adds, takes off or resizes nothing the zones are measured round measures nothing", async () => {
+      await render(state());
+      await settle(1500);
+      const reads = () => spy.mock.calls.length;
+      const n = reads();
+      // a chip, a points pop, a line of text: none of them an obstacle
+      const chip = add("points-pop", { x: 10, y: 10, w: 40, h: 20 });
+      chip.textContent = "+10";
+      add("hud-note", { x: 0, y: 0, w: 0, h: 0 }, chip);
+      await settle(100);
+      // and a commit of the same game state
+      await render(state());
+      await settle(100);
+      expect(reads()).toBe(n);
+      // an obstacle that appears is measured on the next frame
+      add("away-pill", { x: 600, y: 10, w: 60, h: 20 });
+      await settle(100);
+      expect(reads()).toBeGreaterThan(n);
+    });
+
     it("a control that appears over yours (the clock's ring) is drawn over it, and yours walks clear within half a second", async () => {
       await render(state());
       const was = spotOf(0);

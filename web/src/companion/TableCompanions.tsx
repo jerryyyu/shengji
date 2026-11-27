@@ -247,10 +247,15 @@ function framedPoint(el: Element, x: number, y: number): Spot {
   return el.closest(".app.rotated") ? { x: y, y: window.innerWidth - x } : { x, y };
 }
 
-function measure(felt: HTMLElement, phone = false, dealing = false): Layout {
-  const f = framed(felt, felt.getBoundingClientRect());
+function measure(felt: HTMLElement, phone = false, dealing = false, insets: SafeEdges | null = null,
+  seen: ((e: Element, b: DOMRect) => void) | null = null): Layout {
+  const fb = felt.getBoundingClientRect();
+  seen?.(felt, fb);
+  const f = framed(felt, fb);
   const rel = (e: Element): Rect => {
-    const b = framed(e, e.getBoundingClientRect());
+    const raw = e.getBoundingClientRect();
+    seen?.(e, raw);
+    const b = framed(e, raw);
     const r = { x: b.x - f.x, y: b.y - f.y, w: b.w, h: b.h };
     // played cards (and their LEAD / WINS label) fly in as a transform of
     // their wrapper: they are measured where they land
@@ -278,7 +283,7 @@ function measure(felt: HTMLElement, phone = false, dealing = false): Layout {
   }
   // the side seats' nameplates sit at the screen's safe-area edges, and
   // nothing stands under a notch or the Dynamic Island
-  const inset = safeInsets(felt, f);
+  const inset = safeReach(insets ?? safeEdges(felt), f);
   const x0 = Math.max(plates.left?.x ?? 0, inset.l);
   const x1 = Math.min(plates.right ? plates.right.x + plates.right.w : f.w, f.w - inset.r);
   const safe = plates.left && plates.right || inset.l > 0 || inset.r > 0 ? { x0, x1 } : undefined;
@@ -321,11 +326,12 @@ export function landed(wrap: HTMLElement, self: boolean, r: Rect, box: Rect): Re
   return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
 }
 
-/** How far the screen's safe-area insets reach into the felt, each with
- *  `SAFE_MARGIN` more, in px (0 where there is none): read off a probe padded
- *  by `env(safe-area-inset-*)`. A rotated table's insets are its frame's, so
- *  it reads none. */
-function safeInsets(felt: HTMLElement, f: Rect): { l: number; r: number; t: number; b: number } {
+/** The screen's safe-area insets (a notch, the Dynamic Island), in px:
+ *  read off a probe padded by `env(safe-area-inset-*)`. A rotated table's
+ *  insets are its frame's, so it reads none. They change only with the
+ *  window's size or turn, so the table reads them once for each. */
+interface SafeEdges { l: number; r: number; t: number; b: number }
+function safeEdges(felt: HTMLElement): SafeEdges {
   const none = { l: 0, r: 0, t: 0, b: 0 };
   if (felt.closest(".app.rotated")) return none;
   const probe = document.createElement("div");
@@ -337,6 +343,12 @@ function safeInsets(felt: HTMLElement, f: Rect): { l: number; r: number; t: numb
   const px = (v: string) => parseFloat(v) || 0;
   const raw = { l: px(cs.paddingLeft), r: px(cs.paddingRight), t: px(cs.paddingTop), b: px(cs.paddingBottom) };
   probe.remove();
+  return raw;
+}
+
+/** How far the safe-area insets reach into the felt `f`, each with
+ *  `SAFE_MARGIN` more, in px (0 where there is none). */
+function safeReach(raw: SafeEdges, f: Rect): SafeEdges {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const reach = (edge: number, into: number) => (edge > 0 ? Math.max(0, edge + SAFE_MARGIN - into) : 0);
@@ -701,51 +713,118 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
   );
 }
 
-/** The walking zones, measured from the felt and measured again whenever
- *  the cards, the phase or the layout change (and twice more as cards
- *  finish flying in). */
+/** What the walking zones are measured round: every obstacle and overlay,
+ *  and the hand. */
+const MEASURED = `${OBSTACLES}, ${OVERLAYS}, .hand`;
+/** Whether a node added to or taken off the table is, or holds, something
+ *  the zones are measured round. */
+const measured = (n: Node): boolean => n instanceof Element && !n.closest(".table-companions")
+  && (n.matches(MEASURED) || n.querySelector(MEASURED) !== null);
+
+/** The walking zones, measured from the felt as the table first shows
+ *  them and as the cards, the phase or the layout change (and twice more
+ *  as cards finish flying in), and on the next frame whenever something
+ *  they are measured round appears, goes or changes size, or the window
+ *  changes size or turns. A measure asked for while one is already due
+ *  this frame is the same one; a commit that touches none of them
+ *  measures nothing. */
 function useLayout(root: RefObject<HTMLDivElement | null>, on: boolean, key: string, phone = false, dealing = false): Layout | null {
   const [layout, setLayout] = useState<Layout | null>(null);
+  // what a measure reads as it runs, so a change of them only asks for one
+  const opts = useRef({ phone, dealing });
+  opts.current = { phone, dealing };
+  // measures now, or on the next frame; null while the table is not watched
+  const ask = useRef<{ now: () => void; soon: () => void; flying: () => boolean } | null>(null);
   useLayoutEffect(() => {
     if (!on) return;
     const felt = root.current?.parentElement;
     if (!felt) return;
+    const screen = felt.closest(".table-screen") ?? felt;
+    // the safe-area insets, read once for each window size and turn
+    let insets: SafeEdges | null = null;
     // a measure that finds nothing moved keeps the layout as it was
     let last = "";
+    let ro: ResizeObserver | null = null;
+    // each watched box's size as the last measure (or the observer) saw it:
+    // a box the observer reports at that size asks for no measure
+    const sizes = new WeakMap<Element, string>();
+    const size = (w: number, h: number) => `${Math.round(w)}x${Math.round(h)}`;
+    const note = (e: Element, b: DOMRect) => { sizes.set(e, size(b.width, b.height)); };
+    const watched = new WeakSet<Element>();
+    const watch = () => {
+      if (!ro) return;
+      for (const e of [felt, ...felt.querySelectorAll(MEASURED), ...screen.querySelectorAll(OVERLAYS)]) {
+        if (!e.closest(".table-companions") && !watched.has(e)) { watched.add(e); ro.observe(e); }
+      }
+    };
+    let frame = 0;
+    // set from a measure to the end of its task: the nodes a commit added
+    // before its measure are already in it, so they ask for no other
+    let fresh = false;
     const read = () => {
-      const next = measure(felt, phone, dealing);
+      window.cancelAnimationFrame(frame);
+      frame = 0;
+      if (!fresh) { fresh = true; queueMicrotask(() => { fresh = false; }); }
+      insets ??= safeEdges(felt);
+      const next = measure(felt, opts.current.phone, opts.current.dealing, insets, ro ? note : null);
+      watch();
       const seen = JSON.stringify(next);
       if (seen === last) return;
       last = seen;
       setLayout(next);
     };
-    read();
-    // once more as the cards finish flying in, and again after a slow flight
-    const later = window.setTimeout(read, 450);
-    const slow = window.setTimeout(read, 1200);
-    window.addEventListener("resize", read);
-    let ro: ResizeObserver | null = null;
+    const soon = () => { if (!frame) frame = window.requestAnimationFrame(read); };
+    // whether cards are still flying in: their wrappers carry a transform until they land
+    const flying = () => [...felt.querySelectorAll(".trick-play")].some((e) => {
+      const t = getComputedStyle(e).transform;
+      return !!t && t !== "none" && t !== "matrix(1, 0, 0, 1, 0, 0)";
+    });
+    ask.current = { now: read, soon, flying };
+    const resized = () => { insets = null; soon(); };
     if (typeof ResizeObserver === "function") {
-      ro = new ResizeObserver(read);
-      ro.observe(felt);
+      ro = new ResizeObserver((list) => {
+        let changed = false;
+        for (const e of list) {
+          const box = e.borderBoxSize?.[0];
+          const now = box ? size(box.inlineSize, box.blockSize) : size(e.contentRect.width, e.contentRect.height);
+          if (sizes.get(e.target) !== now) changed = true;
+          sizes.set(e.target, now);
+        }
+        if (changed) soon();
+      });
     }
-    // a line, a control, a chat bubble or a panel that comes and goes (not
-    // with the game): measured again on the next frame, never for the
-    // companions' own changes
-    let frame = 0;
+    read();
+    window.addEventListener("resize", resized);
+    window.addEventListener("orientationchange", resized);
+    // a line, a control, a chat bubble or a panel that comes or goes:
+    // never for the companions' own changes or for nodes that are none of those
     let mo: MutationObserver | null = null;
     if (typeof MutationObserver === "function") {
       mo = new MutationObserver((list) => {
-        if (frame || list.every((m) => (m.target as Element).closest?.(".table-companions"))) return;
-        frame = window.requestAnimationFrame(() => { frame = 0; read(); });
+        if (!frame && !fresh && list.some((m) => [...m.addedNodes, ...m.removedNodes].some(measured))) soon();
       });
-      mo.observe(felt.closest(".table-screen") ?? felt, { childList: true, subtree: true });
+      mo.observe(screen, { childList: true, subtree: true });
     }
     return () => {
-      window.clearTimeout(later); window.clearTimeout(slow); window.cancelAnimationFrame(frame);
-      window.removeEventListener("resize", read); ro?.disconnect(); mo?.disconnect();
+      ask.current = null;
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", resized); window.removeEventListener("orientationchange", resized);
+      ro?.disconnect(); mo?.disconnect();
     };
-  }, [root, on, key, phone, dealing]);
+  }, [root, on]);
+  // the cards, the phase or the layout changed: measured before the frame
+  // is drawn (a figure the cards will land on steps aside as they set off),
+  // and while cards are flying in, once more as they land and again after
+  // a slow flight
+  const first = useRef(true);
+  useLayoutEffect(() => {
+    if (first.current) { first.current = false; return; }
+    ask.current?.now();
+    const again = () => { if (ask.current?.flying()) ask.current.soon(); };
+    const later = window.setTimeout(again, 450);
+    const slow = window.setTimeout(again, 1200);
+    return () => { window.clearTimeout(later); window.clearTimeout(slow); };
+  }, [key, phone, dealing]);
   return on ? layout : null;
 }
 

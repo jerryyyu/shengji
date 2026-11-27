@@ -391,12 +391,13 @@ def test_paired_void_cli_reads_only_held_out_decisions(package, tmp_path, capsys
 
     hist = tmp_path / "hist"
     hist.mkdir()
-    files, histories = {}, {}
-    for split, seed in [("train", 1003), ("test", 1017)]:
+    files, histories, keys = {}, {}, {}
+    for split, seed in [("train", 1003), ("test", 1017), ("other", 1018)]:
         shard = tmp_path / (split + ".jsonl")
         shard.write_text("".join(json.dumps(r) + "\n" for r in synthetic_cluster(seed)))
         rows = bl.extract_cluster(shard, store_index=0, cluster_index=0, calib=0, test=0,
                                   windows=[], sampler_worlds=0, sampler_splits=())
+        keys[seed] = rows["deal_key"]
         name = split + ".npz"
         path = tmp_path / name
         np.savez(path, **{k: rows[k][:3] for k in bl.ARRAY_KEYS})
@@ -405,8 +406,11 @@ def test_paired_void_cli_reads_only_held_out_decisions(package, tmp_path, capsys
         files[split] = {"file": name, "rows": 3, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
         histories[name] = hashlib.sha256((hist / name).read_bytes()).hexdigest()
 
-    def manifests():
-        data = json.dumps({"chunks": [{"files": files}]}).encode()
+    def manifests(extra=False):
+        chunks = [{"files": files}]
+        if extra:
+            chunks.append({"files": {"test": files["other"]}})
+        data = json.dumps({"chunks": chunks}).encode()
         (tmp_path / "manifest.json").write_bytes(data)
         (hist / "manifest.json").write_text(json.dumps({
             "schema": bh.SCHEMA, "files": histories,
@@ -434,6 +438,33 @@ def test_paired_void_cli_reads_only_held_out_decisions(package, tmp_path, capsys
     assert loss["hidden_copies"] > 0 and loss["projected_baseline_nats_per_copy"] > 0
     assert loss["unresolved_copy_observations"] > 0
     assert loss["joint_minus_baseline_nats_per_copy"] is None
+    assert 0 < loss["worlds_drawn"] <= loss["maximum_worlds"] == 2 * loss["scored_decisions"]
+    manifests(extra=True)
+    cohort = tmp_path / "cohort.json"
+    member = {"seed": 1017, "deal_key": keys[1017], "rows": 3}
+    def select(*members):
+        cohort.write_text(json.dumps({
+            "deals": members, "belief_sha256": package["sha256"],
+            "source": {"extract_manifest_sha256": hashlib.sha256(
+                (tmp_path / "manifest.json").read_bytes()).hexdigest()},
+        }))
+        evaluator.main([*args, "--cohort", str(cohort), "--ll-max-draws", "1", "--ll-replicates", "2"])
+        return json.loads(capsys.readouterr().out)
+    assert select(member) == scored
+    with pytest.raises(ValueError, match="seed and extracted deal disagree"):
+        select(dict(member, deal_key=keys[1018]))
+    with pytest.raises(ValueError, match="missing rows"):
+        select(dict(member, rows=4))
+    with pytest.raises(ValueError, match="extra rows"):
+        select(dict(member, rows=2))
+    with pytest.raises(ValueError, match="duplicate seed or deal"):
+        select(member, member)
+    cohort.write_text(json.dumps({"deals": [member], "source": {"extract_manifest_sha256": "bad"}}))
+    with pytest.raises(ValueError, match="different extract manifest"):
+        evaluator.main([*args, "--cohort", str(cohort)])
+    cohort.write_text(json.dumps({"deals": [member], "belief_sha256": "bad"}))
+    with pytest.raises(ValueError, match="different belief package"):
+        evaluator.main([*args, "--cohort", str(cohort)])
     files["test"] = files["train"]
     manifests()
     with pytest.raises(ValueError, match="training exposure"):

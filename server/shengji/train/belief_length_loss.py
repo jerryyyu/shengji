@@ -39,6 +39,8 @@ class MarginalLoss:
         self.max_draws = max_draws
         self.baseline = 0.
         self.copies = 0
+        self.decisions = 0
+        self.draws = 0
 
     def add(self, inp, q, truth, head, stream):
         hit = truth > 0
@@ -46,11 +48,13 @@ class MarginalLoss:
             raise ValueError("invalid baseline mass at a true receiver")
         self.baseline -= (truth[hit] * np.log(q[hit])).sum()
         self.copies += int(truth.sum())
+        self.decisions += 1
         for i, child in enumerate(stream.spawn(len(self.joint))):
             rng = np.random.default_rng(child)
 
             def draw():
                 # One world per call gives each trial its own card ordering.
+                self.draws += 1
                 return draw_length_worlds(inp, q, inp["M"], head.draw_lengths, 1, rng)[0]
 
             score, unseen = first_hit_loss(truth, draw, rng, self.max_draws)
@@ -60,7 +64,9 @@ class MarginalLoss:
     def report(self):
         complete = self.copies > 0 and not self.unseen.any()
         delta = (self.joint - self.baseline) / max(1, self.copies)
-        return {"hidden_copies": self.copies, "replicates": len(delta),
+        return {"scored_decisions": self.decisions, "worlds_drawn": self.draws,
+                "maximum_worlds": self.decisions * len(delta) * self.max_draws,
+                "hidden_copies": self.copies, "replicates": len(delta),
                 "draw_limit_per_row_per_replicate": self.max_draws,
                 "unresolved_copy_observations": int(self.unseen.sum()),
                 "projected_baseline_nats_per_copy": self.baseline / self.copies if self.copies else None,

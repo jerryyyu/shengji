@@ -1,12 +1,17 @@
 """Paired, empirical void coverage for the plain and joint-length proposals."""
 import argparse
+import hashlib
 import json
+from collections import Counter
+from pathlib import Path
+import re
 
 import numpy as np
 
 from ..ai.belief_numpy import load_belief_numpy
 from . import belief_seq as bs
 from .belief_eval import known_counts
+from .belief_labels import stored_deal_id
 from .belief_length_loss import MarginalLoss
 from .belief_lengths import load_length_checkpoint
 
@@ -52,7 +57,33 @@ def decision(part, row):
     return inp
 
 
-def evaluate(extract, head, training, belief, seed, worlds=64, *, ll_max_draws=None, ll_replicates=4):
+def cohort_selection(path, extract, belief_sha256):
+    """Expected test rows keyed by both recorded round seed and dealt deck."""
+    cohort = json.loads(Path(path).read_bytes())
+    if cohort.get("belief_sha256", belief_sha256) != belief_sha256:
+        raise ValueError("cohort belongs to a different belief package")
+    bound = cohort.get("source", {}).get("extract_manifest_sha256")
+    if bound is not None and bound != hashlib.sha256((Path(extract) / "manifest.json").read_bytes()).hexdigest():
+        raise ValueError("cohort belongs to a different extract manifest")
+    items = cohort["deals"]
+    if not isinstance(items, list) or not items:
+        raise ValueError("empty or malformed evaluation cohort")
+    expected, seeds, ids = {}, set(), set()
+    for item in items:
+        seed, deck, rows = item["seed"], item["deal_key"], item["rows"]
+        if (type(seed) is not int or seed < 0 or type(rows) is not int or rows < 1
+                or not isinstance(deck, str) or not re.fullmatch(r"deck:[0-9a-f]{64}", deck)):
+            raise ValueError("invalid evaluation cohort member")
+        deal = int(stored_deal_id(deck))
+        if seed in seeds or deal in ids:
+            raise ValueError("duplicate seed or deal in evaluation cohort")
+        expected[seed, deal] = rows
+        seeds.add(seed)
+        ids.add(deal)
+    return expected, seeds, ids
+
+
+def evaluate(extract, head, training, belief, seed, worlds=64, *, ll_max_draws=None, ll_replicates=4, cohort=None):
     entries = bs.extract_entries([extract], "test", exclude_seed_windows=training["exclude_seed_window"])
     exposed = set(training["deals"])
     seen = set()
@@ -60,14 +91,27 @@ def evaluate(extract, head, training, belief, seed, worlds=64, *, ll_max_draws=N
              for arm in ("plain", "joint")}
     loss = MarginalLoss(ll_replicates, ll_max_draws) if ll_max_draws is not None else None
     verified = bs._Verified()
+    selected = cohort_selection(cohort, extract, belief.package_sha256) if cohort is not None else None
+    observed = Counter()
     decisions = 0
     for entry in entries:
         part = bs.load_part(entry, bs.ROW_KEYS + ("decision", "seed"), verified)
         deals = set(map(int, part["deal"]))
         if exposed & deals:
             raise ValueError("test deal in length-head training exposure")
-        seen.update(deals)
         for row, truth in enumerate(part["Y"]):
+            deal = int(part["deal"][row])
+            if selected is not None:
+                expected, seeds, ids = selected
+                pair = (int(part["seed"][row]), deal)
+                if pair not in expected:
+                    if pair[0] in seeds or deal in ids:
+                        raise ValueError("cohort seed and extracted deal disagree")
+                    continue
+                observed[pair] += 1
+                if observed[pair] > expected[pair]:
+                    raise ValueError("extra rows for evaluation cohort")
+            seen.add(deal)
             inp = decision(part, row)
             copies, mask, sizes = inp["n_c"], inp["M"], inp["sizes"]
             if not np.array_equal(truth.sum(1), copies) or not np.array_equal(truth.sum(0), sizes):
@@ -96,6 +140,8 @@ def evaluate(extract, head, training, belief, seed, worlds=64, *, ll_max_draws=N
                 role = "kitty" if r == 3 else "banker" if r == banker_receiver else "other_seats"
                 for arm, table in (("plain", plain), ("joint", joint)):
                     stats[arm][role].add(np.mean(table[:, s, r] == 0), actual[s, r] == 0)
+    if selected is not None and observed != selected[0]:
+        raise ValueError("missing rows for evaluation cohort")
     if not decisions:
         raise ValueError("no held-out decisions")
     return {"decisions": decisions, "deals": len(seen), "worlds": worlds, "seed": seed,
@@ -111,6 +157,7 @@ def main(argv=None):
     parser.add_argument("--length-checkpoint", required=True)
     parser.add_argument("--belief-package", required=True)
     parser.add_argument("--belief-sha256", required=True)
+    parser.add_argument("--cohort", help="JSON file listing test deals by seed, deal_key and expected rows")
     parser.add_argument("--seed", required=True, type=int)
     parser.add_argument("--ll-max-draws", type=int, help="enable per-copy log-loss scoring with this trial limit")
     parser.add_argument("--ll-replicates", type=int, default=4)
@@ -118,7 +165,7 @@ def main(argv=None):
     head, training = load_length_checkpoint(args.length_checkpoint)
     belief = load_belief_numpy(args.belief_package, args.belief_sha256)
     print(json.dumps(evaluate(args.extract, head, training, belief, args.seed,
-                              ll_max_draws=args.ll_max_draws, ll_replicates=args.ll_replicates), allow_nan=False))
+                              ll_max_draws=args.ll_max_draws, ll_replicates=args.ll_replicates, cohort=args.cohort), allow_nan=False))
 
 
 if __name__ == "__main__":

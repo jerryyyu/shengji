@@ -146,6 +146,11 @@ def split_fraction(key: str) -> float:
     return int(hashlib.sha256(f"{SPLIT_SALT}|{key}".encode()).hexdigest(), 16) / 16 ** 64
 
 
+def stored_deal_id(key: str) -> np.uint64:
+    """The fixed-width identity stored beside each extracted decision."""
+    return np.uint64(int(hashlib.sha256(key.encode()).hexdigest()[:16], 16))
+
+
 def split_of(key: str, calib: float, test: float) -> str:
     frac = split_fraction(key)
     if frac >= 1.0 - test:
@@ -455,7 +460,7 @@ def extract_cluster(path: Path, *, store_index: int, cluster_index: int, calib: 
     if any(deal_key(list(r["deck"])) != key for r in plays):
         raise BeliefLabelError(f"{path}: a cluster must be one deal")
     split = split_of(key, calib, test)
-    deal_hash = np.uint64(int(hashlib.sha256(key.encode()).hexdigest()[:16], 16))
+    deal_hash = stored_deal_id(key)
     xs, ys, ms, sizes, meta, samp, samp_n = [], [], [], [], [], [], []
     stats = Counter()
     for d in iter_decisions(plays):

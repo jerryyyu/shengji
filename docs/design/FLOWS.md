@@ -571,8 +571,8 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   A page asked for by its address waits for the account and the store's check before it opens or gives way to
   the grid.
 - **One rule for taps:** a tap on a companion or a colour only shows it (the gold ring is "looking at"); the one
-  button puts it in use: Use, In use (inert), for a locked Tractor colour what unlocks it ("Win 25 ranked games
-  to unlock · 3 of 25", "Win a ranked game to unlock", inert), for a guest Sign in to use, which opens the
+  button puts it in use: Use, In use (inert), for a locked Tractor colour what unlocks it ("Win 25 ranked rounds
+  to unlock · 3 of 25", "Win a ranked round to unlock", inert), for a guest Sign in to use, which opens the
   identity sheet, and for a store character not owned Buy with StoreKit's price (Soon, inert, for one not
   launched). A tick marks the companion and the colour in use. A guest sees no counts.
 - **The store** (store plumbing, behind `features.store`: the Collection allowlist plus `STORE_ENABLED=1`, or
@@ -641,9 +641,10 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   companion plays its special, at most once every 3 s. Nothing else at the table changes with these taps, and
   no other companion takes one.
 - **Colours** are a palette swap of the one Tractor: Icon red (the default), Paddy green and Enamel blue from the
-  start; the rest are won by ranked games (Jerry 2026-11-26: "win 10/25/50/100", and Ink black the top): Imperial
-  yellow at 10, Lantern orange at 25, Jade at 50, Blue and white at 100, Ink black at 1,000, the swatches in that
-  order (a game won is a ranked round that took your team past A). The server
+  start; the rest are won by ranked rounds won (Jerry 2026-11-26: "win 10/25/50/100", and Ink black the top;
+  Jerry 2026-11-27: "it should be rounds won rather than full games won"): Imperial yellow at 10, Lantern orange
+  at 25, Jade at 50, Blue and white at 100, Ink black at 1,000, the swatches in that order (a round won is a rated
+  round your team won; games won count for nothing here). The server
   refuses a locked colour; a colour already in use stays in use though its count falls short, but once changed
   it is locked again until earned. A colour newly unlocked (Jerry 2026-11-26, red team finding 9) puts a small gold "New" 新 on its
   character's tile in the grid and on its swatch's top edge; opening that character's page shows it. It is seen once

@@ -1542,3 +1542,120 @@ def test_trajectory_test_roots_bind_the_split_pin_mirror_and_ledger(tmp_path):
         replay_tranche_roots(shard, **(options | {"targets": (missing,)}))
     with pytest.raises(BeliefLabelError, match="lead targets"):
         replay_tranche_roots(shard, **(options | {"targets": (targets[0], targets[0])}))
+
+
+@pytest.fixture
+def paired_flat_probe(tmp_path, monkeypatch):
+    torch = pytest.importorskip("torch")
+    from test_unified_serving import _random_pair
+    from shengji.ai.belief_numpy import load_belief_numpy
+    from shengji.ai.cwv_policy import CompleteWorldEvaluator
+    from shengji.ai.unified_readout_numpy import load_unified_readout_numpy
+    from shengji.rl.value_model import ValueModelConfig, ValueNetwork
+    from shengji.train import pv_encode_prefix, unified_serving
+    from shengji.train.belief_labels import deal_key
+    from shengji.train.belief_tree_replay import RootTarget, TrancheRoot
+
+    pair = _random_pair(tmp_path)
+    model = load_unified_readout_numpy(*pair["unified"])
+    monkeypatch.setattr(tree, "greedy_reply_ply", tree.greedy_reply_ply)
+    monkeypatch.setattr(pv_encode_prefix, "score_leaves", pv_encode_prefix.score_leaves)
+    config = pv.PVSearchConfig(checkpoint_sha256="f" * 64, worlds=64, candidates=8, cap=256,
+                               batch_size=32, world_history_legal=True, world_history_draw=True,
+                               belief_worlds=True, refusal_constraints=True, leaf_greedy_finish=True)
+
+    def make():
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(17)
+            value_net = ValueNetwork(ValueModelConfig(architecture="mlp", width=16))
+        bot = pv.PVSearchBot(predict_x, evaluator=CompleteWorldEvaluator(None, model=value_net),
+                             version=2, config=config, checkpoint="/dev/null", seed=29)
+        bot.belief_model = load_belief_numpy(*pair["belief"])
+        return unified_serving.install(bot, model, fast=True)
+
+    rnd = walk(deal(14), 52)
+    assert rnd.phase == "play" and not rnd.trick.plays and len(set(rnd.hands[rnd.turn])) > 1
+    root = TrancheRoot(RootTarget(52, 0, 52, rnd.turn), deal_key(rnd.deck), rnd, ())
+    return make, root
+
+
+def test_compared_lead_uses_production_base_means_and_the_same_paired_worlds(paired_flat_probe, monkeypatch):
+    from shengji.train.belief_tree_compare import compare_replayed_lead
+    from shengji.train.belief_tree_replay import TrancheRoot
+
+    make, root = paired_flat_probe
+    reference = make()
+    normal_draw = reference._worlds
+    expected_worlds = []
+
+    def observe_draw(*args, **kwargs):
+        worlds, attempts = normal_draw(*args, **kwargs)
+        expected_worlds.extend((tuple(tuple(hand) for hand in hands), tuple(buried))
+                               for hands, buried in worlds)
+        return worlds, attempts
+
+    monkeypatch.setattr(reference, "_worlds", observe_draw)
+    reference.decide_play(root.round, root.target.seat)
+    expected_actions = tuple(tuple(cards) for cards in reference.last_decision_record["admitted"])
+    assert len(expected_worlds) == 64
+    original_backup = TrancheRoot.backup
+
+    def verified_backup(self, actions, worlds, **options):
+        assert self is root and actions == expected_actions and worlds == tuple(expected_worlds)
+        return original_backup(self, actions, worlds, **options)
+
+    monkeypatch.setattr(TrancheRoot, "backup", verified_backup)
+    bot = make()
+    ledger = bot._refusals
+    monkeypatch.setattr(bot, "_select", lambda *args, **kwargs: pytest.fail("ran final selection"))
+    result = compare_replayed_lead(root, bot, seed=41, depth_worlds=2, reply_cap=4,
+                                   batch_size=32, reply_value_weight=1.)
+    assert result.actions == expected_actions
+    yardsticks = {tuple(sorted(cards)): (i / 10., -i / 8.) for i, cards in enumerate(expected_actions)}
+    measured = result.contrast(yardsticks)
+    assert measured["sf_gain"] == (yardsticks[measured["tree_action"]][0]
+                                   - yardsticks[measured["flat_action"]][0])
+    assert result.reply_values.shape == (64, len(expected_actions))
+    np.testing.assert_array_equal(result.flat_means, reference.last_decision_record["value_means"])
+    assert "_value_means" not in vars(bot) and bot._refusals is ledger and bot.unified_frame is None
+
+
+@pytest.mark.parametrize("issue", ["fallback", "short"])
+def test_compared_lead_refuses_incomplete_worlds_and_restores_hooks(paired_flat_probe, monkeypatch, issue):
+    from shengji.train.belief_tree_compare import compare_replayed_lead
+
+    make, root = paired_flat_probe
+    bot = make()
+    ledger = bot._refusals
+    estimate = bot._value_means
+    normal_draw = bot._worlds
+
+    def draw(*args, **kwargs):
+        worlds, attempts = normal_draw(*args, **kwargs)
+        if issue == "short":
+            return worlds[:-1], attempts
+        bot._last_sampling["belief_fallback"] = 1
+        return worlds, attempts
+
+    monkeypatch.setattr(bot, "_value_means", estimate)
+    monkeypatch.setattr(bot, "_worlds", draw)
+    message = "64 worlds" if issue == "short" else "fell back"
+    with pytest.raises(ValueError, match=message):
+        compare_replayed_lead(root, bot, seed=41, depth_worlds=2, reply_cap=4,
+                              batch_size=32, reply_value_weight=1.)
+    assert vars(bot)["_value_means"] is estimate and bot._refusals is ledger and bot.unified_frame is None
+
+
+def test_paired_lead_yardsticks_preserve_ties_and_match_cards_by_identity():
+    from shengji.train.belief_tree_compare import PairedLeadValues
+
+    values = PairedLeadValues((("H5", "H4"), ("C6",)), np.array([.25, .25]),
+                              np.tile([.125, .5], (64, 1)))
+    yardsticks = {("C6",): (.75, -.25), ("H4", "H5"): (.5, .25)}
+    assert values.contrast(yardsticks) == {
+        "flat_action": ("H4", "H5"), "tree_action": ("C6",), "flat_all_tied": True,
+        "sf_gain": .25, "vt_gain": -.5, "sf_regret_change": -.25}
+    with pytest.raises(ValueError, match="complete ballot"):
+        values.contrast({("C6",): (.75, -.25)})
+    with pytest.raises(ValueError, match="finite"):
+        values.contrast({**yardsticks, ("C6",): (np.nan, 1.)})

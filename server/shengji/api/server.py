@@ -1177,6 +1177,8 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
         **({"took_seat": {"name": me.took_from[0], "is_bot": me.took_from[1]}}
            if (me.took_from is not None and me.took_from[2] == game.round_no
                and rnd.phase != "round_end") else {}),
+        # how many watch this table, and the latest "is watching" toast
+        "watchers": spectate.players_field(room),
     }
 
 

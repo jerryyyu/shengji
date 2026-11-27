@@ -13,6 +13,8 @@ export interface WatchDoc {
   code: string | null;
   rerun: boolean;
   waiting: boolean;
+  /** How many watch this table now, this watcher among them; absent for a rerun. */
+  watchers?: number;
   round?: number;
   seat?: number;
   players?: string[];

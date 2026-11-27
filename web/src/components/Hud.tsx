@@ -13,6 +13,7 @@ import { attackingTeam, myTeam } from "../tableCopy";
 import { clearToast, currentToast, heldToastKey, hideHeldToast, holdToast, releaseHeldToast, showToast } from "../toast";
 import { tookSeatText } from "../queue/tableText";
 import { useNearbyUi } from "../nearbyGate";
+import { receiptOf } from "../stateReceipt";
 import { displayName, t, useT } from "../i18n";
 
 export function TrumpChip({ state }: { state: GameState }) {
@@ -161,6 +162,59 @@ function useTableToasts(state: GameState) {
   }, [messageKey]);
 }
 
+/** The toast line about watchers: the first listed name and how many more,
+ *  else just how many ("Someone is watching" for one). */
+export function watchersLine(names: readonly string[], n: number): string {
+  const name = names[0];
+  if (name) return n <= 1 ? t("table.watcherOne", { name }) : t("table.watcherMore", { name, n: n - 1 });
+  return n <= 1 ? t("table.someoneWatching") : t("table.peopleWatching", { n });
+}
+
+/** The last watchers toast seen at this table on one socket: the first state
+ *  of each table that ARRIVED on a new socket (its receipt's generation, noted
+ *  as the frame came in) is the baseline. A render of a state kept from the
+ *  old socket is not, so a remount, a reconnect (arrivals while away
+ *  included) or a page opened later tells no toast told before it. */
+const toldWatchers = { key: "", told: -1 };
+
+/** One toast as watchers start watching (the server sends one per 30 s at
+ *  most, naming the batch); none as they leave. */
+function useWatcherToast(state: GameState) {
+  const w = state.watchers;
+  const told = w?.told ?? 0;
+  // the socket this state arrived on, not the socket open now
+  const gen = receiptOf(state)?.generation ?? -1;
+  useEffect(() => {
+    if (!w) return;
+    const key = `${state.room}#${gen}`;
+    const seen = toldWatchers.key === key ? toldWatchers.told : null;
+    toldWatchers.key = key;
+    toldWatchers.told = told;
+    if (seen === null || told <= seen || w.joined.length === 0) return;
+    const names = w.joined.flatMap((j) => (j ? [j.name] : []));
+    showToast(watchersLine(names, w.joined.length), { info: true });
+    // told on a new toast number only; the rest is read with it
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.room, told, gen]);
+}
+
+const EYE = "M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z";
+
+/** Beside ⋯ while anyone watches the table: an eye and the count. A tap
+ *  tells who, as the toast does. */
+function WatchersChip({ watchers }: { watchers: GameState["watchers"] }) {
+  const t = useT();
+  const n = watchers?.count ?? 0;
+  if (n < 1 || !watchers) return null;
+  return (
+    <button type="button" className="chip watchers-chip" aria-label={t("table.watching", { n })}
+            onClick={() => showToast(watchersLine(watchers.named, n), { info: true })}>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d={EYE} /></svg>
+      <span className="watchers-n">{n}</span>
+    </button>
+  );
+}
+
 /** How long a "+10" floats by the points counter. */
 export const POINTS_POP_MS = 1100;
 
@@ -305,6 +359,7 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
   const barRef = useRef<HTMLDivElement | null>(null);
   useStripWidth(barRef);
   useTableToasts(state);
+  useWatcherToast(state);
   const mode = gameMode(state, practice);
   const nb = useNearbyUi();
   const nearby = useNearbySession() && practice && nb !== null;
@@ -343,6 +398,7 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
             <span className="points-target">/80</span>
             <PointsPop points={state.attacker_points} />
           </span>
+          <WatchersChip watchers={state.watchers} />
           {/* a guest is never rated, so its leave sheet speaks of no ranking even at a ranked table;
               Allow joiners is at every table that takes joiners (the frame carries it), ranked or casual */}
           <HudMenu room={state.room} mode={modeWord(mode, guest, state.joined_round === true)} ranked={mode === "ranked"} guest={guest} offline={practice} nearby={nearby}

@@ -691,6 +691,7 @@ def test_a_finished_round_is_read_once_and_served_as_the_same_bytes(feed, monkey
     def body(resp):
         doc = resp.json()
         doc.pop("watcher")
+        doc.pop("watchers", None)       # the second reader is counted too
         return json.dumps(doc, sort_keys=True)
 
     assert body(first) == body(second)
@@ -962,3 +963,267 @@ def test_presence_and_serve_agree_over_random_rooms(feed, monkeypatch, seed):
         if resp.status_code == 200:
             events = resp.json()["events"]
             assert events[0]["e"] == "round_start" and events[-1]["e"] == "round_end"
+
+
+# ------------------------------------------------------- the players are told
+@pytest.fixture()
+def told(feed, monkeypatch):
+    """The feed, with each announcement run by the test: ``run()`` tells the
+    players now, as the scheduled one does once its gap has passed."""
+    import asyncio
+
+    srv, spectate, client = feed
+    scheduled, pushed = [], []
+    monkeypatch.setattr(spectate, "_schedule", lambda room: scheduled.append(room))
+
+    async def broadcast(room):
+        pushed.append({s: srv.state_for(room, s) for s, sd in enumerate(room.seats)
+                       if sd is not None and not sd.is_bot})
+
+    monkeypatch.setattr(srv, "_broadcast_locked", broadcast)
+
+    def run(room):
+        asyncio.run(spectate._announce(room, 0))
+        return pushed[-1] if pushed else None
+
+    return srv, spectate, client, scheduled, pushed, run
+
+
+def _watcher(store, sub, name, listed=True):
+    uid = _rated(store, sub, name, visible=listed)
+    store.set_display_name(uid, name)
+    return {"cookie": f"sj_session={store.create_session(uid)}"}
+
+
+def test_the_players_count_their_watchers_up_and_down(told, monkeypatch):
+    srv, spectate, client, scheduled, _, _ = told
+    t = Table(srv, ranked=True)
+    t.play_round()
+    t.deal()
+    assert srv.state_for(t.room, 0)["watchers"]["count"] == 0
+    first = _watch(client).json()
+    assert first["watchers"] == 1                     # the watcher reads the count too
+    second = _watch(client).json()
+    assert second["watchers"] == 2
+    assert srv.state_for(t.room, 0)["watchers"]["count"] == 2
+    # following again is the same watcher: no new count, no new toast
+    client.get(f"/api/watch/{first['table']}", params={"after": first["round"], "w": first["watcher"]})
+    assert srv.state_for(t.room, 0)["watchers"]["count"] == 2
+    assert len(scheduled) == 2
+    # a watcher counts until WATCH_TTL passes without a read
+    t.room.watch.watchers[first["watcher"]] -= spectate.WATCH_TTL + 1
+    assert srv.state_for(t.room, 0)["watchers"]["count"] == 1
+    assert first["watcher"] not in t.room.watch.who
+    t.room.watch.watchers[second["watcher"]] -= spectate.WATCH_TTL + 1
+    assert srv.state_for(t.room, 0)["watchers"]["count"] == 0
+
+
+def test_a_listed_watcher_is_named_and_anyone_else_is_not(accounts_on, told):
+    srv, spectate, client, _, _, run = told
+    store = accounts_on.STORE
+    mei = _watcher(store, "w-mei", "Mei Listed")
+    hidden = _watcher(store, "w-hid", "Hana Hidden", listed=False)
+    t = Table(srv, code="TOLD", ranked=True)
+    t.play_round()
+    t.deal()
+    client.get("/api/watch", headers=hidden)
+    client.get("/api/watch")                          # a guest
+    client.get("/api/watch", headers=mei)
+    frames = run(t.room)
+    w = frames[0]["watchers"]
+    assert w["count"] == 3 and w["told"] == 1
+    assert w["joined"] == [None, None, {"name": "Mei Listed"}]
+    assert w["named"] == ["Mei Listed"]
+    # nothing names the unlisted account or carries an account id, anywhere
+    blob = json.dumps(frames)
+    assert "Hana Hidden" not in blob and "Hana" not in blob
+    # the field holds a count, a number, and names: no id in any shape
+    assert set(w) == {"count", "told", "joined", "named"}
+    assert all(j is None or set(j) == {"name"} for j in w["joined"])
+    assert all(isinstance(n, str) for n in w["named"])
+    # no toast when nobody new arrived
+    assert run(t.room) is frames
+    assert srv.state_for(t.room, 0)["watchers"]["told"] == 1
+
+
+def test_arrivals_within_the_gap_are_told_together(told, monkeypatch):
+    srv, spectate, client, scheduled, pushed, _ = told
+    t = Table(srv, ranked=True)
+    t.play_round()
+    t.deal()
+    clock = [1000.0]
+    monkeypatch.setattr(spectate.time, "time", lambda: clock[0])
+    st = t.room.watch
+    for tok in ("a" * 16, "b" * 16):
+        st.watchers[tok] = clock[0]
+        st.arrivals.append(tok)
+    assert spectate.announcement(st, set(), clock[0]) is True
+    assert st.told == 1 and st.joined == [None, None]
+    # one more arrives 5 s later: it waits for the rest of the gap
+    clock[0] += 5
+    st.watchers["c" * 16] = clock[0]
+    st.arrivals.append("c" * 16)
+    assert st.told_at + spectate.ANNOUNCE_GAP - clock[0] == pytest.approx(25.0)
+    # a watcher who left before its turn is not told of
+    st.watchers["d" * 16] = clock[0]
+    st.arrivals.append("d" * 16)
+    st.drop("d" * 16)
+    clock[0] += 25
+    assert spectate.announcement(st, set(), clock[0]) is True
+    assert st.told == 2 and st.joined == [None]
+
+
+def test_the_scheduled_announcement_waits_out_the_gap(feed, monkeypatch):
+    import asyncio
+
+    srv, spectate, client = feed
+    t = Table(srv, ranked=True)
+    t.play_round()
+    t.deal()
+    st = t.room.watch
+    waits, pushed = [], []
+
+    async def sleep(s):
+        waits.append(s)
+
+    async def broadcast(room):
+        pushed.append(st.told)
+
+    monkeypatch.setattr(spectate.asyncio, "sleep", sleep)
+    monkeypatch.setattr(srv, "_broadcast_locked", broadcast)
+    monkeypatch.setattr(spectate, "_listed", lambda: set())
+
+    async def scenario():
+        st.watchers["a" * 16] = time.time()
+        st.arrivals.append("a" * 16)
+        spectate._schedule(t.room)
+        await st.announcing
+        assert pushed == [1] and waits == []          # the first is told at once
+        st.watchers["b" * 16] = time.time()
+        st.arrivals.append("b" * 16)
+        spectate._schedule(t.room)
+        spectate._schedule(t.room)                    # one wait, however many arrive
+        await st.announcing
+        assert pushed == [1, 2] and len(waits) == 1
+        assert waits[0] == pytest.approx(spectate.ANNOUNCE_GAP, abs=1.0)
+
+    asyncio.run(scenario())
+
+
+def test_a_watcher_leaving_tells_the_players_nothing(told):
+    srv, spectate, client, scheduled, pushed, run = told
+    t = Table(srv, ranked=True)
+    t.play_round()
+    t.deal()
+    first = _watch(client).json()
+    run(t.room)
+    assert len(pushed) == 1
+    t.room.watch.watchers[first["watcher"]] -= spectate.WATCH_TTL + 1
+    assert run(t.room) is pushed[0] and len(pushed) == 1
+    assert srv.state_for(t.room, 0)["watchers"] == {"count": 0, "told": 1, "joined": [None], "named": []}
+
+
+def test_a_rerun_carries_no_watcher_count(feed):
+    srv, spectate, client = feed
+    t = Table(srv, code="GONE", ranked=True)
+    t.play_round()
+    srv.rooms.pop("GONE")
+    rerun = _watch(client).json()
+    assert rerun["rerun"] is True and "watchers" not in rerun
+
+
+def test_an_announcement_cancelled_in_its_wait_tells_nothing(feed, monkeypatch):
+    """LIFECYCLE_CHECKLIST 1: cancelled at an await, it commits nothing."""
+    import asyncio
+
+    srv, spectate, client = feed
+    t = Table(srv, ranked=True)
+    t.play_round()
+    t.deal()
+    st = t.room.watch
+    st.watchers["a" * 16] = time.time()
+    st.arrivals.append("a" * 16)
+    pushed = []
+
+    async def broadcast(room):
+        pushed.append(room)
+
+    monkeypatch.setattr(srv, "_broadcast_locked", broadcast)
+
+    async def scenario():
+        task = asyncio.ensure_future(spectate._announce(t.room, 5.0))
+        await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(scenario())
+    assert st.told == 0 and st.joined == [] and pushed == []
+    assert st.arrivals == ["a" * 16]                  # told by the next announcement
+
+
+def test_a_table_closed_during_the_wait_is_sent_nothing(feed, monkeypatch):
+    """LIFECYCLE_CHECKLIST 2: the room may be gone after the wait."""
+    import asyncio
+
+    srv, spectate, client = feed
+    t = Table(srv, code="SHUT", ranked=True)
+    t.play_round()
+    t.deal()
+    st = t.room.watch
+    st.watchers["a" * 16] = time.time()
+    st.arrivals.append("a" * 16)
+    sent = []
+    monkeypatch.setattr(srv, "enqueue", lambda seat, frame: sent.append(frame))
+    monkeypatch.setattr(spectate, "_listed", lambda: set())
+    srv.rooms.pop("SHUT")
+    asyncio.run(spectate._announce(t.room, 0))
+    assert sent == []
+
+
+@pytest.mark.parametrize("route", ["watch", "follow"])
+def test_a_table_gone_during_the_account_read_is_not_served(feed, monkeypatch, route):
+    """LIFECYCLE_CHECKLIST 2: the account read is an await; a table that
+    stops being watchable during it is not answered as live, and counts nobody."""
+    srv, spectate, client = feed
+    t = Table(srv, code="GOAW", ranked=True)
+    t.play_round()
+    t.deal()
+    first = None
+    if route == "follow":
+        first = _watch(client).json()
+        t.room.watch.drop(first["watcher"])           # a reader new to the table again
+    scheduled = []
+    monkeypatch.setattr(spectate, "_schedule", lambda room: scheduled.append(room))
+    real = spectate._viewer
+
+    async def viewer(request):
+        user = await real(request)
+        t.room.aborted = True                          # the table ends while its account is read
+        return user
+
+    monkeypatch.setattr(spectate, "_viewer", viewer)
+    if route == "watch":
+        resp = _watch(client)
+        assert resp.status_code == 404 or resp.json().get("rerun") is True
+    else:
+        resp = client.get(f"/api/watch/{first['table']}", params={"after": first["round"], "w": first["watcher"]})
+        assert resp.status_code == 404
+    assert t.room.watch.watchers == {} and scheduled == []
+
+
+def test_a_watcher_reading_through_a_long_round_stays_counted_and_is_told_once(told, monkeypatch):
+    srv, spectate, client, scheduled, _, _ = told
+    t = Table(srv, ranked=True)
+    t.play_round()
+    t.deal()
+    clock = [time.time()]
+    monkeypatch.setattr(spectate.time, "time", lambda: clock[0])
+    first = _watch(client).json()
+    # the watch screen's foreground poll every 15 s while the round plays back
+    for _ in range(12):
+        clock[0] += 15
+        r = client.get(f"/api/watch/{first['table']}", params={"after": first["round"], "w": first["watcher"]})
+        assert r.status_code == 200
+        assert srv.state_for(t.room, 0)["watchers"]["count"] == 1
+    assert len(scheduled) == 1 and t.room.watch.arrivals == [first["watcher"]]

@@ -208,7 +208,7 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   // the latest pick: an answer to an earlier one is dropped
   const picks = useRef(0);
   // what a waiting reply says now: the round in play, and the code Take a seat joins
-  const [live, setLive] = useState<{ round: number | null; code: string | null }>({ round: null, code: null });
+  const [live, setLive] = useState<{ round: number | null; code: string | null; watchers?: number }>({ round: null, code: null });
   const root = useRef<HTMLDivElement>(null);
   const handRects = useRef<HandRects>(new Map());
 
@@ -231,7 +231,7 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     watchUsage.shown(l.doc.rerun ? "replay" : "live");
     table.current = l.doc.table;
     setLoaded(l);
-    setLive({ round: l.doc.live_round, code: l.doc.code });
+    setLive({ round: l.doc.live_round, code: l.doc.code, watchers: l.doc.watchers });
     setAt(0);
     setSeat(l.doc.seat ?? 0);
     setKitty(false);
@@ -296,6 +296,29 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     return () => window.clearTimeout(timer);
   }, [loaded, beat, paused, atEnd, speed, beats.length]);
 
+  // While a live table's round plays back, the same read every FOLLOW_MS in
+  // the foreground keeps this watcher counted at the table (the server's
+  // lease is 90 s; a round plays back for longer). A finished round it
+  // brings waits in `next` for the end; a hidden page reads nothing.
+  useEffect(() => {
+    if (!loaded || atEnd || loaded.doc.rerun) return;
+    const { doc } = loaded;
+    let on = true;
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === "hidden" || table.current !== doc.table) return;
+      void followWatch(doc.table, next.current?.doc.round ?? doc.round ?? 0, doc.watcher).then((res) => {
+        if (!on || table.current !== doc.table || !res.ok) return;
+        if (res.doc.waiting) {
+          setLive({ round: res.doc.live_round, code: res.doc.code, watchers: res.doc.watchers });
+        } else if (!next.current) {
+          const l = load(res.doc);
+          if (l && l.doc.table === doc.table && l.doc.round !== doc.round) next.current = l;
+        }
+      });
+    }, FOLLOW_MS);
+    return () => { on = false; window.clearInterval(poll); };
+  }, [loaded, atEnd]);  // eslint-disable-line react-hooks/exhaustive-deps
+
   // Caught up: one timer asks about the round in play every FOLLOW_MS until
   // it finishes; that round then plays once the card has held CARD_HOLD_MS.
   // Stepping back from the end keeps a round already read, and reaching the
@@ -321,7 +344,7 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
       void r.then((res) => {
         if (!on || table.current !== doc.table) return;
         if (res.ok && res.doc.waiting) {
-          setLive({ round: res.doc.live_round, code: res.doc.code });
+          setLive({ round: res.doc.live_round, code: res.doc.code, watchers: res.doc.watchers });
         } else if (res.ok) {
           const l = load(res.doc);
           if (l && (l.doc.table !== doc.table || l.doc.round !== doc.round)) play(l);
@@ -403,7 +426,10 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
         <div className="hud-bar">
           <div className="hud-group" />
           <div className="hud-group">
-            <span className="chip watch-round"><Icon d={ICON.eye} />{doc.rerun ? t("watch.replay") : t("watch.round", { n: doc.round ?? 0 })}</span>
+            {/* a live table: how many watch it, and that this is the round before the one in play */}
+            <span className="chip watch-round"><Icon d={ICON.eye} />
+              {!doc.rerun && live.watchers ? <span className="watch-count" aria-label={t("watch.watching", { n: live.watchers })}>{live.watchers}</span> : null}
+              {doc.rerun ? t("watch.replay") : t("watch.previousRound", { n: doc.round ?? 0 })}</span>
             <TrumpChip state={state} />
             <span className="chip points-chip">
               <span className="points-big">{frame.attackerPoints}</span>

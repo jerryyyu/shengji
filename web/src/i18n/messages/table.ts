@@ -280,4 +280,18 @@ export const table = defineMessages({
   "table.unblock": { en: "Unblock player", zh: "取消屏蔽", hant: "取消封鎖" },
   "table.signInToReport": { en: "Sign in to report", zh: "登录后举报", hant: "登入後舉報" },
   "table.report": { en: "Report player", zh: "举报玩家", hant: "舉報玩家" },
+  // who watches this table (the eye chip and its toast)
+  "table.watching": { en: "{n} watching", zh: "{n} 人观战", hant: "{n} 人觀戰" },
+  "table.watcherOne": {
+    en: "{name} is watching",
+    zh: (p) => `${gap(s(p, "name"))}在观战`,
+    hant: (p) => `${gap(s(p, "name"))}在觀戰`,
+  },
+  "table.watcherMore": {
+    en: (p) => `${s(p, "name")} and ${s(p, "n")} ${plural(p.n, "other", "others")} are watching`,
+    zh: (p) => `${s(p, "name")} 等 ${Number(p.n) + 1} 人在观战`,
+    hant: (p) => `${s(p, "name")} 等 ${Number(p.n) + 1} 人在觀戰`,
+  },
+  "table.someoneWatching": { en: "Someone is watching", zh: "有人在观战", hant: "有人在觀戰" },
+  "table.peopleWatching": { en: "{n} people are watching", zh: "{n} 人在观战", hant: "{n} 人在觀戰" },
 });

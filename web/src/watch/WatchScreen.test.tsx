@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fixture from "../replay/server-round-finished.fixture.json";
-import WatchScreen, { CARD_HOLD_MS, RETRY_MS } from "./WatchScreen";
+import WatchScreen, { CARD_HOLD_MS, FOLLOW_MS, RETRY_MS } from "./WatchScreen";
 import { TO_PLAY_MS, watchUsage } from "./usage";
 import { telemetry } from "../telemetry";
 import { clearToast, currentToast } from "../toast";
@@ -222,9 +222,25 @@ describe("a replay", () => {
 describe("a live table", () => {
   it("says its round in the strip and offers Next table", async () => {
     await open();
-    expect(host.querySelector(".watch-round")!.textContent).toBe("Round 3");
+    expect(host.querySelector(".watch-round")!.textContent).toBe("Round 3 · previous round");
     await act(async () => { button("More").click(); });
     expect([...host.querySelectorAll("[role=menuitem]")].map((b) => b.textContent)).toEqual(["Next table", "Leave"]);
+  });
+
+  it("counts the table's watchers in the strip, in every language", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ...feed, watchers: 3 }), { status: 200 })));
+    for (const [choice, text, label] of [["en", "3Round 3 · previous round", "3 watching"],
+      ["zh-Hans", "3第 3 局 · 上一局", "3 人观战"], ["zh-Hant", "3第 3 局 · 上一局", "3 人觀戰"]] as const) {
+      setLanguageChoice(choice);
+      try {
+        await open();
+        const chip = host.querySelector(".watch-round")!;
+        expect(chip.textContent).toBe(text);
+        expect(chip.querySelector(".watch-count")!.getAttribute("aria-label")).toBe(label);
+      } finally {
+        setLanguageChoice("system");
+      }
+    }
   });
 
   it("puts the transport, the tabs and the kitty in one row above the hand", async () => {
@@ -415,6 +431,23 @@ describe("caught up", () => {
     await flush();
   }
   const follows = (table = "abc123") => urls.filter((u) => u.startsWith(`/api/watch/${table}`)).length;
+
+  it("keeps its place while the round plays back: one read per FOLLOW_MS in the foreground, none hidden", async () => {
+    reply = (url) => url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined } : feed;
+    const h = await screen();
+    await act(async () => { btn(h, "Pause")?.click(); });     // mid-round, never at its end
+    urls.length = 0;
+    for (let s = 0; s < 120; s++) await act(async () => { vi.advanceTimersByTime(1000); });
+    await flush();
+    // the server's lease is 90 s; a round plays back for longer than that
+    expect(follows()).toBe(Math.floor(120000 / FOLLOW_MS));
+    expect(urls.every((u) => u.startsWith("/api/watch/abc123?after=3"))).toBe(true);
+    const hidden = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    urls.length = 0;
+    for (let s = 0; s < 60; s++) await act(async () => { vi.advanceTimersByTime(1000); });
+    hidden.mockRestore();
+    expect(follows()).toBe(0);
+  });
 
   it("updates the live round and the seat from a waiting reply", async () => {
     reply = (url) => url.startsWith("/api/watch/")
@@ -854,7 +887,7 @@ describe("watch telemetry", () => {
     for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); });
     await act(async () => { vi.advanceTimersByTime(CARD_HOLD_MS); });
     for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); });
-    expect(host.querySelector(".watch-round")!.textContent).toBe("Round 3");
+    expect(host.querySelector(".watch-round")!.textContent).toBe("Round 3 · previous round");
     expect(open_.mock.calls).toEqual([["replay", "presence"], ["live", "next"]]);
     expect(leave.mock.calls).toEqual([["ended", 5, "replay"]]);
     await act(async () => { vi.advanceTimersByTime(30_000); });
@@ -876,7 +909,7 @@ describe("watch telemetry", () => {
     for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); });
     await act(async () => { vi.advanceTimersByTime(CARD_HOLD_MS); });
     for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); });
-    expect(host.querySelector(".watch-round")!.textContent).toBe("Round 4");
+    expect(host.querySelector(".watch-round")!.textContent).toBe("Round 4 · previous round");
     expect(open_.mock.calls).toEqual([["live", "presence"]]);
     expect(leave).not.toHaveBeenCalled();
   });

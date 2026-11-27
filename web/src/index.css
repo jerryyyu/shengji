@@ -1108,6 +1108,31 @@ dialog.conn-lost::backdrop { background: var(--chrome); }
   margin-left: auto;
 }
 
+/* while anyone watches: an eye and the count, just left of ⋯, drawn as ⋯
+   is (34px tall, a 44px target) */
+.watchers-chip {
+  position: relative;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  margin-left: auto;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-edge);
+  background: #10131a;
+  color: var(--text);
+  font: 600 var(--fs-14)/1 inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.watchers-chip::after { content: ""; position: absolute; inset: -5px -2px; }
+.watchers-chip svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; }
+.watchers-chip + .hud-more { margin-left: 6px; }
+
 .hud-more-btn {
   position: relative;
   box-sizing: border-box;
@@ -2913,6 +2938,19 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .hud-more {
     pointer-events: auto;
+  }
+
+  /* the watchers' eye is a strip pill beside ⋯ */
+  .hud-bar .watchers-chip {
+    height: var(--header-h);
+    padding: 0 11px;
+    border: 0;
+    background: var(--pill-bg);
+    font-size: var(--fs-13);
+  }
+  /* chat's button stands between the eye and ⋯ */
+  .table-screen:has(.chat-launch) .hud-bar .watchers-chip {
+    margin-right: calc(40px + var(--space-s));
   }
 
   /* drawn 36x32 to match the strip; ::after gives it a 48px hit area (44px

@@ -8,7 +8,8 @@
   },
   "state": {
     "guest": "a person with no account at a rated or queue-matched table",
-    "matched": "a table built by the matchmaking queue"
+    "matched": "a table built by the matchmaking queue",
+    "watchers": "who watches the table one round behind: nobody watches an offline game"
   },
   "state.players": {
     "away": "the move timer marked this present player away",

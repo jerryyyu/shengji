@@ -210,6 +210,26 @@ def test_launcher_hold_then_guarded_resume_preserves_completed_shard(release50_p
     with pytest.raises(launcher.Refused, match='leg identity'):
         launcher.seal_leg(dict(spec, seed=spec['seed']+1), out)
     terminal = Path(str(out)+'.terminal.1.json')
+    extract_dir = tmp_path/'rt4-extract'
+    prepare = [sys.executable, str(source/'server/scripts/prepare_belief_cache.py'),
+               '--store', str(out), '--out', str(extract_dir), '--workers', '1',
+               '--sealed-rt4-leg', str(terminal)]
+    refused = subprocess.run([*prepare, '0' * 64], capture_output=True, text=True)
+    assert refused.returncode and 'terminal digest differs' in refused.stderr and not extract_dir.exists()
+    prepared = json.loads(subprocess.check_output([*prepare, launcher.sha256(terminal)]))
+    assert prepared['consumer_rows'] == manifest['counts']['decisions'] > 0
+    assert json.loads((extract_dir/'manifest.json').read_bytes())['split']['test'] == 0.04
+    side = out/manifest['shards'][0]['sidecar']
+    saved = side.read_bytes()
+    mode = side.stat().st_mode
+    side.chmod(0o600)
+    try:
+        side.write_bytes(saved + b' ')
+        refused = subprocess.run([*prepare, launcher.sha256(terminal), '--resume'], capture_output=True, text=True)
+        assert refused.returncode and 'sidecar sha256 differs' in refused.stderr
+    finally:
+        side.write_bytes(saved)
+        side.chmod(mode)
     archive = tmp_path/'leg.tar.zst'
     # macOS fleet operators invoke the archive consumer with the system interpreter.
     archive_python = '/usr/bin/python3' if sys.platform == 'darwin' else sys.executable

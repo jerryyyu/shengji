@@ -294,7 +294,7 @@ export default function App() {
   const watchShown = watching !== null && game === null && room === null
     && !gamesRoute && !howtoRoute && !infoRoute && !homeRoute;
   // a seat anywhere ends watching: the table you sit at is the one shown
-  useEffect(() => { if (watching && (game !== null || room !== null)) watch.close(); }, [watching, game, room]);
+  useEffect(() => { if (watching && (game !== null || room !== null)) watch.close("seat"); }, [watching, game, room]);
   const atTable =
     (game !== null && !gamesRoute && !howtoRoute && !infoRoute && !homeRoute) || watchShown;
   useEffect(() => { void lockFor(atTable ? "game" : "lobby"); }, [atTable]);

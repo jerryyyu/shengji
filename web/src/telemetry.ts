@@ -27,7 +27,7 @@ export type TapId =
   | "offer_join" | "offer_wait" | "offer_chip" | "next_round" | "round_end_leave"
   | "menu_leave" | "chip_leave" | "leave_confirm" | "leave_keep" | "howto_open"
   | "signin_open" | "coach_on" | "coach_off" | "invite_share" | "copy_code" | "app_store_badge"
-  | "hint_preselect" | "watch_open" | "watch_leave" | "rejoin_duo"
+  | "hint_preselect" | "rejoin_duo"
   | "companions_on" | "companions_off" | "look_use" | "collection_tile" | "try_on";
 
 /** Where the identity sheet (the name, and Sign in) was opened. */
@@ -46,6 +46,20 @@ export type Provider = "google" | "apple";
 export type DeviceStep = "created" | "restored" | "fell_back_guest" | "linked" | "conflict_shown" | "switched";
 
 export type Platform = "ios_app" | "pwa" | "web";
+
+/** A watched table: a live one, one round behind, or a finished ranked round replayed. */
+export type WatchKind = "live" | "replay";
+/** How a watch began: the Play tab's presence link, the browser's Forward
+ *  onto a watch's history entry, or the screen moving to another table
+ *  (Next table, or in place of a table that is gone). */
+export type WatchFrom = "presence" | "history" | "next";
+/** What ended a watch: its Leave (the ✕, the menu's Leave or the round end's
+ *  Leave), back, Escape, Next table, a failed read, a seat taken (Take a seat,
+ *  Play, or a table of the viewer's own), the table gone, or the round
+ *  watched ended and the feed moved on to another table. */
+export type WatchBy = "close" | "back" | "escape" | "next" | "error" | "seat" | "gone" | "ended";
+/** watch_leave's seconds watched, and watch_to_play's seconds after it, stop here. */
+export const MAX_WATCH_SECS = 86_400;
 
 export type LeadKind = "single" | "pair" | "tractor" | "throw";
 
@@ -121,7 +135,10 @@ type Event =
   | { e: "review_prompt"; t: number; trigger: ReviewTrigger; version: string }
   | { e: "invite"; t: number; step: InviteStep; via?: InviteVia; h?: string }
   | ({ e: "companions"; t: number } & CompanionsSeen)
-  | ({ e: "companion_round"; t: number } & CompanionRound);
+  | ({ e: "companion_round"; t: number } & CompanionRound)
+  | { e: "watch_open"; t: number; kind: WatchKind; from: WatchFrom }
+  | { e: "watch_leave"; t: number; by: WatchBy; secs: number; kind?: WatchKind }
+  | { e: "watch_to_play"; t: number; secs: number; by: WatchBy };
 
 export const FLUSH_MS = 10_000;
 export const FLUSH_AT = 20;
@@ -456,6 +473,23 @@ export class Telemetry {
   companionRound(c: CompanionRound): void {
     this.push({ e: "companion_round", t: now(), walk_taps: clamp(c.walk_taps, 0, MAX_COMPANION_TAPS),
                 specials: clamp(c.specials, 0, MAX_COMPANION_TAPS), nudges: clamp(c.nudges, 0, MAX_COMPANION_TAPS) });
+  }
+
+  /** A watched table drawn first, and how its watch began (watch/usage.ts). */
+  watchOpen(kind: WatchKind, from: WatchFrom): void {
+    this.push({ e: "watch_open", t: now(), kind, from });
+  }
+
+  /** A watch ended: why, the seconds it lasted and, once a table was drawn, its kind. */
+  watchLeave(by: WatchBy, secs: number, kind: WatchKind | null): void {
+    const ev: Event = { e: "watch_leave", t: now(), by, secs: clamp(secs, 0, MAX_WATCH_SECS) };
+    if (kind !== null) ev.kind = kind;
+    this.push(ev);
+  }
+
+  /** An online round began `secs` after a watch that ended `by`. */
+  watchToPlay(secs: number, by: WatchBy): void {
+    this.push({ e: "watch_to_play", t: now(), secs: clamp(secs, 0, MAX_WATCH_SECS), by });
   }
 
   turnDone(turn: TurnDone): void {

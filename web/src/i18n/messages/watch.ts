@@ -20,5 +20,6 @@ export const watch = defineMessages({
   "watch.kitty": { en: "Kitty", zh: "底牌", hant: "底牌" },
   "watch.closeKitty": { en: "Close the kitty", zh: "关闭底牌", hant: "關閉底牌" },
   "watch.takeSeat": { en: "Take a seat", zh: "入座", hant: "入座" },
+  "watch.failed": { en: "Couldn't open a table", zh: "没能打开牌桌", hant: "沒能打開牌桌" },
   "watch.nothing": { en: "Nobody is playing right now", zh: "现在没人在玩", hant: "現在沒人在玩" },
 });

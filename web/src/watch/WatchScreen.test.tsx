@@ -6,7 +6,10 @@ import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fixture from "../replay/server-round-finished.fixture.json";
-import WatchScreen from "./WatchScreen";
+import WatchScreen, { CARD_HOLD_MS, RETRY_MS } from "./WatchScreen";
+import { TO_PLAY_MS, watchUsage } from "./usage";
+import { telemetry } from "../telemetry";
+import { clearToast, currentToast } from "../toast";
 import { watch } from "./store";
 import { canWatch } from "./store";
 import { setLanguageChoice } from "../i18n";
@@ -531,7 +534,8 @@ describe("the menu while plays arrive", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
   });
-  afterEach(() => { watch.close(); });
+  // a close's history back lands on the fake clock before the real one returns
+  afterEach(() => { watch.close(); vi.runOnlyPendingTimers(); });
 
   const felt = () => host.querySelector(".felt")!.innerHTML;
   const menuOpen = () => {
@@ -626,5 +630,275 @@ describe("the menu while plays arrive", () => {
     await late();
     expect(close).toHaveBeenCalledTimes(1);
     close.mockRestore();
+  });
+});
+
+describe("a failed read", () => {
+  type Answer = number | "offline";
+  let answers: Answer[];
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    clearToast();
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      urls.push(url);
+      const a = answers.length > 1 ? answers.shift()! : answers[0];
+      if (a === "offline") throw new TypeError("Failed to fetch");
+      if (a !== 200) return new Response("{}", { status: a });
+      const body = url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined } : feed;
+      return new Response(JSON.stringify(body), { status: 200 });
+    }));
+  });
+  // a close's history back lands on the fake clock before the real one returns
+  afterEach(() => { watch.close(); clearToast(); vi.runOnlyPendingTimers(); });
+  const flush = async () => { for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); }); };
+  const nobody = () => host.querySelector(".watch-none");
+  const reads = () => urls.filter((u) => u.startsWith("/api/watch?")).length;
+
+  for (const status of [429, 500, 503, "offline"] as const) {
+    it(`${status}: tried once more, and a table that then answers is shown`, async () => {
+      answers = [status, 200];
+      watch.open("ranked");
+      await open();
+      expect(nobody()).toBeNull();
+      expect(reads()).toBe(1);
+      await act(async () => { vi.advanceTimersByTime(RETRY_MS); });
+      await flush();
+      expect(reads()).toBe(2);
+      expect(tabs()).toHaveLength(4);
+      expect(nobody()).toBeNull();
+      expect(watch.get()).not.toBeNull();
+      expect(currentToast()).toBeNull();
+    });
+
+    it(`${status} twice: back to the Play tab with one toast, never the nobody line`, async () => {
+      answers = [status];
+      watch.open("ranked");
+      await open();
+      expect(nobody()).toBeNull();
+      await act(async () => { vi.advanceTimersByTime(RETRY_MS); });
+      await flush();
+      expect(reads()).toBe(2);
+      expect(nobody()).toBeNull();
+      expect(watch.get()).toBeNull();
+      expect(currentToast()?.text).toBe("Couldn't open a table");
+      // nothing more is asked
+      await act(async () => { vi.advanceTimersByTime(60_000); });
+      expect(reads()).toBe(2);
+    });
+  }
+
+  // a 200 whose round cannot be drawn (cut short) is a failed read, not an empty feed
+  const cut = { ...feed, events: fixture.events.slice(0, 12) };
+  it("a 200 with a round that cannot be drawn twice: back to the Play tab with one toast, never the nobody line", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      urls.push(url);
+      return new Response(JSON.stringify(cut), { status: 200 });
+    }));
+    watch.open("ranked");
+    await open();
+    expect(nobody()).toBeNull();
+    expect(watch.get()).not.toBeNull();
+    await act(async () => { vi.advanceTimersByTime(RETRY_MS); });
+    await flush();
+    expect(reads()).toBe(2);
+    expect(nobody()).toBeNull();
+    expect(watch.get()).toBeNull();
+    expect(currentToast()?.text).toBe("Couldn't open a table");
+  });
+
+  it("a 200 with a round that cannot be drawn, then a good one: the table", async () => {
+    let n = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      urls.push(url);
+      return new Response(JSON.stringify(n++ === 0 ? cut : feed), { status: 200 });
+    }));
+    watch.open("ranked");
+    await open();
+    expect(nobody()).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(RETRY_MS); });
+    await flush();
+    expect(tabs()).toHaveLength(4);
+    expect(nobody()).toBeNull();
+    expect(currentToast()).toBeNull();
+  });
+
+  it("404: the nobody line at once, with no second read", async () => {
+    answers = [404];
+    watch.open("ranked");
+    await open();
+    expect(nobody()).not.toBeNull();
+    await act(async () => { vi.advanceTimersByTime(RETRY_MS * 4); });
+    expect(reads()).toBe(1);
+    expect(watch.get()).not.toBeNull();
+    expect(currentToast()).toBeNull();
+  });
+
+  it("a Next table that fails keeps the table on screen and says nothing", async () => {
+    answers = [200];
+    watch.open("ranked");
+    await open();
+    answers = [500];
+    await act(async () => { button("More").click(); });
+    await act(async () => { [...host.querySelectorAll<HTMLButtonElement>("[role=menuitem]")][0].click(); });
+    await act(async () => { vi.advanceTimersByTime(RETRY_MS); });
+    await flush();
+    expect(reads()).toBe(3);
+    expect(tabs()).toHaveLength(4);
+    expect(watch.get()).not.toBeNull();
+    expect(currentToast()).toBeNull();
+  });
+
+  it("a read still waiting when the watch closes is not tried again", async () => {
+    answers = [500];
+    watch.open("ranked");
+    await open();
+    act(() => root.unmount());
+    root = createRoot(host);
+    await act(async () => { vi.advanceTimersByTime(RETRY_MS * 4); });
+    expect(reads()).toBe(1);
+    expect(currentToast()).toBeNull();
+  });
+});
+
+describe("watch telemetry", () => {
+  let open_: ReturnType<typeof vi.spyOn>;
+  let leave: ReturnType<typeof vi.spyOn>;
+  let toPlay: ReturnType<typeof vi.spyOn>;
+  beforeEach(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+    window.history.replaceState(null, "", "/");
+    watchUsage.reset();
+    open_ = vi.spyOn(telemetry, "watchOpen");
+    leave = vi.spyOn(telemetry, "watchLeave");
+    toPlay = vi.spyOn(telemetry, "watchToPlay");
+  });
+  afterEach(() => { watch.close(); vi.restoreAllMocks(); watchUsage.reset(); });
+
+  it("a live table's open says live and the presence link; its Leave says close and the seconds", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    watch.open("casual");
+    await open();
+    expect(open_).toHaveBeenCalledExactlyOnceWith("live", "presence");
+    await act(async () => { vi.advanceTimersByTime(42_000); });
+    await act(async () => { button("More").click(); });
+    await act(async () => { [...host.querySelectorAll<HTMLButtonElement>("[role=menuitem]")][1].click(); });
+    expect(leave).toHaveBeenCalledExactlyOnceWith("close", 42, "live");
+    // a round begun within half an hour is the watch's lead to play
+    await act(async () => { vi.advanceTimersByTime(90_000); });
+    watchUsage.roundStarted();
+    watchUsage.roundStarted();
+    expect(toPlay).toHaveBeenCalledExactlyOnceWith(90, "close");
+  });
+
+  it("Escape, back and a seat taken say so; a round long after says nothing", async () => {
+    watch.open("casual");
+    await open();
+    await act(async () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    expect(leave).toHaveBeenLastCalledWith("escape", expect.any(Number), "live");
+    act(() => root.unmount());
+    root = createRoot(host);
+    // the Escape's own back lands first
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+
+    watch.open("casual");
+    await open();
+    await act(async () => {
+      window.history.back();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(leave).toHaveBeenLastCalledWith("back", expect.any(Number), "live");
+    act(() => root.unmount());
+    root = createRoot(host);
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    watch.open("casual");
+    await open();
+    watch.close("seat");
+    expect(leave).toHaveBeenLastCalledWith("seat", 0, "live");
+    vi.advanceTimersByTime(TO_PLAY_MS + 1000);
+    watchUsage.roundStarted();
+    expect(toPlay).not.toHaveBeenCalled();
+    expect(leave).toHaveBeenCalledTimes(3);
+  });
+
+  it("Next table ends one table's watch and opens the next by next", async () => {
+    let n = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const body = url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined }
+        : { ...feed, table: `t${n++}` };
+      return new Response(JSON.stringify(body), { status: 200 });
+    }));
+    watch.open("ranked");
+    await open();
+    await act(async () => { button("More").click(); });
+    await act(async () => { [...host.querySelectorAll<HTMLButtonElement>("[role=menuitem]")][0].click(); });
+    await act(async () => { await Promise.resolve(); });
+    expect(leave).toHaveBeenCalledExactlyOnceWith("next", expect.any(Number), "live");
+    expect(open_.mock.calls).toEqual([["live", "presence"], ["live", "next"]]);
+  });
+
+  it("a replay that ends and is followed by a live table: each is opened and left by its own kind", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    const rerun = { ...feed, table: "rerun", rerun: true, live_round: null, code: null };
+    let reads = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const body = url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined }
+        : reads++ === 0 ? rerun : feed;
+      return new Response(JSON.stringify(body), { status: 200 });
+    }));
+    watch.open("ranked");
+    await open();
+    expect(open_.mock.calls).toEqual([["replay", "presence"]]);
+    await act(async () => { button("Pause").click(); });
+    for (let i = 0; i < 40; i++) await act(async () => { button("Next trick")?.click(); });
+    for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(CARD_HOLD_MS); });
+    for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); });
+    expect(host.querySelector(".watch-round")!.textContent).toBe("Round 3");
+    expect(open_.mock.calls).toEqual([["replay", "presence"], ["live", "next"]]);
+    expect(leave.mock.calls).toEqual([["ended", 5, "replay"]]);
+    await act(async () => { vi.advanceTimersByTime(30_000); });
+    await act(async () => { button("More").click(); });
+    await act(async () => { [...host.querySelectorAll<HTMLButtonElement>("[role=menuitem]")][1].click(); });
+    expect(leave.mock.calls).toEqual([["ended", 5, "replay"], ["close", 30, "live"]]);
+  });
+
+  it("the next round of the same table keeps its watch", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const body = url.startsWith("/api/watch/") ? { ...feed, round: 4, live_round: 5 } : feed;
+      return new Response(JSON.stringify(body), { status: 200 });
+    }));
+    watch.open("ranked");
+    await open();
+    await act(async () => { button("Pause").click(); });
+    for (let i = 0; i < 40; i++) await act(async () => { button("Next trick")?.click(); });
+    for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(CARD_HOLD_MS); });
+    for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); });
+    expect(host.querySelector(".watch-round")!.textContent).toBe("Round 4");
+    expect(open_.mock.calls).toEqual([["live", "presence"]]);
+    expect(leave).not.toHaveBeenCalled();
+  });
+
+  it("a replay says replay; a failed read's leave says error and no kind", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ...feed, table: "rerun", rerun: true,
+      live_round: null, code: null }), { status: 200 })));
+    watch.open("ranked");
+    await open();
+    expect(open_).toHaveBeenLastCalledWith("replay", "presence");
+    act(() => root.unmount());
+    root = createRoot(host);
+    watch.close();
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 500 })));
+    open_.mockClear();
+    watch.open("ranked");
+    await open();
+    await act(async () => { vi.advanceTimersByTime(RETRY_MS); });
+    for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); });
+    expect(open_).not.toHaveBeenCalled();
+    expect(leave).toHaveBeenLastCalledWith("error", 2, null);
   });
 });

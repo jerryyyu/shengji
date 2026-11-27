@@ -122,7 +122,7 @@ TAPS = frozenset({
     "offer_join", "offer_wait", "offer_chip", "next_round", "round_end_leave",
     "menu_leave", "chip_leave", "leave_confirm", "leave_keep", "howto_open",
     "signin_open", "coach_on", "coach_off", "invite_share", "copy_code",
-    "app_store_badge", "hint_preselect", "watch_open", "watch_leave", "rejoin_duo",
+    "app_store_badge", "hint_preselect", "rejoin_duo",
     # Show companions at the table switched on or off; a look put in use; a
     # Collection tile selected into the stage; Try on your table turned on
     "companions_on", "companions_off", "look_use", "collection_tile", "try_on",
@@ -204,6 +204,15 @@ MAX_USER_AGENT = 512
 # An invite's funnel: the link sent (by the share sheet or a copy), a page
 # loaded from it, and that page's visitor seated by its Join.
 INVITE_STEPS = frozenset({"created", "opened", "seated"})
+# Watching a table (web/src/watch/usage.ts): a live table or a replay; how
+# the watch began (the Play tab's presence link, Forward onto its history
+# entry, or the screen moving to another table); what ended it (its Leave,
+# back, Escape, Next table, a failed read, a seat taken, the table gone, or
+# the round watched ended and the feed moved on to another table).
+WATCH_KINDS = frozenset({"live", "replay"})
+WATCH_FROM = frozenset({"presence", "history", "next"})
+WATCH_BY = frozenset({"close", "back", "escape", "next", "error", "seat", "gone", "ended"})
+MAX_WATCH_SECS = 86_400
 INVITE_VIA = frozenset({"share", "copy"})
 # The sender's random link token (web/src/codes.ts hostToken); only its hash is kept.
 HOST_TOKEN = re.compile(r"[0-9a-f]{12}")
@@ -275,13 +284,19 @@ SCHEMA: dict[str, dict[str, Any]] = {
     # special cooled down
     "companion_round": {"walk_taps": _int(0, MAX_COMPANION_TAPS), "specials": _int(0, MAX_COMPANION_TAPS),
                         "nudges": _int(0, MAX_COMPANION_TAPS)},
+    # a watched table first drawn; a watch ended, with the seconds it lasted;
+    # an online round begun within half an hour of a watch ending
+    "watch_open": {"kind": _enum(WATCH_KINDS), "from": _enum(WATCH_FROM)},
+    "watch_leave": {"by": _enum(WATCH_BY), "secs": _int(0, MAX_WATCH_SECS), "kind": _enum(WATCH_KINDS)},
+    "watch_to_play": {"secs": _int(0, MAX_WATCH_SECS), "by": _enum(WATCH_BY)},
 }
 # The field without which an event says nothing; missing or invalid drops it.
 REQUIRED = {"screen": "name", "turn_done": "phase", "tap": "id", "notice": "code",
             "signin": "step", "device_account": "step", "review_prompt": "trigger",
             "app_open": "cold", "round_start": "mode", "round_finish": "by",
             "offline_digest": "rounds_started", "howto_step": "step", "invite": "step",
-            "companions": "shown", "companion_round": "walk_taps"}
+            "companions": "shown", "companion_round": "walk_taps",
+            "watch_open": "kind", "watch_leave": "by", "watch_to_play": "secs"}
 
 # Server-side queue events (``queue_event``): field -> check.
 QUEUE_FIELDS: dict[str, Any] = {

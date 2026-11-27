@@ -148,7 +148,8 @@ const TOAST_SITES = [
   "App.tsx", // the server's errors and notices
   "components/Hud.tsx", // a failed throw and the engine's table messages
   "codeJoin.ts", // a code that names nothing, or past the peek limit
-  "components/CollectionPage.tsx", // a colour or companion setting the server did not take
+  "components/CollectionPage.tsx", // a colour or companion the server did not take
+  "components/SettingsList.tsx", // Show companions at the table, when the server did not take it
   "components/Table.tsx", // Coach on/off, a newcomer joining the table
   "queue/QueueLayer.tsx", // the queue's notices
 ];

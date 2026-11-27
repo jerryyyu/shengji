@@ -206,3 +206,36 @@ def test_room_log_harvest_preserves_search_degradation(tmp_path, degraded):
         record["allocation"]["belief_fallback_by_stage"]["lead_confirm"] = 999
         original_play = next(event for event in rounds[1] if event["e"] == "play")
         assert original_play["decision"]["belief_fallback_by_stage"]["lead_confirm"] == failures
+
+
+@pytest.mark.parametrize("schema", ["relaxed-decision-v1", "search-free-decision-v1"])
+def test_room_log_harvest_accepts_candidate_counts_alongside_mc_ballots(tmp_path, schema):
+    events = _completed_round()
+    plays = [event for event in events if event["e"] == "play"]
+    count_play, mc_play = plays[:2]
+    count_play.update(bot=True, decision={
+        "schema": schema, "policy": "standard", "candidates": 2,
+        "played": list(count_play["cards"]),
+    })
+    ballot = [list(mc_play["cards"])]
+    mc_play["decision"] = {
+        "schema": "mc-decision-v2", "policy": "mc",
+        "candidates": ballot, "played": list(mc_play["cards"]),
+        "played_index": 0, "n_by_candidate": [8], "means": [0.25],
+    }
+    source = tmp_path / "room.jsonl"
+    _write_jsonl(source, events)
+    rounds, bad = read_rounds(source, InputRegistry())
+    assert bad == 0
+
+    records, counts = extract_round("logs/room.jsonl", 1, rounds[1])
+    assert counts["plays"] == len(plays)
+    assert counts["decision_blobs"] == 2
+    count_record, mc_record = [record for record in records if record["decision_kind"] == "play"][:2]
+    assert count_record["policy"] == "standard"
+    assert count_record["action"] == count_play["cards"]
+    assert count_record["ballot"] is None
+    assert count_record["allocation"] is None
+    assert mc_record["ballot"] == ballot
+    assert mc_record["allocation"]["kind"] == "mc-decision-v2"
+    assert mc_record["allocation"]["n_by_candidate"] == [8]

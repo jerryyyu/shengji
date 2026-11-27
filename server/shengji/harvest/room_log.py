@@ -12,6 +12,8 @@ record.  ``play`` events may carry a nested ``decision`` blob
 ``n_by_candidate`` / ``means`` / ``paired_se`` (plus the report fold and the
 reason) become ``allocation``.  Three early blobs predate the schema field
 (``chosen_index`` instead of ``played_index``); they are adapted, not dropped.
+A scalar candidate count from search-free or relaxed play leaves the ballot
+and allocation unknown.
 
 Format facts (verified): human plays are logged with the ENGINE's cards
 (a failed human throw is logged post-penalty); bot plays log the engine's
@@ -267,8 +269,14 @@ def extract_round(ref: str, round_no: int, events: list[dict], *,
         ballot = None
         allocation = None
         if decision is not None:
-            ballot = [list(c) for c in decision.get("candidates") or []] or None
-            allocation = _allocation_from_decision(decision)
+            candidates = decision.get("candidates")
+            count_only = (
+                decision.get("schema") in ("search-free-decision-v1", "relaxed-decision-v1")
+                and type(candidates) is int and candidates > 0
+            )
+            if not count_only:
+                ballot = [list(c) for c in candidates or []] or None
+                allocation = _allocation_from_decision(decision)
             played = decision.get("played")
             if played is not None and action_key(played) != action_key(action):
                 raise RoomLogError(f"decision/play mismatch at event {event_index}")

@@ -484,6 +484,22 @@ def test_paired_void_cli_reads_only_held_out_decisions(package, tmp_path, capsys
         evaluator.main([*args, "--cohort", str(cohort), "--ll-max-draws", "1", "--ll-replicates", "2"])
         return json.loads(capsys.readouterr().out)
     assert select(member) == scored
+    from scripts.time_belief_length_fit_eval import main as time_pilot
+    out = tmp_path / "timed"
+    pilot_args = ["--train-extract", str(tmp_path), "--test-extract", str(tmp_path),
+                  "--cohort", str(cohort), "--cohort-sha256", hashlib.sha256(cohort.read_bytes()).hexdigest(),
+                  "--belief-package", package["path"], "--belief-sha256", package["sha256"],
+                  "--output-dir", str(out)]
+    time_pilot(pilot_args)
+    timed = json.loads((out / "timing.json").read_text())
+    assert 0 < timed["fit_process_seconds"] < timed["fit_eval_process_seconds"]
+    assert timed["timing"]["decisions"] == 3 and timed["timing"]["worlds_drawn"] > 0
+    assert (out / "length.pt").is_file()
+    with pytest.raises(FileExistsError):
+        time_pilot(pilot_args)
+    with pytest.raises(ValueError, match="wrong timing cohort"):
+        time_pilot([*pilot_args, "--cohort-sha256", "bad"])
+
     evaluator.main([*args, "--cohort", str(cohort), "--ll-max-draws", "1", "--ll-replicates", "2",
                     "--timing-only"])
     timing = json.loads(capsys.readouterr().out)

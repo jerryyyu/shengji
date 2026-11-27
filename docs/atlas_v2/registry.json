@@ -5303,6 +5303,28 @@
    "hi": 0.0017857142857142857,
    "takeaway": "FAIL at −0.00102 levels/round (LB80 −0.00230), with the full 95% interval below the required +0.005 gain.",
    "note": "Both arms recorded 249,342 play decisions and 3,920 buries. The candidate had one play fallback and the control had one bury fallback. Validity passed. Saved readout at readouts/overruff-1875-screen, result SHA-256 0296ad2215ac6b9dcfe15743c2868b7f56ecdbf3b8edccfe97e31f238a8c543f. https://github.com/jerryyyu/shengji/pull/1875#issuecomment-7198765444"
+  },
+  {
+   "status": "sealed",
+   "box": "ultra",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "confidence": 0.95,
+   "date": "2026-11-27",
+   "id": "r4ft3920",
+   "title": "RT4 (release 55's models) vs FT-200k, 3,920 deals (DEV)",
+   "candidate": "RT4: release 55's served models (unified package e2951d35eeabd167, belief 35e225cf3afd460d) in release 55's served search; M5 Ultra",
+   "comparator": "FT-200k (RT3-FT: unified package 0ab200ee2cec39d4 + belief af11dea78a9dcdac) in the same served search, NOT a release; head to head",
+   "vs": 55,
+   "vs_group": "FT-200k (RT3-FT, RT2 fine-tuned on the 200k-round cut), NOT release 55: a 3,920-deal seat-swapped DEV duel, not a common-control screen",
+   "instrument": "3,920 fresh seat-swapped deal pairs [2675100000, 2675103920) (7,840 rows) plus a 20-deal validity pilot from 2675103920, RT4 vs FT-200k head to head; uncapped play (the population of rt3fs and S159); one look; host M5 Ultra; predeclared bar mean >= +0.020 AND one-sided 80% lower bound > 0; tier-i DEV duel",
+   "seeds": "2675100000 (ultra)",
+   "point": 0.015688775510204082,
+   "lo": 0.0026785714285714286,
+   "hi": 0.029081632653061223,
+   "takeaway": "VALID / FAIL: RT4 minus FT-200k +0.0157 [+0.0027, +0.0291], LB80 +0.0099 (bar +0.020, LB80 > 0; mean short by 0.0043); DEV closes without promotion.",
+   "note": "Read once by Codex on the Ultra (reader r4ft-read-r1 sha256 73fd068f), VALID on the pilot and the main run: 249,408 search decisions per arm, 3,920 buries and 14,459 declarations per arm, 0 play/belief/bury fallbacks, 0 declare abandons. n 3920, mean 0.015688775510204082, CI95 [0.0026785714285714286, 0.029081632653061223], LB80 0.009948979591836734, LB95 0.004591836734693878; points +0.495 [+0.032, +0.966]; decision FAIL. Mean decision seconds 0.05683 (RT4) vs 0.05704 (FT-200k), Ultra wall time, not serving latency. Claim limits: RT4 is release 55's own model pair and FT-200k a challenger, not a release, so this row measures a modest RT4 margin on this matchup only and says nothing about a gain over release 55 as served. Terminal 'UTD DONE 2026-11-27T00:18:29Z ... rows=7840 ... rc=0'; producer seal ae6243ecf39202718d1734b5166ef7b7e1e6c7261f89f336b18f65195b358468; packet d383a50c540f7060f9fddf1b6815746609ce9b80c600625d9355a231326d17b9; reservation PR #1918. Readout sha256 ff7658707f45a83b0e99ec65cb0356250975bfa7b7c078851b3395021e01f61e; #1918 issuecomment-7206361661. Archive readouts/r4ft3920/ (SHA256SUMS sha256 60634ae32c1c343f9d46c32e3140bed7c1ad892d71f13e619f10846ccfb3a4e6).",
+   "named_comparator": "FT-200k (RT3-FT, RT2 fine-tuned on 200k rounds)"
   }
  ],
  "context_screens": [

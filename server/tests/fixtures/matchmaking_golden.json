@@ -1,4 +1,4 @@
-{"header": {"format":1,"normalized":["token_hex ids","table codes"],"source_sha":"b13eb2787c19dfa29e93bcc8d1783f16ee8233a3"},
+{"header": {"format":1,"normalized":["token_hex ids","table codes"],"source_sha":"cc901f7214cab4c95cfd52a829e11d7f5b84a7c5"},
 "scenarios": {
  "a_duo_paired_alone_chats_and_splits": [
   ["send",1,"queue_join",{"duo":true,"mode":"casual"}],
@@ -87,6 +87,7 @@
   ["frame","3",{"allow_joiners":true,"bot_level":"advanced","bots_at":10060.0,"bots_paused":false,"code":"<code0>","count":3,"duo":false,"duo_ready":null,"front":false,"held_seat":null,"leader":true,"mode":"ranked","offer":null,"open_tables":0,"opener":false,"panel_seq":3,"party_id":null,"queued":true,"since":10000.0,"start_level":"2","still_here_until":null,"table":{"code":"<code0>","held_seat":null,"held_seats":[],"id":"<id0>","of":3,"opener":0,"ready":0,"seats":[{"leader":true,"name":"P1","pair":true,"ready":false,"reconnecting":false,"since":10000.0,"sit":"<id1>","you":false},{"leader":true,"name":"P3","pair":false,"ready":false,"reconnecting":false,"since":10000.0,"sit":"<id2>","you":true},{"leader":false,"name":"P5","pair":true,"ready":false,"reconnecting":false,"since":10000.0,"sit":"<id6>","you":false},null],"timer":{"at":10060.0,"name":"P1","you":false},"waiting_for":["P5"],"you":1,"you_ready":false},"type":"queue_state","wait_players":false,"you_ready":false}],
   ["frame","1",{"code":"<code0>","expires_at":10300.0,"members":[{"leader":true,"name":"P1","you":true},{"leader":false,"name":"P5","you":false}],"party_id":"<id5>","table":true,"type":"party","you_lead":true}],
   ["frame","5",{"code":"<code0>","expires_at":10300.0,"members":[{"leader":true,"name":"P1","you":false},{"leader":false,"name":"P5","you":true}],"party_id":"<id5>","table":true,"type":"party","you_lead":false}],
+  ["frame","2",{"count":3,"queued":false,"type":"queue_state"}],
   ["peek","<code0>",{"allow_joiners":true,"closed":false,"full":false,"in_game":false,"mode":"ranked","room":"<code0>","seats":[{"name":"P1","ready":false,"seat":0,"state":"taken","team":0},{"name":"P3","ready":false,"seat":1,"state":"taken","team":1},{"name":"P5","ready":false,"seat":2,"state":"taken","team":0},{"name":null,"ready":false,"seat":3,"state":"open","team":1}],"table":true,"type":"room_seats"}],
   ["send",1,"queue_leave",{}],
   ["qlog",{"duo":true,"queue":"leave","queued":2,"reason":"leave","size":1,"t":10000.0,"who":"account"}],

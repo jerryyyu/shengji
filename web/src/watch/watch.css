@@ -47,7 +47,7 @@
 .watch-tab-n { color: #8c96a6; font-weight: 600; font-variant-numeric: tabular-nums; }
 .watch-tab-name { max-width: 6em; min-width: 1.5em; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
 .watch-tab { flex: 0 1 auto; }
-.watch-tabs { overflow: hidden; }
+/* no overflow clip here: it would cut the tabs' 44px tap reach; the names shrink instead */
 .watch-kitty { position: relative; width: 34px; height: 30px; border: 0; padding: 0; background: none; cursor: pointer;
   --cw: 18px; }
 .watch-kitty::after { content: ""; position: absolute; inset: -7px -5px; }

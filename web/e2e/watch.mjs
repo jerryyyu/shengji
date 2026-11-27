@@ -16,7 +16,8 @@ const rep = new Report("watch", { partial: !!only });
 const SHOTS = process.env.SHOTS ? new RegExp(process.env.SHOTS) : null;
 
 const fixture = JSON.parse(fs.readFileSync(path.join(HERE, "../src/replay/server-round-finished.fixture.json"), "utf8"));
-const NAMES = ["Srig", "Bot 1", "Bot 2", "Bot 3"];
+// one long name: the tabs shrink names rather than run off the row
+const NAMES = ["Srig", "Bot 1", "Maximilian Featherst", "Bot 3"];
 
 /** The fixture's round, with `k` of its last single-card tricks folded into
  *  the first, so every seat plays 1 + k cards there (a wide trick). */
@@ -78,6 +79,23 @@ const measure = (page) => page.evaluate(() => {
   return [...new Set(out)];
 });
 
+/** Each watcher control's tap reach as rendered: the height around its centre
+ *  over which a tap lands on it (its extender included, unless clipped). */
+const reach = (page) => page.evaluate(() => {
+  const out = [];
+  for (const el of document.querySelectorAll(".watch-ctl, [role=tab], .watch-kitty")) {
+    const b = el.getBoundingClientRect();
+    if (b.width === 0) continue;
+    const x = b.left + b.width / 2, cy = b.top + b.height / 2;
+    let up = 0, down = 0;
+    while (up < 30 && el.contains(document.elementFromPoint(x, cy - up - 1))) up++;
+    while (down < 30 && el.contains(document.elementFromPoint(x, cy + down + 1))) down++;
+    const h = up + down + 1;
+    if (h < 44) out.push(`${el.getAttribute("aria-label") ?? el.textContent.trim()} is tapped over ${h}px`);
+  }
+  return out;
+});
+
 const handWidth = (page) => page.evaluate(() => document.querySelector(".watch-hand .card")?.getBoundingClientRect().width ?? 0);
 
 const browser = await launch();
@@ -106,6 +124,13 @@ for (const device of ["phone-land-max", "phone-land", "phone-land-se", "ipad11-l
       await sleep(400);
       await rep.check(`${name}: the hand keeps its size when the bury ends`,
         Math.abs((await handWidth(page)) - bury) < 0.5 ? null : `card width ${bury} then ${await handWidth(page)}`, page);
+      await rep.check(`${name}: every watcher control is tapped over at least 44px`, await reach(page), page);
+      await rep.check(`${name}: the tab strip fits its row and the screen`, await page.evaluate(() => {
+        const t = document.querySelector(".watch-tabs"), row = document.querySelector(".watch-tabs-row");
+        const b = t.getBoundingClientRect(), r = row.getBoundingClientRect();
+        return [t.scrollWidth > t.clientWidth + 1 ? `tabs overflow by ${t.scrollWidth - t.clientWidth}px` : null,
+          b.left < r.left - 0.5 || b.right > r.right + 0.5 || b.right > innerWidth ? `tabs ${b.left.toFixed(0)}-${b.right.toFixed(0)} outside the row ${r.left.toFixed(0)}-${r.right.toFixed(0)}` : null];
+      }), page);
       const tabs = await page.$$("[role=tab]");
       for (let i = 0; i < tabs.length; i++) {
         await tabs[i].click();

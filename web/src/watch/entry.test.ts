@@ -40,4 +40,14 @@ describe("the way in", () => {
     setLanguageChoice("zh-Hant");
     expect(text(presenceParts({ ...base, watch: 0, rerun: true }))).toBe("現在沒人在玩 · 看回放");
   });
+
+  it("a full table of people (no seat for a newcomer) still leads to a live table", () => {
+    const parts = presenceParts({ ...base, watch: 1, rerun: false });
+    expect(text(parts)).toBe("Watch a table");
+    expect(links(parts)).toEqual(["Watch a table"]);
+    setLanguageChoice("zh-Hans");
+    expect(text(presenceParts({ ...base, watch: 1, rerun: true }))).toBe("看一桌");
+    setLanguageChoice("zh-Hant");
+    expect(text(presenceParts({ ...base, watch: 1, rerun: true }))).toBe("看一桌");
+  });
 });

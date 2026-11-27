@@ -228,17 +228,32 @@ def _players(rec: dict) -> list[dict]:
     return out
 
 
+def _seat_name(seat: Any) -> str | None:
+    return f"Player {seat + 1}" if isinstance(seat, int) and 0 <= seat < 4 else None
+
+
+def _redact(value: Any) -> Any:
+    """Every ``name`` in ``value``, at any depth and in any record kind: the
+    seat's "Player N" beside a seat, else dropped."""
+    if isinstance(value, list):
+        return [_redact(v) for v in value]
+    if not isinstance(value, dict):
+        return value
+    out = {k: _redact(v) for k, v in value.items() if k != "name"}
+    if "name" in value:
+        named = _seat_name(value.get("seat"))
+        if named is not None:
+            out["name"] = named
+    return out
+
+
 def by_seat(doc: dict) -> dict:
     """A rerun's players as "Player 1" to "Player 4": a replay outlives its
-    table and plays to anyone, so it names nobody. A live table's names are
-    those its seats show to the table."""
-    names = [f"Player {seat + 1}" for seat in range(4)]
-    events = []
-    for ev in doc["events"]:
-        if ev.get("e") == "round_start":
-            ev = {**ev, "players": [{**p, "name": names[p["seat"]]} for p in ev.get("players", [])]}
-        events.append(ev)
-    return {**doc, "players": names, "events": events}
+    table and plays to anyone, so it names nobody, in any record (a late
+    joiner's ``seat_claimed`` too). A live table's names are those its
+    seats show to the table."""
+    return {**doc, "players": [_seat_name(seat) for seat in range(4)],
+            "events": _redact(doc["events"])}
 
 
 def _cards(v: Any) -> list[str] | None:

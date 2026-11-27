@@ -214,6 +214,9 @@ export function presenceParts(p: Presence | null, mode: QueueMode = "ranked"): P
       : "queue.presence.tables";
     return [{ text: t(key, { n: p.tables }) }, playing, ...replay];
   }
+  // tables in play with no seat for a newcomer (four people) count for no
+  // "playing" above, yet can be watched: the line leads there by itself
+  if (liveWatch) return [{ text: t("watch.liveLink"), watch: true }];
   return [{ text: t("queue.presence.nobody") }, ...replay];
 }
 

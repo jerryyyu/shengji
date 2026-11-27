@@ -61,7 +61,7 @@ def score_reserved_deck(bank, *, bank_sha256, store, round_seed, settings, bot_f
             exc.add_note(f"Reserved deck {round_seed}, mirror {root.target.mirror}, ply {root.target.ply}")
             raise
         rows.append(row)
-    return {"schema": "belief-tree-paired-deck-v1", "bank_sha256": bank_sha256,
+    return {"schema": "belief-tree-paired-deck-v2", "bank_sha256": bank_sha256,
             "shard_sha256": entry["sha256"], "run_id": source["run_id"], "policy": policy,
             "round_seed": round_seed, "deal_key": entry["key"], "settings": dict(settings), "rows": rows}
 

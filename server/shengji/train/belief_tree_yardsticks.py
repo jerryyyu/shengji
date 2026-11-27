@@ -9,13 +9,17 @@ from ..engine.round import actual_play_after
 from ..harvest.common import action_key
 from .belief_tree_backup import unified_trick_frame
 from .belief_tree_replay import TrancheRoot
+from .belief_tree_transition import lead_refusal_after
 from .pv_search_policy import RECORD_SCHEMA
 
 
 def _commit(position, seat, action):
     previous = position.last_trick
+    leading = not position.trick.plays
     position.play(seat, list(action))
-    if action_key(actual_play_after(position, seat, previous)) != action_key(action):
+    if leading:
+        lead_refusal_after(position, seat, action, previous)
+    elif action_key(actual_play_after(position, seat, previous)) != action_key(action):
         raise ValueError("engine substituted a true-deal yardstick action")
 
 

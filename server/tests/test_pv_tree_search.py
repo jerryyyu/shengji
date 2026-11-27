@@ -1535,16 +1535,19 @@ def test_reserved_deck_cli_scores_both_mirrors_and_publishes_once(
 
     monkeypatch.setattr(bank, "make_bot", make_registered)
     if substitution:
-        with pytest.raises(ValueError, match="substituted"):
+        with pytest.raises(ValueError, match="history-legal worlds"):
             bank.main(argv)
         assert not output.exists()
-        return
+        # With zero tilt the stochastic policy uses its prior directly.
+        argv[-1] = "0"
     bank.main(argv)
     result = json.loads(output.read_bytes())
+    assert result["schema"] == "belief-tree-paired-deck-v2"
     assert result["bank_sha256"] == pin and result["shard_sha256"] == sha
     assert [r["decision_index"] for r in result["rows"]] == [t["decision_index"] for t in targets]
     assert all(row["deal_key"] == deck["key"] for row in result["rows"])
-    assert [row["eligible"] for row in result["rows"]] == [True, False, True, False]
+    expected_eligible = [True] * 4 if substitution else [True, False, True, False]
+    assert [row["eligible"] for row in result["rows"]] == expected_eligible
     with pytest.raises(FileExistsError):
         bank.main(argv)
     argv[argv.index(str(output))] = str(tmp_path / "incomplete.json")
@@ -1930,7 +1933,7 @@ def test_score_bank_root_keeps_each_stream_stable_across_root_order(paired_flat_
     assert trace == collected and len({seed for streams in trace.values() for seed in streams}) == 6
 
 
-def test_score_bank_root_treats_a_substituted_final_lead_as_a_fault(paired_flat_probe, monkeypatch):
+def test_score_bank_root_records_a_reduced_final_lead(paired_flat_probe, monkeypatch):
     from shengji.train import belief_tree_bank_score as scorer
     from shengji.train.belief_labels import deal_key
     from shengji.train.belief_tree_compare import PairedLeadValues
@@ -1944,6 +1947,73 @@ def test_score_bank_root_treats_a_substituted_final_lead_as_a_fault(paired_flat_
                               np.tile([.125, .4], (64, 1)), ("BJ", "H10"))
     monkeypatch.setattr(scorer, "compare_replayed_lead", lambda *a, **kw: paired)
     policy = make().policy_name
-    with pytest.raises(ValueError, match="engine substituted the final flat lead"):
-        scorer.score_bank_root(root, make_bot=lambda seed: make(), policy=policy, seed=29,
-                               depth_worlds=2, reply_cap=4, batch_size=32, reply_value_weight=1.)
+    monkeypatch.setattr(scorer, "true_deal_yardsticks",
+                        lambda root, actions, **kw: {a: (0., 0.) for a in actions})
+    row = scorer.score_bank_root(root, make_bot=lambda seed: make(), policy=policy, seed=29,
+                                depth_worlds=2, reply_cap=4, batch_size=32, reply_value_weight=1.)
+    assert row["flat_final_action"] == ["BJ", "H10"]
+    assert row["flat_final_accepted"] == ["H10"]
+
+
+def test_failed_throw_conditions_only_its_own_replies(paired_flat_probe, monkeypatch):
+    from shengji.ai.refusal import observe_refusal, refusal_consistent
+    from shengji.train import belief_tree_backup as backup, belief_tree_yardsticks as truth
+    from shengji.train.belief_labels import deal_key
+    from shengji.train.belief_tree_replay import RootTarget, TrancheRoot
+    from shengji.train.belief_tree_transition import lead_refusal_after
+    from test_world_history_legal import started
+
+    make, _ = paired_flat_probe
+    bot = make()
+    rnd, _ = started(13)
+    seat = rnd.turn
+    root = TrancheRoot(RootTarget(0, 0, 0, seat), deal_key(rnd.deck), rnd, ())
+    actions = [("BJ", "H10"), ("H10",)]
+    seen = {"policy": [], "draw": [], "served": []}
+
+    def check(path, child, ledger):
+        notice = observe_refusal(child)
+        assert tuple(ledger) == ((notice,) if notice else ())
+        if notice:
+            assert set(notice.attempted) == set(actions[0]) and notice.forced == ("H10",)
+            assert notice.seat == seat and notice.trick_index == 0
+            assert refusal_consistent(child, child.hands, notice)
+        seen[path].append(bool(notice))
+
+    node = backup._reply_node
+    draw = backup.draw_depth_worlds
+    serve = truth._serve_reply
+
+    def policy(child, ledger, model, replies):
+        check("policy", child, ledger)
+        return node(child, ledger, model, replies)
+
+    def redraw(child, **kw):
+        check("draw", child, kw["refusals"])
+        worlds = draw(child, **kw)
+        for hands, _ in worlds:
+            assert all(refusal_consistent(child, hands, refusal) for refusal in kw["refusals"])
+        return worlds
+
+    def reply(bot, child, actor, ledger):
+        check("served", child, ledger.refusals)
+        return serve(bot, child, actor, ledger)
+
+    monkeypatch.setattr(backup, "_reply_node", policy)
+    monkeypatch.setattr(backup, "draw_depth_worlds", redraw)
+    monkeypatch.setattr(truth, "_serve_reply", reply)
+    values = root.backup(actions, [(rnd.hands, rnd.buried)], model=bot.unified_value_model,
+                         belief=bot.belief_model, seed=41, depth_worlds=2, reply_cap=4,
+                         batch_size=32, reply_value_weight=1.)
+    measured = truth.true_deal_yardsticks(root, actions, model=bot.unified_value_model,
+                                          make_reply_bot=lambda seed: make(),
+                                          expected_policy_name=bot.policy_name, seed=29)
+    assert values.shape == (1, 2) and set(measured) == set(actions)
+    assert seen == {"policy": [True, False], "draw": [True, False],
+                    "served": [True] * 3 + [False] * 3}
+    assert not rnd.trick.plays and not rnd.notice
+    broken = copy.deepcopy(rnd)
+    broken.play(seat, list(actions[0]))
+    broken.notice = None
+    with pytest.raises(ValueError, match="matching public refusal"):
+        lead_refusal_after(broken, seat, actions[0], rnd.last_trick)

@@ -61,8 +61,14 @@ def sealed_leg(store, terminal, pin):
         raise ValueError('store manifest differs from sealed leg')
     manifest = json.loads(raw)
     expected = [store / sh['path'] for sh in manifest['shards']]
-    if expected != belief_labels.cluster_paths(store):
+    if (store / 'shards').is_symlink() or expected != belief_labels.cluster_paths(store):
         raise ValueError('raw shard inventory differs from sealed leg')
+    for shard in manifest['shards']:
+        sidecar = store / shard['sidecar']
+        if (store / shard['path']).is_symlink() or sidecar.is_symlink():
+            raise ValueError('linked member in sealed leg')
+        if belief_labels._file_sha256(sidecar) != shard['sidecar_sha256']:
+            raise ValueError(f'{sidecar}: sidecar sha256 differs from sealed manifest')
     return manifest, seal['manifest_sha256']
 
 
@@ -118,7 +124,8 @@ def main(argv=None):
         [str(store)], str(out), cluster_stride=args.cluster_stride, cluster_offset=args.cluster_offset,
         max_clusters_per_store=args.limit_clusters, calib=0.06, test=0.04 if manifest is not None else 0.12,
         sampler_worlds=0, sampler_splits=('calib', 'test'), sampler_stride=1,
-        workers=args.workers, task_clusters=args.task_clusters, log=log, resume=args.resume)
+        workers=args.workers, task_clusters=args.task_clusters, log=log, resume=args.resume,
+        verify_cached_sources=manifest is not None)
     if labels['status'] != 'complete' or labels['failed_clusters']:
         raise RuntimeError('incomplete label extraction')
     if manifest is not None:

@@ -216,6 +216,17 @@ def test_launcher_hold_then_guarded_resume_preserves_completed_shard(release50_p
                '--sealed-rt4-leg', str(terminal)]
     refused = subprocess.run([*prepare, '0' * 64], capture_output=True, text=True)
     assert refused.returncode and 'terminal digest differs' in refused.stderr and not extract_dir.exists()
+    shard = out/manifest['shards'][0]['path']
+    original = shard.read_bytes()
+    mode = shard.stat().st_mode
+    shard.chmod(0o600)
+    try:
+        shard.write_bytes(b'X' + original[1:])
+        refused = subprocess.run([*prepare, launcher.sha256(terminal)], capture_output=True, text=True)
+        assert refused.returncode and 'sha256 drift' in refused.stderr and not extract_dir.exists()
+    finally:
+        shard.write_bytes(original)
+        shard.chmod(mode)
     prepared = json.loads(subprocess.check_output([*prepare, launcher.sha256(terminal)]))
     assert prepared['consumer_rows'] == manifest['counts']['decisions'] > 0
     assert json.loads((extract_dir/'manifest.json').read_bytes())['split']['test'] == 0.04

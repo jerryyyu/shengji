@@ -20,7 +20,6 @@ export const home = defineMessages({
   "home.kindChick": { en: "Chick", zh: "小鸡", hant: "小雞" },
   "home.kindSparrow": { en: "Sparrow", zh: "麻雀", hant: "麻雀" },
   "home.lookShown": { en: "{kind} · {colour}", zh: "{kind} · {colour}", hant: "{kind} · {colour}" },
-  "home.showAtTable": { en: "Show at the table", zh: "牌桌上显示", hant: "牌桌上顯示" },
   "home.tryOnTable": { en: "Try on your table", zh: "在牌桌上试试", hant: "在牌桌上試試" },
   "home.use": { en: "Use", zh: "使用", hant: "使用" },
   "home.inUse": { en: "In use", zh: "使用中", hant: "使用中" },

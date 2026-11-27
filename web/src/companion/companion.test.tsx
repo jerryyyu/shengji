@@ -1,6 +1,6 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthState, AuthUser } from "../auth";
 
 const { authState, updated } = vi.hoisted(() => ({
@@ -19,8 +19,15 @@ import { TRACTOR_COLOURS } from "./palette";
 import { hasNewLook, markLooksSeen } from "./seen";
 import { parseArt, tractorMarkup } from "./Tractor";
 import CollectionPage from "../components/CollectionPage";
+import { SettingsGroup } from "../components/SettingsList";
 import { Row } from "../components/Leaderboard";
 import { forgetHomeSession, forgetPrivateSession } from "../home/session";
+
+// the settings list loads the audio module, whose first tap unlocks an AudioContext
+beforeAll(() => {
+  class SilentAudioContext { state = "running"; currentTime = 0; async resume() {} }
+  (window as unknown as { AudioContext: unknown }).AudioContext = SilentAudioContext;
+});
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -168,7 +175,7 @@ describe("the Collection tab", () => {
   const swatch = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".coll-swatch")]
     .find((s) => s.getAttribute("aria-label")!.startsWith(name))!;
 
-  it("shows the Tractor on the felt, the companions, its colours, the one status line, the button and the switch", async () => {
+  it("shows the Tractor on the felt, the companions, its colours, the one status line and the button, and no switch", async () => {
     authState.current = { status: "in", clientId: "cid", user };
     await drawOpen();
     expect(host.querySelector(".large-title")?.textContent).toBe("Collection");
@@ -184,8 +191,8 @@ describe("the Collection tab", () => {
     expect(host.querySelector(".coll-use")?.textContent).toBe("In use");
     // no visible words on the swatches
     expect(host.querySelector(".coll-swatches")?.textContent).toBe("");
-    // the switch is on the same page, under the stage
-    expect(host.querySelector(".coll-at-table")?.textContent).toBe("Show at the table");
+    // Show companions at the table lives in Me's settings, not here
+    expect(host.querySelector(".coll-page [role=switch]")).toBeNull();
   });
 
   it("a locked colour's status line names what unlocks it; an unlocked one is put in use by Use", async () => {
@@ -216,9 +223,10 @@ describe("the Collection tab", () => {
     expect(host.querySelector(".coll-use")?.textContent).toBe("Use");
   });
 
-  it("a guest's Show at the table stays on the device", async () => {
-    await draw(<CollectionPage />);
-    const sw = host.querySelector<HTMLButtonElement>(".coll-at-table")!;
+  it("a guest's Show companions at the table stays on the device", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null, collection: true } as AuthState;
+    await draw(<SettingsGroup />);
+    const sw = host.querySelector<HTMLButtonElement>(".me-companions")!;
     await act(async () => { sw.click(); });
     expect(sw.getAttribute("aria-checked")).toBe("false");
     expect(window.localStorage.getItem("shengji.companions")).toBe("off");
@@ -290,7 +298,7 @@ describe("entitlements and writes stay with their session and their order", () =
     const use = host.querySelector<HTMLButtonElement>(".coll-use");
     if (use && !use.disabled) await act(async () => { use.click(); });
   };
-  const toggle = () => host.querySelector<HTMLButtonElement>(".coll-at-table")!;
+  const toggle = () => host.querySelector<HTMLButtonElement>(".me-companions")!;
   const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
   const puts = () => held.filter((h) => h.url === "/api/me/look");
   const gets = () => held.filter((h) => h.url === "/api/me");
@@ -354,15 +362,15 @@ describe("entitlements and writes stay with their session and their order", () =
     it(`rapid mode changes end at the last choice on the server and the screen (first answer ${first})`, async () => {
       server = { ...base, companions: "off" };
       authState.current = { status: "in", clientId: "cid", user: { ...base, companions: "off" } };
-      await draw(<CollectionPage />);
+      await draw(<SettingsGroup />);
       await flush();
       holdPuts = true;
       await act(async () => { toggle().click(); });     // on
-      await draw(<CollectionPage />);
+      await draw(<SettingsGroup />);
       await act(async () => { toggle().click(); });     // off
-      await draw(<CollectionPage />);
+      await draw(<SettingsGroup />);
       await act(async () => { toggle().click(); });     // on
-      await draw(<CollectionPage />);
+      await draw(<SettingsGroup />);
       await act(async () => { toggle().click(); });     // off
       // one write on the wire; the latest choice waits for it
       expect(puts().map((h) => h.body)).toEqual([{ companions: "individual" }]);
@@ -376,7 +384,7 @@ describe("entitlements and writes stay with their session and their order", () =
       expect(server.companions).toBe("off");
       expect(authState.current.user?.companions).toBe("off");
       // a failed change rolls back to the last confirmed choice, not an older one
-      await draw(<CollectionPage />);
+      await draw(<SettingsGroup />);
       await act(async () => { toggle().click(); });
       expect(authState.current.user?.companions).toBe("individual");
       await act(async () => { puts()[2].reply(500); });

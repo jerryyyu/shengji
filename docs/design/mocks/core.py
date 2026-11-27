@@ -620,8 +620,9 @@ def f9_me():
 def f11_collection():
     """The Collection tab (Jerry 2026-11-26), for a viewer it is shown to (an allowlisted account until it is on
     for everyone), one page: the look shown on a corner of felt, Try on your table, the four companions, the shown
-    companion's colours, one status line, the one button (Use / In use / the unlock line / Sign in to use) and the
-    one switch, Show at the table. A tap only shows; the button puts in use; a tick marks what is in use."""
+    companion's colours, one status line and the one button (Use / In use / the unlock line / Sign in to use); no
+    switch (Show companions at the table is in Me's settings). A tap only shows; the button puts in use; a tick
+    marks what is in use."""
     felt_box = ('<div style="border-radius:18px;background:radial-gradient(ellipse at 50% 35%,#2f7a52,#123a26);padding:18px 0 10px;'
                 'display:flex;flex-direction:column;align-items:center;gap:4px"><span style="font-size:96px;line-height:1">{fig}</span></div>')
     chip = '<div style="text-align:center"><span style="border:1px solid #333b49;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600">Try on your table</span></div>'
@@ -641,14 +642,12 @@ def f11_collection():
         return (f'<div style="text-align:center;font-size:14px;color:#e8ede8">{status}</div>'
                 f'<div style="text-align:center;border-radius:999px;padding:11px 0;font-weight:700;'
                 f'{"background:" + GOLD + ";color:#14171e" if gold else "background:#2a303c;color:#e8ede8"}">{button}</div>')
-    switch = ('<div style="display:flex;justify-content:space-between;align-items:center;background:#242a35;border-radius:12px;padding:12px 14px">'
-              '<span>Show at the table</span><span style="width:44px;height:26px;border-radius:13px;background:#34c759"></span></div>')
-    page = phone(felt_box.format(fig="🥟") + chip + kinds + swatches() + foot("Bun · Plain", "In use", False) + switch,
+    page = phone(felt_box.format(fig="🥟") + chip + kinds + swatches() + foot("Bun · Plain", "In use", False),
                  active="Collection", title="Collection", user="CT", tabs=b.TABS_COLLECTION)
-    shown = phone(felt_box.format(fig="🥟") + chip + kinds + swatches(on=2) + foot("Bun · Taro", "Use", True) + switch,
+    shown = phone(felt_box.format(fig="🥟") + chip + kinds + swatches(on=2) + foot("Bun · Taro", "Use", True),
                   active="Collection", title="Collection", user="CT", tabs=b.TABS_COLLECTION)
     return [
-        ("Collection: one page, one button, one switch", [
+        ("Collection: one page, one button", [
             shot(page, 390, 844, "Tap Collection", "The look in use moves on the felt by itself; the tick marks it."),
             shot(shown, 390, 844, "Tap a colour", "It only shows; Use puts it in use. A locked one's button says what unlocks it."),
         ]),

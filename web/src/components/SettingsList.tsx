@@ -1,4 +1,7 @@
 import { Fragment, useState, useSyncExternalStore } from "react";
+import { useAuth } from "../auth";
+import { setCompanionMode, shownAtTable, useCompanionMode } from "../companion/mode";
+import { useCollection } from "../companion/feature";
 import { useCoach } from "../firstTurns";
 import { useMuted } from "../useMuted";
 import { hapticsEnabled, isNative, setHapticsEnabled, subscribeHaptics } from "../native";
@@ -6,6 +9,7 @@ import { openHowto } from "../howto/route";
 import { tapHandlers } from "../tap";
 import { languageChoice, setLanguageChoice, useT } from "../i18n";
 import type { LanguageChoice } from "../i18n";
+import { showToast } from "../toast";
 
 function useHaptics(): boolean {
   return useSyncExternalStore(subscribeHaptics, hapticsEnabled);
@@ -78,12 +82,37 @@ function LanguageRow() {
   );
 }
 
+/** Show companions at the table, for a viewer the Collection is shown to: on
+ *  the account (`/api/me` `companions`), or for a guest on this device. Off
+ *  is off; any other stored mode (an older Team or Individual) reads as on. */
+function CompanionsRow() {
+  const t = useT();
+  const account = useAuth();
+  const user = account.status === "in" ? account.user : null;
+  const on = shownAtTable(useCompanionMode(user));
+  return (
+    <li>
+      <button type="button" className="grp-row me-companions" role="switch" aria-checked={on}
+              onClick={() => {
+                setCompanionMode(user, on ? "off" : "individual").catch((err: unknown) => {
+                  showToast(err instanceof Error ? err.message : String(err));
+                });
+              }}>
+        <span className="grp-label">{t("settings.companions")}</span>
+        <span className={`ios-switch${on ? " on" : ""}`} aria-hidden="true" />
+      </button>
+    </li>
+  );
+}
+
 /** Me's settings: an inset-grouped list under a Settings heading, where
- *  the whole 44 pt row is the control. Language sits after the switches,
- *  before How to play; the table's menu has no Language row. */
+ *  the whole 44 pt row is the control. Show companions at the table (only
+ *  where the Collection is shown) and Language sit after the switches,
+ *  before How to play; the table's menu has neither row. */
 export function SettingsGroup() {
   const rows = useSettings();
   const t = useT();
+  const companions = useCollection();
   const howto = rows.findIndex((r) => r.key === "howto");
   return (
     <>
@@ -91,7 +120,7 @@ export function SettingsGroup() {
       <ul className="grp me-settings" aria-labelledby="me-settings-head">
         {rows.map((r, i) => (
           <Fragment key={r.key}>
-          {i === howto ? <LanguageRow /> : null}
+          {i === howto ? <>{companions ? <CompanionsRow /> : null}<LanguageRow /></> : null}
           <li>
             {r.on === undefined ? (
               <button type="button" className={`grp-row me-${r.key}`} onClick={r.act}>

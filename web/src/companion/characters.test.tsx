@@ -5,7 +5,7 @@
 // table draws people's companions in their team's corner in Team view only.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthState, AuthUser } from "../auth";
 import type { GameState, StatePlayer } from "../protocol";
 
@@ -30,7 +30,14 @@ import { HAND_LIFT, LIFT, clear, figureBox, meets, pathClear, zonesFor } from ".
 import type { Layout, Rect, SeatPos } from "./seatZones";
 import { TABLES } from "./seatZones.fixtures";
 import CollectionPage from "../components/CollectionPage";
+import { SettingsGroup } from "../components/SettingsList";
 import { forgetHomeSession } from "../home/session";
+
+// the settings list loads the audio module, whose first tap unlocks an AudioContext
+beforeAll(() => {
+  class SilentAudioContext { state = "running"; currentTime = 0; async resume() {} }
+  (window as unknown as { AudioContext: unknown }).AudioContext = SilentAudioContext;
+});
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -504,20 +511,23 @@ describe("the Collection's grid and the character page", () => {
     expect(use()?.textContent).toBe("In use");
   });
 
-  it("one switch, Show at the table, on by default; Off is stored as off and an older Team reads as on", async () => {
-    await draw(<CollectionPage />);
-    const sw = () => host.querySelector<HTMLButtonElement>(".coll-at-table")!;
-    expect(sw().textContent).toBe("Show at the table");
+  it("one switch, Show companions at the table, in Me's settings, on by default; Off is stored as off and an older Team reads as on", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null, collection: true } as AuthState;
+    await draw(<SettingsGroup />);
+    const sw = () => host.querySelector<HTMLButtonElement>(".me-companions")!;
+    expect(sw().textContent).toBe("Show companions at the table");
+    expect(sw().getAttribute("role")).toBe("switch");
     expect(sw().getAttribute("aria-checked")).toBe("true");
     await act(async () => { sw().click(); });
     expect(window.localStorage.getItem("shengji.companions")).toBe("off");
     expect(sw().getAttribute("aria-checked")).toBe("false");
     window.localStorage.setItem("shengji.companions", "team");
-    await draw(<CollectionPage />);
     await draw(<></>);
-    window.history.replaceState(null, "", "/");   // leaving the tab leaves its address
-    await draw(<CollectionPage />);
+    await draw(<SettingsGroup />);
     expect(sw().getAttribute("aria-checked")).toBe("true");
+    // the Collection itself has no switch
+    await draw(<CollectionPage />);
+    expect(host.querySelector(".coll-page [role=switch]")).toBeNull();
   });
 });
 

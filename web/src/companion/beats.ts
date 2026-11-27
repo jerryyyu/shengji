@@ -47,14 +47,33 @@ export const yourTurn = (state: GameState): boolean => isYourTurnCue(state);
 export function lastPlay(state: GameState): { seat: number; key: string } | null {
   const plays = state.phase === "play" ? state.trick?.plays ?? [] : [];
   const last = plays[plays.length - 1];
-  return last ? { seat: last.seat, key: `${state.trick!.leader}:${plays.length}:${last.seat}:${last.cards.join(",")}` } : null;
+  return last ? { seat: last.seat, key: `${state.tricks_done ?? ""}:${state.trick!.leader}:${plays.length}:${last.seat}:${last.cards.join(",")}` } : null;
 }
 
-/** The seat that led a tractor on this frame; null when no tractor was just led. */
+/** The tricks resolved this round, where the server counts them; null from one that does not. */
+const tricksDone = (state: GameState): number | null => (typeof state.tricks_done === "number" ? state.tricks_done : null);
+
+/** Whether a trick was taken between `prev` and `state`. Two tricks of one
+ *  round can be the same cards from the same seats for the same points (two
+ *  decks), so a trick is told from the one before by the server's count of
+ *  tricks resolved; only a server that sends no count has the tricks
+ *  themselves compared. */
+export function trickTaken(state: GameState, prev: GameState): boolean {
+  if (!state.last_trick) return false;
+  const now = tricksDone(state), was = tricksDone(prev);
+  if (now !== null && was !== null) return now !== was;
+  return JSON.stringify(state.last_trick) !== JSON.stringify(prev.last_trick);
+}
+
+/** The seat that led a tractor on this frame; null when no tractor was just
+ *  led. The lead is new when the trick it opens is (the count of tricks
+ *  resolved moved) or it was not the lead a frame ago. */
 export function tractorLed(state: GameState, prev: GameState | null): number | null {
   if (!prev || state.phase !== "play") return null;
   const lead = state.trick?.plays[0];
   if (!lead || lead.shape !== "tractor" || lead.seat !== state.trick!.leader) return null;
+  const now = tricksDone(state), was = tricksDone(prev);
+  if (now !== null && was !== null && now !== was) return lead.seat;
   return JSON.stringify(lead) === JSON.stringify(prev.trick?.plays[0]) ? null : lead.seat;
 }
 
@@ -81,7 +100,7 @@ export function reactions(state: GameState, prev: GameState | null, now: number,
   const here = (seat: number) => { const p = state.players.find((q) => q.seat === seat); return !!p && p.connected && !p.away; };
   const free = () => state.phase !== "round_end" && now - limit.big >= BIG_GAP_MS;
   const done = state.last_trick;
-  if (done && JSON.stringify(done) !== JSON.stringify(prev.last_trick)) {
+  if (done && trickTaken(state, prev)) {
     const team = state.players.find((p) => p.seat === done.winner)?.team;
     const big = done.points >= BIG_POINTS && free();
     if (big) limit.big = now;

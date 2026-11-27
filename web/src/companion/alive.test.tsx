@@ -270,6 +270,43 @@ describe("big plays", () => {
     expect([0, 1, 2, 3].map((s) => el(s, "move").getAttribute("data-move"))).toEqual(["idle", "idle", "idle", "idle"]);
   });
 
+  it("two tricks alike, 9 s apart, are each a big play: the server's count of tricks tells them apart", async () => {
+    await render(state({ tricks_done: 0 }));
+    await render(state({ tricks_done: 1, last_trick: taken(0, 25) }));
+    expect(anims.filter(isDroop).map((a) => a.seat).sort()).toEqual(["1", "3"]);
+    await advance(9000);
+    expect([0, 1, 2, 3].map((s) => el(s, "move").getAttribute("data-move"))).toEqual(["idle", "idle", "idle", "idle"]);
+    await render(state({ tricks_done: 2, last_trick: taken(0, 25) }));
+    expect([0, 1, 2, 3].map((s) => el(s, "move").getAttribute("data-move"))).toEqual(["big", "droop", "big", "droop"]);
+    expect(anims.filter(isDroop).map((a) => a.seat).sort()).toEqual(["1", "1", "3", "3"]);
+    // a third alike 4 s on is inside the big plays' gap: the plain cheer, as any trick there
+    await advance(4000);
+    await render(state({ tricks_done: 3, last_trick: taken(0, 25) }));
+    expect([0, 1, 2, 3].map((s) => el(s, "move").getAttribute("data-move"))).toEqual(["cheer", "idle", "cheer", "idle"]);
+  });
+
+  it("two small tricks alike are each hopped; the same trick on a later frame is not hopped again", async () => {
+    await render(state({ tricks_done: 0 }));
+    await render(state({ tricks_done: 1, last_trick: taken(0, 5) }));
+    await advance(2000);
+    const hops = () => on(0, "move").filter((a) => a.ms === 500).length;
+    expect(hops()).toBe(1);
+    await render(state({ tricks_done: 1, turn: 2, last_trick: taken(0, 5) }));
+    expect(hops()).toBe(1);
+    await render(state({ tricks_done: 2, last_trick: taken(0, 5) }));
+    expect(hops()).toBe(2);
+  });
+
+  it("from a server that sends no count a different trick is still taken, and the same one not again", async () => {
+    await render(state());
+    await render(state({ last_trick: taken(0, 25) }));
+    await advance(9000);
+    await render(state({ turn: 2, last_trick: taken(0, 25) }));
+    expect(anims.filter(isBig).filter((a) => a.seat === "0")).toHaveLength(1);
+    await render(state({ last_trick: taken(0, 25, 1) }));
+    expect(anims.filter(isBig).filter((a) => a.seat === "0")).toHaveLength(2);
+  });
+
   it("the other side taking 20 or more droops yours", async () => {
     await render(state());
     await render(state({ last_trick: taken(1, 25) }));

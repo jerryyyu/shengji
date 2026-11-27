@@ -2,7 +2,7 @@
 // table already has, and the limits on what a figure adds of its own.
 import { describe, expect, it } from "vitest";
 import type { GameState, StatePlayer, TrickPlay } from "../protocol";
-import { BEAT_BUDGET, BIG_GAP_MS, BeatLog, LEANS, WATCH_GAP_MS, aim, canWatch, kittyCapture, lastPlay, reachOf, reactions, tractorLed, underBudget, yourTurn } from "./beats";
+import { BEAT_BUDGET, BIG_GAP_MS, BeatLog, LEANS, WATCH_GAP_MS, aim, canWatch, kittyCapture, lastPlay, reachOf, reactions, tractorLed, trickTaken, underBudget, yourTurn } from "./beats";
 import type { Layout } from "./seatZones";
 
 const player = (seat: number, over: Partial<StatePlayer> = {}): StatePlayer =>
@@ -82,6 +82,53 @@ describe("what each seat does on a frame", () => {
     const both = state({ last_trick: taken(2, 5), trick: { leader: 2, plays: [play(2, ["S3"], "tractor")] } });
     expect(reactions(both, state(), 0, { big: -Infinity })).toEqual({ 0: "hop", 2: "hop" });
     expect(reactions(state({ phase: "round_end", last_trick: taken(1, 30) }), state(), 0, { big: -Infinity })).toEqual({ 1: "cheer", 3: "cheer" });
+  });
+});
+
+describe("two tricks alike", () => {
+  // a double-deck round can hold two tricks of the same cards from the same seats for the same points
+  const same = () => ({ leader: 1, winner: 0, points: 25, plays: [play(1, ["H5", "H5"]), play(2, ["HK", "HK"]), play(3, ["H3", "H3"]), play(0, ["HA", "HA"])] });
+
+  it("each is a trick taken where the server counts them: the count moving tells them apart", () => {
+    const first = state({ last_trick: same(), tricks_done: 1 });
+    const second = state({ last_trick: same(), tricks_done: 2 });
+    expect(JSON.stringify(first.last_trick)).toBe(JSON.stringify(second.last_trick));
+    expect(trickTaken(first, state({ tricks_done: 0 }))).toBe(true);
+    expect(trickTaken(second, first)).toBe(true);
+    // the same trick on a later frame (a card of the next one played) is not taken again
+    expect(trickTaken(state({ last_trick: same(), tricks_done: 2, turn: 3 }), second)).toBe(false);
+    expect(trickTaken(state({ tricks_done: 0 }), second)).toBe(false);
+  });
+
+  it("each gets its reaction, the limits kept: 9 s apart both are big plays, 4 s apart the second is the cheer", () => {
+    const limit = { big: -Infinity };
+    const first = state({ last_trick: same(), tricks_done: 1 });
+    const second = state({ last_trick: same(), tricks_done: 2 });
+    expect(reactions(first, state({ tricks_done: 0 }), 0, limit)).toEqual({ 0: "big", 1: "droop", 2: "big", 3: "droop" });
+    expect(reactions(second, first, 9000, limit)).toEqual({ 0: "big", 1: "droop", 2: "big", 3: "droop" });
+    expect(reactions(state({ last_trick: same(), tricks_done: 3 }), second, 13000, limit)).toEqual({ 0: "cheer", 2: "cheer" });
+    // and a small one hops each time
+    const small = (n: number) => state({ last_trick: { ...same(), points: 0 }, tricks_done: n });
+    expect(reactions(small(5), small(4), 0, limit)).toEqual({ 0: "hop", 2: "hop" });
+    expect(reactions(small(5), small(5), 0, limit)).toEqual({});
+  });
+
+  it("a server that sends no count has the tricks compared: a different trick is taken, the same one is not", () => {
+    const limit = { big: -Infinity };
+    expect(trickTaken(state({ last_trick: same() }), state())).toBe(true);
+    expect(trickTaken(state({ last_trick: same() }), state({ last_trick: same() }))).toBe(false);
+    expect(trickTaken(state({ last_trick: { ...same(), points: 30 } }), state({ last_trick: same() }))).toBe(true);
+    expect(reactions(state({ last_trick: same() }), state(), 0, limit)).toEqual({ 0: "big", 1: "droop", 2: "big", 3: "droop" });
+    expect(reactions(state({ last_trick: same() }), state({ last_trick: same() }), 9000, limit)).toEqual({});
+    // one side with a count and one without (a reconnect across versions) is compared too
+    expect(trickTaken(state({ last_trick: same(), tricks_done: 2 }), state({ last_trick: same() }))).toBe(false);
+  });
+
+  it("a tractor led again as the next trick opens is led again, and the card watched has a key of its own", () => {
+    const lead = (n: number) => state({ tricks_done: n, trick: { leader: 2, plays: [play(2, ["S3", "S3", "S4", "S4"], "tractor")] } });
+    expect(tractorLed(lead(2), lead(1))).toBe(2);
+    expect(tractorLed(lead(2), lead(2))).toBeNull();
+    expect(lastPlay(lead(2))!.key).not.toBe(lastPlay(lead(1))!.key);
   });
 });
 

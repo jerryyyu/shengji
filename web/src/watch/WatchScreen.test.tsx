@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fixture from "../replay/server-round-finished.fixture.json";
-import WatchScreen, { CARD_HOLD_MS, RETRY_MS } from "./WatchScreen";
+import WatchScreen, { CARD_HOLD_MS, FOLLOW_MS, RETRY_MS } from "./WatchScreen";
 import { TO_PLAY_MS, watchUsage } from "./usage";
 import { telemetry } from "../telemetry";
 import { clearToast, currentToast } from "../toast";
@@ -431,6 +431,23 @@ describe("caught up", () => {
     await flush();
   }
   const follows = (table = "abc123") => urls.filter((u) => u.startsWith(`/api/watch/${table}`)).length;
+
+  it("keeps its place while the round plays back: one read per FOLLOW_MS in the foreground, none hidden", async () => {
+    reply = (url) => url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined } : feed;
+    const h = await screen();
+    await act(async () => { btn(h, "Pause")?.click(); });     // mid-round, never at its end
+    urls.length = 0;
+    for (let s = 0; s < 120; s++) await act(async () => { vi.advanceTimersByTime(1000); });
+    await flush();
+    // the server's lease is 90 s; a round plays back for longer than that
+    expect(follows()).toBe(Math.floor(120000 / FOLLOW_MS));
+    expect(urls.every((u) => u.startsWith("/api/watch/abc123?after=3"))).toBe(true);
+    const hidden = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    urls.length = 0;
+    for (let s = 0; s < 60; s++) await act(async () => { vi.advanceTimersByTime(1000); });
+    hidden.mockRestore();
+    expect(follows()).toBe(0);
+  });
 
   it("updates the live round and the seat from a waiting reply", async () => {
     reply = (url) => url.startsWith("/api/watch/")

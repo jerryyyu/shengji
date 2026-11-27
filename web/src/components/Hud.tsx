@@ -13,6 +13,7 @@ import { attackingTeam, myTeam } from "../tableCopy";
 import { clearToast, currentToast, heldToastKey, hideHeldToast, holdToast, releaseHeldToast, showToast } from "../toast";
 import { tookSeatText } from "../queue/tableText";
 import { useNearbyUi } from "../nearbyGate";
+import { conn } from "../ws";
 import { displayName, t, useT } from "../i18n";
 
 export function TrumpChip({ state }: { state: GameState }) {
@@ -169,26 +170,31 @@ export function watchersLine(names: readonly string[], n: number): string {
   return n <= 1 ? t("table.someoneWatching") : t("table.peopleWatching", { n });
 }
 
-/** The last watchers toast seen per table, so a remount, a reconnect or a
+/** The last watchers toast seen at this table on this connection: the first
+ *  frame of each table and of each new socket (`conn.generation`) is the
+ *  baseline, so a remount, a reconnect (arrivals while away included) or a
  *  page opened later tells no toast that was told before it. */
-const toldWatchers = { room: "", told: -1 };
+const toldWatchers = { key: "", told: -1 };
 
 /** One toast as watchers start watching (the server sends one per 30 s at
  *  most, naming the batch); none as they leave. */
 function useWatcherToast(state: GameState) {
   const w = state.watchers;
   const told = w?.told ?? 0;
+  // read with each frame: a new socket's first frame is its own baseline
+  const gen = conn.generation;
   useEffect(() => {
     if (!w) return;
-    const seen = toldWatchers.room === state.room ? toldWatchers.told : null;
-    toldWatchers.room = state.room;
+    const key = `${state.room}#${gen}`;
+    const seen = toldWatchers.key === key ? toldWatchers.told : null;
+    toldWatchers.key = key;
     toldWatchers.told = told;
     if (seen === null || told <= seen || w.joined.length === 0) return;
     const names = w.joined.flatMap((j) => (j ? [j.name] : []));
     showToast(watchersLine(names, w.joined.length), { info: true });
     // told on a new toast number only; the rest is read with it
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.room, told]);
+  }, [state.room, told, gen]);
 }
 
 const EYE = "M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z";

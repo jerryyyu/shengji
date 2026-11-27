@@ -1179,3 +1179,51 @@ def test_a_table_closed_during_the_wait_is_sent_nothing(feed, monkeypatch):
     srv.rooms.pop("SHUT")
     asyncio.run(spectate._announce(t.room, 0))
     assert sent == []
+
+
+@pytest.mark.parametrize("route", ["watch", "follow"])
+def test_a_table_gone_during_the_account_read_is_not_served(feed, monkeypatch, route):
+    """LIFECYCLE_CHECKLIST 2: the account read is an await; a table that
+    stops being watchable during it is not answered as live, and counts nobody."""
+    srv, spectate, client = feed
+    t = Table(srv, code="GOAW", ranked=True)
+    t.play_round()
+    t.deal()
+    first = None
+    if route == "follow":
+        first = _watch(client).json()
+        t.room.watch.drop(first["watcher"])           # a reader new to the table again
+    scheduled = []
+    monkeypatch.setattr(spectate, "_schedule", lambda room: scheduled.append(room))
+    real = spectate._viewer
+
+    async def viewer(request):
+        user = await real(request)
+        t.room.aborted = True                          # the table ends while its account is read
+        return user
+
+    monkeypatch.setattr(spectate, "_viewer", viewer)
+    if route == "watch":
+        resp = _watch(client)
+        assert resp.status_code == 404 or resp.json().get("rerun") is True
+    else:
+        resp = client.get(f"/api/watch/{first['table']}", params={"after": first["round"], "w": first["watcher"]})
+        assert resp.status_code == 404
+    assert t.room.watch.watchers == {} and scheduled == []
+
+
+def test_a_watcher_reading_through_a_long_round_stays_counted_and_is_told_once(told, monkeypatch):
+    srv, spectate, client, scheduled, _, _ = told
+    t = Table(srv, ranked=True)
+    t.play_round()
+    t.deal()
+    clock = [time.time()]
+    monkeypatch.setattr(spectate.time, "time", lambda: clock[0])
+    first = _watch(client).json()
+    # the watch screen's foreground poll every 15 s while the round plays back
+    for _ in range(12):
+        clock[0] += 15
+        r = client.get(f"/api/watch/{first['table']}", params={"after": first["round"], "w": first["watcher"]})
+        assert r.status_code == 200
+        assert srv.state_for(t.room, 0)["watchers"]["count"] == 1
+    assert len(scheduled) == 1 and t.room.watch.arrivals == [first["watcher"]]

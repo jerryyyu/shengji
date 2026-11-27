@@ -296,6 +296,29 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     return () => window.clearTimeout(timer);
   }, [loaded, beat, paused, atEnd, speed, beats.length]);
 
+  // While a live table's round plays back, the same read every FOLLOW_MS in
+  // the foreground keeps this watcher counted at the table (the server's
+  // lease is 90 s; a round plays back for longer). A finished round it
+  // brings waits in `next` for the end; a hidden page reads nothing.
+  useEffect(() => {
+    if (!loaded || atEnd || loaded.doc.rerun) return;
+    const { doc } = loaded;
+    let on = true;
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === "hidden" || table.current !== doc.table) return;
+      void followWatch(doc.table, next.current?.doc.round ?? doc.round ?? 0, doc.watcher).then((res) => {
+        if (!on || table.current !== doc.table || !res.ok) return;
+        if (res.doc.waiting) {
+          setLive({ round: res.doc.live_round, code: res.doc.code, watchers: res.doc.watchers });
+        } else if (!next.current) {
+          const l = load(res.doc);
+          if (l && l.doc.table === doc.table && l.doc.round !== doc.round) next.current = l;
+        }
+      });
+    }, FOLLOW_MS);
+    return () => { on = false; window.clearInterval(poll); };
+  }, [loaded, atEnd]);  // eslint-disable-line react-hooks/exhaustive-deps
+
   // Caught up: one timer asks about the round in play every FOLLOW_MS until
   // it finishes; that round then plays once the card has held CARD_HOLD_MS.
   // Stepping back from the end keeps a round already read, and reaching the

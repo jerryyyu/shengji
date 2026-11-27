@@ -832,10 +832,9 @@ async def _announce(room: Any, delay: float) -> None:
         _schedule(room)
 
 
-async def _arrived(room: Any, token: str, request: Request) -> None:
-    """A watcher new at this table: its account (server-side only) and the
-    players' toast."""
-    user = await _viewer(request)
+def _arrived(room: Any, token: str, user: dict | None) -> None:
+    """A watcher new at this table: its account (``user``, read before the
+    table was last checked; server-side only) and the players' toast."""
     uid = user.get("id") if user else None
     st = room.watch
     st.who[token] = ((uid, accounts.effective_name(user) or None)
@@ -886,6 +885,9 @@ async def watch(request: Request, mode: str | None = None, skip: str | None = No
     """Pick a table and send its latest finished round; with no table, the
     rerun; with neither, 404."""
     wide = await _admit(request)
+    # read before the table is picked and checked: no await comes between
+    # that check and the answer
+    user = await _viewer(request)
     token, now = _token(w), time.time()
     room = pick(mode if mode in ("ranked", "casual") else None, skip, token, now, wide)
     if room is not None:
@@ -898,7 +900,7 @@ async def watch(request: Request, mode: str | None = None, skip: str | None = No
         out = await _serve(room, token, None, wide)
         if out is not None and out[1] is not None:
             if new:
-                await _arrived(room, token, request)
+                _arrived(room, token, user)
             return _answer(*out)
         # no live round for this watcher after all: it holds no place there
         room.watch.drop(token)
@@ -926,9 +928,19 @@ async def follow(table: str, request: Request, after: int | None = None,
     while the round after ``after`` is in play. 404 once it cannot be
     watched (closed, emptied, Allow joiners off) or is at its cap."""
     wide = await _admit(request)
-    token, now = _token(w), time.time()
-    room = next((r for r in _rooms() if getattr(r, "watch", None) is not None
-                 and r.watch.id == table), None)
+    token = _token(w)
+
+    def find() -> Any | None:
+        return next((r for r in _rooms() if getattr(r, "watch", None) is not None
+                     and r.watch.id == table), None)
+
+    # a reader new to the table: its account, read before the table is checked
+    first = find()
+    if first is not None:
+        first.watch.live_watchers(time.time())         # an expired lease is new again
+    user = (await _viewer(request)
+            if first is None or token not in first.watch.watchers else None)
+    room, now = find(), time.time()
     if room is None or not watchable(room, wide):
         raise HTTPException(status_code=404, detail="Not found.")
     st = room.watch
@@ -941,7 +953,7 @@ async def follow(table: str, request: Request, after: int | None = None,
         st.drop(token)
         raise HTTPException(status_code=404, detail="Not found.")
     if new:
-        await _arrived(room, token, request)
+        _arrived(room, token, user)
     head, built = out
     if built is None:
         return Response(content=_dumps(head), media_type="application/json")

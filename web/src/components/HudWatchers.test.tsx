@@ -8,6 +8,7 @@ import type { GameState, StatePlayer, Watchers } from "../protocol";
 import Hud from "./Hud";
 import { clearToast, currentToast } from "../toast";
 import { setLanguageChoice } from "../i18n";
+import { conn } from "../ws";
 
 const player = (seat: number): StatePlayer => ({
   seat, name: `P${seat}`, is_bot: false, connected: true, team: (seat % 2) as 0 | 1, cards_left: 16,
@@ -129,6 +130,26 @@ describe("the toast", () => {
     root = createRoot(host);
     show(state(w(2, 4, [{ name: "Mei" }])));
     expect(currentToast()).toBeNull();
+  });
+
+  it("after a reconnect to the same table, tells nothing from the time away", () => {
+    show(state(w(1, 1, [null])));
+    clearToast();
+    // the socket drops; Mei starts watching meanwhile; the new socket's first
+    // frame already carries that toast's number
+    act(() => { conn.generation += 1; });
+    show(state(w(2, 2, [{ name: "Mei" }])));
+    expect(currentToast()).toBeNull();
+    // the next arrival on the new connection is told
+    show(state(w(3, 3, [{ name: "Sam" }])));
+    expect(currentToast()?.text).toBe("Sam is watching");
+    clearToast();
+    // a reconnect with nothing new: the next arrival is still told
+    act(() => { conn.generation += 1; });
+    show(state(w(3, 3, [{ name: "Sam" }])));
+    expect(currentToast()).toBeNull();
+    show(state(w(4, 4, [null])));
+    expect(currentToast()?.text).toBe("Someone is watching");
   });
 
   it("reads in Simplified and Traditional Chinese", () => {

@@ -552,7 +552,8 @@ leaderboard-listed account, "Someone is watching" (有人在观战 / 有人在�
 server tells at most one toast per table each 30 s, and the watchers who arrive in between come as one: "Mei and 2
 others are watching" (Mei 等 3 人在观战), or "3 people are watching" (3 人在观战) with nobody listed. A tap on the eye
 shows the same toast for who watches now. Nothing is told as watchers leave, and a toast told before the table was
-on screen is never told late. A watcher is named only by the leaderboard rule a replay uses; its account id never
+on screen, or while a player's connection was away, is never told late. A watcher stays counted for as long as its
+watch screen is in the foreground, reading the table every 15 s through the round's playback. A watcher is named only by the leaderboard rule a replay uses; its account id never
 leaves the server, and what it sees is unchanged: the previous round only. The watch screen is the table (`watch/WatchScreen.tsx` draws the table's own seats,
 trick and hand read-only), turned landscape as a game is: four tabs (team dot, crown, name, cards left; the
 selected one filled) in table order from the seat it lands behind, the banker; a tab turns the table to that

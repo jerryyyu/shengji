@@ -2,7 +2,8 @@
 //   node e2e/run.mjs ci     the scripted-socket suites (matrix, phases, actions, client, watch, collection): needs only web/dist
 //   node e2e/run.mjs full   those, then the live flows against a game server it starts
 //   node e2e/run.mjs flows  the live flows alone
-//   node e2e/run.mjs companions  companions through a real reconnect and rejoin, against a server it starts
+//   node e2e/run.mjs companions  companions through a real reconnect and rejoin, always against a server it
+//                           starts with the Collection and device accounts on (BASE does not apply to it)
 // `full` needs a Python with the server's dependencies: PY=/path/to/python
 // (default server/.venv/bin/python). BASE=<url> skips starting anything.
 import { spawn, spawnSync } from "node:child_process";
@@ -57,9 +58,10 @@ if (mode !== "flows" && mode !== "companions") {
   rc |= run("collection.mjs", { BASE: base });
   rc |= run("figures.mjs", { BASE: base });
 }
-/** A game server of its own (other people's open tables would seat the suite elsewhere), with `env` added. */
-async function gameServer(env = {}) {
-  if (process.env.BASE) return process.env.BASE;
+/** A game server of its own (other people's open tables would seat the suite elsewhere), with `env` added;
+ *  BASE names one already running instead, unless `own` asks for a fresh one whatever BASE says. */
+async function gameServer(env = {}, { own = false } = {}) {
+  if (process.env.BASE && !own) return process.env.BASE;
   const py = process.env.PY ?? path.join(WEB, "../server/.venv/bin/python");
   if (!fs.existsSync(py)) { console.error(`no Python at ${py}: set PY`); process.exit(2); }
   const port = await freePort();
@@ -77,8 +79,10 @@ if (mode === "full" || mode === "flows") {
   rc |= run("flows.mjs", { BASE: await gameServer() });
 }
 if (mode === "full" || mode === "companions") {
-  // the Collection on for everyone and device accounts made, so each player has a look of their own
-  rc |= run("companions.mjs", { BASE: await gameServer({ COLLECTION_ENABLED: "1", SHENGJI_DEVICE_ACCOUNTS: "1" }) });
+  // always its own server, the Collection on for everyone and device accounts made, so each player has a
+  // look of their own: an ordinary BASE has neither. COMPANIONS_BASE names a server started with both.
+  const base = process.env.COMPANIONS_BASE ?? await gameServer({ COLLECTION_ENABLED: "1", SHENGJI_DEVICE_ACCOUNTS: "1" }, { own: true });
+  rc |= run("companions.mjs", { BASE: base });
 }
 stop();
 process.exit(rc);

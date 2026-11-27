@@ -63,8 +63,9 @@ interface RoundEndModalProps {
   before?: [string, string] | null;
   /** A watcher's card: its own main button (Take a seat or Play) and Leave
    *  in place of Next and Leave, Details as for a player, and its one status
-   *  line under the result. A watcher has no seat, no rating and no Next. */
-  watch?: { primary: ReactNode; leave: ReactNode; note: string | null };
+   *  line under the result. A watcher has no seat, no rating and no Next;
+   *  `onDismiss` closes the card from its backdrop or Escape. */
+  watch?: { primary: ReactNode; leave: ReactNode; note: string | null; onDismiss?: () => void };
 }
 
 type Outcome = "WinRound" | "LoseRound" | "WinGame" | "LoseGame";
@@ -352,7 +353,7 @@ export default function RoundEndModal({ state, result, clock = null, clockEnd = 
   const [sent, setSent] = useState(false);
   useEffect(() => { setSent(false); }, [state]);
   return (
-    <ResultDialog titleId={titleId}>
+    <ResultDialog titleId={titleId} onDismiss={watch?.onDismiss}>
       <div className={`panel modal round-end${gameWon ? " game-won" : ""}`}>
         {gameWon ? <div className={`game-won-crown${live ? " flash" : ""}`} aria-hidden="true">👑</div> : null}
         <h2 id={titleId} tabIndex={-1} className={`modal-title team${lostTeam ?? result.winner_team}`}>

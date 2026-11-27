@@ -301,10 +301,12 @@ describe("the Collection's grid and the character page", () => {
     expect(swatch("Lantern orange").getAttribute("aria-label")).toBe("Lantern orange");
   });
 
-  it("has no state chips, only Try on your table, which stands it beside a partner, with no team pad under either", async () => {
+  it("has the move chips, then Try on your table, which stands it beside a partner, with no team pad under either", async () => {
     signedIn();
     await draw(<CollectionPage />);
     await openTile("Bun");
+    expect([...host.querySelectorAll(".char-poses button")].map((b) => b.textContent)).toEqual(
+      ["Hop", "Cheer", "Sleep", "Steamer pop", "Ready", "Watch", "Big play", "Try on your table"]);
     expect([...host.querySelectorAll(".char-chip")].map((b) => b.textContent)).toEqual(["Try on your table"]);
     await act(async () => { host.querySelector<HTMLButtonElement>(".char-chip")!.click(); });
     const figs = [...host.querySelectorAll(".char-stage svg.cmp")];

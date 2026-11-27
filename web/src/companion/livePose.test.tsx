@@ -25,6 +25,8 @@ import { forgetHomeSession } from "../home/session";
 import { DRAWINGS } from "./kinds";
 import { COMPANION_KINDS } from "./look";
 import { poseMs } from "./livePose";
+import { reachOfFrames } from "./beats";
+import { STAGE_BEATS, fittedStill, fittedSteps, stageBeatMs } from "./stageBeats";
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -222,5 +224,177 @@ describe("taps on the page, and a stage scrolled away", () => {
     } finally {
       delete (window as unknown as { IntersectionObserver?: unknown }).IntersectionObserver;
     }
+  });
+});
+
+describe("the stage's move chips", () => {
+  const chip = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".char-poses .char-move")]
+    .find((b) => b.textContent === name)!;
+  const press = (name: string) => act(async () => { chip(name).click(); });
+  const stage = () => act(async () => {
+    root.render(<Stage kind="bun" colour="plain" size={176} label="Bun" moves trail={<button type="button" className="char-chip">Try</button>} />);
+  });
+
+  it("are Hop, Cheer, Sleep and the special, buttons with their names, then what the row is given", async () => {
+    await stage();
+    const row = host.querySelector(".char-poses")!;
+    expect([...row.children].map((c) => [c.tagName, c.textContent])).toEqual([
+      ["BUTTON", "Hop"], ["BUTTON", "Cheer"], ["BUTTON", "Sleep"], ["BUTTON", "Steamer pop"],
+      ["BUTTON", "Ready"], ["BUTTON", "Watch"], ["BUTTON", "Big play"], ["BUTTON", "Try"]]);
+    expect(row.getAttribute("role")).toBe("group");
+    expect(row.getAttribute("aria-label")).toBe("Bun");
+  });
+
+  it("each plays its move once, then the cycle resumes where it was", async () => {
+    await stage();
+    await press("Hop");
+    expect(pose(".char-stage")).toBe("hop");
+    await tick(poseMs("bun", "hop") + 260);
+    expect(pose(".char-stage")).toBe("idle");
+    await press("Cheer");
+    expect(pose(".char-stage")).toBe("cheer");
+    await ended(".char-stage");
+    expect(pose(".char-stage")).toBe("idle");
+    await press("Sleep");
+    expect(pose(".char-stage")).toBe("sleep");
+    await tick(2399);
+    expect(pose(".char-stage")).toBe("sleep");
+    await tick(1);
+    expect(pose(".char-stage")).toBe("idle");
+    await tick(3000);                                    // the cycle's own idle, then its hop
+    expect(pose(".char-stage")).toBe("hop");
+  });
+
+  it("the special's chip is the figure's tap: the special from its start", async () => {
+    await stage();
+    await press("Steamer pop");
+    expect(pose(".char-stage")).toBe("react");
+    const first = host.querySelector(".char-stage svg.cmp");
+    await press("Steamer pop");                          // again mid-way: from the start, as a tap restarts it
+    expect(host.querySelector(".char-stage svg.cmp")).not.toBe(first);
+    await tick(poseMs("bun", "react") + 260);
+    expect(pose(".char-stage")).toBe("idle");
+    await act(async () => { host.querySelector<HTMLButtonElement>(".char-stage .coll-figure")!.click(); });
+    expect(pose(".char-stage")).toBe("react");
+  });
+
+  it("under Reduce Motion each shows its pose drawn still, then the figure stands again", async () => {
+    reduced();
+    await stage();
+    for (const [name, p, ms] of [["Hop", "hop", 1000], ["Cheer", "cheer", 1000], ["Steamer pop", "react", 1000], ["Sleep", "sleep", 2400]] as const) {
+      await press(name);
+      const svg = host.querySelector(".char-stage svg.cmp")!;
+      expect(svg.getAttribute("data-pose")).toBe(p);
+      expect(svg.classList.contains("cmp-still")).toBe(true);
+      await tick(ms);
+      expect(pose(".char-stage")).toBe("idle");
+    }
+  });
+
+  type Call = { el: Element; frames: Keyframe[]; o: KeyframeAnimationOptions; cancelled: boolean };
+  const stubAnimate = () => {
+    const calls: Call[] = [];
+    (Element.prototype as unknown as { animate: unknown }).animate = function (this: Element, frames: Keyframe[], o: KeyframeAnimationOptions) {
+      const c: Call = { el: this, frames, o, cancelled: false };
+      calls.push(c);
+      return { cancel() { c.cancelled = true; }, finished: Promise.resolve() } as unknown as Animation;
+    };
+    return calls;
+  };
+  const unstub = () => { delete (Element.prototype as unknown as { animate?: unknown }).animate; };
+
+  it("Ready, Watch and Big play play the table's own moves once on the figure's box, each step held to the next", async () => {
+    const calls = stubAnimate();
+    try {
+      await stage();
+      const box = host.querySelector(".char-stage .char-box")!;
+      await press("Ready");
+      expect(pose(".char-stage")).toBe("idle");                // the figure holds still while its box jumps
+      await tick(stageBeatMs("ready", false));
+      // jsdom lays nothing out: no room above the figure, so the jump is lowered to fit
+      expect(calls.map((c) => c.frames)).toEqual(fittedSteps("ready", 176, 0).map((s) => s.frames));
+      expect(calls.every((c) => c.el === box && c.o.fill === "forwards")).toBe(true);
+      expect(calls.every((c) => c.cancelled)).toBe(true);     // let go once the last step ends
+      calls.length = 0;
+      await press("Watch");
+      await tick(stageBeatMs("watch", false));
+      expect(calls.map((c) => c.frames)).toEqual(fittedSteps("watch", 176, 0).map((s) => s.frames));
+    } finally { unstub(); }
+  });
+
+  it("Big play holds the cheer for the whole jump, then the cycle resumes", async () => {
+    stubAnimate();
+    try {
+      await stage();
+      await press("Big play");
+      expect(pose(".char-stage")).toBe("cheer");               // as the table draws a big play
+      await tick(1200);
+      await ended(".char-stage");                              // the cheer's own animation ends at 1.2 s
+      expect(pose(".char-stage")).toBe("cheer");               // held to the jump's end
+      await tick(stageBeatMs("big", false) - 1200);
+      expect(pose(".char-stage")).toBe("idle");
+      await tick(3000);                                        // the cycle's own idle, then its hop
+      expect(pose(".char-stage")).toBe("hop");
+    } finally { unstub(); }
+  });
+
+  it("a tap on the figure, or any chip, ends a beat at once: no later step plays over the special", async () => {
+    const calls = stubAnimate();
+    try {
+      await stage();
+      await press("Ready");
+      await tick(600);                                         // past the jump, before the first bob
+      const before = calls.length;
+      await act(async () => { host.querySelector<HTMLButtonElement>(".char-stage .coll-figure")!.click(); });
+      expect(pose(".char-stage")).toBe("react");
+      expect(calls.every((c) => c.cancelled)).toBe(true);
+      await tick(stageBeatMs("ready", false));
+      expect(calls.length).toBe(before);                       // no bob or relax after the tap
+      await press("Watch");
+      await press("Hop");
+      const watch = calls.slice(before);
+      await tick(stageBeatMs("watch", false));
+      expect(watch.every((c) => c.cancelled)).toBe(true);
+      expect(calls.length).toBe(before + 1);                   // only the lean's first step began
+    } finally { unstub(); }
+  });
+
+  it("a still pose is lowered by the same stage fit as the moving one", () => {
+    for (const b of ["ready", "watch", "big"] as const) {
+      expect(fittedStill(b, 176, 10_000)).toBe(STAGE_BEATS[b].still);
+    }
+    expect(fittedStill("big", 120, 26)).not.toBe(STAGE_BEATS.big.still);
+    expect(reachOfFrames([{ transform: fittedStill("big", 120, 26) }], 120).up).toBeLessThanOrEqual(26);
+  });
+
+  it("a jump is lowered only as far as the stage's room above the figure needs", () => {
+    for (const b of ["ready", "watch", "big"] as const) {
+      expect(fittedSteps(b, 176, 10_000).map((s) => s.frames)).toEqual(STAGE_BEATS[b].steps.map((s) => s.frames));
+    }
+    for (const up of [0, 20, 36, 60]) {
+      const steps = fittedSteps("big", 176, up);
+      const apex = Math.max(...steps.map((s) => reachOfFrames(s.frames, 176).up));
+      expect(apex).toBeLessThanOrEqual(Math.max(up, reachOfFrames(fittedSteps("big", 176, 0)[0].frames, 176).up));
+    }
+    expect(reachOfFrames(fittedSteps("big", 176, 60)[0].frames, 176).up).toBeGreaterThan(30);   // still a jump where there is room
+  });
+
+  it("under Reduce Motion Ready, Watch and Big play each hold one still pose, then stand again", async () => {
+    reduced();
+    await stage();
+    const box = host.querySelector<HTMLElement>(".char-stage .char-box")!;
+    for (const b of ["ready", "watch", "big"] as const) {
+      await press({ ready: "Ready", watch: "Watch", big: "Big play" }[b]);
+      // jsdom lays nothing out: no room above the figure, so the still pose is lowered to fit too
+      expect(box.style.transform).toBe(fittedStill(b, 176, 0));
+      await tick(1000);
+      expect(box.style.transform).toBe("");
+      expect(pose(".char-stage")).toBe("idle");
+    }
+  });
+
+  it("are not drawn on a stage without them", async () => {
+    await act(async () => { root.render(<Stage kind="bun" colour="plain" size={176} label="Bun" />); });
+    expect(host.querySelector(".char-poses, .char-move")).toBeNull();
   });
 });

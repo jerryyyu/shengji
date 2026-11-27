@@ -218,6 +218,36 @@ def test_launcher_hold_then_guarded_resume_preserves_completed_shard(release50_p
     receipt = json.loads(subprocess.check_output([*archive_cmd, str(archive)]))
     assert receipt['verified_members'] == 7
     assert receipt['raw_member_bytes'] > receipt['compressed_bytes'] == archive.stat().st_size
+    # Exercise the same producer and consumer with a tranche-bound external mount.
+    monkeypatch.syspath_prepend(str(source/'tools/y_datagen'))
+    import archive_leg
+    ssd = tmp_path/'external'
+    ssd.mkdir()
+    def external_volume(uuid, *, internal):
+        assert (uuid, internal) == ('test-ssd', False)
+        return ssd
+    monkeypatch.setattr(archive_leg, '_volume', external_volume)
+    tranche = dict(spec, tranche_volumes={'archive_uuid': 'test-ssd'})
+    sealed = json.loads(terminal.read_bytes())
+    sealed['leg_seal'] = launcher.seal_leg(tranche, out)
+    bound = tmp_path/'bound.terminal.json'
+    bound.write_text(json.dumps(sealed))
+    pin = launcher.sha256(bound)
+    dest = ssd/'leg.tar.zst'
+    assert archive_leg.archive_leg(out, bound, pin, dest)['verified_members'] == 7
+    with pytest.raises(ValueError, match='outside the sealed archive volume'):
+        archive_leg.archive_leg(out, bound, pin, archive)
+    alias = ssd/'redirect'
+    alias.symlink_to(tmp_path, target_is_directory=True)
+    with pytest.raises(ValueError, match='outside the sealed archive volume'):
+        archive_leg.archive_leg(out, bound, pin, alias/'misplaced.tar.zst')
+    assert not (tmp_path/'misplaced.tar.zst.lock').exists()
+    mounts = iter([ssd, models])
+    monkeypatch.setattr(archive_leg, '_volume', lambda *args, **kwargs: next(mounts))
+    interrupted = ssd/'interrupted.tar.zst'
+    with pytest.raises(ValueError, match='outside the sealed archive volume'):
+        archive_leg.archive_leg(out, bound, pin, interrupted)
+    assert not interrupted.exists() and dest.is_file()
     published = archive.stat().st_ino
     assert json.loads(subprocess.check_output([*archive_cmd, str(archive)])) == receipt
     assert archive.stat().st_ino == published

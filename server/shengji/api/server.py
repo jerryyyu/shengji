@@ -1643,31 +1643,20 @@ def _keep_acting_bot(room: Room, used: Any, decided: Any) -> None:
 
 
 def _log_play(room: Room, seat: int, cards: list[str], bot: bool,
-              prev_last, decider: Any = None) -> None:
-    # S0 item 3: attach the search's own account of the decision. A live game
-    # previously recorded only the CARD, so a reported misplay could not be
-    # replayed — the QHKR incident had to be diagnosed from replicas rather
-    # than from the actual draw. Best-effort and bot-only; a policy that ran no
-    # search simply has no record.
+              prev_last, decider: Any = None, *, submitted: list[str] | None = None) -> None:
     extra = {}
+    attempt = cards if submitted is None else submitted
+    if len(attempt) > len(cards):
+        extra["attempted_cards"] = list(attempt)
+        extra["engine_resolution"] = "failed_throw_forced"
     if bot:
         rec = getattr(room.bot if decider is None else decider,
                       "last_decision_record", None)
         if rec is not None:
-            if sorted(rec.get("played", [])) != sorted(cards):
-                # A lead throw is an attempted action: the engine may replace
-                # it with the lowest beatable component.  Preserve the policy
-                # record as the attempted choice and put the engine resolution
-                # beside it in the play event.  Any other mismatch is still a
-                # hard observability bug rather than something to paper over.
-                rnd = room.round
-                if not (rnd is not None and isinstance(rnd.message, str)
-                        and rnd.message.startswith("Throw failed")):
-                    raise RuntimeError(
-                        "bot decision record/play mismatch: record says "
-                        f"{rec.get('played')}, server received {cards}")
-                extra["attempted_cards"] = list(rec.get("played", []))
-                extra["engine_resolution"] = "failed_throw_forced"
+            if sorted(rec.get("played", [])) != sorted(attempt):
+                raise RuntimeError(
+                    "bot decision record/play mismatch: record says "
+                    f"{rec.get('played')}, server received {attempt}")
             extra["decision"] = rec
     room.log_event("play", seat=seat, cards=cards, bot=bot, **extra)
     rnd = room.round
@@ -1859,7 +1848,7 @@ def bot_step(room: Room, seat: int) -> bool:
             # the ENGINE recorded, not what the bot asked for
             played = actual_play_after(rnd, seat, prev_last)
             room.remove_codes(seat, played)
-            _log_play(room, seat, played, True, prev_last)
+            _log_play(room, seat, played, True, prev_last, submitted=cards)
             _observe_committed_play(room)
         else:
             return False
@@ -2138,7 +2127,7 @@ def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
             played = actual_play_after(rnd, seat, prev_last)
             room.remove_codes(seat, played)
             _log_play(room, seat, played, True, prev_last,
-                      decider=snapshot.bot_copy)
+                      decider=snapshot.bot_copy, submitted=decision.cards)
             # on the served bot: ``snapshot.bot_copy`` unless the room is closing
             _observe_committed_play(room)
         else:  # guarded by snapshot construction; fail closed on corruption
@@ -2772,7 +2761,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
             room.remove_ids(seat, ids)
         else:
             room.remove_codes(seat, played)
-        _log_play(room, seat, played, False, prev_last)
+        _log_play(room, seat, played, False, prev_last, submitted=codes)
         # a human's play is a committed play too: the room bot's ledger must see
         # the notice it posts (or replaces) before the bot's next turn
         _observe_committed_play(room)

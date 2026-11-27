@@ -29,7 +29,7 @@ const FACE: Record<CharPose, { eyes: EyeMode; mouth: "smile" | "open" | "rest" }
 const STILL: Partial<Record<CharPose, Record<string, string>>> = {
   hop: { body: "translate(0 -12)" },
   cheer: { body: "translate(0 -34)", head: "rotate(-6 190 226)", wingL: "rotate(30 134 250)", wingR: "rotate(-30 246 250)", tail: "rotate(-16 130 320)" },
-  react: { body: "translate(0 -74)", head: "translate(4 4) rotate(5 190 226)", wingL: "rotate(36 134 250)", wingR: "rotate(-36 246 250)", tail: "rotate(18 130 320)" },
+  react: { body: "translate(0 -62)", head: "translate(4 4) rotate(5 190 226)", wingL: "rotate(36 134 250)", wingR: "rotate(-36 246 250)", tail: "rotate(18 130 320)" },
   sleep: { head: "translate(0 14) rotate(6 190 226)", wingL: "rotate(-22 134 250)", wingR: "rotate(22 246 250)" },
 };
 /** The Dragon's shapes in its 400 box, as SVG markup. `id` keeps its
@@ -88,9 +88,9 @@ export function dragonMarkup(colour: DragonColourId | DragonColour, id: string, 
     + mouth
     + `<path d="M142 194c-26 0-40-16-34-34M238 194c26 0 40-16 34-34" fill="none" stroke="${p.whisker}" stroke-width="5" stroke-linecap="round"/>`;
 
-  const flame = pose === "react" ? `<g class="cmp-flame"><path d="M250 214C272 176 318 172 342 196C366 220 350 256 318 258C288 260 262 244 250 214Z" fill="#ff9d4d"/>`
+  const flame = pose === "react" ? `<g class="cmp-flame"><g transform="translate(250 216) scale(1.3) translate(-250 -216)"><path d="M250 214C272 176 318 172 342 196C366 220 350 256 318 258C288 260 262 244 250 214Z" fill="#ff9d4d"/>`
     + `<path d="M262 214C278 190 310 188 326 204C342 220 332 244 312 246C290 248 270 234 262 214Z" fill="#ffd76a"/><ellipse cx="304" cy="220" rx="13" ry="10" fill="#fff6d6"/>`
-    + `<circle cx="356" cy="176" r="12" fill="none" stroke="#fff6e6" stroke-width="5" opacity=".8"/></g>` : "";
+    + `<circle cx="356" cy="176" r="12" fill="none" stroke="#fff6e6" stroke-width="5" opacity=".8"/></g></g>` : "";
   const puffs = pose === "cheer" ? `<g class="cmp-puffs">${spark(232, 222, 1.5, "#ffd76a")}${spark(256, 200, 1, "#fff6e6")}${spark(250, 240, 0.8, "#ff9d4d")}</g>` : "";
 
   const body = part("cmp-body", part("cmp-spin", part("cmp-torso", torso) + (team ? kerchief(team, 124, 256, 222, 9, 144) : "") + part("cmp-head", head, at.head)) + flame, at.body);

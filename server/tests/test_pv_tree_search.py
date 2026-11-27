@@ -1534,6 +1534,10 @@ def test_reserved_deck_cli_scores_both_mirrors_and_publishes_once(
         return bot
 
     monkeypatch.setattr(bank, "make_bot", make_registered)
+    if substitution:
+        argv = argv[:argv.index("--seed")] + ["--pilot-settings"]
+        with pytest.raises(SystemExit):
+            bank.main(argv + ["--depth-worlds", "3"])
     bank.main(argv)
     result = json.loads(output.read_bytes())
     assert result["settings"]["reply_value_weight"] == 1.
@@ -1603,9 +1607,10 @@ def test_bank_analysis_requires_complete_paired_cohort_and_clusters_by_deck(tmp_
     result = read(reversed(decks))
     path = tmp_path / "reserved.json"
     path.write_bytes(data)
-    monkeypatch.setattr(sys, "stdin", io.StringIO("\n".join(json.dumps(d) for d in decks)))
-    main(["--bank", str(path), "--bank-sha256", pin, "--settings", json.dumps(settings)])
-    assert json.loads(capsys.readouterr().out) == result
+    for flags in (["--settings", json.dumps(settings)], ["--pilot-settings"]):
+        monkeypatch.setattr(sys, "stdin", io.StringIO("\n".join(json.dumps(d) for d in decks)))
+        main(["--bank", str(path), "--bank-sha256", pin, *flags])
+        assert json.loads(capsys.readouterr().out) == result
     assert (result["eligible_turns"], result["represented_decks"], result["verdict"]) == (702, 188, "PASS")
     mean = 75 / 702
     se = math.sqrt((50 * (1.5 - 3 * mean)**2 + 138 * (4 * mean)**2) * 188 / 187) / 702

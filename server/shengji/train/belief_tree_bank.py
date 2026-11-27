@@ -8,6 +8,7 @@ from tempfile import NamedTemporaryFile
 
 from ..ai.registry import make_bot
 from .belief_labels import SPLIT_SALT
+from .belief_tree_bank_settings import pilot_settings
 from .belief_tree_bank_score import score_bank_root
 from .belief_tree_replay import RootTarget, replay_tranche_roots
 
@@ -70,15 +71,22 @@ def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     for flag in ("bank", "bank-sha256", "store", "output"):
         p.add_argument("--" + flag, required=True)
-    for flag in ("round-seed", "seed", "depth-worlds", "reply-cap", "batch-size"):
-        p.add_argument("--" + flag, type=int, required=True)
-    p.add_argument("--reply-value-weight", type=float, required=True)
+    p.add_argument("--round-seed", type=int, required=True)
+    p.add_argument("--pilot-settings", action="store_true")
+    for flag in ("seed", "depth-worlds", "reply-cap", "batch-size"):
+        p.add_argument("--" + flag, type=int)
+    p.add_argument("--reply-value-weight", type=float)
     args = p.parse_args(argv)
     output = Path(args.output)
     if output.exists():
         raise FileExistsError(output)
-    settings = {k: getattr(args, k) for k in ("seed", "depth_worlds", "reply_cap",
-                                               "batch_size", "reply_value_weight")}
+    settings = {key: getattr(args, key) for key in pilot_settings() if getattr(args, key) is not None}
+    if args.pilot_settings:
+        if settings:
+            p.error("--pilot-settings cannot be combined with explicit search settings")
+        settings = pilot_settings()
+    elif settings.keys() != pilot_settings().keys():
+        p.error("supply --pilot-settings or all five search settings")
     result = score_reserved_deck(args.bank, bank_sha256=args.bank_sha256, store=args.store,
                                  round_seed=args.round_seed, settings=settings)
     # A consumer sees either all four completed turns or no result at this path.

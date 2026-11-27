@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from collections import Counter
 
+from .belief_tree_bank_settings import pilot_settings
 from .belief_tree_bank_row import checked_gains
 
 
@@ -113,7 +114,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Analyze admitted deck JSON documents, one per stdin line.")
     parser.add_argument("--bank", required=True, type=Path)
     parser.add_argument("--bank-sha256", required=True)
-    parser.add_argument("--settings", required=True, type=json.loads)
+    settings = parser.add_mutually_exclusive_group(required=True)
+    settings.add_argument("--settings", type=json.loads)
+    settings.add_argument("--pilot-settings", dest="settings", action="store_const", const=pilot_settings())
     args = parser.parse_args(argv)
     result = analyze_bank(args.bank.read_bytes(), (json.loads(line) for line in sys.stdin),
                           bank_sha256=args.bank_sha256, settings=args.settings)

@@ -132,6 +132,9 @@ class Finished:
     # each ``seat_claimed`` record's account, by the record's byte offset in
     # the log (None: a guest or a bot), so a claim names its own claimer
     claims: dict = field(default_factory=dict)
+    # whether the log holds the whole round, once read (None: not read yet).
+    # A table is offered only for a round known whole (``servable``).
+    whole: bool | None = field(default=None, compare=False)
 
 
 @dataclass
@@ -201,9 +204,30 @@ def _from_entry(e: Any) -> Finished | None:
                     start_accounts=tuple(accts), claims={at: uid for at, uid in claims})
 
 
-def _whole(f: Finished) -> bool:
-    records = _read(f)
-    return records is not None and complete_sequence(records)
+def _starts_here(f: Finished) -> bool:
+    """Whether the log record at ``f.start`` is this round's ranked
+    ``round_start``."""
+    with open(f.path, "rb") as fh:
+        fh.seek(f.start)
+        rec = json.loads(fh.readline(READ_CAP))
+    return (isinstance(rec, dict) and rec.get("e") == "round_start"
+            and rec.get("round") == f.round and rec.get("ranked") is True)
+
+
+def _restore(e: Any) -> Finished | None:
+    """One index entry back as a rerun, or None when the entry, its offset
+    or its log's round is not whole; a damaged entry never touches another."""
+    try:
+        f = _from_entry(e)
+        if f is None or not _starts_here(f):
+            return None
+        records = _read(f)
+        if records is None or not complete_sequence(records):
+            return None
+        f.whole = True
+        return f
+    except Exception:               # noqa: BLE001 - one bad replay drops only itself
+        return None
 
 
 def save() -> None:
@@ -237,7 +261,6 @@ def load() -> None:
     whose log still holds the whole round. A missing, unreadable, corrupt
     or other-schema index starts empty."""
     global _loaded
-    _loaded = True
     rounds: list = []
     try:
         path = _index_path()
@@ -252,13 +275,10 @@ def load() -> None:
         log.warning("spectate index unreadable; starting with no reruns")
     except Exception:               # noqa: BLE001 - a bad index never stops the feed
         log.exception("spectate index read failed")
-    kept = []
-    for e in rounds:
-        f = _from_entry(e)
-        if f is not None and _whole(f):
-            kept.append(f)
+    kept = [f for f in map(_restore, rounds) if f is not None]
     _reruns.clear()
     _reruns.extend(kept)
+    _loaded = True
     if len(kept) != len(rounds):
         save()
 
@@ -326,6 +346,9 @@ def round_ended(room: Any, written: bool = True) -> None:
         st.last = Finished(path=path, start=offset, round=n, ranked=ratings.ranked(room),
                            start_accounts=began, claims=dict(st.claims))
         st.recent.append(st.last)
+        if enabled() or allowlist():
+            # read once now, so the lobby count and the feed agree from the start
+            _remember(_doc_key(st.last, None), _build(st.last, None))
         if st.last.ranked:
             _ensure_loaded()
             _reruns.append(st.last)
@@ -364,6 +387,8 @@ def _read(f: Finished) -> list[dict] | None:
                 try:
                     rec = json.loads(line)
                 except ValueError:
+                    continue
+                if not isinstance(rec, dict):
                     continue
                 if rec.get("round") != f.round:
                     if out:
@@ -546,9 +571,18 @@ def _doc_key(f: Finished, listed: set[int] | None) -> tuple:
 
 def _build(f: Finished, listed: set[int] | None) -> Built | None:
     doc = round_doc(f, listed)
+    f.whole = doc is not None
     if doc is None:
         return None
     return Built(doc, _dumps(doc)[1:-1])
+
+
+def _remember(key: tuple, built: Built | None) -> Built | None:
+    _DOCS[key] = built
+    _DOCS.move_to_end(key)
+    while len(_DOCS) > DOC_CACHE:
+        _DOCS.popitem(last=False)
+    return built
 
 
 def _dumps(value: Any) -> bytes:
@@ -572,11 +606,7 @@ async def _doc(f: Finished, listed: set[int] | None = None) -> Built | None:
     finally:
         if task.done() and _PENDING.get(key) is task:
             del _PENDING[key]
-    _DOCS[key] = built
-    _DOCS.move_to_end(key)
-    while len(_DOCS) > DOC_CACHE:
-        _DOCS.popitem(last=False)
-    return built
+    return _remember(key, built)
 
 
 def _answer(head: dict, built: Built) -> Response:
@@ -604,6 +634,16 @@ def watchable(room: Any, wide: bool = False) -> bool:
     return any(sd is not None and not sd.is_bot and sd.connected for sd in room.seats)
 
 
+def servable(room: Any, now: float, wide: bool = False, token: str | None = None) -> bool:
+    """Whether a watcher (``token``: one already counted here keeps its
+    place) gets a live round here now: the table is watchable, holds a
+    finished round its log holds whole, and has a place. The lobby count and
+    the pick both ask this, so the link offers exactly the tables the feed
+    serves."""
+    return (watchable(room, wide) and (token in room.watch.watchers or _free(room, now))
+            and any(f.whole is True and _is_over(room, f.round) for f in room.watch.recent))
+
+
 def _mode(room: Any) -> str:
     return "ranked" if ratings.ranked(room) else "casual"
 
@@ -618,8 +658,8 @@ def _counts() -> tuple[int, int, bool]:
     counting only tables with a free place."""
     _ensure_loaded()
     rooms, now = _rooms(), time.time()
-    return (sum(1 for r in rooms if watchable(r) and _free(r, now)),
-            sum(1 for r in rooms if watchable(r, True) and _free(r, now)),
+    return (sum(1 for r in rooms if servable(r, now)),
+            sum(1 for r in rooms if servable(r, now, True)),
             len(_reruns) > 0)
 
 
@@ -652,10 +692,10 @@ def pick(mode: str | None, skip: str | None, token: str, now: float,
     watcher already counts there)."""
     best = None
     for room in _rooms():
-        if not watchable(room, wide) or room.watch.id == skip:
+        if room.watch.id == skip:
             continue
         st = room.watch
-        if token not in st.watchers and not _free(room, now):
+        if not servable(room, now, wide, token):
             continue
         key = (_mode(room) == mode, room.game.round_no, st.last.round)
         if best is None or key > best[0]:
@@ -749,8 +789,8 @@ async def watch(request: Request, mode: str | None = None, skip: str | None = No
         out = await _serve(room, token, None, wide)
         if out is not None and out[1] is not None:
             return _answer(*out)
-        if out is None:
-            room.watch.watchers.pop(token, None)
+        # no live round for this watcher after all: it holds no place there
+        room.watch.watchers.pop(token, None)
     _ensure_loaded()
     listed = await asyncio.to_thread(_listed) if _reruns else set()
     for rerun in reversed(list(_reruns)):

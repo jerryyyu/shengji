@@ -484,6 +484,18 @@ def test_paired_void_cli_reads_only_held_out_decisions(package, tmp_path, capsys
         evaluator.main([*args, "--cohort", str(cohort), "--ll-max-draws", "1", "--ll-replicates", "2"])
         return json.loads(capsys.readouterr().out)
     assert select(member) == scored
+    evaluator.main([*args, "--cohort", str(cohort), "--ll-max-draws", "1", "--ll-replicates", "2",
+                    "--timing-only"])
+    timing = json.loads(capsys.readouterr().out)
+    assert 0 < timing.pop("log_loss_seconds") <= timing.pop("evaluation_seconds")
+    counters = ("scored_decisions", "worlds_drawn", "maximum_worlds", "unresolved_copy_observations",
+                "draw_limit_per_row_per_replicate", "replicates")
+    assert timing == {"decisions": scored["decisions"], "deals": scored["deals"],
+                      "worlds_per_void_arm": scored["worlds"], **{k: loss[k] for k in counters}}
+    with pytest.raises(SystemExit):
+        evaluator.main([*args, "--timing-only", "--ll-max-draws", "1"])
+    with pytest.raises(SystemExit):
+        evaluator.main([*args, "--cohort", str(cohort), "--timing-only"])
     with pytest.raises(ValueError, match="seed and extracted deal disagree"):
         select(dict(member, deal_key=keys[1018]))
     with pytest.raises(ValueError, match="missing rows"):

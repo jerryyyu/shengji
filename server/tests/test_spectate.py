@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import time
+from pathlib import Path
 
 import pytest
 
@@ -87,6 +88,8 @@ def feed(client, monkeypatch):
 
     monkeypatch.setenv(spectate.ENV, "1")
     monkeypatch.setattr(spectate, "_reruns", spectate.collections.deque(maxlen=spectate.KEEP_ROUNDS))
+    monkeypatch.setattr(spectate, "_loaded", True)
+    monkeypatch.setattr(spectate, "_DOCS", spectate.collections.OrderedDict())
     spectate.LIMITER.reset()
     return srv, spectate, client
 
@@ -260,17 +263,23 @@ def test_picking_prefers_the_asked_mode_then_the_table_furthest_in_and_skips(fee
     assert nxt["table"] == early.room.watch.id
 
 
-def test_at_most_eight_watchers_per_table(feed):
+def test_every_watcher_up_to_the_cap_gets_the_live_table(feed, monkeypatch):
     srv, spectate, client = feed
+    monkeypatch.setattr(spectate.LIMITER, "limit", 1000)
     t = Table(srv, ranked=True)
     t.play_round()
     t.deal()
-    tokens = [_watch(client).json()["watcher"] for _ in range(spectate.WATCH_CAP)]
+    assert spectate.WATCH_CAP == 50
+    docs = [_watch(client).json() for _ in range(spectate.WATCH_CAP)]
+    # the 9th to the 50th as much as the first: this table, not a replay
+    assert all(d["table"] == t.room.watch.id and d["rerun"] is False and d["round"] == 1
+               for d in docs)
+    tokens = [d["watcher"] for d in docs]
     assert len(set(tokens)) == spectate.WATCH_CAP
     assert t.room.watch.live_watchers(spectate.time.time()) == spectate.WATCH_CAP
-    # the ninth gets the rerun (this table's own round, from the log), not a place here
-    ninth = _watch(client).json()
-    assert ninth["rerun"] is True and ninth["table"] == spectate.RERUN_ID
+    # one past the cap gets the rerun (this table's own round, from the log), not a place here
+    over = _watch(client).json()
+    assert over["rerun"] is True and over["table"] == spectate.RERUN_ID
     assert client.get(f"/api/watch/{t.room.watch.id}").status_code == 404
     # a watcher already counted keeps its place
     mine = client.get(f"/api/watch/{t.room.watch.id}", params={"w": tokens[0], "after": 1})
@@ -384,11 +393,13 @@ def test_with_no_flag_and_no_list_the_presence_line_is_unchanged(client, monkeyp
 
 # ------------------------------------------------------- after the read
 def _during_read(monkeypatch, spectate, change):
-    """Run ``change`` while the feed reads the log, as another request could."""
+    """Run ``change`` while the feed reads the log, as another request could.
+    Only a read can be raced, so the built rounds are forgotten first."""
+    spectate._DOCS.clear()
     real = spectate.round_doc
 
-    def reading(f):
-        doc = real(f)
+    def reading(f, listed=None):
+        doc = real(f, listed)
         change()
         return doc
 
@@ -404,6 +415,7 @@ def test_allow_joiners_switched_off_during_the_read_serves_nothing(feed, monkeyp
     _during_read(monkeypatch, spectate, lambda: setattr(t.room, "allow_joiners", False))
     assert _watch(client, w=token).status_code == 404
     t.room.allow_joiners = True
+    spectate._DOCS.clear()
     tid = t.room.watch.id
     assert client.get(f"/api/watch/{tid}", params={"w": token}).status_code == 404
 
@@ -445,15 +457,29 @@ def _drop_a_play(path, round_no):
     path.write_bytes(b"".join(lines))
 
 
-def test_a_round_missing_an_interior_play_is_refused_and_the_last_good_round_kept(feed):
+def _lose_a_play(monkeypatch, srv, round_no, nth=20):
+    """The ``nth`` play record of ``round_no`` misses the disk, as a lost write would."""
+    real, seen = srv.Room.log_event, []
+
+    def losing(self, kind, **data):
+        if kind == "play" and self.game is not None and self.game.round_no == round_no:
+            seen.append(kind)
+            if len(seen) == nth:
+                return None
+        return real(self, kind, **data)
+
+    monkeypatch.setattr(srv.Room, "log_event", losing)
+
+
+def test_a_round_missing_an_interior_play_is_refused_and_the_last_good_round_kept(feed, monkeypatch):
     srv, spectate, client = feed
     t = Table(srv, ranked=True)
     t.play_round()
     first = _watch(client).json()
     assert first["round"] == 1
+    _lose_a_play(monkeypatch, srv, 2)
     t.play_round()
     t.deal()
-    _drop_a_play(spectate._log_path(t.room), 2)
     broken = t.room.watch.last
     assert broken.round == 2 and spectate.round_doc(broken) is None
     again = _watch(client, w=first["watcher"]).json()
@@ -624,3 +650,315 @@ def test_every_claim_writer_records_its_claimer():
     writes = re.findall(r'.*log_event\("seat_claimed".*', src)
     assert len(writes) == 3
     assert all("spectate.claimed(" in line for line in writes), writes
+
+
+# ------------------------------------------------------- capacity and the cache
+def test_the_count_leaves_out_a_full_table(feed, monkeypatch):
+    srv, spectate, client = feed
+    monkeypatch.setattr(spectate.LIMITER, "limit", 1000)
+    t = Table(srv, ranked=True)
+    t.play_round()
+    t.deal()
+    for _ in range(spectate.WATCH_CAP - 1):
+        _watch(client)
+    assert spectate.presence() == {"watch": 1, "rerun": True}
+    _watch(client)
+    # full: the line offers the replay, not a live table it cannot give
+    assert spectate.presence() == {"watch": 0, "rerun": True}
+    assert spectate.presence_key() == (0, 0, True)
+    for tok in list(t.room.watch.watchers):
+        t.room.watch.watchers[tok] -= spectate.WATCH_TTL + 1
+    assert spectate.presence() == {"watch": 1, "rerun": True}
+
+
+def test_a_finished_round_is_read_once_and_served_as_the_same_bytes(feed, monkeypatch):
+    srv, spectate, client = feed
+    t = Table(srv, code="CACH", ranked=True)
+    reads = []
+    real = spectate.round_doc
+
+    def counting(f, listed=None):
+        reads.append((f.round, listed is None))
+        return real(f, listed)
+
+    monkeypatch.setattr(spectate, "round_doc", counting)
+    t.play_round()
+    t.deal()
+    assert reads == [(1, True)]           # read once, at the round's end
+    first, second = _watch(client), _watch(client)
+    assert first.json()["watcher"] != second.json()["watcher"]
+
+    def body(resp):
+        doc = resp.json()
+        doc.pop("watcher")
+        return json.dumps(doc, sort_keys=True)
+
+    assert body(first) == body(second)
+    tid = first.json()["table"]
+    follow = client.get(f"/api/watch/{tid}", params={"after": 0, "w": first.json()["watcher"]})
+    assert follow.json()["events"] == first.json()["events"]
+    assert reads == [(1, True)]
+    # a rerun is built once per leaderboard mask as well
+    srv.rooms.pop("CACH")
+    r1, r2 = _watch(client), _watch(client)
+    assert body(r1) == body(r2) and r1.json()["rerun"] is True
+    assert reads == [(1, True), (1, False)]
+
+
+# ------------------------------------------------------- reruns across a restart
+def _restart(spectate, monkeypatch):
+    """What a new process has: nothing in memory, the index on disk."""
+    monkeypatch.setattr(spectate, "_reruns", spectate.collections.deque(maxlen=spectate.KEEP_ROUNDS))
+    monkeypatch.setattr(spectate, "_DOCS", spectate.collections.OrderedDict())
+    monkeypatch.setattr(spectate, "_loaded", False)
+
+
+def test_reruns_survive_a_restart(feed, monkeypatch):
+    srv, spectate, client = feed
+    t = Table(srv, code="KEEP", ranked=True)
+    t.play_round()
+    t.play_round()
+    srv.rooms.pop("KEEP")
+    before = _watch(client).json()
+    index = spectate._index_path()
+    assert index == srv.LOG_DIR.parent / "spectate" / "replays.json"
+    text = index.read_text()
+    saved = json.loads(text)
+    assert saved["schema"] == spectate.INDEX_SCHEMA and [e["round"] for e in saved["rounds"]] == [1, 2]
+    assert saved["rounds"][0]["start_accounts"] == [41, None, None, None]
+    assert "Mei" not in text and "Bot 1" not in text      # ids only, never a name
+    assert not list(index.parent.glob("*.tmp"))
+
+    _restart(spectate, monkeypatch)
+    assert spectate.presence() == {"watch": 0, "rerun": True}
+    after = _watch(client).json()
+    assert after["rerun"] is True and after["round"] == 2
+    assert after["events"] == before["events"] and after["players"] == before["players"]
+
+
+@pytest.mark.parametrize("content", [None, b"", b"{not json", b"[]", b'{"schema": 99, "rounds": []}',
+                                     b'{"schema": 1, "rounds": [{"path": 3}, "x", null]}',
+                                     b"\x00" * (300 * 1024)],
+                         ids=["missing", "empty", "not-json", "a-list", "other-schema",
+                              "bad-entries", "oversize"])
+def test_a_missing_or_corrupt_index_starts_empty(feed, monkeypatch, content):
+    srv, spectate, client = feed
+    index = spectate._index_path()
+    index.parent.mkdir(parents=True, exist_ok=True)
+    if content is not None:
+        index.write_bytes(content)
+    _restart(spectate, monkeypatch)
+    assert spectate.presence() == {"watch": 0, "rerun": False}
+    assert list(spectate._reruns) == []
+    assert _watch(client).status_code == 404
+    # the next ranked round end writes a good index over it
+    t = Table(srv, code="NEXT", ranked=True)
+    t.play_round()
+    assert [e["round"] for e in json.loads(index.read_text())["rounds"]] == [1]
+
+
+def test_an_entry_whose_log_is_gone_or_cut_is_dropped_on_load(feed, monkeypatch):
+    srv, spectate, client = feed
+    gone = Table(srv, code="GONE", ranked=True)
+    gone.play_round()
+    cut = Table(srv, code="CUTS", ranked=True)
+    cut.play_round()
+    kept = Table(srv, code="KEPT", ranked=True)
+    kept.play_round()
+    for code in ("GONE", "CUTS", "KEPT"):
+        srv.rooms.pop(code)
+    spectate._log_path(gone.room).unlink()
+    _drop_a_play(spectate._log_path(cut.room), 1)
+    _restart(spectate, monkeypatch)
+    spectate.load()
+    assert [Path(f.path).name for f in spectate._reruns] == ["KEPT.jsonl"]
+    saved = json.loads(spectate._index_path().read_text())
+    assert [Path(e["path"]).name for e in saved["rounds"]] == ["KEPT.jsonl"]
+    doc = _watch(client).json()
+    assert doc["rerun"] is True and doc["events"][-1]["e"] == "round_end"
+
+
+def test_a_player_who_leaves_the_leaderboard_is_masked_on_the_next_serve(accounts_on, feed, monkeypatch):
+    from shengji.api import ratings
+
+    srv, spectate, client = feed
+    store = accounts_on.STORE
+    mei = _rated(store, "leaver", "Mei")
+    t = Table(srv, code="LEFT", ranked=True)
+    t.room.seats[0] = srv.Seat(name="Mei", user_id=mei, connected=True)
+    t.play_round()
+    srv.rooms.pop("LEFT")
+    assert _watch(client).json()["players"][0] == "Mei"
+    _restart(spectate, monkeypatch)
+    assert _watch(client).json()["players"][0] == "Mei"     # named again from the log
+    ratings.set_visible(store, mei, False)
+    hidden = _watch(client).json()
+    assert hidden["players"][0] == "Player 1"
+    assert "Mei" not in json.dumps(hidden)
+    ratings.set_visible(store, mei, True)
+    assert _watch(client).json()["players"][0] == "Mei"
+
+
+def _blank_line_at(path, offset):
+    """The log line at ``offset`` rewritten, same length, to parse as JSON null."""
+    data = bytearray(path.read_bytes())
+    end = data.index(b"\n", offset)
+    data[offset:end] = b"null" + b" " * (end - offset - 4)
+    path.write_bytes(bytes(data))
+
+
+def test_a_damaged_replay_drops_alone_and_the_healthy_one_still_plays(feed, monkeypatch):
+    srv, spectate, client = feed
+    null = Table(srv, code="NULL", ranked=True)
+    null.play_round()
+    good = Table(srv, code="GOOD", ranked=True)
+    good.play_round()
+    casual = Table(srv, code="CASL")
+    casual.play_round()
+    for code in ("NULL", "GOOD", "CASL"):
+        srv.rooms.pop(code)
+    _blank_line_at(spectate._log_path(null.room), null.room.watch.last.start)
+    # an entry naming a casual round, as a wrong offset or a hand edit could
+    index = spectate._index_path()
+    saved = json.loads(index.read_text())
+    stray = dict(saved["rounds"][-1], path=str(spectate._log_path(casual.room)),
+                 start=casual.room.watch.last.start)
+    saved["rounds"] = [saved["rounds"][0], stray, saved["rounds"][1]]
+    index.write_text(json.dumps(saved))
+    _restart(spectate, monkeypatch)
+    for _ in range(3):                    # the first request and the ones after it
+        resp = _watch(client)
+        assert resp.status_code == 200
+        doc = resp.json()
+        assert doc["rerun"] is True and doc["round"] == 1
+        assert _deck_cards(doc) == list(good.room.round.deck)
+        assert spectate.presence() == {"watch": 0, "rerun": True}
+    assert [Path(f.path).name for f in spectate._reruns] == ["GOOD.jsonl"]
+    assert [Path(e["path"]).name for e in json.loads(index.read_text())["rounds"]] == ["GOOD.jsonl"]
+
+
+def test_a_live_table_with_no_whole_round_is_neither_counted_nor_held(feed, monkeypatch):
+    srv, spectate, client = feed
+    gone = Table(srv, code="OLDR", ranked=True)
+    gone.play_round()
+    srv.rooms.pop("OLDR")
+    _lose_a_play(monkeypatch, srv, 1)
+    live = Table(srv, code="LIVE", ranked=True)
+    live.play_round()
+    live.deal()
+    assert spectate.watchable(live.room)          # a table with someone there ...
+    assert spectate.presence() == {"watch": 0, "rerun": True}   # ... but nothing whole to show
+    doc = _watch(client).json()
+    assert doc["rerun"] is True and doc["table"] == spectate.RERUN_ID
+    assert live.room.watch.watchers == {}         # the replay viewer holds no live place
+    assert spectate.presence() == {"watch": 0, "rerun": True}
+
+
+def test_an_undealt_room_beside_a_live_table_does_not_break_the_pick(feed):
+    srv, spectate, client = feed
+    srv.rooms["UNDL"] = srv.Room(code="UNDL")             # a lobby: no game, no watch
+    t = Table(srv, code="SERV", ranked=True)
+    t.play_round()
+    t.deal()
+    srv.rooms["UND2"] = srv.Room(code="UND2")
+    assert spectate.presence() == {"watch": 1, "rerun": True}
+    for params in ({}, {"mode": "ranked"}, {"mode": "casual"}, {"skip": "nope"}):
+        resp = _watch(client, **params)
+        assert resp.status_code == 200, params
+        assert resp.json()["table"] == t.room.watch.id and resp.json()["rerun"] is False
+
+
+def test_an_incomplete_ranked_round_is_never_kept_to_replay(feed, monkeypatch):
+    srv, spectate, client = feed
+    _lose_a_play(monkeypatch, srv, 1)
+    t = Table(srv, code="BRKN", ranked=True)
+    t.play_round()
+    srv.rooms.pop("BRKN")
+    assert list(spectate._reruns) == []
+    index = spectate._index_path()
+    assert not index.exists() or json.loads(index.read_text())["rounds"] == []
+    assert spectate.presence() == {"watch": 0, "rerun": False}
+    assert _watch(client).status_code == 404               # and nothing promised it
+
+
+def test_an_incomplete_round_never_pushes_out_a_good_replay(feed, monkeypatch):
+    srv, spectate, client = feed
+    good = Table(srv, code="GOOD", ranked=True)
+    good.play_round()
+    srv.rooms.pop("GOOD")
+    for i in range(spectate.KEEP_ROUNDS + 1):
+        with monkeypatch.context() as m:
+            _lose_a_play(m, srv, 1)
+            bad = Table(srv, code=f"BAD{i}", ranked=True)
+            bad.play_round()
+        srv.rooms.pop(f"BAD{i}")
+    assert [Path(f.path).name for f in spectate._reruns] == ["GOOD.jsonl"]
+    assert [Path(e["path"]).name for e in json.loads(spectate._index_path().read_text())["rounds"]] \
+        == ["GOOD.jsonl"]
+    assert spectate.presence() == {"watch": 0, "rerun": True}
+    doc = _watch(client).json()
+    assert doc["rerun"] is True and _deck_cards(doc) == list(good.room.round.deck)
+
+
+# ------------------------------------------------------- presence and serve agree
+STATES = ("lobby", "undealt", "mid_first", "finished", "finished_next", "incomplete", "closed",
+          "closed_incomplete")
+
+
+def _room_in(srv, monkeypatch, code, state, ranked, joiners, connected):
+    if state == "lobby":
+        srv.rooms[code] = srv.Room(code=code)
+        return None
+    t = Table(srv, code=code, ranked=ranked, allow_joiners=joiners)
+    t.room.seats[0].connected = connected
+    if state == "undealt":
+        return t
+    if state == "mid_first":
+        t.deal()
+        t.declare()
+        t.act(plays=7)
+        return t
+    if state in ("incomplete", "closed_incomplete"):
+        with monkeypatch.context() as m:
+            _lose_a_play(m, srv, 1, nth=11)
+            t.play_round()
+    else:
+        t.play_round()
+    if state in ("finished_next", "incomplete"):
+        t.deal()
+    if state.startswith("closed"):
+        srv.rooms.pop(code)
+    return t
+
+
+@pytest.mark.parametrize("seed", range(30))
+def test_presence_and_serve_agree_over_random_rooms(feed, monkeypatch, seed):
+    import random
+
+    srv, spectate, client = feed
+    monkeypatch.setattr(spectate.LIMITER, "limit", 10 ** 6)
+    rng = random.Random(seed)
+    for i in range(rng.randint(1, 5)):
+        _room_in(srv, monkeypatch, f"FZ{i:02d}", rng.choice(STATES), rng.random() < 0.6,
+                 rng.random() < 0.5, rng.random() < 0.8)
+    for _ in range(rng.randint(1, 4)):
+        watch, rerun = spectate.presence()["watch"], spectate.presence()["rerun"]
+        mode = rng.choice([None, "ranked", "casual"])
+        resp = _watch(client, **({"mode": mode} if mode else {}))
+        assert resp.status_code in (200, 404), resp.text
+        held = {tok for r in spectate._rooms() if r.watch is not None for tok in r.watch.watchers}
+        if watch > 0:
+            # a live table promised: the feed gives one (any mode falls back to it)
+            doc = resp.json()
+            assert resp.status_code == 200 and doc["rerun"] is False, (seed, watch, doc.get("table"))
+            follow = client.get(f"/api/watch/{doc['table']}", params={"w": doc["watcher"]})
+            assert follow.status_code == 200 and follow.json()["round"] == doc["round"]
+            assert doc["watcher"] in held
+        elif rerun:
+            assert resp.status_code == 200 and resp.json()["rerun"] is True, seed
+            assert resp.json()["watcher"] not in held
+        else:
+            assert resp.status_code == 404, seed
+        if resp.status_code == 200:
+            events = resp.json()["events"]
+            assert events[0]["e"] == "round_start" and events[-1]["e"] == "round_end"

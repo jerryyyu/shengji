@@ -8,9 +8,9 @@ Each pointer is resolved to the room-log record of that event; the record is
 re-labelled ``source = "human"``, ``policy = "human:<pseudonym>"`` and gets
 the corpus' governance labels (``training_authorized: false``, allowed_use).
 
-Checks: the pointer's seat/chosen cards match the log event; the pointer's
-pseudonym equals sha256(domain + round_start name)[:16]; bury ``hand_before``
-equals the rebuilt pre-bury hand.  Room logs listed in the corpus manifest
+The pointer's seat and chosen cards match the log event. Its pseudonym is
+derived from the seat holder at that event, and bury ``hand_before`` equals
+the rebuilt pre-bury hand. Room logs listed in the corpus manifest
 are compared with the manifest's sha256 (append-only logs may have grown).
 """
 
@@ -21,10 +21,9 @@ from collections import defaultdict
 from pathlib import Path
 
 from .common import (HUMAN_V8, REPO, ExtractResult, InputRegistry, action_key,
-                     pseudonym, sha256_file)
+                     sha256_file)
 from .rebuild import round_from_setup
-from .room_log import (extract_round, file_bot_policy, log_ref, player_names,
-                       read_rounds)
+from .room_log import extract_round, file_bot_policy, log_ref, read_rounds
 from .schema import finalize_record
 
 
@@ -105,7 +104,6 @@ def extract_human(human_dir: Path = HUMAN_V8, *, cap: int | None = 256,
         records, _ = extract_round(refs[name], round_no, events, cap=cap,
                                    fallback_policy=fallbacks[name])
         by_ref = {r["source_ref"]: r for r in records}
-        names = player_names(events)
         counts["rounds"] += 1
         for line_no, row in group["plays"]:
             ref = f"{refs[name]}:round-{round_no}:event-{int(row['event_index'])}"
@@ -117,7 +115,7 @@ def extract_human(human_dir: Path = HUMAN_V8, *, cap: int | None = 256,
             if action_key(base["action"]) != action_key(row["chosen"]):
                 raise HumanPointerError(f"pointer {line_no}: chosen cards drift")
             _require_human_event(events, int(row["event_index"]), "play", line_no)
-            if pseudonym(names[base["seat"]]) != row["player_id"]:
+            if base["policy"] != f"human:{row['player_id']}":
                 counts["pseudonym_mismatch"] += 1
             if row.get("human_action_appended"):
                 counts["off_ballot_flagged"] += 1
@@ -142,7 +140,7 @@ def extract_human(human_dir: Path = HUMAN_V8, *, cap: int | None = 256,
                                    stop_before_bury=True)
             if sorted(pre.hands[pre.banker]) != sorted(row["hand_before"]):
                 raise HumanPointerError(f"bury pointer {line_no}: hand_before drift")
-            if pseudonym(names[bury_rec["seat"]]) != row["player_id"]:
+            if bury_rec["policy"] != f"human:{row['player_id']}":
                 counts["pseudonym_mismatch"] += 1
             record = dict(bury_rec)
             record.update({

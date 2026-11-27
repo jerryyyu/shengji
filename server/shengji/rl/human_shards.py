@@ -37,7 +37,7 @@ from .encode import (ENCODER_IMPLEMENTATION_SHA256, ENCODER_SOURCE_SHA256S,
                      encode_action)
 from .encode_versions import (ENC_VERSION, OBS_SCHEMA_BY_VERSION, check_version,
                               encode_obs)
-from .replay_log import EXCLUDE_PLAYERS, group_rounds, rebuild_round
+from .replay_log import EXCLUDE_PLAYERS, group_rounds, human_decision_names, rebuild_round
 
 CORPUS_SCHEMA = "human-decision-corpus-v1"
 #: the ``experiment.schema`` tag of a human-evaluation room's log records
@@ -266,8 +266,11 @@ def build_corpus(patterns: list[str], out_dir: str,
                 if set(names) != {0, 1, 2, 3}:
                     reject("round_player_seats", reference)
                     continue
-                excluded = {seat for seat, name in names.items()
-                            if name in EXCLUDE_PLAYERS}
+                try:
+                    decision_names = human_decision_names(events, start, names)
+                except (KeyError, TypeError, ValueError) as exc:
+                    reject("round_player_attribution", reference, exc)
+                    continue
 
                 try:
                     rnd = rebuild_round(events)
@@ -283,9 +286,10 @@ def build_corpus(patterns: list[str], out_dir: str,
                 pending_records: list[dict] = []
                 pending_buries: list[dict] = []
 
-                bury_event = next((e for e in events if e.get("e") == "bury"), None)
-                if (bury_event is not None and bury_event.get("bot") is False
-                        and bury_event.get("seat") not in excluded):
+                bury_index, bury_event = next(
+                    (i, e) for i, e in enumerate(events) if e.get("e") == "bury")
+                if (bury_index in decision_names
+                        and decision_names[bury_index] not in EXCLUDE_PLAYERS):
                     stats["human_bury_events"] += 1
                     try:
                         cards = list(bury_event["cards"])
@@ -295,7 +299,7 @@ def build_corpus(patterns: list[str], out_dir: str,
                         # exact engine legality without touching the play replay.
                         hand_before = list(pre_bury.hands[pre_bury.banker])
                         pre_bury.bury(pre_bury.banker, cards)
-                        player = _player_id(names[bury_event["seat"]])
+                        player = _player_id(decision_names[bury_index])
                         pending_buries.append({
                             "source": source.name,
                             "round": round_no,
@@ -324,7 +328,8 @@ def build_corpus(patterns: list[str], out_dir: str,
                     cards = event.get("attempted_cards", committed)
                     if event.get("bot") is False:
                         stats["human_play_events"] += 1
-                        if seat in excluded:
+                        name = decision_names[event_index]
+                        if name in EXCLUDE_PLAYERS:
                             stats["human_play_excluded_test"] += 1
                         elif rnd.turn != seat:
                             reject("human_play_off_turn", reference)
@@ -343,7 +348,7 @@ def build_corpus(patterns: list[str], out_dir: str,
                                     actions.append(list(cards))
                                     chosen = len(actions) - 1
                                 surface = "lead" if not rnd.trick.plays else "follow"
-                                player = _player_id(names[seat])
+                                player = _player_id(name)
                                 pending_decisions.append(Decision(
                                     obs=encode_obs(rnd, seat, version=version),
                                     actions=[encode_action(action, rnd)

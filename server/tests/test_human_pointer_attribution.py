@@ -239,3 +239,63 @@ def test_room_log_harvest_accepts_candidate_counts_alongside_mc_ballots(tmp_path
     assert mc_record["ballot"] == ballot
     assert mc_record["allocation"]["kind"] == "mc-decision-v2"
     assert mc_record["allocation"]["n_by_candidate"] == [8]
+
+
+def test_mid_round_seat_claims_follow_human_actions_through_shards_and_harvest(tmp_path):
+    import numpy as np
+
+    from shengji.rl.human_shards import build_corpus
+
+    events = _completed_round()
+    events[0]["players"][0].update(name="Original", is_bot=True)
+    bury = next(e for e in events if e["e"] == "bury")
+    events.insert(events.index(bury), _event(
+        1, "seat_claimed", seat=0, name="Alice", bot=False))
+    opening, follow, script, takeover, final = [
+        e for e in events if e["e"] == "play" and e["seat"] == 0][:5]
+    for play, name in ((follow, "Bob"), (script, "Smoke"), (takeover, "Cara")):
+        events.insert(events.index(play), _event(
+            1, "seat_claimed", seat=0, name=name, bot=False))
+    for play in (opening, follow, script, final):
+        play["bot"] = False
+
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    source = logs / "ROOM.jsonl"
+    _write_jsonl(source, events)
+    corpus = tmp_path / "corpus"
+    manifest = build_corpus([str(source)], str(corpus))
+
+    assert manifest["stats"]["human_play_excluded_test"] == 1
+    with np.load(corpus / "shard_00000.npz") as shard:
+        assert len(shard["chosen"]) == 3
+    plays_path = corpus / "play_decisions.jsonl"
+    bury_path = corpus / "bury_decisions.jsonl"
+    plays = [json.loads(line) for line in plays_path.read_text().splitlines()]
+    buries = [json.loads(line) for line in bury_path.read_text().splitlines()]
+    assert [(r["event_index"], r["player_id"]) for r in plays] == [
+        (events.index(opening), pseudonym("Alice")),
+        (events.index(follow), pseudonym("Bob")),
+        (events.index(final), pseudonym("Cara")),
+    ]
+    assert [r["player_id"] for r in buries] == [pseudonym("Alice")]
+
+    room_records, _ = extract_round("logs/ROOM.jsonl", 1, events)
+    by_index = {int(r["source_ref"].rsplit(":event-", 1)[1]): r["policy"]
+                for r in room_records}
+    assert [by_index[events.index(e)] for e in (bury, opening, follow, script, takeover, final)] == [
+        f"human:{pseudonym('Alice')}", f"human:{pseudonym('Alice')}",
+        f"human:{pseudonym('Bob')}", f"script:{pseudonym('Smoke')}",
+        "bot:unknown", f"human:{pseudonym('Cara')}",
+    ]
+
+    accepted = human.extract_human(human_dir=corpus, repo=tmp_path)
+    assert [r["policy"] for r in accepted.public] == [
+        f"human:{pseudonym(name)}" for name in ("Alice", "Bob", "Cara", "Alice")]
+    for path, rows in ((plays_path, plays), (bury_path, buries)):
+        original = path.read_text()
+        rows[0]["player_id"] = pseudonym("Original")
+        _write_jsonl(path, rows)
+        with pytest.raises(human.HumanPointerError, match="seat's pseudonym"):
+            human.extract_human(human_dir=corpus, repo=tmp_path)
+        path.write_text(original)

@@ -23,7 +23,7 @@ import { DRAWINGS } from "./kinds";
 import { COMPANIONS, COMPANION_KINDS, FREE_KINDS, lookCatalogue, parseLook } from "./look";
 import { companionSize } from "./rig";
 import { parseArt } from "./Tractor";
-import TableCompanions, { LEVEL_UP_MS, MOVES, SEAT_SIZE, TAP_WALK_MS, around, levelIndex } from "./TableCompanions";
+import TableCompanions, { HOP_PEAKS, LEVEL_UP_MS, MOVES, SEAT_SIZE, STROLL_MS_PER_FIGURE, TAP_WALK_MS, around, hopPeak, levelIndex, strollMs } from "./TableCompanions";
 import { hasNewLook } from "./seen";
 import type { LookEntry } from "./look";
 import { HAND_LIFT, LIFT, clear, figureBox, meets, pathClear, zonesFor } from "./seatZones";
@@ -839,7 +839,8 @@ describe("the table", () => {
   describe("taps and moves", () => {
     // every Web Animation started on a figure: its seat, which box, its frames;
     // each ends after its own duration on the fake clock
-    let anims: { seat: string | null; box: string; move: string | null; frames: Keyframe[]; ms: number; cancel: ReturnType<typeof vi.fn> }[];
+    let anims: { seat: string | null; box: string; move: string | null; frames: Keyframe[]; ms: number; iters: number; at: number; done: boolean;
+      cancel: ReturnType<typeof vi.fn> }[];
     let had: unknown;
     let rnd: ReturnType<typeof vi.spyOn>;
     const proto = Element.prototype as unknown as { animate?: unknown };
@@ -850,11 +851,12 @@ describe("the table", () => {
       had = proto.animate;
       proto.animate = function (this: Element, frames: Keyframe[], opts: KeyframeAnimationOptions) {
         let timer = 0;
-        const finished = new Promise<void>((r) => { timer = window.setTimeout(r, Number(opts?.duration ?? 0) * Number(opts?.iterations ?? 1)); });
-        const cancel = vi.fn(() => window.clearTimeout(timer));
-        anims.push({ seat: this.closest(".tc-seat")?.getAttribute("data-seat") ?? null, box: this.className.toString(),
-                     move: this.getAttribute("data-move"), frames, ms: Number(opts?.duration ?? 0), cancel });
-        return { finished, cancel };
+        const rec = { seat: this.closest(".tc-seat")?.getAttribute("data-seat") ?? null, box: this.className.toString(),
+                      move: this.getAttribute("data-move"), frames, ms: Number(opts?.duration ?? 0), iters: Number(opts?.iterations ?? 1),
+                      at: Date.now(), done: false, cancel: vi.fn(() => { window.clearTimeout(timer); rec.done = true; }) };
+        const finished = new Promise<void>((r) => { timer = window.setTimeout(() => { rec.done = true; r(); }, rec.ms * rec.iters); });
+        anims.push(rec);
+        return { finished, cancel: rec.cancel };
       };
     });
     afterEach(() => { proto.animate = had; rnd.mockRestore(); vi.useRealTimers(); });
@@ -909,10 +911,10 @@ describe("the table", () => {
       // it did walk, each walk a small one round the tapped spot, every spot clear
       expect(after.length).toBeGreaterThanOrEqual(2);
       for (const s of after) {
-        expect(near(s, end)).toBeLessThanOrEqual(44);
+        expect(near(s, end)).toBeLessThanOrEqual(1.5 * 44);
         expect(clear(s, 44, true, layout())).toBe(true);
       }
-      expect(near(spotOf(0), end)).toBeLessThanOrEqual(44);
+      expect(near(spotOf(0), end)).toBeLessThanOrEqual(1.5 * 44);
     });
 
     it("with only its old area by your hand covered, yours stays drawn on its tapped home and takes a second tap", async () => {
@@ -1260,7 +1262,7 @@ describe("the table", () => {
       const after = stops(taken);
       expect(after.length).toBeGreaterThanOrEqual(2);
       for (const s of after) {
-        expect(near(s, adopted)).toBeLessThanOrEqual(44);
+        expect(near(s, adopted)).toBeLessThanOrEqual(1.5 * 44);
         expect(clear(s, 44, true, layout())).toBe(true);
       }
     });
@@ -1450,7 +1452,7 @@ describe("the table", () => {
       expect(ws[1].frames[0].transform).toBe("translate(111px, 222px)");
     });
 
-    it("a walk a tap sent is an unhurried stroll (about 0.5 s a figure's width, 1.2 to 3 s, a slower step); idle walks keep their pace", async () => {
+    it("a walk a tap sent is an unhurried stroll (about 0.5 s a figure's width, 1.2 to 3 s, a slower step)", async () => {
       await render(state());
       const from = spotOf(0);
       tap(felt(), 420, 220);
@@ -1459,21 +1461,186 @@ describe("the table", () => {
       const figures = Math.hypot(to.x - from.x, to.y - from.y) / 44;
       expect(w.ms).toBe(Math.min(TAP_WALK_MS[1], Math.max(TAP_WALK_MS[0], figures * 500)));
       expect(w.ms).toBeGreaterThan(1500);
-      // the gait's step slowed to match: 520 ms a hop, so the feet keep up with the ground
+      // the gait's step slowed to match: about 520 ms a hop, a whole number of them over the walk
       const gait = anims.find((a) => a.seat === "0" && a.box === "tc-face")!;
-      expect(gait.ms).toBe(520);
+      expect(gait.ms * gait.iters).toBeCloseTo(w.ms, 6);
+      expect(Math.abs(gait.ms - 520)).toBeLessThanOrEqual(260);
       // a short tap walk still takes 1.2 s at least
       await advance(3500);
       const here = spotOf(0);
       tap(felt(), here.x + 22 + 30, here.y + 44);
       const short = walks("0").at(-1)!;
       expect(short.ms).toBe(TAP_WALK_MS[0]);
-      // an idle walk keeps its own pace (0.8 to 1.5 s)
-      const n = walks("0").length;
+    });
+
+    it("a walk on its own clock strolls at the tapped pace: the same px a second, a whole number of steps near 520 ms", async () => {
+      await render(state());
+      // the length of a walk's way, leg by leg, over its time
+      const length = (w: { frames: Keyframe[] }) => {
+        const at = w.frames.map((f) => /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(String(f.transform))!.slice(1).map(Number));
+        return at.slice(1).reduce((n, b, i) => n + Math.hypot(b[0] - at[i][0], b[1] - at[i][1]), 0);
+      };
+      const pxPerS = (w: { ms: number; frames: Keyframe[] }) => length(w) / (w.ms / 1000);
       await advance(16000);
-      const idle = walks("0").slice(n);
+      const idle = walks("0");
       expect(idle.length).toBeGreaterThan(0);
-      for (const iw of idle) expect(iw.ms).toBeLessThanOrEqual(1500);
+      await advance(3500);
+      // each walk's gait is a whole number of steps near 520 ms that ends as it arrives
+      const steps = anims.filter((a) => a.seat === "0" && a.box === "tc-face");
+      for (const g of steps) {
+        const w = idle.find((x) => x.at === g.at)!;
+        expect(g.ms * g.iters).toBeCloseTo(w.ms, 6);
+        expect(g.iters).toBe(Math.max(1, Math.round(w.ms / 520)));
+      }
+      // a wander's time is its distance's time: no floor that would slow a short one
+      for (const iw of idle) expect(iw.ms).toBeCloseTo(strollMs(length(iw), 44), 6);
+      // a tap's walk over a distance its floor does not reach goes at the same speed
+      await advance(3500);
+      tap(felt(), 230, 230);
+      const tw = walks("0").at(-1)!;
+      expect(tw.ms).toBeGreaterThan(TAP_WALK_MS[0]);
+      expect(tw.ms).toBeLessThan(TAP_WALK_MS[1]);
+      for (const iw of idle) expect(pxPerS(iw)).toBeCloseTo(pxPerS(tw), 6);
+      expect(pxPerS(tw)).toBeCloseTo((44 * 1000) / STROLL_MS_PER_FIGURE, 6);
+    });
+
+    // px a second over a walk's way, leg by leg
+    const speed = (w: { ms: number; frames: Keyframe[] }) => {
+      const at = w.frames.map((f) => /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(String(f.transform))!.slice(1).map(Number));
+      return at.slice(1).reduce((n, b, i) => n + Math.hypot(b[0] - at[i][0], b[1] - at[i][1]), 0) / (w.ms / 1000);
+    };
+    // the tapped stroll: 0.5 s a 44 px figure
+    const TAP_PX_S = 88;
+
+    it("through a deal it holds still as the hand grows and cards pass over it: at most one move, never faster than the tapped pace", async () => {
+      const full = { ...rects.hand };
+      const dealt = (n: number) => {
+        // the hand grows from the middle a card at a time
+        const w = Math.round((full.w * n) / 25);
+        rects.hand = { ...full, x: full.x + (full.w - w) / 2, w };
+        rects["hand-slot"] = { ...rects["hand-slot"], x: rects.hand.x };
+      };
+      dealt(1);
+      await render(state({ phase: "deal", trick: null } as unknown as Partial<GameState>));
+      await advance(1000);
+      const n = walks("0").length;
+      const spots = [spotOf(0)];
+      for (let c = 2; c <= 25; c++) {
+        dealt(c);
+        // dealt cards over its spot for a moment, part way through: over
+        // its whole corner, for one card
+        rects["trick-play"] = c === 12 ? { x: 0, y: spots[0].y - 30, w: spots[0].x + 140, h: 90 } : { x: 0, y: 0, w: 0, h: 0 };
+        await render(state({ phase: "deal", trick: null, players: [player(0, { cards_left: c }), player(1), player(2), player(3)] } as unknown as Partial<GameState>));
+        // the table measures again as each card lands (the page's own observers)
+        await act(async () => { window.dispatchEvent(new Event("resize")); });
+        await advance(600);
+        const s = spotOf(0);
+        if (near(s, spots.at(-1)!) > 0) spots.push(s);
+      }
+      const during = walks("0").slice(n);
+      expect(spots.length - 1).toBeLessThanOrEqual(1);
+      for (const w of during) expect(speed(w)).toBeLessThanOrEqual(TAP_PX_S + 1e-6);
+      // no walk on its own clock while the hand is dealt
+      expect(during.length).toBeLessThanOrEqual(1);
+    });
+
+    it("after a tap sets its home it still wanders round it, a figure or so away, and fidgets, while its team takes tricks", async () => {
+      await render(state());
+      tap(felt(), 420, 220);
+      await advance(3500);
+      const home = spotOf(0);
+      const n = walks("0").length;
+      const fidgets = anims.filter((a) => a.seat === "0" && a.box === "tc-move").length;
+      cycle([0.05, 0.95, 0.3, 0.7]);
+      // its team takes a trick every 3 s, each a hop
+      for (let k = 0; k < 6; k++) {
+        await render(state({ last_trick: { leader: 0, winner: 0, points: 0, plays: [{ seat: 0, cards: [`H${k + 3}`] }] } } as Partial<GameState>));
+        for (let i = 0; i < 3; i++) await advance(1000);
+      }
+      const after = stops(n);
+      expect(after.length).toBeGreaterThanOrEqual(1);
+      for (const s of after) {
+        expect(near(s, home)).toBeLessThanOrEqual(1.5 * 44 + 1);
+        expect(clear(s, 44, true, layout())).toBe(true);
+      }
+      expect(Math.max(...after.map((s) => near(s, home)))).toBeGreaterThanOrEqual(0.75 * 44);
+      for (const w of walks("0").slice(n)) expect(speed(w)).toBeCloseTo(TAP_PX_S, 6);
+      // a fidget (a sway or a nudge) besides the trick hops
+      const fid = anims.filter((a) => a.seat === "0" && a.box === "tc-move").slice(fidgets)
+        .filter((a) => String(a.frames[1]?.transform).startsWith("rotate") || a.ms === 420);
+      expect(fid.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("the other companions wander and fidget on their own clocks while tricks are taken, with no tap", async () => {
+      await render(state());
+      for (let k = 0; k < 6; k++) {
+        await render(state({ last_trick: { leader: k % 4, winner: k % 4, points: 0, plays: [{ seat: k % 4, cards: [`S${k + 3}`] }] } } as Partial<GameState>));
+        for (let i = 0; i < 3; i++) await advance(1000);
+      }
+      for (const seat of ["1", "2", "3"]) {
+        expect(walks(seat).length, seat).toBeGreaterThanOrEqual(1);
+        expect(anims.filter((a) => a.seat === seat && a.box === "tc-move" && (String(a.frames[1]?.transform).startsWith("rotate") || a.ms === 420)).length, seat)
+          .toBeGreaterThanOrEqual(1);
+      }
+    });
+
+    it("a hop for a trick rises about 28% of the figure where it has room, lower where the room above is short, and stays clear", async () => {
+      await render(state());
+      const s = spotOf(0);
+      await render(state({ last_trick: { leader: 0, winner: 0, points: 0, plays: [{ seat: 0, cards: ["H3"] }] } } as Partial<GameState>));
+      const peak = (a: { frames: Keyframe[] }) => Number(/translateY\(-(\d+)%\)/.exec(String(a.frames[2]?.transform))?.[1] ?? 0);
+      const hop = moves("0").at(-1)!;
+      expect(peak(hop)).toBe(28);
+      // raised by its rise past the zone's headroom, it is still clear
+      expect(clear({ x: s.x, y: s.y - Math.ceil((0.28 - 0.15) * 44) }, 44, true, layout())).toBe(true);
+      // a plate just over its head: a lower hop
+      await advance(1000);
+      expect(hopPeak(s, 44, true, { ...layout(), obstacles: [...layout().obstacles, { x: s.x, y: s.y - 30, w: 44, h: 4 }] })).toBeLessThan(0.28);
+      expect(hopPeak({ x: s.x, y: 18 }, 44, true, layout())).toBe(HOP_PEAKS[HOP_PEAKS.length - 1]);
+    });
+
+    it("a short wander (about half a figure, under one step) arrives with its feet on the ground and no hop still running", async () => {
+      await render(state());
+      // random picks swept until a wander shorter than one step is taken
+      let short: (typeof anims)[number] | undefined;
+      for (let t = 0; t < 60000 && !short; t += 500) {
+        await advance(500);
+        short = walks("0").find((w) => w.ms < 520);
+        if (!short) rnd.mockReturnValue(((t / 500) % 20) / 20);
+      }
+      expect(short, "a wander shorter than one step").toBeDefined();
+      const gait = anims.find((a) => a.seat === "0" && a.box === "tc-face" && a.at === short!.at)!;
+      expect(gait.iters).toBe(1);
+      expect(gait.ms).toBeCloseTo(short!.ms, 6);
+      // at arrival the walk and its hop have both ended: grounded, nothing running on
+      await advance(Math.ceil(short!.ms));
+      expect(short!.done).toBe(true);
+      expect(gait.done).toBe(true);
+    });
+
+    it("a quick hop in flight as the deal starts goes on at a stroll, ends grounded, and nothing else moves through the deal", async () => {
+      await render(state());
+      const was = spotOf(0);
+      rects["trick-play"] = { x: was.x - 6, y: was.y - 20, w: 120, h: 70 };
+      await render(state({ trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>));
+      const hop = walks("0").at(-1)!;
+      expect(hop.ms).toBeLessThanOrEqual(500);
+      const n = walks("0").length;
+      await advance(100);
+      // the deal starts mid-hop
+      rects["trick-play"] = { x: 0, y: 0, w: 0, h: 0 };
+      await render(state({ phase: "deal", trick: null } as unknown as Partial<GameState>));
+      expect(hop.done).toBe(true);
+      const on = walks("0").slice(n);
+      expect(on.length).toBeLessThanOrEqual(1);
+      for (const w of on) {
+        expect(speed(w)).toBeLessThanOrEqual(TAP_PX_S + 1e-6);
+        // from where it was drawn, on to where the hop was going: no snap
+        expect(String(w.frames.at(-1)!.transform)).toBe(String(hop.frames.at(-1)!.transform));
+      }
+      for (let t = 0; t < 20000; t += 1000) await advance(1000);
+      expect(walks("0").length).toBe(n + on.length);
+      expect(anims.filter((a) => a.seat === "0" && (a.box.includes("tc-walk") || a.box === "tc-face")).every((a) => a.done)).toBe(true);
     });
 
     it("a second tap mid-stroll turns it from where it is drawn", async () => {

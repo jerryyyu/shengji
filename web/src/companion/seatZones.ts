@@ -151,7 +151,7 @@ function zoneAt(at: Spot | null, size: number, layout: Layout, tag: boolean, wid
 
 /** How far a figure wanders from a spot a tap chose, either way, in
  *  figures across and up or down. */
-export const TAPPED_WIDE = 0.75;
+export const TAPPED_WIDE = 1.25;
 export const TAPPED_HIGH = 0.25;
 
 /** The small zone round a spot a tap chose: the clear spots within

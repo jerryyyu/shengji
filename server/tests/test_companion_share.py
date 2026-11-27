@@ -81,7 +81,9 @@ def test_refused_from_a_bot_a_seat_left_by_choice_a_stale_socket_and_a_bad_move(
         assert not srv.companion_message(room, room.seats[2], {"act": "special"}, now=1.0)   # a bot
         outsider = srv.Seat(name="watcher")
         assert not srv.companion_message(room, outsider, {"act": "special"}, now=1.0)      # holds no seat
-        for bad in ({"act": "dance"}, {"act": "home", "x": 1.5, "y": 0.2}, {"act": "home", "x": "0.1", "y": 0.2},
+        for bad in ({"act": "dance"}, {"act": ["special"]}, {"act": {"home": 1}}, {"act": None},
+                    {"act": "home", "x": 1.5, "y": 0.2}, {"act": "home", "x": "0.1", "y": 0.2},
+                    {"act": "home", "x": [0.1], "y": 0.2}, {"act": "home", "x": {"v": 0.1}, "y": 0.2},
                     {"act": "home", "x": True, "y": 0.2}, {"act": "home"}):
             assert not srv.companion_message(room, room.seats[0], bad, now=1.0)
         room.seats[1].left_by_choice = True                                              # the bot plays it now

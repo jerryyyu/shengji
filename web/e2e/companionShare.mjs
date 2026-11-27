@@ -1,7 +1,7 @@
 // Two people at one table on a real server (BASE, started with
 // COLLECTION_ENABLED=1): a tap on A's companion plays its special on B's
 // screen, and a tap on A's felt parks A's companion, which B sees walk away
-// and stay; a page that comes back (a rejoin) draws it at the parked spot.
+// and stay; a page that comes back (a rejoin, B's or A's own) draws it at the parked spot.
 //   COLLECTION_ENABLED=1 server; BASE=<server url> node e2e/companionShare.mjs
 import { Report, launch, open, scenario, sleep, until } from "./lib.mjs";
 import { toTable } from "./drive.mjs";
@@ -67,6 +67,18 @@ try {
     }, figure(seatA));
     await rep.check("after a reload B draws A's companion at the parked spot",
       back && nearAgain.d <= 2 * Math.max(nearAgain.w, 40) ? null : `${nearAgain.d}px from the parked point`, b);
+    // A, the owner, comes back too: its own companion stands where it parked it
+    await a.reload();
+    await until(a, () => document.querySelector(".tc-mine") !== null, { timeout: 30000 });
+    await sleep(1500);
+    const own = await a.evaluate(() => {
+      const r = document.querySelector(".felt").getBoundingClientRect();
+      const f = document.querySelector(".tc-mine svg.cmp").getBoundingClientRect();
+      const d = Math.hypot(f.x + f.width / 2 - (r.x + r.width * 0.5), f.y + f.height / 2 - (r.y + r.height * 0.42));
+      return { d: Math.round(d), w: Math.round(f.width) };
+    });
+    await rep.check("after a reload A draws its own companion at the parked spot",
+      own.d <= 2 * Math.max(own.w, 40) ? null : `${own.d}px from the parked point`, a);
   });
 } finally {
   await browser.close();

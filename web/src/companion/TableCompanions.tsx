@@ -1118,6 +1118,22 @@ const NOT_FELT = "button, a, input, textarea, select, label, [role='button'], [r
  *  latest of each seat, with a count that tells one from the next. */
 export type SharedMoves = Partial<Record<number, { act: "special" } & { n: number } | { act: "home"; x: number; y: number; n: number }>>;
 
+/** A shared spot: a point of the felt's safe area from 0 to 1, so it lands
+ *  on every screen in the same place of the table. */
+function toShared(l: Layout, p: Spot): { x: number; y: number } {
+  const x0 = l.safe?.x0 ?? 0, x1 = l.safe?.x1 ?? l.felt.w;
+  const r = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 10000) / 10000;
+  return { x: r((p.x - x0) / Math.max(1, x1 - x0)), y: r(p.y / Math.max(1, l.felt.h)) };
+}
+function fromShared(l: Layout, x: number, y: number): Spot {
+  const x0 = l.safe?.x0 ?? 0, x1 = l.safe?.x1 ?? l.felt.w;
+  return { x: x0 + x * (x1 - x0), y: y * l.felt.h };
+}
+/** The least time between two parked spots sent, a little over the
+ *  server's one second, so none is dropped; a tap sooner waits and only the
+ *  latest is sent once the time is up. */
+export const HOME_SHARE_GAP_MS = 1100;
+
 export default function TableCompanions({ state, watch = null, shared, onShare }: {
   state: GameState; watch?: { quiet: boolean } | null;
   /** The other seats' shared moves (`Table.tsx` reads them off the socket). */
@@ -1181,8 +1197,14 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
   const people = state.players.filter((p) => !p.is_bot && !p.left && (!watch || !!p.look));
   // the spot your last tap chose, at this table; yours stands round it, at
   // its full size, whatever room its zone by your hand has
-  const home = tapped && tapped.room === state.room ? tapped.spot : null;
   const myPx = companionSize(size.base, levelIndex(levels[ours]), size.max);
+  // after a reload the spot comes from the seat's own frame (its shared home)
+  const ownShared = !watch && me && !me.is_bot ? me.home : undefined;
+  const ownKey = ownShared && layout ? `${ownShared[0]},${ownShared[1]},${layout.felt.w},${layout.felt.h},${myPx}` : "";
+  const fromFrame = useMemo(() => (ownShared && layout ? nearestClear(fromShared(layout, ownShared[0], ownShared[1]), myPx, true, layout) : null),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [ownKey]);
+  const home = tapped && tapped.room === state.room ? tapped.spot : fromFrame;
   // what yours takes round a tapped home, as far as it wanders there: no
   // other seat's zone or step-out comes into it
   const homeKey = home ? `${home.x},${home.y},${myPx}` : "";
@@ -1222,17 +1244,6 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
   }, [layout, zones, size.base, strays, taken]);
   const roam = rooms?.bottom ?? null;
 
-  // A shared spot is a point of the felt's safe area from 0 to 1, so it
-  // lands on every screen in the same place of the table.
-  const toShared = (l: Layout, p: Spot): { x: number; y: number } => {
-    const x0 = l.safe?.x0 ?? 0, x1 = l.safe?.x1 ?? l.felt.w;
-    const r = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 10000) / 10000;
-    return { x: r((p.x - x0) / Math.max(1, x1 - x0)), y: r(p.y / Math.max(1, l.felt.h)) };
-  };
-  const fromShared = (l: Layout, x: number, y: number): Spot => {
-    const x0 = l.safe?.x0 ?? 0, x1 = l.safe?.x1 ?? l.felt.w;
-    return { x: x0 + x * (x1 - x0), y: y * l.felt.h };
-  };
   const seatPx = (p: StatePlayer) => zones?.[SIDES[(p.seat - state.you + 4) % 4]].size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max);
   // where another seat's person parked its companion, on this screen: the
   // clear spot nearest their point, round the other companions
@@ -1263,6 +1274,50 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
   }, [shared]);
   const share = useRef(onShare);
   share.current = onShare;
+  // your parked spot, sent at most every HOME_SHARE_GAP_MS: a tap sooner
+  // waits, and the latest one goes when the time is up, so the spot yours
+  // ends at is the one the table and a rejoin are told
+  const homeOut = useRef<{ last: number; timer: number | null; latest: { x: number; y: number } | null }>({ last: -Infinity, timer: null, latest: null });
+  const sendHome = (pt: { x: number; y: number }) => {
+    const h = homeOut.current;
+    h.latest = pt;
+    if (h.timer !== null) return;
+    const wait = h.last + HOME_SHARE_GAP_MS - Date.now();
+    const go = () => {
+      h.timer = null;
+      h.last = Date.now();
+      if (h.latest) share.current?.({ type: "companion", act: "home", ...h.latest });
+      h.latest = null;
+    };
+    if (wait <= 0) go();
+    else h.timer = window.setTimeout(go, wait);
+  };
+  const sendHomeNow = useRef(sendHome);
+  sendHomeNow.current = sendHome;
+  useEffect(() => () => { if (homeOut.current.timer !== null) window.clearTimeout(homeOut.current.timer); }, []);
+  // a seat that changed hands (its frame's home gone, its name changed, a
+  // bot's now) forgets the parked spot and the walk its last holder shared
+  const holders = useRef<Record<number, { name: string; home: boolean; bot: boolean }>>({});
+  useEffect(() => {
+    const gone: number[] = [];
+    for (const p of state.players) {
+      const was = holders.current[p.seat];
+      const now = { name: p.name, home: !!p.home, bot: p.is_bot || !!p.left };
+      if (was && ((was.home && !now.home) || was.name !== now.name || (!was.bot && now.bot))) gone.push(p.seat);
+      holders.current[p.seat] = now;
+    }
+    if (!gone.length) return;
+    setRemoteHomes((h) => {
+      const at = { ...h.at };
+      for (const seat of gone) delete at[seat];
+      return { ...h, at };
+    });
+    setRemoteGoals((g) => {
+      const next = { ...g };
+      for (const seat of gone) delete next[seat];
+      return next;
+    });
+  }, [state.players]);
 
   // a tap on empty felt walks yours to the clear spot nearest the tap: yours
   // drawn anywhere (by your hand, on a tapped home, stepped out) takes it
@@ -1294,7 +1349,7 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
       at.last = now;
       countWalk();
       setGoal({ spot, n: ++at.n });
-      share.current?.({ type: "companion", act: "home", ...toShared(at.layout, { x: p.x - f.x, y: p.y - f.y }) });
+      sendHomeNow.current(toShared(at.layout, { x: p.x - f.x, y: p.y - f.y }));
     };
     // whether a panel was open as the tap began, before the tap closes it
     let panelAtDown = false;

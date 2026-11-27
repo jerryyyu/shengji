@@ -4349,7 +4349,7 @@ def companion_message(room: Room, me: Seat, msg: dict, now: float | None = None)
     is kept for the frames a rejoin reads (``companion_homes``). True when
     it was relayed."""
     act = msg.get("act")
-    if act not in COMPANION_GAPS or me not in room.seats or me.is_bot or not me.connected:
+    if not isinstance(act, str) or act not in COMPANION_GAPS or me not in room.seats or me.is_bot or not me.connected:
         return False
     seat = room.seats.index(me)
     if seat_look(me) is None or room.game is None:

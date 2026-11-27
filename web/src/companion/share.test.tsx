@@ -20,7 +20,7 @@ vi.mock("../auth", async (importOriginal) => {
   return { ...real, useAuth: () => authState.current, auth: { updated: () => {}, get state() { return authState.current; } } };
 });
 
-import TableCompanions from "./TableCompanions";
+import TableCompanions, { HOME_SHARE_GAP_MS } from "./TableCompanions";
 import type { SharedMoves } from "./TableCompanions";
 import type { Rect } from "./seatZones";
 import { TABLES } from "./seatZones.fixtures";
@@ -190,5 +190,65 @@ describe("another seat's shared moves", () => {
     await render(state(), { 1: { act: "special", n: 1 }, 2: { act: "home", x: 0.5, y: 0.5, n: 2 } });
     expect(host.querySelector(".tc-seat")).toBeNull();
     expect(anims).toHaveLength(0);
+  });
+});
+
+describe("the spot each screen ends at is the same", () => {
+  it("your own frame's home places yours there after a reload", async () => {
+    await render(state());
+    await advance(500);
+    const by = at(0);
+    act(() => root.unmount());
+    root = createRoot(host);
+    anims = [];
+    await render(state({ players: [player(0, { home: [0.5, 0.45] }), player(1), player(2), player(3)] }));
+    await advance(500);
+    expect(at(0)).not.toBe(by);
+    expect(walks(0)).toHaveLength(0);
+    // and a fresh screen with no home stands it by your hand, as before
+    act(() => root.unmount());
+    root = createRoot(host);
+    await render(state());
+    await advance(500);
+    expect(at(0)).toBe(by);
+  });
+
+  it("a second tap inside the server's second is sent once the second is up, so the last spot is the one shared", async () => {
+    await render(state());
+    await advance(500);
+    await tapFelt(m.felt.w * 0.35, m.felt.h * 0.45);
+    await advance(600);
+    await tapFelt(m.felt.w * 0.62, m.felt.h * 0.45);
+    const homes = () => sent.filter((s) => s.act === "home") as { x: number; y: number }[];
+    expect(homes()).toHaveLength(1);                       // the second waits for the second to pass
+    await advance(HOME_SHARE_GAP_MS);
+    expect(homes()).toHaveLength(2);
+    expect(homes()[1].x).toBeGreaterThan(homes()[0].x);    // and is the later tap's spot
+    // a third, long after, goes at once
+    await advance(3000);
+    await tapFelt(m.felt.w * 0.45, m.felt.h * 0.45);
+    expect(homes()).toHaveLength(3);
+  });
+});
+
+describe("a seat that changes hands", () => {
+  it("an observer who stays connected forgets the parked spot of the seat's last holder", async () => {
+    // where a newcomer on seat 1 stands with nothing parked
+    await render(state({ players: [player(0), player(1, { name: "New" }), player(2), player(3)] }));
+    await advance(500);
+    const fresh = at(1);
+    act(() => root.unmount());
+    root = createRoot(host);
+    // P1 parks; the frames carry it
+    await render(state());
+    await advance(500);
+    const parked = { 1: { act: "home" as const, x: 0.5, y: 0.45, n: 1 } };
+    await render(state({ players: [player(0), player(1, { home: [0.5, 0.45] }), player(2), player(3)] }), parked);
+    await advance(5000);
+    expect(at(1)).not.toBe(fresh);
+    // the seat goes to someone else: its frame has no home and another name
+    await render(state({ players: [player(0), player(1, { name: "New" }), player(2), player(3)] }), parked);
+    await advance(5000);
+    expect(at(1)).toBe(fresh);
   });
 });

@@ -18,7 +18,9 @@
   --cross-avail: calc(var(--view-h) - var(--header-bottom) - var(--zone-bottom));
 }
 .watch-round { display: inline-flex; align-items: center; gap: 5px; color: #aab3c2; }
+.watch-close { display: inline-flex; align-items: center; justify-content: center; }
 .watch-round svg,
+.watch-close svg,
 .watch-ctl svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2;
   stroke-linecap: round; stroke-linejoin: round; }
 .watch-tabs-row { display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(0, max-content) minmax(max-content, 1fr); align-items: center;

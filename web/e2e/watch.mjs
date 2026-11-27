@@ -2,7 +2,7 @@
 // trick never covers a seat's name tag, the watcher's row (transport, tabs,
 // kitty) or the LEAD / WINS labels, on the phones and the iPad, from every
 // tab, with narrow and wide tricks; and the hand keeps its size when the bury
-// ends.
+// ends; and a replay is left in one tap, by back or by Escape.
 //   node e2e/watch.mjs [device-regex]
 import fs from "node:fs";
 import path from "node:path";
@@ -151,5 +151,47 @@ for (const device of ["phone-land-max", "phone-land", "phone-land-se", "ipad11-l
     await page.context().close();
   }
 }
+// A replay's top right is one Leave control: a tap, the browser's back or
+// Escape each land on the Play tab with its presence line.
+for (const device of ["phone-land", "ipad11-land"]) {
+  for (const how of ["tap", "back", "escape"]) {
+    const name = `watch-leave-${how}-${device}`;
+    if (only && !only.test(name)) continue;
+    const replay = { ...doc(0), rerun: true };
+    const page = await open(browser, device, {
+      storage: { "shengji.coach": "off", "shengji.muted": "1", "shengji.name": "Jerry" },
+      fakeSocket: fakeSocketScript([presence]),
+      setup: async (p) => {
+        await p.route("**/api/**", (r) => r.fulfill({ status: 404, json: {} }));
+        await p.route("**/api/watch?**", (r) => r.fulfill({ json: replay }));
+      },
+    });
+    await scenario(rep, name, page, async () => {
+      await page.waitForSelector(".play-presence-watch");
+      await page.click(".play-presence-watch");
+      await page.waitForSelector(".watch-tabs");
+      await rep.check(`${name}: no menu, one Leave control`, await page.evaluate(() =>
+        document.querySelector(".watch-hud [aria-haspopup=menu]") ? "a menu button is drawn"
+          : document.querySelector('.watch-hud button[aria-label="Leave"]') ? null : "no Leave control"), page);
+      if (how === "tap") await page.click('.watch-hud button[aria-label="Leave"]');
+      else if (how === "back") await page.goBack();
+      else await page.keyboard.press("Escape");
+      const back = await page.waitForSelector(".play-presence-watch", { timeout: 3000 }).then(() => true, () => false);
+      await rep.check(`${name}: lands on the Play tab`, back && !(await page.$(".watch-screen")) ? null : "still watching", page);
+      if (how === "back") {
+        // forward opens the watch again, and back leaves it again
+        await page.goForward();
+        const again = await page.waitForSelector(".watch-tabs", { timeout: 3000 }).then(() => true, () => false);
+        await rep.check(`${name}: forward opens the watch again`, again ? null : "no watch after forward", page);
+        await page.goBack();
+        const out = await page.waitForSelector(".play-presence-watch", { timeout: 3000 }).then(() => true, () => false);
+        await rep.check(`${name}: back again lands on the Play tab`, out ? null : "still watching", page);
+      }
+      if (SHOTS?.test(name)) await shot(page, name);
+    });
+    await page.context().close();
+  }
+}
+
 await browser.close();
 process.exit(rep.done());

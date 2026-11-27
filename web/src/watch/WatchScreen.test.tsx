@@ -161,10 +161,40 @@ describe("a replay", () => {
     expect(chip.closest(".hud")).not.toBeNull();
   });
 
-  it("offers no Next table, only Leave", async () => {
+  it("has no menu: the top right is one Leave control", async () => {
     await open();
-    await act(async () => { button("More").click(); });
-    expect([...host.querySelectorAll("[role=menuitem]")].map((b) => b.textContent)).toEqual(["Leave"]);
+    expect(host.querySelector("button[aria-label='More']")).toBeNull();
+    expect(host.querySelector("[aria-haspopup=menu], [role=menu], [role=menuitem]")).toBeNull();
+    const close = host.querySelector<HTMLButtonElement>(".watch-hud .hud-more-btn")!;
+    expect(close.getAttribute("aria-label")).toBe("Leave");
+    expect(close.querySelector("svg")).not.toBeNull();
+  });
+
+  it("one tap on the Leave control leaves at once and walks its history entry back once", async () => {
+    window.history.replaceState(null, "", "/");
+    watch.open("ranked");
+    await open();
+    const back = vi.spyOn(window.history, "back");
+    const close = vi.spyOn(watch, "close");
+    await act(async () => { button("Leave").click(); });
+    expect(watch.get()).toBeNull();
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(back).toHaveBeenCalledTimes(1);
+    expect(host.querySelector("[role=menu]")).toBeNull();
+    close.mockRestore();
+    back.mockRestore();
+  });
+
+  it("names the control 离开 and 離開 in Chinese", async () => {
+    for (const [choice, label] of [["zh-Hans", "离开"], ["zh-Hant", "離開"]] as const) {
+      setLanguageChoice(choice);
+      try {
+        await open();
+        expect(host.querySelector(".watch-hud .hud-more-btn")!.getAttribute("aria-label")).toBe(label);
+      } finally {
+        setLanguageChoice("system");
+      }
+    }
   });
 
   it("keeps a leaderboard player's name and reads the others' seats in the viewer's language", async () => {
@@ -202,6 +232,117 @@ describe("a live table", () => {
     expect(row.querySelector(".watch-kitty-slot")).not.toBeNull();
     expect(host.querySelector(".hud .watch-ctl")).toBeNull();
     expect(row.nextElementSibling?.classList.contains("watch-hand")).toBe(true);
+  });
+});
+
+describe("back and Escape", () => {
+  beforeEach(async () => {
+    // let any back an earlier test queued land first
+    await new Promise((r) => setTimeout(r, 0));
+    window.history.replaceState(null, "", "/");
+  });
+  afterEach(() => { watch.close(); });
+
+  const escape = () => act(async () => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+
+  it("opening a watch adds one history entry at the same address, and back leaves it", async () => {
+    const href = window.location.href;
+    const push = vi.spyOn(window.history, "pushState");
+    watch.open("casual");
+    expect(push).toHaveBeenCalledTimes(1);
+    push.mockRestore();
+    expect(window.location.href).toBe(href);
+    await open();
+    await act(async () => {
+      window.history.back();
+      await new Promise<void>((r) => window.addEventListener("popstate", () => r(), { once: true }));
+    });
+    expect(watch.get()).toBeNull();
+    expect(window.location.href).toBe(href);
+  });
+
+  /** Walk history by `delta` and wait for its popstate. */
+  const go = (delta: number) => act(async () => {
+    const landed = new Promise<void>((r) => window.addEventListener("popstate", () => r(), { once: true }));
+    window.history.go(delta);
+    await landed;
+  });
+
+  it("Back then Forward opens the watch again, and Back then leaves it again", async () => {
+    watch.open("ranked");
+    await open();
+    await go(-1);
+    expect(watch.get()).toBeNull();
+    await go(1);
+    expect(watch.get()).toEqual({ mode: "ranked" });
+    await go(-1);
+    expect(watch.get()).toBeNull();
+  });
+
+  it("an Escape then Forward opens the watch again", async () => {
+    watch.open("casual");
+    await open();
+    const landed = new Promise<void>((r) => window.addEventListener("popstate", () => r(), { once: true }));
+    await escape();
+    expect(watch.get()).toBeNull();
+    // the close walks its own entry back
+    await act(async () => { await landed; });
+    expect(watch.get()).toBeNull();
+    await go(1);
+    expect(watch.get()).toEqual({ mode: "casual" });
+  });
+
+  it("a close then an immediate reopen keeps the new watch, and Back leaves it", async () => {
+    watch.open("casual");
+    const landed = new Promise<void>((r) => window.addEventListener("popstate", () => r(), { once: true }));
+    watch.close();
+    watch.open("ranked");
+    await act(async () => { await landed; });
+    expect(watch.get()).toEqual({ mode: "ranked" });
+    await go(-1);
+    expect(watch.get()).toBeNull();
+    expect(window.location.pathname + window.location.hash).toBe("/");
+  });
+
+  it("Escape leaves", async () => {
+    watch.open("casual");
+    await open();
+    await escape();
+    expect(watch.get()).toBeNull();
+  });
+
+  it("Escape over the kitty peek closes only the peek", async () => {
+    watch.open("casual");
+    await open();
+    await act(async () => { button("Pause").click(); });
+    await act(async () => { button("Next trick").click(); });
+    await act(async () => { button("Kitty").click(); });
+    await escape();
+    expect(host.querySelector(".watch-kitty-peek")).toBeNull();
+    expect(watch.get()).not.toBeNull();
+    await escape();
+    expect(watch.get()).toBeNull();
+  });
+
+  it("Escape with the live table's menu open closes only the menu", async () => {
+    watch.open("casual");
+    await open();
+    await act(async () => { button("More").click(); });
+    await escape();
+    expect(host.querySelector("[role=menu]")).toBeNull();
+    expect(watch.get()).not.toBeNull();
+  });
+
+  it("Escape over the round end card leaves the watch alone", async () => {
+    watch.open("casual");
+    await open();
+    await act(async () => { button("Pause").click(); });
+    for (let i = 0; i < 40; i++) await act(async () => { button("Next trick")?.click(); });
+    expect(document.querySelector(".round-end")).not.toBeNull();
+    await escape();
+    expect(watch.get()).not.toBeNull();
   });
 });
 

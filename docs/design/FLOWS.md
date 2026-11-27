@@ -555,6 +555,11 @@ closes it"): a tap outside the card, or Escape, takes it away so the transport i
 steps back into the last trick; the card comes back whenever playback reaches the round end again. Only the
 watcher's card does this; a player's round end still waits for Next or Leave.
 
+"Nobody is playing right now" is said only when the server says nobody is (its 404). A read it refuses (429), a
+server error or no network is tried once more after 1.5 s; a second failure lands on the Play tab with the one
+toast "Couldn't open a table" (没能打开牌桌 / 沒能打開牌桌), and no surface is added. A Next table that fails
+keeps the table on screen.
+
 ## Collection and companions (Jerry 2026-11-26: "I like the Collection tab. Can we first build it with the default Tractor… do the character building with the Tractor first, before the store"; "let's add more colour schemes for free too")
 
 - **Behind an allowlist first** (Jerry 2026-11-26: he tries it before anyone else sees it): the Collection tab,

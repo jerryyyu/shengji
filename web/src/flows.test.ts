@@ -152,6 +152,7 @@ const TOAST_SITES = [
   "components/SettingsList.tsx", // Show companions at the table, when the server did not take it
   "components/Table.tsx", // Coach on/off, a newcomer joining the table
   "queue/QueueLayer.tsx", // the queue's notices
+  "watch/WatchScreen.tsx", // a watch read that failed twice, on the way back to the Play tab
 ];
 
 /** The one line between the trick and your hand is drawn only by the table. */

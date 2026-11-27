@@ -192,7 +192,12 @@ describe("the left-edge swipe", () => {
     await act(async () => { tile("Bun").click(); });
     await act(async () => { host.querySelectorAll<HTMLButtonElement>(".coll-swatch")[1].click(); });
     expect(title()).toBe("Bun");
-    // the page does not page the tabs: a sideways drag mid-page is left alone
-    expect(host.querySelector(".edge-swipe")?.hasAttribute("data-no-tab-swipe")).toBe(true);
+    // the page does not page the tabs, over its title and padding too: the
+    // opt-out is on the full-width page while it is open, and off on the grid
+    expect(host.querySelector(".coll-page")?.hasAttribute("data-no-tab-swipe")).toBe(true);
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-back")!.click(); });
+    await settle();
+    expect(title()).toBe("Collection");
+    expect(host.querySelector(".coll-page")?.hasAttribute("data-no-tab-swipe")).toBe(false);
   });
 });

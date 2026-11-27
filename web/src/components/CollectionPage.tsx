@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useAuth } from "../auth";
 import { appStoreUrl } from "../appStore";
 import { COMPANIONS, COMPANION_KINDS, COMPANION_PRODUCTS, FREE_KINDS, lookCatalogue, lookId, parseLook } from "../companion/look";
@@ -232,6 +232,16 @@ export default function CollectionPage() {
   // a swipe from the screen's left edge, read on the full-width page, goes back too
   const pageBody = useRef<HTMLDivElement>(null);
   useEdgeSwipeBack(scroller, pageBody, leave, showing !== null);
+  // A character page does not page the tabs sideways, over its title and
+  // padding too: the opt-out sits on the full-width scroller while a page is
+  // open, and comes off on the grid, which keeps its tab swipe.
+  const detail = showing !== null;
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    el.toggleAttribute("data-no-tab-swipe", detail);
+    return () => el.removeAttribute("data-no-tab-swipe");
+  }, [scroller, detail]);
 
   const back = (
     <button type="button" className="coll-back" onClick={leave}>
@@ -244,7 +254,7 @@ export default function CollectionPage() {
       return (
         <LargeTitlePage className="coll-page" scroller={scroller} title={kindName(t, showing)} phone={phone}
                        onRefresh={() => refreshAccount()} action={back}>
-          <div ref={pageBody} className="edge-swipe" data-no-tab-swipe>
+          <div ref={pageBody} className="edge-swipe">
             <div className="char-page">
               <Stage kind={showing} colour={soonColour(showing)} size={phone ? 176 : 208} label={kindName(t, showing)} />
               <div className="coll-use-row">
@@ -265,7 +275,7 @@ export default function CollectionPage() {
     return (
       <LargeTitlePage className="coll-page" scroller={scroller} title={kindName(t, kind)} phone={phone}
                      onRefresh={() => refreshAccount()} action={back}>
-        <div ref={pageBody} className="edge-swipe" data-no-tab-swipe>
+        <div ref={pageBody} className="edge-swipe">
           <CharacterPage kind={kind} shown={shown} entries={entries} inUse={inUse} user={user} phone={phone}
                          fresh={fresh} onShow={show} onUse={use} price={price} status={status} cheer={cheer} />
         </div>

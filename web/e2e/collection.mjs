@@ -2,7 +2,9 @@
 // screen's left edge, measured with real touch input (CDP
 // Input.dispatchTouchEvent, so the browser's own hit testing picks the
 // target): a finger put down at x = 2, 6 or 20 returns to the grid, one at
-// x = 60 leaves the page as it is, on a phone and on an iPad.
+// x = 60 leaves the page as it is, on a phone and on an iPad. A sideways drag
+// over the page's title stays on the page (it does not page the tabs), while
+// on the grid the phone's tab swipe still works.
 //   node e2e/collection.mjs [device-regex]
 import { Report, launch, open, scenario, sleep, until } from "./lib.mjs";
 import { fakeSocketScript } from "./fake.mjs";
@@ -51,6 +53,27 @@ try {
         if (x >= 24) await rep.check(`${device} x=${x} stays on its tab`, hash === "#/collection/bun" ? null : `address ${hash}`, page);
       });
     }
+    // a sideways drag over the page's title stays on the page: the page does not
+    // page the tabs anywhere on it; on the grid the tab swipe still works
+    await scenario(rep, `${device} title swipe`, page, async () => {
+      if ((await title(page)) !== "Collection") await page.goto(new URL("#/collection", page.url()).href);
+      await until(page, () => document.querySelector(".coll-yours .coll-tile") !== null);
+      await page.locator(".coll-yours .coll-tile", { hasText: "Tractor" }).tap();
+      await until(page, () => document.querySelector(".large-title")?.textContent === "Tractor");
+      const ty = await page.evaluate(() => Math.round(document.querySelector(".large-title").getBoundingClientRect().top + 10));
+      await swipe(cdp, 24, ty, 171);
+      await sleep(500);
+      const on = await page.evaluate(() => [location.hash, document.querySelector(".large-title")?.textContent ?? ""]);
+      await rep.check(`${device} drag over the title from x=24`, on[0] === "#/collection/tractor" && on[1] === "Tractor" ? null
+        : `left the page: ${on.join(" ")}`, page);
+      if (page.qa.d.w >= 700) return;                   // the tab swipe is the phone's
+      await page.goto(new URL("#/collection", page.url()).href);
+      await until(page, () => document.querySelector(".large-title")?.textContent === "Collection");
+      await swipe(cdp, 60, y, 240);
+      await sleep(700);
+      const grid = await page.evaluate(() => location.hash);
+      await rep.check(`${device} the grid still pages the tabs`, grid !== "#/collection" ? null : "a rightward drag on the grid stayed on Collection", page);
+    });
     await page.context().close();
   }
 } finally {

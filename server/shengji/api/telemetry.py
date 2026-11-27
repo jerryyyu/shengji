@@ -200,10 +200,11 @@ INVITE_STEPS = frozenset({"created", "opened", "seated"})
 # Watching a table (web/src/watch/usage.ts): a live table or a replay; how
 # the watch began (the Play tab's presence link, Forward onto its history
 # entry, or the screen moving to another table); what ended it (its Leave,
-# back, Escape, Next table, a failed read, a seat taken, the table gone).
+# back, Escape, Next table, a failed read, a seat taken, the table gone, or
+# the round watched ended and the feed moved on to another table).
 WATCH_KINDS = frozenset({"live", "replay"})
 WATCH_FROM = frozenset({"presence", "history", "next"})
-WATCH_BY = frozenset({"close", "back", "escape", "next", "error", "seat", "gone"})
+WATCH_BY = frozenset({"close", "back", "escape", "next", "error", "seat", "gone", "ended"})
 MAX_WATCH_SECS = 86_400
 INVITE_VIA = frozenset({"share", "copy"})
 # The sender's random link token (web/src/codes.ts hostToken); only its hash is kept.

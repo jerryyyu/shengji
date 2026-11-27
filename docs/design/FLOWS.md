@@ -556,7 +556,7 @@ steps back into the last trick; the card comes back whenever playback reaches th
 watcher's card does this; a player's round end still waits for Next or Leave.
 
 "Nobody is playing right now" is said only when the server says nobody is (its 404). A read it refuses (429), a
-server error or no network is tried once more after 1.5 s; a second failure lands on the Play tab with the one
+server error, no network or a round that cannot be drawn is tried once more after 1.5 s; a second failure lands on the Play tab with the one
 toast "Couldn't open a table" (没能打开牌桌 / 沒能打開牌桌), and no surface is added. A Next table that fails
 keeps the table on screen.
 

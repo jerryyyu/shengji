@@ -753,6 +753,8 @@ def test_the_collection_screen_is_kept():
      {"e": "watch_leave", "t": 4, "by": "escape", "secs": 95, "kind": "live"}),
     ({"e": "watch_leave", "by": "error", "secs": 3}, {"e": "watch_leave", "by": "error", "secs": 3}),
     ({"e": "watch_to_play", "t": 5, "secs": 40, "by": "seat"}, {"e": "watch_to_play", "t": 5, "secs": 40, "by": "seat"}),
+    ({"e": "watch_leave", "by": "ended", "secs": 300, "kind": "replay"},
+     {"e": "watch_leave", "by": "ended", "secs": 300, "kind": "replay"}),
 ])
 def test_the_watch_events_validate(raw, kept):
     assert telemetry.clean_event(raw) == kept

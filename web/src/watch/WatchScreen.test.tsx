@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fixture from "../replay/server-round-finished.fixture.json";
-import WatchScreen, { RETRY_MS } from "./WatchScreen";
+import WatchScreen, { CARD_HOLD_MS, RETRY_MS } from "./WatchScreen";
 import { TO_PLAY_MS, watchUsage } from "./usage";
 import { telemetry } from "../telemetry";
 import { clearToast, currentToast } from "../toast";
@@ -687,6 +687,41 @@ describe("a failed read", () => {
     });
   }
 
+  // a 200 whose round cannot be drawn (cut short) is a failed read, not an empty feed
+  const cut = { ...feed, events: fixture.events.slice(0, 12) };
+  it("a 200 with a round that cannot be drawn twice: back to the Play tab with one toast, never the nobody line", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      urls.push(url);
+      return new Response(JSON.stringify(cut), { status: 200 });
+    }));
+    watch.open("ranked");
+    await open();
+    expect(nobody()).toBeNull();
+    expect(watch.get()).not.toBeNull();
+    await act(async () => { vi.advanceTimersByTime(RETRY_MS); });
+    await flush();
+    expect(reads()).toBe(2);
+    expect(nobody()).toBeNull();
+    expect(watch.get()).toBeNull();
+    expect(currentToast()?.text).toBe("Couldn't open a table");
+  });
+
+  it("a 200 with a round that cannot be drawn, then a good one: the table", async () => {
+    let n = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      urls.push(url);
+      return new Response(JSON.stringify(n++ === 0 ? cut : feed), { status: 200 });
+    }));
+    watch.open("ranked");
+    await open();
+    expect(nobody()).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(RETRY_MS); });
+    await flush();
+    expect(tabs()).toHaveLength(4);
+    expect(nobody()).toBeNull();
+    expect(currentToast()).toBeNull();
+  });
+
   it("404: the nobody line at once, with no second read", async () => {
     answers = [404];
     watch.open("ranked");
@@ -800,6 +835,50 @@ describe("watch telemetry", () => {
     await act(async () => { await Promise.resolve(); });
     expect(leave).toHaveBeenCalledExactlyOnceWith("next", expect.any(Number), "live");
     expect(open_.mock.calls).toEqual([["live", "presence"], ["live", "next"]]);
+  });
+
+  it("a replay that ends and is followed by a live table: each is opened and left by its own kind", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    const rerun = { ...feed, table: "rerun", rerun: true, live_round: null, code: null };
+    let reads = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const body = url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined }
+        : reads++ === 0 ? rerun : feed;
+      return new Response(JSON.stringify(body), { status: 200 });
+    }));
+    watch.open("ranked");
+    await open();
+    expect(open_.mock.calls).toEqual([["replay", "presence"]]);
+    await act(async () => { button("Pause").click(); });
+    for (let i = 0; i < 40; i++) await act(async () => { button("Next trick")?.click(); });
+    for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(CARD_HOLD_MS); });
+    for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); });
+    expect(host.querySelector(".watch-round")!.textContent).toBe("Round 3");
+    expect(open_.mock.calls).toEqual([["replay", "presence"], ["live", "next"]]);
+    expect(leave.mock.calls).toEqual([["ended", 5, "replay"]]);
+    await act(async () => { vi.advanceTimersByTime(30_000); });
+    await act(async () => { button("More").click(); });
+    await act(async () => { [...host.querySelectorAll<HTMLButtonElement>("[role=menuitem]")][1].click(); });
+    expect(leave.mock.calls).toEqual([["ended", 5, "replay"], ["close", 30, "live"]]);
+  });
+
+  it("the next round of the same table keeps its watch", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const body = url.startsWith("/api/watch/") ? { ...feed, round: 4, live_round: 5 } : feed;
+      return new Response(JSON.stringify(body), { status: 200 });
+    }));
+    watch.open("ranked");
+    await open();
+    await act(async () => { button("Pause").click(); });
+    for (let i = 0; i < 40; i++) await act(async () => { button("Next trick")?.click(); });
+    for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(CARD_HOLD_MS); });
+    for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); });
+    expect(host.querySelector(".watch-round")!.textContent).toBe("Round 4");
+    expect(open_.mock.calls).toEqual([["live", "presence"]]);
+    expect(leave).not.toHaveBeenCalled();
   });
 
   it("a replay says replay; a failed read's leave says error and no kind", async () => {

@@ -55,8 +55,9 @@ export type WatchKind = "live" | "replay";
 export type WatchFrom = "presence" | "history" | "next";
 /** What ended a watch: its Leave (the ✕, the menu's Leave or the round end's
  *  Leave), back, Escape, Next table, a failed read, a seat taken (Take a seat,
- *  Play, or a table of the viewer's own), or the table gone. */
-export type WatchBy = "close" | "back" | "escape" | "next" | "error" | "seat" | "gone";
+ *  Play, or a table of the viewer's own), the table gone, or the round
+ *  watched ended and the feed moved on to another table. */
+export type WatchBy = "close" | "back" | "escape" | "next" | "error" | "seat" | "gone" | "ended";
 /** watch_leave's seconds watched, and watch_to_play's seconds after it, stop here. */
 export const MAX_WATCH_SECS = 86_400;
 

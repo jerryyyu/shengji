@@ -24,6 +24,7 @@ import {
 import type { Beat, Speed } from "./playback";
 import { watch } from "./store";
 import { watchUsage } from "./usage";
+import type { WatchBy } from "../telemetry";
 import "./watch.css";
 
 /** How often a caught-up watcher asks whether the round in play finished. */
@@ -216,8 +217,17 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
     holdTimer.current = null;
   };
-  const show = (l: Loaded) => {
+  // the table the watch's telemetry is about: another table drawn ends that
+  // table's watch and begins the next one's; the next round of the same
+  // table keeps it
+  const usageTable = useRef<string | null>(null);
+  const show = (l: Loaded, why: WatchBy = "ended") => {
     dropNext();
+    if (usageTable.current !== null && usageTable.current !== l.doc.table) {
+      watchUsage.left(why);
+      watchUsage.begin("next");
+    }
+    usageTable.current = l.doc.table;
     watchUsage.shown(l.doc.rerun ? "replay" : "live");
     table.current = l.doc.table;
     setLoaded(l);
@@ -230,8 +240,9 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   const retry = useRef<number | null>(null);
   // a table to watch: the first, or another by Next table (`why` "next") or
   // in place of one that is gone. "Nobody is playing" is said only when the
-  // server says so; a read that fails twice closes the watch with a toast,
-  // and one that fails while a table is on screen keeps that table.
+  // server says so (its 404); a read that fails or brings a round that cannot
+  // be drawn is tried once more, a second such read closes the watch with a
+  // toast, and one while a table is on screen keeps that table.
   const pick = (skip: string | null, why: "next" | "gone" | null = null) => {
     const mine = ++picks.current;
     dropNext();
@@ -240,18 +251,18 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     const read = (again: boolean) => {
       void fetchWatch(mode, skip, loaded?.doc.watcher ?? null).then((r) => {
         if (mine !== picks.current) return;
-        if (!r.ok && r.reason !== "none" && !again) {
+        const l = r.ok ? load(r.doc) : null;
+        const failed = r.ok ? l === null : r.reason !== "none";
+        if (failed && !again) {
           retry.current = window.setTimeout(() => { retry.current = null; read(true); }, RETRY_MS);
           return;
         }
-        const l = r.ok ? load(r.doc) : null;
         if (l) {
-          if (why) { watchUsage.left(why); watchUsage.begin("next"); }
           setNone(false);
-          show(l);
+          show(l, why ?? "next");
         } else if (loaded) {
           // the table on screen stays
-        } else if (!r.ok && r.reason !== "none") {
+        } else if (failed) {
           showToast(t("watch.failed"));
           watch.close("error");
         } else {

@@ -149,6 +149,9 @@ export interface ShopState {
   shown: boolean;
   /** StoreKit's localized price per product, once it answers. */
   prices: Record<string, string>;
+  /** Whether `shown` is final: false while an account the store may be
+   *  shown to waits for the App Store's storefront. */
+  settled: boolean;
 }
 
 /** The store's visibility and prices for the signed-in account; while it is
@@ -159,23 +162,24 @@ export function useShop(): ShopState {
   const account = useAuth();
   const user = account.status === "in" ? account.user : null;
   const allowed = shopAllowed(user);
-  const [state, setState] = useState<ShopState>({ shown: false, prices: {} });
+  const [state, setState] = useState<ShopState>({ shown: false, prices: {}, settled: false });
   useEffect(() => {
     if (!allowed) {
-      setState({ shown: false, prices: {} });
+      setState({ shown: false, prices: {}, settled: false });
       return;
     }
+    setState({ shown: false, prices: {}, settled: false });
     let live = true;
     void (async () => {
       storefront = await storeStorefront();
       if (!live) return;
       if (storefront === NO_SALES_STOREFRONT) {
-        setState({ shown: false, prices: {} });
+        setState({ shown: false, prices: {}, settled: true });
         return;
       }
-      setState((s) => ({ ...s, shown: true }));
+      setState((s) => ({ ...s, shown: true, settled: true }));
       const found = await storeProducts(SOLD_PRODUCTS).catch(() => []);
-      if (live) setState({ shown: true, prices: Object.fromEntries(found.map((p) => [p.id, p.displayPrice])) });
+      if (live) setState({ shown: true, prices: Object.fromEntries(found.map((p) => [p.id, p.displayPrice])), settled: true });
     })();
     const off = onStoreTransaction((t) => { void deliver(t).catch(() => null); });
     return () => { live = false; off(); };
@@ -190,5 +194,6 @@ export function useShop(): ShopState {
   useEffect(() => {
     if (state.shown) void recoverPending();
   }, [state.shown, payer]);
-  return state;
+  // an account the store is never shown to is settled at once
+  return allowed ? state : { shown: false, prices: {}, settled: true };
 }

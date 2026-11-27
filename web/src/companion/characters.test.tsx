@@ -35,6 +35,8 @@ import { forgetHomeSession } from "../home/session";
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
+  // a character page opened by an earlier test is its own address: start on the grid
+  window.history.replaceState(null, "", "/");
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -304,6 +306,7 @@ describe("the Collection's grid and the character page", () => {
     as(over);
     await draw(<CollectionPage />);
     await draw(<></>);
+    window.history.replaceState(null, "", "/");   // leaving the tab leaves its address
   };
 
   it("a colour newly unlocked marks its tile, and on its page its swatch, New until that page has been opened", async () => {
@@ -321,6 +324,7 @@ describe("the Collection's grid and the character page", () => {
     expect(tilesNew()).toEqual([]);
     // seen: a reload shows it as any other colour
     await draw(<></>);
+    window.history.replaceState(null, "", "/");   // leaving the tab leaves its address
     await draw(<CollectionPage />);
     expect(tilesNew()).toEqual([]);
     await openTile("Tractor");
@@ -334,6 +338,7 @@ describe("the Collection's grid and the character page", () => {
     // the grid alone sees nothing, across a reload
     await draw(<CollectionPage />);
     await draw(<></>);
+    window.history.replaceState(null, "", "/");   // leaving the tab leaves its address
     expect(hasNewLook("j@x", looksWith(["tractor/yellow", "chick/ink"]))).toBe(true);
     await draw(<CollectionPage />);
     expect(tilesNew()).toEqual(["Tractor", "Chick"]);
@@ -434,6 +439,7 @@ describe("the Collection's grid and the character page", () => {
     await draw(<CollectionPage />);
     expect(tilesNew()).toEqual(["Tractor"]);
     await draw(<></>);
+    window.history.replaceState(null, "", "/");   // leaving the tab leaves its address
     // on the Tractor's page, nothing tapped: it moves to the new colour
     await firstReading({ email: "c@x" });
     as({ email: "c@x" });
@@ -445,6 +451,7 @@ describe("the Collection's grid and the character page", () => {
     expect(statusLine()).toBe("Tractor · Imperial yellow");
     expect(newOn()).toEqual(["Imperial yellow New"]);
     await draw(<></>);
+    window.history.replaceState(null, "", "/");   // leaving the tab leaves its address
     // a colour tapped first stands
     await firstReading({ email: "d@x" });
     as({ email: "d@x" });
@@ -503,6 +510,7 @@ describe("the Collection's grid and the character page", () => {
     window.localStorage.setItem("shengji.companions", "team");
     await draw(<CollectionPage />);
     await draw(<></>);
+    window.history.replaceState(null, "", "/");   // leaving the tab leaves its address
     await draw(<CollectionPage />);
     expect(sw().getAttribute("aria-checked")).toBe("true");
   });

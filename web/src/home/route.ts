@@ -16,7 +16,7 @@ export type HomeRoute = { tab: "leaderboard" } | { tab: "collection" } | { tab: 
 /** The tab a hash names, or null for the bare URL and every other page. */
 export function parseHome(hash: string): HomeRoute | null {
   if (/^#\/leaderboard\/?$/.test(hash)) return { tab: "leaderboard" };
-  if (/^#\/collection\/?$/.test(hash)) return { tab: "collection" };
+  if (/^#\/collection(?:\/[a-z]+)?\/?$/.test(hash)) return { tab: "collection" };
   if (/^#\/(?:stats|me|me\/stats)\/?$/.test(hash)) return { tab: "me", section: "stats" };
   if (/^#\/(?:games|me\/games)\/?$/.test(hash)) return { tab: "me", section: "games" };
   return null;
@@ -57,6 +57,61 @@ export function openTab(tab: Tab, section?: MeSection): void {
   } catch {
     /* a sandboxed location */
   }
+}
+
+/** The character page a Collection hash names (`#/collection/<kind>`), or
+ *  null for the grid and every other page. */
+export function collectionItem(hash: string): string | null {
+  const m = /^#\/collection\/([a-z]+)\/?$/.exec(hash);
+  return m ? m[1] : null;
+}
+
+const ITEM_STATE = "collectionItem";
+
+/** Open a character page as its own history entry, so back (the browser's,
+ *  Android's, the iOS edge swipe) returns to the grid. */
+export function pushCollectionItem(kind: string): void {
+  try {
+    if (collectionItem(currentHash()) === kind) return;
+    window.history.pushState({ [ITEM_STATE]: kind }, "", `${window.location.pathname}${window.location.search}#/collection/${kind}`);
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  } catch {
+    /* a sandboxed location */
+  }
+}
+
+/** Leave a character page for the grid: back, when the page's entry is the
+ *  one this app pushed (so the history holds no stale page), else the grid's
+ *  hash in its place (a page reached by link or reload). */
+export function leaveCollectionItem(): void {
+  try {
+    const state = window.history.state as Record<string, unknown> | null;
+    if (collectionItem(currentHash()) !== null && state && typeof state[ITEM_STATE] === "string") {
+      window.history.back();
+      return;
+    }
+    if (collectionItem(currentHash()) !== null) {
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#/collection`);
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    }
+  } catch {
+    /* a sandboxed location */
+  }
+}
+
+/** The character page the address names, kept in step with back and forward. */
+export function useCollectionItem(): string | null {
+  const [item, setItem] = useState(() => collectionItem(currentHash()));
+  useEffect(() => {
+    const on = () => setItem(collectionItem(currentHash()));
+    window.addEventListener("hashchange", on);
+    window.addEventListener("popstate", on);
+    return () => {
+      window.removeEventListener("hashchange", on);
+      window.removeEventListener("popstate", on);
+    };
+  }, []);
+  return item;
 }
 
 export function useHomeRoute(): HomeRoute | null {

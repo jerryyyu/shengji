@@ -68,6 +68,8 @@ const ownedUser: AuthUser = { ...user, products: [LAMB], looks: [...tractorLooks
 const server = { granted: false };
 
 beforeEach(() => {
+  // a character page opened by an earlier test is its own address: start on the grid
+  window.history.replaceState(null, "", "/");
   server.granted = false;
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -639,5 +641,51 @@ describe("an open character that goes away", () => {
     authState.current = { status: "in", clientId: "cid", user: { ...user, features: { collection: true } } };
     await draw();
     expect(title()).toBe("Collection");
+  });
+});
+
+describe("a store character's page by its address", () => {
+  const later = (code: string) => async () => {
+    await new Promise((r) => setTimeout(r, 180));
+    return { countryCode: code };
+  };
+  const wait = (ms: number) => act(async () => { await new Promise((r) => setTimeout(r, ms)); });
+  const title = () => host.querySelector(".large-title")?.textContent;
+
+  it("stays asked for while the store's check is out, then opens when the store is allowed", async () => {
+    nativeShell();
+    plugin.storefront.mockImplementation(later("USA"));
+    window.history.replaceState(null, "", "/#/collection/rabbit");
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    expect(window.location.hash).toBe("#/collection/rabbit");
+    expect(title()).toBe("Collection");
+    await wait(220);
+    expect(title()).toBe("Jade Rabbit");
+    expect(window.location.hash).toBe("#/collection/rabbit");
+  });
+
+  it("falls back to the grid once the store's check says no", async () => {
+    nativeShell();
+    plugin.storefront.mockImplementation(later("CHN"));
+    window.history.replaceState(null, "", "/#/collection/rabbit");
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    expect(window.location.hash).toBe("#/collection/rabbit");
+    await wait(220);
+    expect(title()).toBe("Collection");
+    expect(window.location.hash).toBe("#/collection");
+  });
+
+  it("waits for the account to load too", async () => {
+    nativeShell();
+    window.history.replaceState(null, "", "/#/collection/lamb");
+    authState.current = { status: "loading", clientId: "cid", user: null } as AuthState;
+    await draw();
+    expect(window.location.hash).toBe("#/collection/lamb");
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    await wait(20);
+    expect(title()).toBe("Spring Lamb");
   });
 });

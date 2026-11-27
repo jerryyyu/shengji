@@ -560,7 +560,13 @@ watcher's card does this; a player's round end still waits for Next or Leave.
 - **The character page**, opened by any tile, is the same for every character: the look on a corner of felt,
   playing its moves by itself (a tap plays the next); Try on your table, which stands it beside a partner on your
   team's pads; its colour swatches (56 px, four in a row on a phone); one status line naming what is shown ("Bun ·
-  Taro"); and one button. Back (Collection, in the title row) returns to the grid.
+  Taro"); and one button. Back (Collection, in the title row) returns to the grid. The page is its own history
+  entry, `#/collection/<kind>` (Jerry 2026-11-26: "Collection grid swipe back doesn't work"), so the browser's back,
+  Android's and the iOS app's own edge swipe return to the grid too, and a swipe from the screen's left edge (a
+  start left of 24 px, past 60 px, the page following the finger except under Reduce Motion) does the same where
+  the shell's swipe is off. The page does not page the tabs sideways; the edge swipe is its one horizontal gesture.
+  A page asked for by its address waits for the account and the store's check before it opens or gives way to
+  the grid.
 - **One rule for taps:** a tap on a companion or a colour only shows it (the gold ring is "looking at"); the one
   button puts it in use: Use, In use (inert), for a locked Tractor colour what unlocks it ("Win 25 ranked games
   to unlock · 3 of 25", "Win a ranked game to unlock", inert), for a guest Sign in to use, which opens the

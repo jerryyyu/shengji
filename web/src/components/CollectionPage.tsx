@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useAuth } from "../auth";
 import { appStoreUrl } from "../appStore";
 import { COMPANIONS, COMPANION_KINDS, COMPANION_PRODUCTS, FREE_KINDS, lookCatalogue, lookId, parseLook } from "../companion/look";
@@ -11,7 +11,7 @@ import { lookAccount, markLooksSeen, markSeen, newLooks } from "../companion/see
 import { setCompanionMode, shownAtTable, useCompanionMode } from "../companion/mode";
 import { equip, intend, refreshAccount } from "../companion/writes";
 import LargeTitlePage from "../home/LargeTitlePage";
-import { WIDE } from "../home/route";
+import { WIDE, leaveCollectionItem, pushCollectionItem, useCollectionItem } from "../home/route";
 import { useTabScroll } from "../home/session";
 import { useT } from "../i18n";
 import { isNative } from "../native";
@@ -20,10 +20,13 @@ import { useShop } from "../store/shop";
 import { showToast } from "../toast";
 import CharacterPage, { Stage, Tick, kindName, lookName } from "./CharacterPage";
 import { BuyFoot, RestoreRow } from "./StoreFoot";
+import { useEdgeSwipeBack } from "../home/useEdgeSwipeBack";
 import "../companion/collection.css";
 
 type Opened = CompanionKind | SoonKind | null;
 const isSoon = (k: Opened): k is SoonKind => (SOON as readonly string[]).includes(k ?? "");
+const isPage = (k: string | null): k is CompanionKind | SoonKind =>
+  k !== null && (Object.prototype.hasOwnProperty.call(COMPANIONS, k) || (SOON as readonly string[]).includes(k));
 
 /** One character's tile in the grid: its figure idling on felt, its name,
  *  and in More companions its price or Soon. The tick marks the one in use,
@@ -149,7 +152,9 @@ export default function CollectionPage() {
   const entriesOf = (k: CompanionKind) => looks.filter((l) => parseLook(l.id).kind === k);
   const owns = (k: CompanionKind) => !COMPANION_PRODUCTS[k] || entriesOf(k).some((e) => e.unlocked);
   const colourOf = (k: CompanionKind): Colour => (worn.kind === k ? worn.colour : COMPANIONS[k][0]);
-  const open = (k: CompanionKind | SoonKind) => {
+  // a character's page is its own history entry (`#/collection/<kind>`), so
+  // back, forward and the edge swipe move between it and the grid
+  const view = (k: CompanionKind | SoonKind) => {
     setStatus("");
     setOpened(k);
     if (!isSoon(k)) {
@@ -157,12 +162,35 @@ export default function CollectionPage() {
       const id = fresh.find((f) => parseLook(f).kind === k && list.some((e) => e.id === f && e.unlocked))
         ?? (worn.kind === k ? inUse : `${k}/${COMPANIONS[k][0]}`);
       const entry = list.find((e) => e.id === id) ?? list[0];
+      // a character this viewer has no looks of falls back to the grid (`available`)
+      if (!entry) return;
       manual.current = false;
       setShown(entry.id);
       // a tap on the look in use is the latest choice, so an older tap's unlock read gives way
       if (user && entry.id === inUse) intend("look");
     }
   };
+  const open = (k: CompanionKind | SoonKind) => {
+    view(k);
+    pushCollectionItem(k);
+  };
+  const leave = () => {
+    leaveCollectionItem();
+    setOpened(null);
+    setStatus("");
+  };
+  const item = useCollectionItem();
+  useEffect(() => {
+    if (item === null) {
+      if (opened !== null) {
+        setOpened(null);
+        setStatus("");
+      }
+    } else if (isPage(item) && item !== opened) {
+      view(item);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item]);
 
   // The page open must still be one this viewer may see: its character still
   // listed (a refund, a revocation or another account takes an owned one
@@ -175,6 +203,11 @@ export default function CollectionPage() {
     return !COMPANION_PRODUCTS[k] || owns(k) || shop.shown;
   };
   const showing = available(opened) ? opened : null;
+  // Whether the page asked for (a deep link, a reload) cannot be judged yet:
+  // the account is still loading, or the store's check is out for a store
+  // character's page. Until then the grid shows and the address stays.
+  const pending = opened !== null && showing === null
+    && (account.status === "loading" || (!shop.settled && (isSoon(opened) || !!COMPANION_PRODUCTS[opened])));
   // opening a character's page sees its new colours; their marks stay for this visit
   const openKind = showing !== null && !isSoon(showing) ? showing : null;
   useEffect(() => {
@@ -184,14 +217,34 @@ export default function CollectionPage() {
   const unseen = who === null ? [] : newLooks(who, user?.looks);
   const hasNew = (k: CompanionKind) => unseen.some((id) => parseLook(id).kind === k);
   useEffect(() => {
-    if (opened !== null && showing === null) {
+    if (opened !== null && showing === null && !pending) {
       setOpened(null);
       setStatus("");
+      try {
+        if (item !== null) {
+          window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#/collection`);
+          window.dispatchEvent(new HashChangeEvent("hashchange"));
+        }
+      } catch { /* a sandboxed location */ }
     }
-  }, [opened, showing]);
+  }, [opened, showing, item, pending]);
+
+  // a swipe from the screen's left edge, read on the full-width page, goes back too
+  const pageBody = useRef<HTMLDivElement>(null);
+  useEdgeSwipeBack(scroller, pageBody, leave, showing !== null);
+  // A character page does not page the tabs sideways, over its title and
+  // padding too: the opt-out sits on the full-width scroller while a page is
+  // open, and comes off on the grid, which keeps its tab swipe.
+  const detail = showing !== null;
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    el.toggleAttribute("data-no-tab-swipe", detail);
+    return () => el.removeAttribute("data-no-tab-swipe");
+  }, [scroller, detail]);
 
   const back = (
-    <button type="button" className="coll-back" onClick={() => { setOpened(null); setStatus(""); }}>
+    <button type="button" className="coll-back" onClick={leave}>
       {t("home.tabCollection")}
     </button>
   );
@@ -201,10 +254,12 @@ export default function CollectionPage() {
       return (
         <LargeTitlePage className="coll-page" scroller={scroller} title={kindName(t, showing)} phone={phone}
                        onRefresh={() => refreshAccount()} action={back}>
-          <div className="char-page">
-            <Stage kind={showing} colour={soonColour(showing)} size={phone ? 176 : 208} label={kindName(t, showing)} />
-            <div className="coll-use-row">
-              <button type="button" className="btn big coll-use done" disabled>{t("home.soon")}</button>
+          <div ref={pageBody} className="edge-swipe">
+            <div className="char-page">
+              <Stage kind={showing} colour={soonColour(showing)} size={phone ? 176 : 208} label={kindName(t, showing)} />
+              <div className="coll-use-row">
+                <button type="button" className="btn big coll-use done" disabled>{t("home.soon")}</button>
+              </div>
             </div>
           </div>
         </LargeTitlePage>
@@ -220,8 +275,10 @@ export default function CollectionPage() {
     return (
       <LargeTitlePage className="coll-page" scroller={scroller} title={kindName(t, kind)} phone={phone}
                      onRefresh={() => refreshAccount()} action={back}>
-        <CharacterPage kind={kind} shown={shown} entries={entries} inUse={inUse} user={user} phone={phone}
-                       fresh={fresh} onShow={show} onUse={use} price={price} status={status} cheer={cheer} />
+        <div ref={pageBody} className="edge-swipe">
+          <CharacterPage kind={kind} shown={shown} entries={entries} inUse={inUse} user={user} phone={phone}
+                         fresh={fresh} onShow={show} onUse={use} price={price} status={status} cheer={cheer} />
+        </div>
       </LargeTitlePage>
     );
   }

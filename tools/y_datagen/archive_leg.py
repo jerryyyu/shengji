@@ -10,6 +10,8 @@ import subprocess
 import tarfile
 import tempfile
 
+from launch import _volume
+
 
 def sealed_members(store, terminal, expected_sha):
     raw = terminal.read_bytes()
@@ -30,7 +32,7 @@ def sealed_members(store, terminal, expected_sha):
             raise ValueError("unexpected member path")
         members[shard["path"]] = shard["sha256"]
         members[shard["sidecar"]] = shard["sidecar_sha256"]
-    return members
+    return members, seal
 
 
 def verify(archive, members):
@@ -62,7 +64,17 @@ def verify(archive, members):
 
 
 def archive_leg(store, terminal, expected_sha, destination):
-    members = sealed_members(store, terminal, expected_sha)
+    members, seal = sealed_members(store, terminal, expected_sha)
+    destination = destination.parent.resolve(strict=True) / destination.name
+
+    def check_destination():
+        if "archive_uuid" in seal:
+            mount = _volume(seal["archive_uuid"], internal=False)
+            if (not destination.parent.is_relative_to(mount)
+                    or destination.parent.stat().st_dev != mount.stat().st_dev):
+                raise ValueError("destination is outside the sealed archive volume")
+
+    check_destination()
     if destination.resolve().is_relative_to(store.resolve()):
         raise ValueError("archive must be outside the raw store")
     # Cooperating retries serialize publication on filesystems without hard links.
@@ -72,6 +84,7 @@ def archive_leg(store, terminal, expected_sha, destination):
             raise ValueError("linked archive")
         if destination.exists():
             member_bytes = verify(destination, members)
+            check_destination()
         else:
             with tempfile.TemporaryDirectory(dir=destination.parent) as scratch:
                 staged = Path(scratch) / "leg.tar.zst"
@@ -91,6 +104,7 @@ def archive_leg(store, terminal, expected_sha, destination):
                     output.flush()
                     os.fsync(output.fileno())
                 member_bytes = verify(staged, members)
+                check_destination()
                 staged.rename(destination)
         compressed_bytes = destination.stat().st_size
     return {"archive": str(destination), "compressed_bytes": compressed_bytes,

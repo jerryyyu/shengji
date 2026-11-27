@@ -292,8 +292,11 @@ def seal_leg(spec, out):
         counts.update(side['counts'])
     if counts != Counter(manifest['counts']) or counts['rounds'] != rounds:
         raise Refused('leg totals differ from published shards')
-    return dict(manifest_sha256=manifest_sha, run_sha256=run_sha, runtime_sha256=runtime_sha,
+    seal = dict(manifest_sha256=manifest_sha, run_sha256=run_sha, runtime_sha256=runtime_sha,
                 run_id=run['run_id'], seed0=seed, rounds=rounds, trajectory_bytes=total_bytes)
+    if 'tranche_volumes' in spec:
+        seal['archive_uuid'] = spec['tranche_volumes']['archive_uuid']
+    return seal
 
 
 def execute(spec, spec_sha, launcher):

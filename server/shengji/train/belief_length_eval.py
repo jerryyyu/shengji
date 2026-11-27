@@ -17,6 +17,11 @@ from .belief_length_loss import MarginalLoss
 from .belief_lengths import load_length_checkpoint
 
 
+# First-hit timing depends on the hidden labels. Its reserved deck cannot supply research evidence.
+TIMING_DEAL_ID = int(stored_deal_id(
+    "deck:fcc4c96f6c3e128a1624601d68bb3279060ba31f59727caab7fb9bc69b0ee5a0"))
+
+
 class VoidCounts:
     def __init__(self):
         self.bins = np.zeros((10, 3), dtype=np.float64)
@@ -97,6 +102,9 @@ def evaluate(extract, head, training, belief, seed, worlds=64, *, ll_max_draws=N
     loss = MarginalLoss(ll_replicates, ll_max_draws) if ll_max_draws is not None else None
     verified = bs._Verified()
     selected = cohort_selection(cohort, extract, belief.package_sha256) if cohort is not None else None
+    if not timing_only and selected is not None and TIMING_DEAL_ID in selected[2]:
+        raise ValueError("research cohort contains the reserved timing deal")
+    excluded_timing_rows = 0
     observed = defaultdict(set)
     decisions = 0
     for entry in entries:
@@ -119,6 +127,9 @@ def evaluate(extract, head, training, belief, seed, worlds=64, *, ll_max_draws=N
                 observed[pair].add(decision_id)
                 if len(observed[pair]) > expected[pair]:
                     raise ValueError("extra rows for evaluation cohort")
+            elif deal == TIMING_DEAL_ID:
+                excluded_timing_rows += 1
+                continue
             seen.add(deal)
             inp = decision(part, row)
             copies, mask, sizes = inp["n_c"], inp["M"], inp["sizes"]
@@ -164,7 +175,7 @@ def evaluate(extract, head, training, belief, seed, worlds=64, *, ll_max_draws=N
                 "draw_limit_per_row_per_replicate": ll_max_draws, "replicates": ll_replicates,
                 "unresolved_copy_observations": int(loss.unseen.sum())}
     return {"decisions": decisions, "deals": len(seen), "worlds": worlds, "seed": seed,
-            "belief_sha256": belief.package_sha256,
+            "excluded_timing_rows": excluded_timing_rows, "belief_sha256": belief.package_sha256,
             "nonbanker_marginal_log_loss": loss.report() if loss is not None else None,
             "arms": {arm: {role: count.report() for role, count in roles.items()}
                      for arm, roles in stats.items()}}

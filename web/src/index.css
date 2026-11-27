@@ -432,6 +432,7 @@ textarea:focus-visible {
 
 .toast-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--team0); }
 .toast-dot.team1 { background: var(--team1); }
+.toast .portrait { width: 24px; height: 24px; flex: none; border-radius: 50%; }
 
 /* At the table: centred under the top seat, clear of your row and the hand
    line above it. */

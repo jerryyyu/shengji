@@ -191,8 +191,10 @@ function useWatcherToast(state: GameState) {
     toldWatchers.key = key;
     toldWatchers.told = told;
     if (seen === null || told <= seen || w.joined.length === 0) return;
-    const names = w.joined.flatMap((j) => (j ? [j.name] : []));
-    showToast(watchersLine(names, w.joined.length), { info: true });
+    const listed = w.joined.flatMap((j) => (j ? [j] : []));
+    // the first listed watcher's companion portrait leads the line
+    showToast(watchersLine(listed.map((j) => j.name), w.joined.length),
+              { info: true, ...(listed[0]?.look ? { look: listed[0].look } : {}) });
     // told on a new toast number only; the rest is read with it
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.room, told, gen]);

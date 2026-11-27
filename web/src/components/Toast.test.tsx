@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Toast from "./Toast";
 import { TOAST_MS, clearToast, currentToast, heldToastKey, hideHeldToast, holdToast, releaseHeldToast, releaseToast, showToast } from "../toast";
 
+const collection = vi.hoisted(() => ({ on: false }));
+vi.mock("../companion/feature", () => ({ useCollection: () => collection.on }));
+
 let host: HTMLDivElement;
 let root: Root;
 beforeEach(() => {
@@ -158,5 +161,18 @@ describe("a held toast", () => {
     expect(heldToastKey()).toBeNull();
     act(() => hideHeldToast());
     expect(shown().map((e) => e.textContent)).toEqual(["Alice joins next trick"]);
+  });
+});
+
+describe("a toast about a person", () => {
+  it("leads with their companion portrait where the Collection is shown, and none elsewhere", () => {
+    act(() => root.render(<Toast />));
+    collection.on = true;
+    act(() => { showToast("Mei is watching", { info: true, look: "panda/gilded" }); });
+    expect(host.querySelector(".toast .portrait")?.getAttribute("data-look")).toBe("panda/gilded");
+    collection.on = false;
+    act(() => { showToast("Mei is watching", { info: true, look: "panda/gilded" }); });
+    expect(host.querySelector(".toast .portrait")).toBeNull();
+    expect(shown()[0].textContent).toBe("Mei is watching");
   });
 });

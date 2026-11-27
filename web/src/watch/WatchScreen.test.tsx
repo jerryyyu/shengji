@@ -14,7 +14,7 @@ import { watch } from "./store";
 import { canWatch } from "./store";
 import { setLanguageChoice } from "../i18n";
 
-// a watcher shown the Collection still sees no portraits: the feed carries no looks
+// a watcher shown the Collection: companions on the felt, no portrait on the round end
 vi.mock("../companion/feature", () => ({ useCollection: () => true }));
 
 const joined: string[] = [];
@@ -125,8 +125,9 @@ describe("the watch screen", () => {
     // another table's round end reads nothing of the watcher's account, and draws no portrait
     expect(urls.filter((u) => u.startsWith("/api/me"))).toEqual([]);
     expect(document.querySelector(".portrait")).toBeNull();
-    // nor any companion on the felt
-    expect(document.querySelector(".table-companions, .cmp")).toBeNull();
+    // the companions stay on the felt: the watcher's own in its gallery spot
+    // (the players' at their seats: WatchCompanions.test.tsx)
+    expect(document.querySelector(".watch-own")).not.toBeNull();
     const labels = [...card.querySelectorAll(".round-end-actions button:not(.round-end-view-btn)")].map((b) => b.textContent);
     expect(labels).toEqual(["Take a seat", "Leave"]);
     await act(async () => { (card.querySelectorAll(".round-end-actions button:not(.round-end-view-btn)")[0] as HTMLButtonElement).click(); });

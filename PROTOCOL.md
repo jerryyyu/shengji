@@ -253,8 +253,8 @@ interface GameState {
   watchers?: {                    // who watches this table one round behind ("Watching a table")
     count: number;                // watching now
     told: number;                 // bumps once per "is watching" toast; at most one per table per 30 s
-    joined: ({ name: string } | null)[];  // who that toast tells of: a leaderboard-listed watcher
-                                  // by name, anyone else null
+    joined: ({ name: string; look: string } | null)[];  // who that toast tells of: a
+                                  // leaderboard-listed watcher by name and companion look, anyone else null
     named: string[];              // the listed watchers now, at most two
   };
   notice: {                       // outlives `message`; null when there is none
@@ -755,7 +755,10 @@ account may watch any live table's last finished round.
   table furthest into its game, never `skip`) and answers with its latest
   finished round: `{table, watcher, mode, live_round, code, rerun, waiting,
   round, seat, players, finished, events}`. `events` are the saved games'
-  allow-listed records with every card shown; `seat` is the banker. With no
+  allow-listed records with every card shown; `seat` is the banker. Each
+  `round_start` player carries `look`, the seat's companion look as the round
+  began (null for a bot or a seat its person had left), masked as the name
+  is: a rerun's unlisted seat is `tractor/red`. With no
   table it answers a recent finished ranked round (kept across server restarts)
   with `rerun: true`, its players
   named as the leaderboard shows them: a player it lists keeps their name, a

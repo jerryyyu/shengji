@@ -25,6 +25,8 @@ import type { Beat, Speed } from "./playback";
 import { watch } from "./store";
 import { watchUsage } from "./usage";
 import type { WatchBy } from "../telemetry";
+import TableCompanions, { CHEER_POINTS } from "../companion/TableCompanions";
+import WatcherCompanion from "./WatcherCompanion";
 import "./watch.css";
 
 /** How often a caught-up watcher asks whether the round in play finished. */
@@ -96,7 +98,7 @@ export function watchState(loaded: Loaded, beat: Beat, seat: number, hand: HandC
     type: "state", room: "", you: seat,
     phase: beat.kind === "end" ? "round_end" : beat.kind === "bury" || beat.kind === "buryLift" ? "bury" : "play",
     players: setup.players.map((p) => ({
-      seat: p.seat, name: p.name, is_bot: p.is_bot, connected: true,
+      seat: p.seat, name: p.name, is_bot: p.is_bot, look: p.is_bot ? null : p.look ?? null, connected: true,
       team: (p.seat % 2) as 0 | 1, cards_left: (frame.hands[p.seat] ?? []).length || frame.cardsLeft[p.seat],
       is_banker: setup.banker === p.seat, takeover_in: null,
       controller: p.is_bot ? "bot" : "human", reserved_for: null, reserved_secs: null,
@@ -196,7 +198,11 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   const [at, setAt] = useState(0);
   const [paused, setPaused] = useState(false);
   const [speed, setSpeed] = useState<Speed>(savedSpeed);
-  const [seat, setSeat] = useState(0);
+  const [seat, setSeatNow] = useState(0);
+  // the last move was a jump (a step back, a turn to another seat), not a
+  // play: the companions keep still for it
+  const [jumped, setJumped] = useState(false);
+  const setSeat = (s: number) => { setJumped(true); setSeatNow(s); };
   const [menu, setMenu] = useState(false);
   const [kitty, setKitty] = useState(false);
   // the next round, read while the round-end card holds, and when it may play
@@ -291,7 +297,7 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   // the steady rhythm; nothing advances past the finished round's end
   useEffect(() => {
     if (!loaded || !beat || paused || atEnd) return;
-    const timer = window.setTimeout(() => setAt((i) => Math.min(i + 1, beats.length - 1)),
+    const timer = window.setTimeout(() => { setJumped(false); setAt((i) => Math.min(i + 1, beats.length - 1)); },
                                     beatMs(beat, loaded.replay.frames[beat.frame], speed));
     return () => window.clearTimeout(timer);
   }, [loaded, beat, paused, atEnd, speed, beats.length]);
@@ -407,7 +413,10 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   const end = frame.result;
   const caughtUp = live.round !== null && doc.round !== undefined && live.round > doc.round
     ? t("watch.inPlay", { n: live.round }) : null;
-  const goTo = (i: number) => { setAt(i); };
+  const goTo = (i: number) => { setJumped(i < at); setAt(i); };
+  const quiet = jumped || speed >= 2;
+  // a trick worth 10 or more, as it is won: the watcher's own companion cheers it
+  const big = frame.winner !== null && (frame.trickPoints ?? 0) >= CHEER_POINTS && beat.kind === "play" ? beat.frame : null;
   const takeSeat = () => {
     watch.close("seat");
     if (doc.mode === "ranked" || !live.code) {
@@ -464,6 +473,7 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
         </div>
       </div>
       <div className="felt">
+        <TableCompanions state={state} watch={{ quiet }} />
         {opponents.map((p) => (
           <div key={p.seat} className="watch-seat" onClick={() => setSeat(p.seat)}>
             <OpponentPanel player={p} state={state} readOnly />
@@ -474,6 +484,7 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
                    declaration={null} handRects={handRects} />
         <div className="you-area">
           <div className="watch-tabs-row">
+            <WatcherCompanion cheer={big} quiet={quiet} />
             <div className="watch-controls">
               <button type="button" className="watch-ctl" aria-label={t("watch.back")}
                       disabled={at === 0} onClick={() => goTo(backTrick(beats, at))}><Icon d={ICON.back} /></button>

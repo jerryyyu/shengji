@@ -47,6 +47,9 @@ export interface ReplayPlayer {
   seat: number;
   name: string;
   is_bot: boolean;
+  /** The seat's companion look as the round began (the watch feed only; a
+   *  bot has none). */
+  look?: string | null;
 }
 
 export interface ReplaySetup {
@@ -139,6 +142,7 @@ function asPlayers(v: unknown, names: string[]): ReplayPlayer[] {
       seat,
       name: (p?.name as string | undefined) ?? names[seat] ?? `Seat ${seat + 1}`,
       is_bot: Boolean(p?.is_bot),
+      ...(typeof p?.look === "string" ? { look: p.look } : {}),
     };
   });
 }

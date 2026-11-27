@@ -98,6 +98,14 @@ describe("the toast", () => {
     expect(currentToast()).toBeNull();
   });
 
+  it("leads with a listed watcher's companion portrait; an unlisted one brings none", () => {
+    show(state(w(0)));
+    show(state(w(2, 1, [null, { name: "Mei", look: "panda/gilded" }], ["Mei"])));
+    expect(currentToast()?.look).toBe("panda/gilded");
+    show(state(w(3, 2, [null])));
+    expect(currentToast()?.look).toBeUndefined();
+  });
+
   it("says Someone for a guest or an unlisted account", () => {
     show(state(w(0)));
     show(state(w(1, 1, [null])));

@@ -231,7 +231,8 @@ export function translateOf(t: string | null | undefined): Spot | null {
  *  options, Bury, Play, Clear, the turn pill), the deck and its count, the
  *  hint line, and an open Last trick. */
 const OBSTACLES = ".trick-play, .trick-tag, .you-row .btn, .action-bar .btn, .action-bar > *, .you-tagline, .you-tagline > *, "
-  + ".timer-ring, .opponent, .last-trick-btn, .last-trick-panel, .deal-deck, .deal-deck-count, .hand-line";
+  + ".timer-ring, .opponent, .last-trick-btn, .last-trick-panel, .deal-deck, .deal-deck-count, .hand-line, "
+  + ".watch-controls, .watch-tabs, .watch-kitty, .watch-own";
 const OVERLAYS = ".hud-group, .hud .chip, .hud button, .hud-menu, .chat-launch, .chat-panel, .chat-bubble, .away-pill";
 /** An open panel: while one is up a tap on the felt is not for your companion. */
 const PANELS = ".hud-menu, .last-trick-panel, .chat-panel";
@@ -1095,7 +1096,11 @@ function useRoundEnds(state: GameState, ours: 0 | 1, onDroop: (team: 0 | 1) => v
 const NOT_FELT = "button, a, input, textarea, select, label, [role='button'], [role='switch'], .card, .hand, .hand-line, "
   + ".trick-play, .opponent, .hud, .you-row, .action-bar, .deal-deck, .chat-panel, .modal, .panel, .last-trick-panel, .tc-walk";
 
-export default function TableCompanions({ state }: { state: GameState }) {
+/** `watch`: the watch screen's table, where the bottom seat is the player
+ *  whose tab is selected, not you: nobody is tagged "You", a tap walks
+ *  nobody, a seat whose look the feed left out draws none, and `quiet`
+ *  (fast play, a step back, a turn to another seat) skips the hops. */
+export default function TableCompanions({ state, watch = null }: { state: GameState; watch?: { quiet: boolean } | null }) {
   const shown = useCollection();
   const account = useAuth();
   const mode = useCompanionMode(account.status === "in" ? account.user : null);
@@ -1114,21 +1119,24 @@ export default function TableCompanions({ state }: { state: GameState }) {
   const [strays, setStrays] = useState<Partial<Record<SeatPos, { spot: Spot; px: number }>>>({});
   const prev = useRef<GameState | null>(null);
   const root = useRef<HTMLDivElement | null>(null);
+  const quiet = watch?.quiet ?? false;
+  const watching = watch !== null;
   useEffect(() => {
     const moves = reactions(state, prev.current, Date.now(), bigAt.current);
     prev.current = state;
-    if (Object.keys(moves).length) setPoses((p) => ({ ...p, ...moves }));
+    if (!quiet && Object.keys(moves).length) setPoses((p) => ({ ...p, ...moves }));
     const ready = yourTurn(state);
     const play = lastPlay(state);
     setLive((was) => (was.ready === ready && was.play?.key === play?.key ? was : { ready, play }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
-  // a table you only watch (an open table's newcomer until the next trick)
-  // draws none, as the watch feed and a replay draw none
+  // an open table's newcomer until the next trick draws none, as a replay draws none
   const on = shown && shownAtTable(mode) && state.joining_you !== true;
   const size = tablet ? SEAT_SIZE.tablet : SEAT_SIZE.phone;
   const { levels, ups, done } = useLevelUps(state, size);
-  const me = state.players.find((p) => p.seat === state.you);
-  const ours = me?.team ?? 0;
+  const seated = state.players.find((p) => p.seat === state.you);
+  const me = watch ? undefined : seated;
+  const ours = seated?.team ?? 0;
   const players = useRef(state.players);
   players.current = state.players;
   const specials = useRoundEnds(state, ours, (team) => setPoses((p) => {
@@ -1141,7 +1149,7 @@ export default function TableCompanions({ state }: { state: GameState }) {
   const ready = on && live.ready;
   const key = JSON.stringify([state.phase, state.trick, state.last_trick?.winner, state.players.map((p) => [p.seat, p.is_bot, p.left]), tablet, levels]);
   const layout = useLayout(root, on, key, !tablet, state.phase === "deal");
-  const people = state.players.filter((p) => !p.is_bot && !p.left);
+  const people = state.players.filter((p) => !p.is_bot && !p.left && (!watch || !!p.look));
   // the spot your last tap chose, at this table; yours stands round it, at
   // its full size, whatever room its zone by your hand has
   const home = tapped && tapped.room === state.room ? tapped.spot : null;
@@ -1161,9 +1169,9 @@ export default function TableCompanions({ state }: { state: GameState }) {
   const seatsKey = JSON.stringify(people.map((p) => [p.seat, p.team]));
   const zones = useMemo(() => (layout ? zonesFor(people.map((p) => ({
     pos: SIDES[(p.seat - state.you + 4) % 4], size: companionSize(size.base, levelIndex(levels[p.team]), size.max),
-    tag: p.seat === state.you })), taken ? { ...layout, obstacles: [...layout.obstacles, taken] } : layout) : null),
+    tag: !watch && p.seat === state.you })), taken ? { ...layout, obstacles: [...layout.obstacles, taken] } : layout) : null),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [layout, seatsKey, state.you, size.base, size.max, levels[0], levels[1], taken]);
+  [layout, seatsKey, state.you, size.base, size.max, levels[0], levels[1], taken, watching]);
   const mine = me && !me.is_bot && !me.left ? zones?.bottom ?? null : null;
   // where yours may go off its zone (a tap, or stepping off cards there):
   // clear of the other companions' zones as well as the table
@@ -1196,7 +1204,7 @@ export default function TableCompanions({ state }: { state: GameState }) {
   tapState.current.px = myPx;
   useEffect(() => {
     const felt = root.current?.parentElement;
-    if (!on || !felt) return;
+    if (!on || !felt || watch) return;
     const tap = (e: Event) => {
       const at = tapState.current;
       const target = e.target as Element | null;
@@ -1222,7 +1230,7 @@ export default function TableCompanions({ state }: { state: GameState }) {
     document.addEventListener("pointerdown", down, true);
     felt.addEventListener("click", tap);
     return () => { document.removeEventListener("pointerdown", down, true); felt.removeEventListener("click", tap); };
-  }, [on, size.base]);
+  }, [on, size.base, watching]);
 
   if (!on) return null;
   const end = (seat: number) => () => setPoses((p) => ({ ...p, [seat]: "idle" }));
@@ -1241,13 +1249,13 @@ export default function TableCompanions({ state }: { state: GameState }) {
       {layout && zones ? people.map((p) => {
         const pos = SIDES[(p.seat - state.you + 4) % 4];
         const zone = zones[pos];
-        const you = p.seat === state.you;
+        const you = !watch && p.seat === state.you;
         return (
           <Walker key={p.seat} player={p} team={p.team === ours ? "us" : "them"}
                   px={you && home ? myPx : zone.size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max)}
                   pos={pos} zone={zone} layout={layout} roam={rooms ? rooms[pos] : layout} pose={poses[p.seat] ?? "idle"}
                   up={ups[p.seat] ?? null} you={you} goal={you ? goal : null} tapped={you ? home : null}
-                  wins={specials[p.team]} dealing={state.phase === "deal"} ready={you && ready}
+                  wins={watching ? 0 : specials[p.team]} dealing={state.phase === "deal"} ready={you && ready}
                   watch={played ? { pos: SIDES[(played.seat - state.you + 4) % 4], key: played.key } : null} onEnd={end(p.seat)} onUpEnd={done(p.seat)}
                   onGoal={you ? takeGoal : undefined} onTapped={you ? takeHome : undefined}
                   onStray={stepped(pos, you && home ? myPx : zone.size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max))} />

@@ -71,7 +71,7 @@ export function Companion({ kind = "tractor", colour, size, state = "idle", team
     team ? `cmp-${team}` : "", from !== null ? "cmp-grow" : ""].filter(Boolean).join(" ");
   const [zx, zy] = drawing.z;
   return (
-    <svg className={cls} width={px} height={px} viewBox="0 0 400 400" aria-hidden="true" focusable="false" data-suit={suit}
+    <svg className={cls} data-pose={state} width={px} height={px} viewBox="0 0 400 400" aria-hidden="true" focusable="false" data-suit={suit}
          style={from !== null ? { "--cmp-from": from.toFixed(3) } as CSSProperties : undefined}
          onAnimationEnd={(e) => {
            if (e.target === e.currentTarget && e.animationName === "cmp-grow") setFrom(null);

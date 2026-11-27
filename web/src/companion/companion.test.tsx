@@ -44,10 +44,10 @@ const draw = async (node: React.ReactNode) => {
   await act(async () => { root.render(node); });
   await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 };
-// the Collection opens on its grid; a tap on the one in use opens its page
+// the Collection opens on its grid; a tap on the ticked tile (the one in use) opens its page
 const drawOpen = async () => {
   await draw(<CollectionPage />);
-  const worn = host.querySelector<HTMLButtonElement>(".coll-worn .coll-figure");
+  const worn = [...host.querySelectorAll<HTMLButtonElement>(".coll-yours .coll-tile")].find((b) => b.querySelector(".coll-tick"));
   if (worn && !host.querySelector(".char-page")) {
     await act(async () => { worn.click(); });
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });

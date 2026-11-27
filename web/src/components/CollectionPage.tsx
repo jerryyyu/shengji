@@ -6,6 +6,7 @@ import type { Colour, CompanionKind, LookEntry } from "../companion/look";
 import type { DrawnColour, DrawnKind } from "../companion/kinds";
 import { Companion } from "../companion/Companion";
 import { SOON, soonColour } from "../companion/characters";
+import { TOP_CYCLE, useLivePose } from "../companion/livePose";
 import type { SoonKind } from "../companion/characters";
 import { lookAccount, markLooksSeen, markSeen, newLooks } from "../companion/seen";
 import { setCompanionMode, shownAtTable, useCompanionMode } from "../companion/mode";
@@ -51,7 +52,23 @@ function Tile({ kind, colour, label, sub, gold, dim, worn, isNew, arrive, onOpen
   );
 }
 
-/** The Collection tab: one grid. At the top, the one in use, small, and Show
+/** The companion in use, small on felt at the top of the grid: idle, with a
+ *  hop now and then while on screen; a tap plays its special (once, then a
+ *  short rest before another tap counts). */
+function WornFelt({ kind, colour, label }: { kind: CompanionKind; colour: Colour; label: string }) {
+  const felt = useRef<HTMLDivElement>(null);
+  const live = useLivePose(kind, TOP_CYCLE, felt);
+  return (
+    <div ref={felt} className="coll-felt coll-worn">
+      <button type="button" className="coll-figure coll-press" aria-label={label} onClick={live.tap}>
+        <Companion kind={kind} colour={colour} size={96} state={live.pose} onPoseEnd={live.onPoseEnd} />
+      </button>
+    </div>
+  );
+}
+
+/** The Collection tab: one grid. At the top, the one in use, small (a tap
+ *  plays its special: `WornFelt`), and Show
  *  at the table. Yours: the free companions and the ones bought, a tick on
  *  the one in use. Where the store can sell (`useShop`), More companions:
  *  the store's characters with StoreKit's price, or Soon, and Restore
@@ -290,11 +307,7 @@ export default function CollectionPage() {
   return (
     <LargeTitlePage className="coll-page" scroller={scroller} title={t("home.tabCollection")} phone={phone}
                    onRefresh={() => refreshAccount()}>
-      <div className="coll-felt coll-worn">
-        <button type="button" className="coll-figure" aria-label={lookName(t, inUse)} onClick={() => open(worn.kind)}>
-          <Companion kind={worn.kind} colour={worn.colour} size={96} state="idle" />
-        </button>
-      </div>
+      <WornFelt kind={worn.kind} colour={worn.colour} label={lookName(t, inUse)} />
       <ul className="grp coll-mode">
         <li>
           <button type="button" className="grp-row coll-at-table" role="switch" aria-checked={atTable}

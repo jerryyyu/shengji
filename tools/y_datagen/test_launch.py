@@ -236,8 +236,8 @@ def test_tranche_admission_uses_published_window_and_runtime_registry(tmp_path, 
         launch._admit(spec)
 
 
-@pytest.mark.parametrize('exit_after_publish', [False, True])
-def test_tranche_stops_on_late_stage_fallback(tmp_path, monkeypatch, exit_after_publish):
+@pytest.mark.parametrize(('exit_after_publish', 'checker_overflow'), [(False, False), (True, False), (False, True)])
+def test_tranche_stops_on_late_stage_fallback(tmp_path, monkeypatch, exit_after_publish, checker_overflow):
     out = tmp_path / 'store'
     release = tmp_path / 'RELEASE'
     lock = tmp_path / 'lock'
@@ -249,6 +249,12 @@ def test_tranche_stops_on_late_stage_fallback(tmp_path, monkeypatch, exit_after_
         'schema': 'pv-search-decision-v1', 'belief_fallback': 0, 'belief_fallback_any': 0,
         'belief_fallback_all_draws': 0, 'belief_fallback_by_stage': {
             'base': 0, 'adaptive_worlds': 1, 'lead_confirm': 0}}}}
+    if checker_overflow:
+        decision = row['allocation']['serving_decision']
+        decision['belief_fallback_by_stage']['adaptive_worlds'] = 0
+        decision['unified'] = dict(shared=1, missed=0, trunk=0, value_left=0, reply_left=0, value_rows=2, reply_rows=1)
+        decision['seconds'] = 10**400
+    reason = 'int too large to convert to float' if checker_overflow else 'play belief fallback'
     payload = json.dumps(row) + '\n'
     side = json.dumps({'sha256': hashlib.sha256(payload.encode()).hexdigest(), 'counts': {}})
     code = f"""
@@ -270,7 +276,7 @@ else:
     assert launch.execute(spec, 'test', launcher) == 1
     result = json.loads(Path(str(out) + '.terminal.0.json').read_bytes())
     assert result['status'] == 'invalid-store' and 'leg_seal' not in result
-    assert result['shard_fault'] == {'shard': 'cluster-000001.json', 'reason': 'play belief fallback'}
+    assert result['shard_fault'] == {'shard': 'cluster-000001.json', 'reason': reason}
     assert (result['returncode'] == 0) == exit_after_publish
     assert (out/'shards/cluster-000001.jsonl').read_text() == payload
     assert not lock.exists()
@@ -278,3 +284,25 @@ else:
     with pytest.raises(launch.Refused, match='existing shard cluster-000001.json'):
         launch.execute(spec, 'test', launcher)
     assert not Path(str(out) + '.log.1').exists()
+
+def test_republished_sidecar_is_checked_again(tmp_path):
+    shards = tmp_path / 'shards'
+    shards.mkdir()
+    sidecar = shards / 'cluster-000002.json'
+    sidecar.write_text('{"sha256": "first"}')
+    seen = []
+    checked = {}
+
+    def check(path, side, digest):
+        seen.append(digest)
+        if digest == 'second':
+            raise ValueError('replacement failed quality')
+
+    assert launch.tranche_fault(tmp_path, checked, check) is None
+    assert launch.tranche_fault(tmp_path, checked, check) is None
+    replacement = sidecar.with_suffix('.tmp')
+    replacement.write_text('{"sha256": "second"}')
+    replacement.replace(sidecar)
+    assert launch.tranche_fault(tmp_path, checked, check) == {
+        'shard': sidecar.name, 'reason': 'replacement failed quality'}
+    assert seen == ['first', 'second']

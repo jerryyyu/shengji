@@ -305,15 +305,29 @@ def seal_leg(spec, out):
 
 def tranche_fault(out, checked, check_shard):
     """A sidecar is published last; shards can finish out of order."""
-    for sidecar in (out / 'shards').glob('cluster-*.json'):
-        if sidecar.name in checked:
-            continue
+    directory = out / 'shards'
+    name = directory.name
+    try:
         try:
-            side = json.loads(sidecar.read_bytes())
-            check_shard(sidecar.with_suffix('.jsonl'), side, side['sha256'])
-        except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
-            return {'shard': sidecar.name, 'reason': str(exc)}
-        checked.add(sidecar.name)
+            entries = os.scandir(directory)
+        except FileNotFoundError:
+            return None  # A fresh producer has not published a pair yet.
+        with entries:
+            for entry in entries:
+                name = entry.name
+                if not name.startswith('cluster-') or not name.endswith('.json'):
+                    continue
+                # The producer replaces the sidecar atomically, once per generated pair.
+                inode = entry.inode()
+                if checked.get(name) == inode:
+                    continue
+                sidecar = Path(entry.path)
+                side = json.loads(sidecar.read_bytes())
+                check_shard(sidecar.with_suffix('.jsonl'), side, side['sha256'])
+                checked[name] = inode
+    except Exception as exc:
+        # A checker failure must reach the same child-containment path as a row fault.
+        return {'shard': name, 'reason': str(exc)}
     return None
 
 
@@ -342,7 +356,7 @@ def execute(spec, spec_sha, launcher):
         out = Path(spec['output'])
         attempt, log_path, terminal_path = attempt_paths(out)
         check_shard = None
-        checked = set()
+        checked = {}
         fault = None
         if 'tranche_reservation' in spec:
             quality_path = Path(__file__).resolve().with_name('shard_quality.py')

@@ -125,6 +125,15 @@ for (const device of ["phone-land-max", "phone-land", "phone-land-se", "ipad11-l
       await rep.check(`${name}: the hand keeps its size when the bury ends`,
         Math.abs((await handWidth(page)) - bury) < 0.5 ? null : `card width ${bury} then ${await handWidth(page)}`, page);
       await rep.check(`${name}: every watcher control is tapped over at least 44px`, await reach(page), page);
+      await rep.check(`${name}: the top strip is a pill, round at both ends`, await page.evaluate(() => {
+        const strip = document.querySelector(".watch-hud .hud-bar > .hud-group:nth-child(2)");
+        if (!strip) return "no top strip";
+        const cs = getComputedStyle(strip);
+        const h = strip.getBoundingClientRect().height;
+        const r = (v) => Math.min(parseFloat(v) || 0, h / 2);
+        const [tl, tr, br, bl] = [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map(r);
+        return tl > 0 && tl === tr && tr === br && br === bl ? null : `radii ${[tl, tr, br, bl].map((x) => x.toFixed(1)).join(" ")} (height ${h.toFixed(1)})`;
+      }), page);
       await rep.check(`${name}: the tab strip fits its row and the screen`, await page.evaluate(() => {
         const t = document.querySelector(".watch-tabs"), row = document.querySelector(".watch-tabs-row");
         const b = t.getBoundingClientRect(), r = row.getBoundingClientRect();

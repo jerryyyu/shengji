@@ -89,3 +89,8 @@
 .watch-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
 .watch-none { margin: 0; }
 @media (prefers-reduced-motion: reduce) { .watch-hand { animation: none; } }
+/* The watcher's strip holds the points itself (a player's points chip closes
+   the pill from the next group), so the strip is the whole pill: round at
+   both ends, the points chip inside it flat. */
+:root .watch-screen .watch-hud .hud-bar > .hud-group:nth-child(2) { border-radius: 999px; padding-right: 8px; }
+:root .watch-screen .watch-hud .hud-bar > .hud-group:nth-child(2) .points-chip { border-radius: 0; }

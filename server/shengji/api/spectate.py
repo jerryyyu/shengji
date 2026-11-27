@@ -33,7 +33,10 @@ reading anything. An account let in by the list alone may also watch any
 live table's last finished round, not only those a stranger could find, so
 a tester has a table to watch while the flag is off for everyone else.
 
-Privacy. A rerun names its players "Player 1" to "Player 4" (``by_seat``).
+Privacy. A rerun (always a ranked round) names a player only if the
+leaderboard shows them (``ratings.listed_ids``); everyone else is "Player N"
+and bots keep their names; a late joiner's claim is named only by its own
+account (``_keeper``).
 The events pass the saved games' allow-list (``PUBLIC_KEYS``: no
 bot reasoning, timing, seeds or chat) and each seat carries only its seat,
 display name and whether it is a bot. No account id, address or room code
@@ -51,7 +54,7 @@ import secrets
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -105,6 +108,13 @@ class Finished:
     start: int
     round: int
     ranked: bool
+    # the account at each seat when the round began (None: a guest or a
+    # bot), so a replay can name the players the leaderboard shows.
+    # Server-only: never in a feed.
+    start_accounts: tuple = (None, None, None, None)
+    # each ``seat_claimed`` record's account, by the record's byte offset in
+    # the log (None: a guest or a bot), so a claim names its own claimer
+    claims: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -118,6 +128,8 @@ class WatchState:
     # the latest finished rounds, newest last: a round whose log turns out
     # incomplete is skipped for the one before it
     recent: collections.deque = field(default_factory=lambda: collections.deque(maxlen=KEEP_ROUNDS))
+    # the round in play's seat claims: log offset -> the claimer's account
+    claims: dict = field(default_factory=dict)
     # watcher token -> when it last read this table
     watchers: dict[str, float] = field(default_factory=dict)
 
@@ -146,6 +158,16 @@ def _log_path(room: Any) -> Path:
     return Path(room.log_dir or server.LOG_DIR) / f"{room.code}.jsonl"
 
 
+def _accounts(room: Any) -> tuple:
+    """The signed-in account at each seat, None for a guest or a bot."""
+    out = []
+    for i in range(4):
+        sd = room.seats[i] if i < len(room.seats) else None
+        uid = getattr(sd, "user_id", None) if sd is not None and not sd.is_bot else None
+        out.append(uid if isinstance(uid, int) else None)
+    return tuple(out)
+
+
 # ------------------------------------------------------------- room hooks
 def round_started(room: Any, offset: int | None) -> None:
     """After a ``round_start`` record: where the round in play begins. A
@@ -153,10 +175,21 @@ def round_started(room: Any, offset: int | None) -> None:
     try:
         st = _state(room)
         game = room.game
-        st.started = (game.round_no, _log_path(room), offset) if (
+        st.started = (game.round_no, _log_path(room), offset, _accounts(room)) if (
             game is not None and offset is not None) else None
+        st.claims = {}
     except Exception:               # noqa: BLE001 - never raise into a game
         log.exception("spectate round_started failed")
+
+
+def claimed(room: Any, offset: int | None, user_id: Any) -> None:
+    """After a ``seat_claimed`` record: whose account made that claim (None
+    for a guest or a bot), held server-side by the record's offset."""
+    try:
+        if offset is not None:
+            _state(room).claims[offset] = user_id if isinstance(user_id, int) else None
+    except Exception:               # noqa: BLE001 - never raise into a game
+        log.exception("spectate claimed failed")
 
 
 def round_ended(room: Any, written: bool = True) -> None:
@@ -166,8 +199,9 @@ def round_ended(room: Any, written: bool = True) -> None:
         game = room.game
         if not written or game is None or st.started is None or st.started[0] != game.round_no:
             return
-        n, path, offset = st.started
-        st.last = Finished(path=path, start=offset, round=n, ranked=ratings.ranked(room))
+        n, path, offset, began = st.started
+        st.last = Finished(path=path, start=offset, round=n, ranked=ratings.ranked(room),
+                           start_accounts=began, claims=dict(st.claims))
         st.recent.append(st.last)
         if st.last.ranked:
             _reruns.append(st.last)
@@ -196,7 +230,9 @@ def _read(f: Finished) -> list[dict] | None:
     try:
         with open(f.path, "rb") as fh:
             fh.seek(f.start)
+            at = f.start
             for line in fh:
+                here, at = at, at + len(line)
                 read += len(line)
                 if read > READ_CAP:
                     return None
@@ -210,6 +246,7 @@ def _read(f: Finished) -> list[dict] | None:
                     continue
                 if not out and rec.get("e") != "round_start":
                     return None
+                rec["_at"] = here           # read-side only: no event carries it
                 out.append(rec)
                 if rec.get("e") == "round_end":
                     return out
@@ -232,28 +269,49 @@ def _seat_name(seat: Any) -> str | None:
     return f"Player {seat + 1}" if isinstance(seat, int) and 0 <= seat < 4 else None
 
 
-def _redact(value: Any) -> Any:
-    """Every ``name`` in ``value``, at any depth and in any record kind: the
-    seat's "Player N" beside a seat, else dropped."""
+def _keeper(ev: dict, rec: dict, f: Finished, listed: set[int]) -> Callable[[dict], bool]:
+    """Whether a named entry of this event keeps its name: a bot's always; a
+    person's only when that entry's own account is on the leaderboard, read
+    from the seat at the round's start for ``round_start`` and from the
+    claim's own account for ``seat_claimed``. Any other name is masked."""
+    def bot(entry: dict) -> bool:
+        return entry.get("is_bot") is True or entry.get("bot") is True
+
+    if ev.get("e") == "round_start":
+        def keep(entry: dict) -> bool:
+            seat = entry.get("seat")
+            uid = f.start_accounts[seat] if isinstance(seat, int) and 0 <= seat < 4 else None
+            return bot(entry) or (uid is not None and uid in listed)
+        return keep
+    if ev.get("e") == "seat_claimed":
+        uid = f.claims.get(rec.get("_at"))
+        return lambda entry: bot(entry) or (uid is not None and uid in listed)
+    return bot
+
+
+def _redact(value: Any, keep: Callable[[dict], bool]) -> Any:
+    """Every ``name`` in ``value``, at any depth: kept where ``keep`` says,
+    else the entry's seat as "Player N" (dropped with no seat)."""
     if isinstance(value, list):
-        return [_redact(v) for v in value]
+        return [_redact(v, keep) for v in value]
     if not isinstance(value, dict):
         return value
-    out = {k: _redact(v) for k, v in value.items() if k != "name"}
+    out = {k: _redact(v, keep) for k, v in value.items() if k != "name"}
     if "name" in value:
-        named = _seat_name(value.get("seat"))
-        if named is not None:
+        if keep(value):
+            out["name"] = value["name"]
+        elif (named := _seat_name(value.get("seat"))) is not None:
             out["name"] = named
     return out
 
 
-def by_seat(doc: dict) -> dict:
-    """A rerun's players as "Player 1" to "Player 4": a replay outlives its
-    table and plays to anyone, so it names nobody, in any record (a late
-    joiner's ``seat_claimed`` too). A live table's names are those its
-    seats show to the table."""
-    return {**doc, "players": [_seat_name(seat) for seat in range(4)],
-            "events": _redact(doc["events"])}
+def _listed() -> set[int]:
+    """The accounts the leaderboard shows; none when the store cannot be read."""
+    try:
+        return ratings.listed_ids(accounts.STORE)
+    except Exception:               # noqa: BLE001 - unreadable: name nobody
+        log.exception("spectate leaderboard read failed")
+        return set()
 
 
 def _cards(v: Any) -> list[str] | None:
@@ -311,10 +369,11 @@ def complete_sequence(records: list[dict]) -> bool:
     return not plays and played == [HAND_SIZE] * 4
 
 
-def round_doc(f: Finished) -> dict | None:
+def round_doc(f: Finished, listed: set[int] | None = None) -> dict | None:
     """The finished round as a watcher sees it: every event of the
     allow-list with every card shown, or None unless the log holds the
-    whole round (``complete_sequence``)."""
+    whole round (``complete_sequence``). ``listed`` (a rerun) names only
+    the players the leaderboard shows (``_redact``)."""
     records = _read(f)
     if records is None or not complete_sequence(records):
         return None
@@ -326,6 +385,8 @@ def round_doc(f: Finished) -> dict | None:
         if ev["e"] == "round_start":
             ev["players"] = _players(rec)
         ev.pop("room", None)
+        if listed is not None:
+            ev = _redact(ev, _keeper(ev, rec, f, listed))
         events.append(ev)
     start = events[0]
     names = ["", "", "", ""]
@@ -495,10 +556,11 @@ async def watch(request: Request, mode: str | None = None, skip: str | None = No
         if out is None:
             room.watch.watchers.pop(token, None)
     for rerun in reversed(list(_reruns)):
-        doc = await asyncio.to_thread(round_doc, rerun)
+        listed = await asyncio.to_thread(_listed)
+        doc = await asyncio.to_thread(round_doc, rerun, listed)
         if doc is not None:
             return {"table": RERUN_ID, "watcher": token, "mode": "ranked", "live_round": None,
-                    "code": None, "rerun": True, "waiting": False, **by_seat(doc)}
+                    "code": None, "rerun": True, "waiting": False, **doc}
         try:
             _reruns.remove(rerun)
         except ValueError:

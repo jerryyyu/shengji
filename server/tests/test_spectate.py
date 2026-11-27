@@ -8,6 +8,7 @@ real record format from the real room log.
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 
@@ -160,7 +161,7 @@ def test_a_round_without_its_end_record_is_refused_by_the_reader(feed):
     t.act(plays=20)
     # point the feed at the round in play, as a bug in the hooks would
     st = t.room.watch
-    n, path, offset = st.started
+    n, path, offset, _accounts = st.started
     live = spectate.Finished(path=path, start=offset, round=n, ranked=False)
     assert spectate.round_doc(live) is None
     assert spectate._is_over(t.room, n) is False
@@ -496,9 +497,10 @@ def test_a_rerun_names_its_players_by_seat_and_a_live_table_by_name(feed):
     srv.rooms.pop("NAME")
     rerun = _watch(client).json()
     assert rerun["rerun"] is True
-    assert rerun["players"] == ["Player 1", "Player 2", "Player 3", "Player 4"]
+    # Mei is not on the leaderboard: "Player 1"; the bots keep their names
+    assert rerun["players"] == ["Player 1", "Bot 1", "Bot 2", "Bot 3"]
     start = next(e for e in rerun["events"] if e["e"] == "round_start")
-    assert [p["name"] for p in start["players"]] == ["Player 1", "Player 2", "Player 3", "Player 4"]
+    assert [p["name"] for p in start["players"]] == ["Player 1", "Bot 1", "Bot 2", "Bot 3"]
     assert "Mei" not in json.dumps(rerun)
 
 
@@ -516,7 +518,109 @@ def test_a_rerun_after_a_late_join_carries_no_players_name_anywhere(feed):
     rerun = _watch(client).json()
     assert rerun["rerun"] is True and rerun["round"] == 1
     blob = json.dumps(rerun)
-    for name in ("Mei", "Bot 1", "Bot 2", "Bot 3", "Zed Joiner"):
+    for name in ("Mei", "Zed Joiner"):           # people not on the leaderboard
         assert name not in blob, name
+    for name in ("Bot 1", "Bot 3"):               # bots keep their names
+        assert name in blob, name
     claimed = [e for e in rerun["events"] if e["e"] == "seat_claimed"]
     assert claimed and all(e.get("name") in (None, f"Player {e['seat'] + 1}") for e in claimed)
+
+
+
+def _rated(store, sub, name, visible=True):
+    """An account with one rated round, listed on the leaderboard unless hidden."""
+    from shengji.api import ratings
+
+    uid = store.upsert_user(_claims(sub=sub, email=f"{sub}@example.com"))["id"]
+    with store._open() as conn:
+        conn.execute(
+            """INSERT INTO rating_events(game_id, round_no, user_id, created_at, team, banker_team, won,
+                   levels, game_won, expected, actual, k, rating_before, rating_after, delta)
+               VALUES ('g', 1, ?, ?, 0, 1, 1, 1, 0, 0.5, 1, 20, 1000, 1003, 3)""", (uid, time.time() - 600))
+        conn.commit()
+    ratings.set_visible(store, uid, visible)
+    return uid
+
+
+def test_a_rerun_names_only_the_players_the_leaderboard_shows(accounts_on, feed):
+    from shengji.api import ratings
+
+    srv, spectate, client = feed
+    store = accounts_on.STORE
+    listed = _rated(store, "listed", "Mei")
+    hidden = _rated(store, "hidden", "Hidey", visible=False)
+    unrated = store.upsert_user(_claims(sub="unrated", email="unrated@example.com"))["id"]
+    assert listed in ratings.listed_ids(store) and hidden not in ratings.listed_ids(store)
+    t = Table(srv, code="LIST", ranked=True)
+    t.room.seats = [srv.Seat(name="Mei", user_id=listed, connected=True),
+                    srv.Seat(name="Bot 1", is_bot=True),
+                    srv.Seat(name="Guesty", connected=True),
+                    srv.Seat(name="Hidey", user_id=hidden, connected=True)]
+    t.deal()
+    t.declare()
+    t.act(plays=10)
+    # an account not on the leaderboard takes the bot's seat mid-round
+    t.room.seats[1] = srv.Seat(name="Unrated Uma", user_id=unrated, connected=True)
+    t.room.log_event("seat_claimed", seat=1, name="Unrated Uma", bot=False)
+    t.act()
+    srv.rooms.pop("LIST")
+    rerun = _watch(client).json()
+    assert rerun["rerun"] is True
+    assert rerun["players"] == ["Mei", "Bot 1", "Player 3", "Player 4"]
+    blob = json.dumps(rerun)
+    assert "Mei" in blob
+    for name in ("Guesty", "Hidey", "Unrated Uma"):
+        assert name not in blob, name
+
+
+def test_only_a_ranked_round_is_ever_a_rerun(feed):
+    srv, spectate, client = feed
+    casual = Table(srv, code="CASU")
+    casual.play_round()
+    srv.rooms.pop("CASU")
+    assert list(spectate._reruns) == []
+    assert _watch(client).status_code == 404
+
+
+def _claim(srv, spectate, room, seat, name, user_id):
+    """A person takes ``seat`` as the server's claim writers do: the seat, the
+    record, and the claim's own account for the replay."""
+    room.seats[seat] = srv.Seat(name=name, user_id=user_id, connected=True)
+    spectate.claimed(room, room.log_event("seat_claimed", seat=seat, name=name, bot=False), user_id)
+
+
+@pytest.mark.parametrize("order", ["unlisted_then_listed", "listed_then_unlisted"])
+def test_each_claim_is_named_by_its_own_claimer(accounts_on, feed, order):
+    srv, spectate, client = feed
+    store = accounts_on.STORE
+    listed = _rated(store, "claim-listed", "Lena")
+    unlisted = store.upsert_user(_claims(sub="claim-unlisted", email="cu@example.com"))["id"]
+    t = Table(srv, code="CLAM", ranked=True)
+    t.deal()
+    t.declare()
+    t.act(plays=8)
+    first, second = ((("Una Unlisted", unlisted), ("Lena Listed", listed)) if order == "unlisted_then_listed"
+                     else (("Lena Listed", listed), ("Una Unlisted", unlisted)))
+    _claim(srv, spectate, t.room, 1, *first)
+    t.act(plays=8)
+    _claim(srv, spectate, t.room, 1, *second)
+    t.act()
+    srv.rooms.pop("CLAM")
+    rerun = _watch(client).json()
+    assert rerun["rerun"] is True
+    blob = json.dumps(rerun)
+    assert "Lena Listed" in blob
+    assert "Una Unlisted" not in blob
+    claims = [e for e in rerun["events"] if e["e"] == "seat_claimed"]
+    assert [e["name"] for e in claims] == [("Player 2" if n == "Una Unlisted" else n) for n, _ in (first, second)]
+    assert "_at" not in blob
+
+
+def test_every_claim_writer_records_its_claimer():
+    import re
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / "shengji" / "api" / "server.py").read_text()
+    writes = re.findall(r'.*log_event\("seat_claimed".*', src)
+    assert len(writes) == 3
+    assert all("spectate.claimed(" in line for line in writes), writes

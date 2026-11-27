@@ -43,16 +43,18 @@ export interface Loaded {
   buried: string[] | null;
 }
 
-/** A replay names nobody: the server sends its seats as "Player 1" to
- *  "Player 4", and each is read here in the viewer's language. */
+/** A replay names only the players the leaderboard shows; the server sends
+ *  everyone else as "Player 1" to "Player 4" by seat, and each of those is
+ *  read here in the viewer's language. Real names and bots' names pass. */
 function bySeat(doc: WatchDoc): WatchDoc {
   if (!doc.rerun || !doc.events) return doc;
-  const name = (seat: number) => t("watch.player", { n: seat + 1 });
+  const read = (name: unknown, seat: number) =>
+    name === `Player ${seat + 1}` ? t("watch.player", { n: seat + 1 }) : name;
   return {
     ...doc,
-    players: [0, 1, 2, 3].map(name),
+    players: (doc.players ?? []).map((name, seat) => String(read(name, seat))),
     events: doc.events.map((e) => (e.e !== "round_start" || !Array.isArray(e.players) ? e
-      : { ...e, players: (e.players as { seat: number }[]).map((p) => ({ ...p, name: name(p.seat) })) })),
+      : { ...e, players: (e.players as { seat: number; name?: string }[]).map((p) => ({ ...p, name: read(p.name, p.seat) })) })),
   };
 }
 

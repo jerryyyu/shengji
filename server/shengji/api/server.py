@@ -3242,8 +3242,8 @@ async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | Non
             saved_games.seat_changed(target, pick)
             ranked_bots.seat_changed(target, pick, held_by,
                                      lambda: kick_bots(target))
-            target.log_event("seat_claimed", seat=pick,
-                             name=name, bot=False)
+            spectate.claimed(target, target.log_event("seat_claimed", seat=pick,
+                                                      name=name, bot=False), me.user_id)
             claimed_from_bot = True
         room = target
         if by_name:
@@ -4251,7 +4251,8 @@ def _seat_newcomer(room: Room, seat: int, pj: PendingJoin) -> None:
     pj.conn.joining = None
     saved_games.seat_changed(room, seat)
     ranked_bots.seat_changed(room, seat, before, lambda: kick_bots(room))
-    room.log_event("seat_claimed", seat=seat, name=pj.name, bot=False)
+    spectate.claimed(room, room.log_event("seat_claimed", seat=seat, name=pj.name, bot=False),
+                     me.user_id)
     gen = _attach(room, me, pj.conn.ws)
     pj.conn.adopted = (room, me, gen)
     MATCHMAKER.join_seated(pj.uid)
@@ -4276,7 +4277,7 @@ def _revert_to_bot(room: Room, seat: int) -> None:
     sd.left_at = None
     sd.left_by_choice = False
     saved_games.seat_changed(room, seat)
-    room.log_event("seat_claimed", seat=seat, name=sd.name, bot=True)
+    spectate.claimed(room, room.log_event("seat_claimed", seat=seat, name=sd.name, bot=True), None)
 
 
 def _joined_leave_penalty(room: Room, uid: int | None, qid: int | None) -> None:

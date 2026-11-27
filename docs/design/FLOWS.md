@@ -512,8 +512,10 @@ everyone; such an account may watch any live table); for anyone else nothing bel
 "N playing" part is a gold link with a chevron only when a live table can be watched, and one tap goes to a
 table the server picks (the selected mode first, then the table furthest into its game), with no list. With no
 live table to watch and a replay to show, the line says so: "Nobody is playing right now · Watch a replay ›"
-(现在没人在玩 · 看回放 ›); "Nobody is playing" itself never opens a game. A replay names its players Player 1–4
-(玩家 1–4), never their names, and its strip says Replay (回放), not a round number. A watcher sees the table's last FINISHED round, one round behind: it never opens the table's socket,
+(现在没人在玩 · 看回放 ›); "Nobody is playing" itself never opens a game. A replay (always a ranked round) names a player only if the leaderboard shows them (Jerry 2026-11-26: "For
+ranked, we don't need to anonymize spectate", then "only if that player is shown on the leaderboard"); a guest or an
+account not on it is Player 1–4 (玩家 1–4), and bots keep their names. Its strip says Replay (回放), not a round
+number. A watcher sees the table's last FINISHED round, one round behind: it never opens the table's socket,
 and the players are not told. The watch screen is the table (`watch/WatchScreen.tsx` draws the table's own seats,
 trick and hand read-only), turned landscape as a game is: four tabs (team dot, crown, name, cards left; the
 selected one filled) in table order from the seat it lands behind, the banker; a tab turns the table to that

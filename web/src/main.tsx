@@ -1,5 +1,7 @@
 // first: the app's one-time handoff is written before any module reads storage
 import './originMove'
+// next: telemetry takes this load's automation mark before any route rewrites the address
+import './telemetry'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'

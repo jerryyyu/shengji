@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import InfoHead from "./InfoHead";
 import { followInfoLink } from "./route";
 
-export const PRIVACY_UPDATED = "2026-11-26";
+export const PRIVACY_UPDATED = "2026-11-27";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -175,7 +175,9 @@ export default function PrivacyPage() {
             the screen is a phone, a phone on its side or wide, whether this is the first visit on this
             device, roughly how long ago this device first opened the game (the same day, the next day,
             within a week, a month, or longer) and how many visits it has made (one, two, a few, or
-            more), the app's language, the app version, and a random id that lasts for one connection.
+            more), the app's language, the app version, whether a script is driving the page (as the
+            browser reports it, so our own tests are left out of the counts), and a random id that
+            lasts for one connection.
             To tell those, your device keeps the day it first opened the game, a count of its
             visits, whether it has played a round, and, while a round is open, that round's kind and
             trick count; only the rough ranges are sent. Each browser, and in the iPhone app each of

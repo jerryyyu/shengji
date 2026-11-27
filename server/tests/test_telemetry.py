@@ -563,6 +563,22 @@ def test_queue_events_carry_the_sockets_app_version(sink):
     assert "app_version" not in start
 
 
+def test_an_automated_batch_tags_its_socket_rows_and_queue_events(sink):
+    bot, person = _Sock(), _Sock()
+    for value in ("yes", 1, False):           # only a literal true counts
+        _, stamps = telemetry.clean_message({"v": 1, "automated": value, "events": []})
+        assert "automated" not in stamps
+    telemetry.receive(person, {"v": 1, "automated": "true", "events": [{"e": "tap", "id": "play"}]}, "guest")
+    telemetry.receive(bot, {"v": 1, "automated": True, "events": [{"e": "tap", "id": "play"}]}, "guest")
+    telemetry.receive(bot, {"v": 1, "events": [{"e": "tap", "id": "duo"}]}, "guest")
+    assert telemetry.queue_event(bot, "join", who="guest", size=1)
+    assert telemetry.queue_event(person, "join", who="guest", size=1)
+    mine, first, later, q, theirs = _records(sink)
+    assert "automated" not in mine and "automated" not in theirs
+    assert first["automated"] is later["automated"] is q["automated"] is True
+    assert first["sid"] == later["sid"] == q["sid"] != mine["sid"]
+
+
 def test_the_summary_counts_sessions_by_app_version(sink):
     from scripts import telemetry_app_versions as summary
     socks = [_Sock() for _ in range(4)]

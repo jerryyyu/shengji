@@ -144,6 +144,18 @@ function WaitSwitch({ on, disabled, act }: { on: boolean; disabled: boolean; act
   );
 }
 
+/** The seat the columns are drawn around: the model's `layout` when it
+ *  names one; at a shared table, the seat you sat at when that table first
+ *  showed, kept while you move, so the seat you tap is where you are drawn
+ *  next; else yours. Another table or panel kind draws around you again. */
+function useHeldLayout(m: TableModel): number | undefined {
+  const key = m.kind === "shared" ? `shared|${m.rows?.code ?? ""}` : null;
+  const held = useRef<{ key: string; at: number } | null>(null);
+  if (key === null) held.current = null;
+  else if (held.current?.key !== key) held.current = { key, at: m.you };
+  return m.layout ?? held.current?.at;
+}
+
 /** The panel's frame, the same for every kind: the title, at most one
  *  status line, the seats in team columns, the rows, the buttons, and the leave sheet when it is up. */
 function PanelView({ m, guarded, sheet, act }: {
@@ -154,6 +166,7 @@ function PanelView({ m, guarded, sheet, act }: {
   const primaryRef = useRef<HTMLButtonElement | null>(null);
   const box = useRef<HTMLElement | null>(null);
   useEnterIsPrimary(primaryRef, box);
+  const layout = useHeldLayout(m);
   const seats = m.seats?.map(({ act: a, ...s }): SeatItem => (a ? { ...s, pick: () => act(a) } : s)) ?? null;
   const press = (b: TableButton) => () => { if (b.act) act(b.act); };
   return (
@@ -173,7 +186,7 @@ function PanelView({ m, guarded, sheet, act }: {
           ) : null}
         </p>
       ) : null}
-      {seats ? <TeamColumns seats={seats} you={m.you} layout={m.layout} /> : null}
+      {seats ? <TeamColumns seats={seats} you={m.you} layout={layout} /> : null}
       {m.rows ? <TableRows rows={m.rows} wait={m.waitSwitch ?? undefined} act={act}
                            ask={seats ? inviteAskOf(seats, m.you) : undefined} /> : null}
       {m.waitSwitch && !m.rows ? <WaitSwitch {...m.waitSwitch} act={act} /> : null}

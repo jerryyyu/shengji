@@ -2325,6 +2325,43 @@ describe("the unified table on the client", () => {
     expect(panel()!.querySelector("button.tp-seat.open")).toBeNull();
   });
 
+  it("a tapped open seat is where you are drawn next, from every seat: the columns stay put while you move", async () => {
+    // the seats as drawn: [column][row]; a seat's name is its label's first word
+    const cells = () => [...panel()!.querySelectorAll(".tp-col")].map((col) => [...col.children] as HTMLElement[]);
+    const who = (el: HTMLElement) => (el.getAttribute("aria-label") ?? "").split(/[,.]/)[0];
+    await renderApp();
+    for (let start = 0; start < 4; start++) {
+      for (const [c, r] of [[0, 0], [1, 0]] as const) {
+        // each case is a table of its own (its own code), drawn around you afresh
+        const code = `T${start}${c}`;
+        // you and Alice, on the other team, drawn bottom right as in the report
+        const alice = (start + 3) % 4;
+        const at = (you: number) => {
+          const seats: Seat[] = [null, null, null, null];
+          seats[you] = seat("Jerry", { you: true });
+          seats[alice] = seat("Alice");
+          return atTable(seats, { id: code, you, opener: alice }, { code, mode: "casual" });
+        };
+        say(at(start));
+        const before = cells();
+        expect(who(before[0][1]), `seat ${start}: you are drawn bottom left`).toBe("You");
+        expect(who(before[1][1]), `seat ${start}: Alice is drawn bottom right`).toBe("Alice");
+        const tapped = before[c][r];
+        expect(tapped.classList.contains("open"), `seat ${start}: column ${c} row ${r} is open`).toBe(true);
+        click(tapped);
+        const sent = lastSent() as { type: string; seat: number };
+        // the cell's seat: your partner's above you, the seat to your right atop the other column
+        expect(sent).toEqual({ type: "table_move", seat: (start + (c === 0 ? 2 : 1)) % 4 });
+        // the server seats you where you asked
+        say(at(sent.seat));
+        const after = cells();
+        expect(who(after[c][r]), `seat ${start}: the seat tapped at column ${c} row ${r} is yours`).toBe("You");
+        expect(who(after[1][1]), `seat ${start}: Alice stays where she was drawn`).toBe("Alice");
+        expect(panel()!.querySelectorAll(".tp-team-label")[c].textContent).toBe("Us");
+      }
+    }
+  });
+
   it("a Duo's seats never move", async () => {
     await renderApp();
     say(atTable([seat("Jerry", { you: true, pair: true }), seat("Li"), seat("Kai", { pair: true }), null],

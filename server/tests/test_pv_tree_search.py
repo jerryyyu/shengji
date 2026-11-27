@@ -1595,7 +1595,7 @@ def test_compared_lead_uses_production_base_means_and_the_same_paired_worlds(pai
         return worlds, attempts
 
     monkeypatch.setattr(reference, "_worlds", observe_draw)
-    reference.decide_play(root.round, root.target.seat)
+    reference_action = reference.decide_play(root.round, root.target.seat)
     expected_actions = tuple(tuple(cards) for cards in reference.last_decision_record["admitted"])
     assert len(expected_worlds) == 64
     original_backup = TrancheRoot.backup
@@ -1618,6 +1618,12 @@ def test_compared_lead_uses_production_base_means_and_the_same_paired_worlds(pai
     assert result.reply_values.shape == (64, len(expected_actions))
     np.testing.assert_array_equal(result.flat_means, reference.last_decision_record["value_means"])
     assert "_value_means" not in vars(bot) and bot._refusals is ledger and bot.unified_frame is None
+    assert result.flat_final_action is None
+    final = compare_replayed_lead(root, make(), seed=41, depth_worlds=2, reply_cap=4,
+                                  batch_size=32, reply_value_weight=1., record_final_action=True)
+    assert final.flat_final_action == tuple(sorted(reference_action))
+    np.testing.assert_array_equal(final.flat_means, result.flat_means)
+    np.testing.assert_array_equal(final.reply_values, result.reply_values)
 
 
 @pytest.mark.parametrize("issue", ["fallback", "short"])
@@ -1659,3 +1665,100 @@ def test_paired_lead_yardsticks_preserve_ties_and_match_cards_by_identity():
         values.contrast({("C6",): (.75, -.25)})
     with pytest.raises(ValueError, match="finite"):
         values.contrast({**yardsticks, ("C6",): (np.nan, 1.)})
+
+
+def test_true_deal_yardsticks_pair_replies_and_reach_the_contrast(paired_flat_probe, monkeypatch):
+    from shengji.train.belief_tree_compare import compare_replayed_lead
+    from shengji.train.belief_tree_yardsticks import true_deal_yardsticks
+
+    make, root = paired_flat_probe
+    flat = make()
+    pair = compare_replayed_lead(root, flat, seed=41, depth_worlds=2, reply_cap=4,
+                                 batch_size=32, reply_value_weight=1.)
+    normal = pv.PVSearchBot._decide_play
+    streams = []
+    prototypes = []
+    seat_states = {}
+
+    def traced(bot, rnd, seat, started):
+        assert bot not in prototypes
+        seat_states.setdefault(seat, []).append(bot.sampler.rng.getstate())
+        return normal(bot, rnd, seat, started)
+
+    def reply_bot(seed):
+        streams.append(seed)
+        bot = make()
+        bot.sampler.rng.seed(seed)
+        prototypes.append(bot)
+        return bot
+
+    monkeypatch.setattr(pv.PVSearchBot, "_decide_play", traced)
+    before = (copy.deepcopy(root.round.hands), list(root.round.history), root.round.notice)
+    options = dict(model=flat.unified_value_model, make_reply_bot=reply_bot,
+                   expected_policy_name=flat.policy_name, seed=29)
+    first = true_deal_yardsticks(root, pair.actions, **options)
+    assert len(set(streams)) == 3 and tuple(first) == tuple(map(tuple, pair.actions))
+    assert set(seat_states) == set(range(4)) - {root.target.seat}
+    assert all(starts == [starts[0]] * len(pair.actions) for starts in seat_states.values())
+    assert all(bot.last_decision_record is None and bot._refusals.key is None for bot in prototypes)
+    result = pair.contrast(first)
+    assert result["flat_action"] in first and result["tree_action"] in first
+    np.testing.assert_allclose(
+        [result["sf_gain"], result["vt_gain"]],
+        np.subtract(first[result["tree_action"]], first[result["flat_action"]]),
+    )
+    assert (root.round.hands, root.round.history, root.round.notice) == before
+
+    second = true_deal_yardsticks(root, pair.actions[::-1], **options)
+    assert tuple(second) == tuple(reversed(first))
+    np.testing.assert_allclose(list(first.values()), [second[key] for key in first])
+    assert streams[:3] == streams[3:]
+
+
+def test_true_deal_yardsticks_refuse_served_fallback(paired_flat_probe, monkeypatch):
+    from shengji.train.belief_tree_yardsticks import true_deal_yardsticks
+
+    make, root = paired_flat_probe
+    flat = make()
+
+    def fallback(bot, rnd, seat, started):
+        bot.last_decision_record = {"schema": pv.FALLBACK_SCHEMA}
+        return HeuristicBot().decide_play(rnd, seat)
+
+    monkeypatch.setattr(pv.PVSearchBot, "_decide_play", fallback)
+    actions = [["D9"], ["CQ"]]
+    with pytest.raises(ValueError, match="fallback served reply"):
+        true_deal_yardsticks(root, actions, model=flat.unified_value_model,
+                             make_reply_bot=lambda seed: make(),
+                             expected_policy_name=flat.policy_name, seed=29)
+
+
+def test_true_deal_yardsticks_take_exact_terminal_value(paired_flat_probe):
+    from shengji.ai.cwv_policy import finish_current_trick
+    from shengji.rl.value_afterstate import terminal_distribution
+    from shengji.train.belief_labels import deal_key
+    from shengji.train.belief_tree_replay import RootTarget, TrancheRoot
+    from shengji.train.belief_tree_yardsticks import true_deal_yardsticks
+    from shengji.train.cwv_data import LEVEL_SUPPORT
+
+    make, _ = paired_flat_probe
+    bot = make()
+    rnd = walk(deal(15), 72)
+    seat = rnd.turn
+    pair = tuple(rnd.hands[seat])
+    assert pair == ("C5", "C5")
+    root = TrancheRoot(RootTarget(72, 0, 72, seat), deal_key(rnd.deck), rnd, ())
+    terminal = copy.deepcopy(rnd)
+    terminal.play(seat, list(pair))
+    finish_current_trick(terminal)
+    assert terminal.phase == "round_end"
+    exact = terminal_distribution(terminal, seat) @ LEVEL_SUPPORT
+
+    def reply_bot(seed):
+        reply = make()
+        reply.sampler.rng.seed(seed)
+        return reply
+
+    values = true_deal_yardsticks(root, [pair, pair[:1]], model=bot.unified_value_model,
+                                  make_reply_bot=reply_bot, expected_policy_name=bot.policy_name, seed=29)
+    assert values[pair] == (exact, exact)

@@ -22,13 +22,12 @@ def _softmax(logits):
     return weights / weights.sum(axis=-1, keepdims=True)
 
 
-def _reply_node(child, ledger, model, replies):
-    """Policy and value share the acting seat's explicit public-history frame."""
-    actor = child.turn
-    inp = decision_inputs(child, actor, ledger)
+def unified_trick_frame(root, ledger, model):
+    """Return the acting seat's card states and a value scorer for this trick."""
+    actor = root.turn
+    inp = decision_inputs(root, actor, ledger)
     q, g = model.card_states(inp, model.trunk.encode_history(inp))
-    frame = LeafFrame.at_states(None, child, actor, model, q, g)
-    prior = _preferences(policy_from_states(model, q), replies)
+    frame = LeafFrame.at_states(None, root, actor, model, q, g)
 
     def score(leaves, seat):
         indices, planes, scalars = leaf_features_batch(frame, leaves)
@@ -39,12 +38,17 @@ def _reply_node(child, ledger, model, replies):
                                       @ LEVEL_SUPPORT)
         terminal = [i for i, leaf in enumerate(leaves) if leaf.phase == "round_end"]
         if len(indices) + len(terminal) != len(leaves):
-            raise ValueError("reply leaf outside the unified value frame")
+            raise ValueError("leaf outside the unified trick value frame")
         for i in terminal:
             values[i] = terminal_distribution(leaves[i], seat) @ LEVEL_SUPPORT
         return values
 
-    return prior, score
+    return q, score
+
+
+def _reply_node(child, ledger, model, replies):
+    q, score = unified_trick_frame(child, ledger, model)
+    return _preferences(policy_from_states(model, q), replies), score
 
 
 def root_reply_backup(root, actions, root_worlds, *, belief, model, refusals, seed, depth_worlds,

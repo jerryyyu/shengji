@@ -5,6 +5,7 @@ import numpy as np
 
 from ..ai.refusal import RefusalLedger
 from .belief_tree_replay import TrancheRoot
+from .pv_search_policy import RECORD_SCHEMA
 
 
 @dataclass(frozen=True)
@@ -14,6 +15,7 @@ class PairedLeadValues:
     actions: tuple[tuple[str, ...], ...]
     flat_means: np.ndarray
     reply_values: np.ndarray
+    flat_final_action: tuple[str, ...] | None = None
 
     def contrast(self, true_deal_values):
         """Compare first-argmax picks to independently supplied (served, heuristic) finishes.
@@ -42,13 +44,16 @@ class _BasePassComplete(Exception):
 
 
 def compare_replayed_lead(root: TrancheRoot, flat_bot, *, seed: int, depth_worlds: int,
-                          reply_cap: int, batch_size: int, reply_value_weight: float) -> PairedLeadValues:
+                          reply_cap: int, batch_size: int, reply_value_weight: float,
+                          record_final_action: bool = False) -> PairedLeadValues:
     """Compare the actual W64/K8 base estimator with one offline reply ply.
 
     The caller supplies a dedicated bot with the pinned unified slots and lifted
     decision and leaf deadlines. Production search handles the draw, admission,
     framing and accumulation. The comparison uses its base means before
-    selection, exact search or confirmation. The bot is consumed by this probe.
+    selection, exact search or confirmation. With record_final_action, the same
+    call continues through those stages and records its final pick separately.
+    The bot is consumed by this probe.
     """
     rnd = root.round
     if rnd.phase != "play" or rnd.trick is None or rnd.trick.plays or rnd.turn != root.target.seat:
@@ -79,6 +84,8 @@ def compare_replayed_lead(root: TrancheRoot, flat_bot, *, seed: int, depth_world
 
     def base_pass(position, seat, actions, worlds, check_budget=None):
         nonlocal captured
+        if captured is not None:
+            return estimate(position, seat, actions, worlds, check_budget)
         if position is not rnd or seat != rnd.turn or len(worlds) != 64 or len(actions) < 2:
             raise ValueError("missing complete paired root ballot and 64 worlds")
         if flat_bot._draw_tally_record().get("belief_fallback_all_draws") != 0:
@@ -91,21 +98,32 @@ def compare_replayed_lead(root: TrancheRoot, flat_bot, *, seed: int, depth_world
         value_rows = flat_bot.unified_value_rows
         value_other = flat_bot.unified_value_other
         reply_served = flat_bot.unified_reply_served
-        means, batches = estimate(position, seat, actions, worlds, check_budget)
-        means = np.asarray(means, dtype=np.float64)
+        raw_means, batches = estimate(position, seat, actions, worlds, check_budget)
+        means = np.asarray(raw_means, dtype=np.float64)
         if (batches < 1 or means.shape != (len(actions),) or not np.isfinite(means).all()
                 or flat_bot.unified_value_rows <= value_rows or flat_bot.unified_value_other != value_other
                 or flat_bot.unified_reply_served != reply_served):
             raise ValueError("flat estimator did not complete unified scoring")
         ballot = tuple(tuple(cards) for cards in actions)
         tape = tuple((tuple(tuple(hand) for hand in hands), tuple(buried)) for hands, buried in worlds)
-        captured = ballot, tape, means
+        captured = ballot, tape, means.copy()
+        if record_final_action:
+            return raw_means, batches
         raise _BasePassComplete
 
     flat_bot._refusals = ledger
     flat_bot._value_means = base_pass
+    final_action = None
     try:
-        flat_bot.decide_play(rnd, rnd.turn)
+        played = flat_bot.decide_play(rnd, rnd.turn)
+        if record_final_action:
+            record = flat_bot.last_decision_record or {}
+            if (not played or record.get("schema") != RECORD_SCHEMA or record.get("work_complete") is not True
+                    or sorted(record.get("played") or ()) != sorted(played)):
+                raise ValueError("incomplete final flat selection")
+            final_action = tuple(sorted(played))
+            if flat_bot._draw_tally_record().get("belief_fallback_all_draws") != 0:
+                raise ValueError("final flat selection used fallback worlds")
     except _BasePassComplete:
         pass
     finally:
@@ -122,4 +140,4 @@ def compare_replayed_lead(root: TrancheRoot, flat_bot, *, seed: int, depth_world
                                reply_value_weight=reply_value_weight)
     if reply_values.shape != (64, len(actions)) or not np.isfinite(reply_values).all():
         raise ValueError("reply estimator did not complete the paired ballot")
-    return PairedLeadValues(actions, means, reply_values)
+    return PairedLeadValues(actions, means, reply_values, final_action)

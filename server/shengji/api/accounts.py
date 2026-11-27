@@ -2497,6 +2497,13 @@ def account_look(user_id: int | None) -> str:
     return DEFAULT_LOOK if user_id is None else STORE.seen_looks.get(user_id, DEFAULT_LOOK)
 
 
+def card_look(user_id: int | None) -> str:
+    """The look an invite card draws in a person's seat: their seat's look
+    (``account_look``) when the Collection is on for their account
+    (``collection_for``), else "" for their initials. A guest has none."""
+    return account_look(user_id) if user_id is not None and collection_for(user_id) else ""
+
+
 def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int = 0,
                 owned: Collection[str] = frozenset(), store_token: str | None = None,
                 ranked_games: int = 0) -> dict:

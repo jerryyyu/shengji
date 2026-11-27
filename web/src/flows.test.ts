@@ -76,7 +76,7 @@ const JOIN_SITES = [
   "intent.ts", // the table_join a saved intent resumes with
   "nearbyJoin.ts", // a nearby code's peek and Join, from the same code box (FLOWS.md "Play nearby")
   "queue/Ranked.tsx", // Play (and Duo, which opens your own table)
-  "queue/store.ts", // queue.join(code): the table_join the queue's join sites call
+  "queue/store.ts", // queue.join(code): the table_join the queue's join sites call; Back to Duo: the table_join that takes back a Duo seat you left
   "queue/tableModel.ts", // the panel's I’m back (your table, moved here from another device)
   "watch/WatchScreen.tsx", // Play on a watched ranked table's round end: the same queue.join() as Play
 ];

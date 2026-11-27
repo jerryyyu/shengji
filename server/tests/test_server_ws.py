@@ -4291,3 +4291,39 @@ def test_a_leave_owed_across_a_drop_resumes_by_token_and_is_covered_at_once(clie
         st = srv.state_for(room, 0)
         seat = next(p for p in st["players"] if p["seat"] == want)
         assert seat["left"] is True and seat["takeover_in"] is None
+
+
+def test_a_paired_leaver_of_a_casual_queue_room_is_offered_its_seat_and_takes_it_back(client, monkeypatch):
+    """A Duo's casual room from the queue: the partner taps Leave while the
+    pair stands. Its socket, back in the lobby, hears ``back`` with the room
+    and seat (``room_back``), and the Play tab's table_join by the code
+    alone (no seat, no ``expect``) takes that same seat back. A ranked room
+    offers nothing."""
+    from shengji.api import matchmaking as mm
+    from shengji.api import server as srv
+
+    dev_b = "b" * 24
+    qid = srv.guest_queue_id(dev_b)
+    party = mm.Party(id="duo1", leader=qid, members=[qid, -999], names={qid: "sk", -999: "jy"},
+                     idle_since=0.0)
+    monkeypatch.setitem(srv.MATCHMAKER.parties, party.id, party)
+    monkeypatch.setitem(srv.MATCHMAKER.party_of, qid, party.id)
+    with client.websocket_connect("/ws") as a:
+        code = _room_with_bots(a)
+        room = srv.rooms[code]
+        room.queued = True
+        with client.websocket_connect(f"/ws?device={dev_b}") as b:
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "sk", "seat": 2})
+            assert _drain(b, "state")["you"] == 2
+            b.send_json({"type": "table_leave"})
+            _drain(b, "left")
+            back = _drain(b, "queue_state")["back"]
+            assert back == {"code": code, "duo": True, "until": None, "room": True, "seat": 2}
+            assert srv.room_back(None, dev_b) == (code, 2)
+            room.matched = True
+            assert srv.room_back(None, dev_b) is None          # a ranked room keeps its bar
+            room.matched = False
+            b.send_json({"type": "table_join", "code": code, "name": "sk"})
+            st = _drain(b, "state")
+            assert st["you"] == 2 and room.seats[2].connected and not room.seats[2].left_by_choice
+            assert srv.room_back(None, dev_b) is None

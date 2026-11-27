@@ -42,7 +42,7 @@ function view(qs: Record<string, unknown>, over: Partial<QueueView> = {}): Queue
   const f = tableFrameFor(qs);
   return {
     count: 1, queued: true, since: Date.now(), waitPlayers: false, front: false, leader: true, partyId: null,
-    pending: null, frame: f, offer: null, openTables: 0, botsPaused: false, cooldownUntil: null,
+    pending: null, frame: f, offer: null, openTables: 0, botsPaused: false, cooldownUntil: null, back: null,
     cooldownTold: false, elsewhere: false, party: null, note: null, presence: null, panelSeq: 1,
     stillHereUntil: null, inGame: null, playMode: "casual", queueMode: "casual", tableChat: [], duo: false,
     duoReady: null, ...over,

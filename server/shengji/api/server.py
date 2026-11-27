@@ -4304,6 +4304,22 @@ def _joined_round_ended(room: Room) -> None:
             _joined_leave_penalty(room, sd.user_id, sd.queue_id)
 
 
+def room_back(user_id: int | None, device: str | None) -> tuple[str, int] | None:
+    """The casual table from the queue (a Duo's or Play's room) whose seat
+    this account or device left by choice and may take back by its code
+    (``_join_room``'s left-seat rule), as ``(code, seat)``; None when there
+    is none. A ranked room offers no leaver its seat."""
+    for code, room in rooms.items():
+        game = room.game
+        if (room.matched or not room.queued or room.aborted or room.closing
+                or game is None or game.game_over):
+            continue
+        seat = _left_seat_of(room, device, user_id)
+        if seat is not None:
+            return code, room.seats.index(seat)
+    return None
+
+
 MATCHMAKER = matchmaking.Matchmaker(start_room=start_matched_room,
                                     room_capacity=_room_capacity,
                                     room_live=lambda code: code in rooms,
@@ -4312,7 +4328,8 @@ MATCHMAKER = matchmaking.Matchmaker(start_room=start_matched_room,
                                     join_pair=join_pair_open_table,
                                     presence=presence_counts,
                                     watch=spectate.presence,
-                                    watch_key=spectate.presence_key)
+                                    watch_key=spectate.presence_key,
+                                    room_back=room_back)
 
 
 def _attach(room: Room, seat: Seat, ws: WebSocket) -> int:
@@ -4399,12 +4416,12 @@ async def healthz() -> dict:
             "web_build": WEB_BUILD}
 
 
-def room_invite_seats(room: Room) -> list[tuple[str, str | None, bool]] | None:
+def room_invite_seats(room: Room) -> list[tuple] | None:
     """A room's seats as its link preview shows them, from the Join panel's
     own projection (``room_seats_json``): a seat is free when that frame
     says a joiner may claim it, and none is when it says the table is full.
     A departed player's claimable seat is an empty seat, never their name;
-    a reserved one keeps its holder. None for a room a code join cannot
+    a reserved one keeps its holder, with its ``accounts.card_look``. None for a room a code join cannot
     enter: no game yet, over, aborted, closing or no longer the code's."""
     game = room.game
     if (rooms.get(room.code) is not room or room.aborted or room.closing
@@ -4423,7 +4440,9 @@ def room_invite_seats(room: Room) -> list[tuple[str, str | None, bool]] | None:
         elif free:
             seats.append((invite_preview.OPEN, None, True))
         else:
-            seats.append((invite_preview.PERSON, s["name"], False))
+            sd = room.seats[i]
+            seats.append((invite_preview.PERSON, s["name"], False,
+                          accounts.card_look(sd.user_id if sd is not None else None)))
     return seats
 
 

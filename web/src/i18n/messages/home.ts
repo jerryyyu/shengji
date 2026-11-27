@@ -57,6 +57,7 @@ export const home = defineMessages({
   "home.play": { en: "Play", zh: "开始", hant: "開始" },
   "home.playIn": { en: (p) => `Play in ${p.time}`, zh: (p) => `${p.time} 后开始`, hant: (p) => `${p.time} 後開始` },
   "home.duo": { en: "Duo", zh: "组队", hant: "組隊" },
+  "home.backToDuo": { en: "Back to Duo", zh: "回到搭档桌", hant: "回到搭檔桌" },
   "home.playSectionAria": { en: "Play", zh: "打牌", hant: "打牌" },
   "home.codePlaceholder": { en: "CODE", zh: "房间码", hant: "房間碼" },
   "home.codeAria": { en: "Table code", zh: "房间码", hant: "房間碼" },

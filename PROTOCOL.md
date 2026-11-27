@@ -417,8 +417,16 @@ other socket with `account_in_game`.
 
 ### Server → Client
 
-- `queue_state {queued, count, mode?, since?, front?, party_id?, leader?, bots_at?, wait_players?, bots_paused?, table?, offer?, open_tables?, replaced?, panel_seq?, still_here_until?, code?, allow_joiners?, start_level?, bot_level?, opener?, duo?, held_seat?, duo_ready?, you_ready?}`:
+- `queue_state {queued, count, mode?, since?, front?, party_id?, leader?, bots_at?, wait_players?, bots_paused?, table?, offer?, open_tables?, replaced?, panel_seq?, still_here_until?, code?, allow_joiners?, start_level?, bot_level?, opener?, duo?, held_seat?, duo_ready?, you_ready?, back?}`:
   your entry, after every change to it or to its table, and on reconnect.
+  Not queued, `back` is a Duo seat you left that the server keeps for you,
+  `{code, duo: true, until, room?, seat?}`: your Duo table, left while still
+  alone at it (Leave or a drop), kept with its code, settings and chat for
+  5 minutes (`until`), or a partner's seat its opener's table holds again;
+  your `table_join {code}` in that window takes it back as it was. With
+  `room: true` (no `until`) it is your `seat` in your Duo's casual room, left
+  by choice while the Duo stands; `table_join {code, seat, expect: "room"}`
+  takes it back. A new idle `queue_state` without `back` ends it.
   `mode` is the search's mode (`"ranked"` or `"casual"`). The table
   fields (`table`, `code`, `allow_joiners`, `start_level`, `opener`,
   `held_seat`, `you_ready`) are sent until the table frame's step 3

@@ -753,6 +753,63 @@ describe("a Duo is a table", () => {
     expect(lastSent()).toEqual({ type: "queue_join", party_id: "d1", mode: "ranked" });
   });
 
+  const idle = (back?: Record<string, unknown>) =>
+    say({ type: "queue_state", queued: false, count: 0, ...(back ? { back } : {}) });
+  const playRow = () => q(".play-ranked-row:not(.play-pair-row)");
+
+  it("a paired Duo whose room still keeps your seat: Play reads Back to Duo and takes that seat back", async () => {
+    await renderApp();
+    say(duoParty(true));
+    idle({ code: "R2D2", duo: true, until: null, room: true, seat: 2 });
+    expect(q(".play-pair-row")!.textContent).toBe("Duo with AliceLeave");     // the row stays
+    expect(buttons(playRow()!).map((b) => b.textContent)).toEqual(["Back to Duo", "Duo"]);
+    await pastGuard();
+    click(button("Back to Duo", lobby()));
+    expect(lastSent()).toEqual({ type: "table_join", code: "R2D2", expect: "room", seat: 2 });
+    expect(button("Back to Duo", lobby())).toBeUndefined();          // Play again until the server says otherwise
+  });
+
+  it("the other member, back from the Duo's room, gets Back to Duo under the row", async () => {
+    await renderApp();
+    say(duoParty(false));
+    idle({ code: "R2D2", duo: true, until: null, room: true, seat: 0 });
+    expect(buttons(playRow()!).map((b) => b.textContent)).toEqual(["Back to Duo", "Duo"]);
+    // the Duo ends: a room seat is offered only while it stands
+    say({ type: "party_closed", party_id: "d1", reason: "left", by: "Alice", you: false });
+    expect(button("Back to Duo", lobby())).toBeUndefined();
+    expect(buttons(playRow()!).map((b) => b.textContent)).toEqual(["Play", "Duo"]);
+  });
+
+  it("a paired Duo with no table kept: Play stays Play and queues the pair", async () => {
+    await renderApp();
+    say(duoParty(true));
+    idle();
+    expect(buttons(playRow()!).map((b) => b.textContent)).toEqual(["Play", "Duo"]);
+    await pastGuard();
+    click(button("Play", lobby()));
+    expect(lastSent()).toEqual({ type: "queue_join", party_id: "d1", mode: "ranked" });
+  });
+
+  it("your Duo table kept after a Leave: Back to Duo rejoins it by its code, only until its hold ends", async () => {
+    await renderApp();
+    fakeClock();
+    idle({ code: "4N5Z", duo: true, until: nowSecs() + 300 });
+    expect(buttons(playRow()!).map((b) => b.textContent)).toEqual(["Back to Duo", "Duo"]);
+    await pastGuard();
+    click(button("Back to Duo", lobby()));
+    expect(lastSent()).toMatchObject({ type: "table_join", code: "4N5Z" });
+    expect(lastSent().expect).toBeUndefined();
+    // the server's table comes back: the panel, not Play
+    say(duoState(true, 0, false));
+    expect(button("Back to Duo", lobby())).toBeUndefined();
+    // a later hold that runs out: Play is Play again with no word from the server
+    say({ type: "queue_state", queued: false, count: 0, back: { code: "4N5Z", duo: true, until: nowSecs() + 2 } });
+    expect(button("Back to Duo", lobby())).toBeDefined();
+    tick(2500);
+    expect(button("Back to Duo", lobby())).toBeUndefined();
+    expect(button("Play", lobby())).toBeDefined();
+  });
+
   for (const leader of [true, false]) {
     const role = leader ? "the leader" : "the other member";
     const other = leader ? "Alice" : "Jerry";

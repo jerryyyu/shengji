@@ -84,6 +84,17 @@ export type QueueClientMsg = { name?: string } & (
 
 export type QueueMode = "ranked" | "casual";
 
+/** A Duo seat you left and may take back: a kept Duo table or held partner
+ *  seat by its `code` until `until`, or (`room`) your `seat` in the Duo's
+ *  casual room, with no deadline of its own. */
+export interface QueueBackMsg {
+  code: string;
+  duo: boolean;
+  until: number | null;
+  room?: boolean;
+  seat?: number;
+}
+
 export interface QueueStateMsg {
   type: "queue_state";
   queued: boolean;
@@ -105,6 +116,9 @@ export interface QueueStateMsg {
   stopped?: boolean;
   /** Not queued: a queue cooldown runs until then (Play counts it down). */
   cooldown_until?: number;
+  /** Not queued: the Duo seat you left that the server still keeps for you
+   *  (Play reads "Back to Duo"). */
+  back?: QueueBackMsg;
   /** Another socket of yours (another device or window) holds the search:
    *  no table, offer or timer is sent here; any queue action takes it over. */
   elsewhere?: boolean;

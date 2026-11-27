@@ -192,14 +192,17 @@ export function RankedSection({ online, room = null }: {
   const kind = panelKind(q);
   // "I’m back" and Start share the primary place: the guard covers each swap
   const guarded = useKindGuard(kind === "shared" && q.stillHereUntil !== null ? "still_here" : kind);
-  const now = useNow(q.cooldownUntil !== null, 500);
+  const now = useNow(q.cooldownUntil !== null || q.back?.until != null, 500);
 
   const pair = q.party && q.party.members.length === 2 ? q.party : null;
+  // a Duo seat you left that the server still keeps: Play takes you back to it
+  const back = queue.backTo(now);
   const joining = q.pending === "join";
   const cooling = q.cooldownUntil !== null && q.cooldownUntil > now;
   let label = t("home.play");
   let disabled = !online || guarded || room !== null;
   if (joining) disabled = true;
+  else if (back) label = t("home.backToDuo");
   else if (cooling) {
     // a table you joined and left: Play counts the queue cooldown down
     label = t("home.playIn", { time: clock(q.cooldownUntil! - now, true) });
@@ -231,14 +234,17 @@ export function RankedSection({ online, room = null }: {
   const pairRow = partner ? <PairRow partner={partner} online={online} /> : null;
   const body = q.inGame ? (
     <InGameBlock message={q.inGame.message} canReturn={q.inGame.canReturn} online={online} />
-  ) : pairRow && !pair!.you_lead ? pairRow : (
+  ) : pairRow && !pair!.you_lead && !back ? pairRow : (
     <>
       {pairRow}
-      {cooling && !q.cooldownTold ? <p className="play-cool-line">{t("home.coolLine")}</p> : null}
-      <PlayRow label={label} disabled={disabled} busy={joining} duoDisabled={disabled}
-               onPlay={() => { telemetry.tap("play"); rounds.noteEntry("queue"); queue.join(); }}
+      {cooling && !q.cooldownTold && !back ? <p className="play-cool-line">{t("home.coolLine")}</p> : null}
+      <PlayRow label={label} disabled={back ? !online || guarded || room !== null || joining : disabled}
+               busy={joining} duoDisabled={disabled}
+               onPlay={back
+                 ? () => { telemetry.tap("back_to_duo"); rounds.noteEntry("friend"); queue.backToDuo(); }
+                 : () => { telemetry.tap("play"); rounds.noteEntry("queue"); queue.join(); }}
                onDuo={() => { telemetry.tap("duo"); rounds.noteEntry("friend"); queue.joinDuo(); }} />
-      {cooling ? null : <PresenceLine q={q} online={online} />}
+      {cooling && !back ? null : <PresenceLine q={q} online={online} />}
     </>
   );
   return (

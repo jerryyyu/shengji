@@ -94,7 +94,13 @@ leader is the owner and its partner a joiner: the partner taps Ready
 its seat still held tells the room that seat (``friend_seat``), whose
 code's next seatless join takes it. A Leave before the game splits it (``_split``): the other member
 keeps the table and its code; a partner's leave holds its seat again, an
-opener's makes the partner the opener. A ranked table starts at ``RANKS[0]``;
+opener's makes the partner the opener. A Duo opener still alone that
+leaves or drops (``_keep``) keeps its table, code, settings and chat for
+``KEEP_TABLE_SECS``, held for nobody else (its code finds no table
+meanwhile); a partner's leave of a table that holds its seat again is kept
+as that code. Each is the leaver's ``back`` in its ``queue_state`` while it
+stands, and the leaver's own code join (``table_join``) in that window
+takes the table back as it was, partner seat held, or the held seat. A ranked table starts at ``RANKS[0]``;
 a casual table's opener sets its level (``table_start_level``) and its
 bots' level (``table_bot_level``: Standard, ``server.RELAXED_BOT``, by
 default, or Advanced, the served bot; a ranked table has no setting: its
@@ -217,6 +223,10 @@ JOIN_COOLDOWN_SECS = 60.0
 # the fresh state is sent.
 ROLE_GRACE_SECS = 5.0
 PARTY_TTL = 300.0
+# How long a Duo table its opener left alone is kept for them, and a Duo
+# partner is offered its held seat back: the window an empty casual room
+# keeps a seat its person left (``server.ROOM_TTL``).
+KEEP_TABLE_SECS = 300.0
 COUNT_DEBOUNCE = 1.0
 JOIN_LIMIT = (10, 60.0)      # queue_join per account per window
 PARTY_LIMIT = (20, 60.0)     # party_* per account per window
@@ -320,6 +330,17 @@ class Party:
     members: list[int]
     names: dict[int, str]
     idle_since: float             # the 5-minute expiry runs while not queued
+
+
+@dataclass
+class Kept:
+    """A Duo seat its person left, theirs to take back by ``code`` until
+    ``until``: a lone opener's whole entry and table (``entry``), whose code
+    stays reserved for it; or, with no ``entry``, a partner's seat at the
+    opener's table, which still holds it while the opener waits."""
+    code: str
+    until: float
+    entry: Entry | None = None
 
 
 @dataclass
@@ -612,6 +633,7 @@ class Matchmaker:
                  presence: Callable[[], tuple[int, int, int, int]] | None = None,
                  watch: Callable[[int | None], dict | None] | None = None,
                  watch_key: Callable[[], tuple] | None = None,
+                 room_back: Callable[[int | None, str | None], tuple[str, int] | None] | None = None,
                  autorun: bool = True) -> None:
         self.clock = clock
         self.rating_of = rating_of or _store_rating
@@ -639,6 +661,9 @@ class Matchmaker:
         # and what they are read from, so a change of it is sent again.
         self.watch = watch or (lambda uid: None)
         self.watch_key = watch_key or (lambda: ())
+        # The casual room and seat an account or device left by choice and
+        # may take back (``server._left_seat_of``), as ``(code, seat)``.
+        self.room_back = room_back or (lambda user_id, device: None)
         self.autorun = autorun
         self._task: asyncio.Task | None = None
         self.reset()
@@ -667,6 +692,8 @@ class Matchmaker:
         self.barred: dict[int, set[str]] = {}
         self.cooldowns: dict[int, float] = {}
         self.joining: dict[int, tuple[str, Entry | None]] = {}
+        # Duo seats left in the last KEEP_TABLE_SECS, by the leaver's queue id.
+        self.kept: dict[int, Kept] = {}
         # Entries told ``server_busy`` while their due start waits for room;
         # forgotten once a start is admitted.
         self.busy_told: set[str] = set()
@@ -694,7 +721,7 @@ class Matchmaker:
                 await self.pump()
             except Exception:      # noqa: BLE001 - the queue outlives one bad tick
                 log.exception("matchmaking pump failed")
-            if (not self.entries and not self.tables and not self.parties
+            if (not self.entries and not self.tables and not self.parties and not self.kept
                     and not self.joining and not any(self._presence_sent) and not self.lobby):
                 return
 
@@ -952,7 +979,98 @@ class Matchmaker:
         until = self.cooldowns.get(uid, 0.0)
         if until > self.clock():
             out["cooldown_until"] = until
+        back = self._back(uid)
+        if back is not None:
+            out["back"] = back
         return out
+
+    def _idle_news(self, uid: int) -> bool:
+        """Whether an idle socket arriving for ``uid`` has a state to hear:
+        a cooldown running or a Duo seat to take back."""
+        return self.cooldowns.get(uid, 0.0) > self.clock() or self._back(uid) is not None
+
+    def _back(self, uid: int) -> dict | None:
+        """The Duo seat ``uid`` left and may take back now, as its idle
+        ``queue_state`` carries it (``back``): a kept table or held seat by
+        its code (``until`` when the hold ends), else, while its Duo is
+        still paired, the seat it left by choice in a casual room the
+        server keeps for it (``room``: true, ``seat``; ``room_back``)."""
+        if uid in self.entry_of:
+            return None
+        k = self._kept_back(uid)
+        if k is not None:
+            return {"code": k.code, "duo": True, "until": k.until}
+        p = self._party(uid)
+        if p is None or len(p.members) != 2:
+            return None
+        c = self.conns.get(uid)
+        try:
+            found = self.room_back(c.user_id if c is not None else None,
+                                   c.device if c is not None else None)
+        except Exception:      # noqa: BLE001 - the way back is an offer; the queue goes on
+            log.exception("room back lookup failed")
+            found = None
+        if found is None:
+            return None
+        return {"code": found[0], "duo": True, "until": None, "room": True, "seat": found[1]}
+
+    def _kept_back(self, uid: int) -> Kept | None:
+        """``uid``'s kept Duo seat while it still stands: its kept table,
+        or a partner's seat its opener's table still holds."""
+        k = self.kept.get(uid)
+        if k is None or k.until <= self.clock() or uid in self.entry_of:
+            return None
+        if k.entry is not None:
+            return k if self.entry_codes.get(k.code) == k.entry.id else None
+        host = self._code_entry(k.code)
+        if host is None or not host.hold or host.table is None or host.table.held_for(host) is None:
+            return None
+        return k
+
+    @staticmethod
+    def _keepable(e: Entry) -> bool:
+        """A Duo opener still alone at its own table: its leave keeps it."""
+        return e.size == 1 and e.hold and e.table is not None and not e.table.waiting and not e.claiming
+
+    def _keep(self, e: Entry) -> None:
+        """``e``, just removed, is kept for its opener: its code stays
+        reserved for it, so no new table or room takes the code and a join
+        by it finds nothing until the opener is back or the window ends."""
+        self.entry_codes[e.code] = e.id
+        self.kept[e.leader] = Kept(e.code, self.clock() + KEEP_TABLE_SECS, e)
+
+    def _forget_kept(self, uid: int) -> None:
+        k = self.kept.pop(uid, None)
+        if (k is not None and k.entry is not None and self.entry_codes.get(k.code) == k.entry.id
+                and k.entry.id not in self.entries):
+            del self.entry_codes[k.code]
+
+    def _restore(self, uid: int, k: Kept) -> Entry:
+        """The opener back at its kept table: the same entry, code,
+        settings and chat, the partner seat held, its bot wait new."""
+        e = k.entry
+        assert e is not None
+        del self.kept[uid]
+        now = self.clock()
+        e.since = e.active_at = now
+        e.prompted, e.claiming, e.front = False, False, False
+        e.offer, e.paused, e.open_codes = None, None, []
+        e.taps.clear()
+        if e.bots_at is not None:
+            e.bots_at = now + BOT_FILL_SECS
+        self._enlist(e)
+        self._qlog("join", e, mode=e.mode, by_code=True, duo=True, back=True)
+        return e
+
+    def _expire_kept(self, now: float) -> None:
+        """A kept seat past its window is gone; its leaver's Play tab hears it."""
+        for uid, k in list(self.kept.items()):
+            if k.until > now:
+                continue
+            self._forget_kept(uid)
+            c = self._live(uid)
+            if c is not None and not c.in_room and uid not in self.entry_of:
+                c.push(self._idle_state(uid))
 
     def queue_state(self, uid: int) -> dict:
         e = self._entry(uid)
@@ -1180,7 +1298,7 @@ class Matchmaker:
             self._resync(uid)
         elif uid in self.entry_of:
             conn.push(self._elsewhere_state(uid))
-        if uid not in self.entry_of and self.cooldowns.get(uid, 0.0) > self.clock():
+        if uid not in self.entry_of and self._idle_news(uid):
             conn.push(self._idle_state(uid))     # a page opened mid-cooldown counts it down
 
     def disconnect(self, conn: Conn) -> None:
@@ -1205,6 +1323,7 @@ class Matchmaker:
         them. A cooldown or bar the guest earned carries to the account. A
         guest that reconnects as a guest keeps its place; this is not
         called for it."""
+        self._forget_kept(guest)
         p = self._party(guest)
         e = self._entry(guest)
         if e is not None and e.size == 2:
@@ -1261,7 +1380,7 @@ class Matchmaker:
             self._resync(uid)
         elif uid is not None and self.conns.get(uid) is not conn and uid in self.entry_of:
             conn.push(self._elsewhere_state(uid))
-        if uid is not None and uid not in self.entry_of and self.cooldowns.get(uid, 0.0) > self.clock():
+        if uid is not None and uid not in self.entry_of and self._idle_news(uid):
             conn.push(self._idle_state(uid))
 
     def _bind(self, conn: Conn, uid: int, *, stopping: bool = False) -> None:
@@ -1417,6 +1536,18 @@ class Matchmaker:
                 raise QueueError("in_queue", "Cancel your search before joining a table.")
             self._resync(uid)
             return
+        kept = self._kept_back(uid)
+        if code and kept is not None and kept.entry is not None and kept.code == code:
+            if conn.closed or conn.in_room:
+                return
+            e = self._restore(uid, kept)
+            self.seat_waiting()
+            self._offer_open_tables(self.clock(), quiet={e.id})
+            if e.table_id is None:
+                self._send_state(e)
+            self._send_chat_history(e.table, [uid])
+            await self._start_due()
+            return
         host = self._code_host(code, uid) if code else None
         # absent is ranked: an older client knows only the ranked queue
         mode = host.mode if host is not None else msg.get("mode", "ranked")
@@ -1480,6 +1611,7 @@ class Matchmaker:
             self._check_room_for(host, members)
             if host.hold and len(members) == 1:
                 self.declined.pop(uid, None)
+                self._forget_kept(uid)
                 self._pair_up(host, uid, member_ratings[uid])
                 await self._start_due()
                 return
@@ -1488,6 +1620,7 @@ class Matchmaker:
         # joined and left (``barred``) stay barred.
         for m in members:
             self.declined.pop(m, None)
+            self._forget_kept(m)
         since = self.clock()
         hold = duo and len(members) == 1
         e = Entry(id=secrets.token_hex(6), seq=next(self._seq), members=members,
@@ -1561,6 +1694,9 @@ class Matchmaker:
         if self.entry_of.get(uid) == e.id:
             del self.entry_of[uid]
         e.hold = uid != e.leader and t.entries[0] is e
+        if e.hold and reason in ("leave", "party_leave", "away"):
+            self._forget_kept(uid)
+            self.kept[uid] = Kept(t.code, self.clock() + KEEP_TABLE_SECS)
         e.leader = stay
         if not t.waiting:
             self._seat_alone(t, e)     # its own table seats the one left at 0
@@ -1688,7 +1824,10 @@ class Matchmaker:
         if e.size == 2:
             self._split(e, uid, "leave")
             return
+        keep = self._keepable(e)
         self._remove(e, "leave")
+        if keep:
+            self._keep(e)
         self._send_state(e)
 
     def _set_bot_fill(self, uid: int, allow: bool) -> None:
@@ -2568,11 +2707,11 @@ class Matchmaker:
                 "in_game": False, "allow_joiners": t.allow_joiners,
                 "full": not (free or host.hold), "closed": host.claiming, "seats": seats}
 
-    def invite_seats(self, code: str) -> tuple[int, list[tuple[str, str | None, bool]], str] | None:
+    def invite_seats(self, code: str) -> tuple[int, list[tuple], str] | None:
         """The queued table ``code`` names, for its link preview: the
         table opener's seat, each seat as ``(kind, name, free)`` and the
-        table's id. ``kind`` is ``person`` (with the name its table shows),
-        ``held`` or ``open``; ``free`` is what one person's join by this
+        table's id. ``kind`` is ``person`` (with the name its table shows
+        and, fourth, its ``accounts.card_look``), ``held`` or ``open``; ``free`` is what one person's join by this
         code may take (``_check_room_for``): the held seat when the code's
         entry holds it, else every open seat. None when no queued table has
         the code or its join is refused (``closed``)."""
@@ -2582,10 +2721,12 @@ class Matchmaker:
         t = host.table
         held = set(t.held_seats())
         mine = t.held_for(host) if host.hold else None
-        seats: list[tuple[str, str | None, bool]] = []
+        seats: list[tuple] = []
         for i, u in enumerate(t.seats):
             if u is not None:
-                seats.append(("person", self._name(u), False))
+                c = self.conns.get(u)
+                seats.append(("person", self._name(u), False,
+                              accounts.card_look(c.user_id if c is not None else None)))
             elif i in held:
                 seats.append(("held", None, i == mine))
             else:
@@ -2638,6 +2779,7 @@ class Matchmaker:
         self._drop_inactive()
         self._drop_away(now)
         self._drop_idle(now)
+        self._expire_kept(now)
         self._lapse_offers(now)
         for p in list(self.parties.values()):
             queued = any(u in self.entry_of for u in p.members)
@@ -2684,7 +2826,10 @@ class Matchmaker:
             if len(gone) == 1 and e.size == 2:
                 self._split(e, gone[0], "away")
                 continue
+            keep = self._keepable(e)
             self._remove(e, "away")
+            if keep:
+                self._keep(e)
             for u in e.members:
                 payload = {"type": "queue_removed", "reason": "away",
                            "cooldown_until": None}

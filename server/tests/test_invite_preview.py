@@ -1,6 +1,6 @@
 """An invite link's per-table preview: ``/?code=<code>`` for a table a join
 by that code may enter carries that table's title, message and card; any
-other code gets the site's own preview; the card shows initials only, draws
+other code gets the site's own preview; the card shows initials or a companion portrait, never a name, draws
 only the state its URL was made for, and stays small and cacheable.
 
 Rooms with a game in play are driven through the real server in
@@ -271,6 +271,98 @@ def test_a_card_is_reused_within_the_minute_and_redrawn_after():
     assert ip.render_png(v, now=161.0) is not first
 
 
+def _png_rows(px, filters) -> bytes:
+    """An RGBA PNG of ``px`` (rows of RGBA tuples), each row filtered with
+    its type in ``filters``, as an encoder other than ours might write it."""
+    h, w = len(px), len(px[0])
+    flat = [bytes(c for p in row for c in p) for row in px]
+    out = bytearray()
+    prior = bytes(w * 4)
+    for y, (row, f) in enumerate(zip(flat, filters)):
+        line = bytearray([f])
+        for x in range(w * 4):
+            a = row[x - 4] if x >= 4 else 0
+            b = prior[x]
+            c = prior[x - 4] if x >= 4 else 0
+            pred = (0, a, b, (a + b) >> 1)[f] if f < 4 else ip._paeth(a, b, c)
+            line.append((row[x] - pred) & 0xFF)
+        out += line
+        prior = row
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(bytes(out))) + chunk(b"IEND", b""))
+
+
+def test_the_png_reader_undoes_every_row_filter():
+    px = [[((x * 37 + y * 11) % 256, (x * 5 + 90) % 256, (y * 53) % 256, (x * y * 7 + 30) % 256)
+           for x in range(6)] for y in range(5)]
+    got = ip.read_png(_png_rows(px, [0, 1, 2, 3, 4]))
+    assert got.shape == (5, 6, 4)
+    assert got.tolist() == [[list(p) for p in row] for row in px]
+    # the card's own RGB encoding reads back with an opaque alpha
+    rgb = ip.read_png(ip.encode_png(ip._draw(None)))
+    assert rgb.shape == (630, 1200, 4) and (rgb[..., 3] == 255).all()
+
+
+def test_every_look_ships_a_portrait():
+    from shengji.api import accounts
+    for companion, colours in accounts.LOOKS.items():
+        for colour in colours:
+            path = ip.portrait_path(f"{companion}/{colour}")
+            assert path is not None, f"{companion}/{colour}"
+            px = ip.read_png(path.read_bytes())
+            assert px.shape == (192, 192, 4)
+            assert px[0, 0, 3] == 0 and px[96, 96, 3] == 255      # a disc on a clear square
+    assert ip.portrait_path("tractor/../../x") is None and ip.portrait_path("dragon/red") is None
+
+
+def test_a_person_with_a_look_shows_their_companion_in_place_of_initials():
+    base = [(P, "Jerry Yu", TAKEN), (O, None, TAKEN), (H, None, FREE), (O, None, TAKEN)]
+    plain = ip.table_view("4SMP", 0, base)
+    tractor = ip.table_view("4SMP", 0, [(P, "Jerry Yu", TAKEN, "tractor/red")] + base[1:])
+    bun = ip.table_view("4SMP", 0, [(P, "Jerry Yu", TAKEN, "bun/taro")] + base[1:])
+    unknown = ip.table_view("4SMP", 0, [(P, "Jerry Yu", TAKEN, "dragon/red")] + base[1:])
+    assert (plain.seats[0].look, tractor.seats[0].look, bun.seats[0].look) == ("", "tractor/red", "bun/taro")
+    assert unknown.seats[0].look == "" and unknown.state() == plain.state()
+    assert tractor.seats[0].initials == "JY"         # still only initials, never the name
+    # a bot or an empty seat never carries a look
+    assert ip.table_view("4SMP", 0, [(P, "a", TAKEN), (B, None, FREE, "bun/taro"),
+                                     (O, None, FREE), (O, None, FREE)]).seats[2].look == ""
+    # the card's cache and URL are keyed by the look
+    assert len({plain.state(), tractor.state(), bun.state()}) == 3
+    ip.CARDS.clear()
+    cards = [ip._draw(v) for v in (plain, tractor, bun)]
+    d = ip._load()["spec"]["seat"]
+    left = (ip.WIDTH - 4 * d - 3 * ip.SEAT_GAP) / 2
+    cx, cy = int(left + d / 2), int(ip.SEAT_TOP + d / 2)
+    centres = [tuple(int(v) for v in c[cy + 40, cx]) for c in cards]
+    assert len(set(centres)) == 3
+    # the ring stays the opener team's blue over the portrait's edge
+    ring = ip.TEAM[True][1]
+    assert all(max(abs(int(c[cy, int(left) + 3][i]) - ring[i]) for i in range(3)) < 40 for c in cards)
+    # the other seats draw the same
+    other = int(left + d + ip.SEAT_GAP + d / 2)
+    assert (cards[0][cy, other] == cards[1][cy, other]).all()
+    assert ip.render_png(tractor) != ip.render_png(plain)
+
+
+def test_only_an_account_with_the_collection_on_has_a_card_look(monkeypatch):
+    from shengji.api import accounts
+    monkeypatch.delenv("COLLECTION_ENABLED", raising=False)
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "7")
+    accounts.STORE.seen_looks[7] = "panda/gilded"
+    accounts.STORE.seen_looks[8] = "bun/taro"
+    assert accounts.card_look(7) == "panda/gilded"
+    assert accounts.card_look(8) == ""              # Collection off for the account
+    assert accounts.card_look(None) == ""           # a guest
+    monkeypatch.setenv("COLLECTION_ENABLED", "1")
+    assert accounts.card_look(8) == "bun/taro"
+    assert accounts.card_look(9) == accounts.DEFAULT_LOOK    # on, nothing chosen: the default Tractor
+    assert accounts.card_look(None) == ""
+
+
 # Rooms with a game in play, through the real server: the preview follows the
 # Join panel's projection (``room_seats_json``) as seats change.
 from tests.test_server_ws import _four_humans, _room_with_bots, client, clock  # noqa: E402,F401
@@ -302,7 +394,7 @@ def test_a_departed_players_seat_shows_open_only_once_a_join_may_take_it(client,
         peer_stacks[0].close()                       # amy (seat 1) drops
         # her seat is reserved for her: still full, and her seat keeps her initial
         assert _title(pages.get(f"/?code={code}").text) == "Sheng Ji 升级"
-        assert srv.room_invite_seats(room)[1] == (P, "amy", False)
+        assert srv.room_invite_seats(room)[1] == (P, "amy", False, "")
         clock["v"] += srv.TAKEOVER_AFTER + 1
         # past the reservation a join may take it: an open seat, not her initial
         page = pages.get(f"/?code={code}").text

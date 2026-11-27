@@ -731,26 +731,120 @@ describe("a Duo is a table", () => {
     expect(document.querySelectorAll("[role='alertdialog']")).toHaveLength(0);
   });
 
-  it("between games the other member's Play tab is one row: Duo with Jerry, and Leave", async () => {
+  const idle = (back?: Record<string, unknown>) =>
+    say({ type: "queue_state", queued: false, count: 0, ...(back ? { back } : {}) });
+  const duoLine = () => q(".play-pair-label")?.textContent ?? null;
+  const playRow = () => buttons(q(".play-ranked-row")!).map((b) => b.textContent);
+
+  it("between games the other member has the Duo's line and Leave Duo, with no Play or Duo", async () => {
     await renderApp();
     say(duoParty(false));
-    const row = q(".play-pair-row")!;
-    expect(row.textContent).toBe("Duo with JerryLeave");
-    expect(buttons(row).map((b) => b.textContent)).toEqual(["Leave"]);
+    expect(duoLine()).toBe("Duo with Jerry");
+    expect(playRow()).toEqual(["Leave Duo"]);
     expect(button("Play", lobby())).toBeUndefined();
     expect(button("Duo", lobby())).toBeUndefined();
-    expect(q(".play-presence")).toBeNull();
   });
 
-  it("between games the leader has the same row above Play and Duo, and Play still queues the pair", async () => {
+  it("(b) a paired Duo with no table kept: the leader has Play, which queues the pair, and Leave Duo", async () => {
     await renderApp();
     say(duoParty(true));
-    const row = q(".play-pair-row")!;
-    expect(row.textContent).toBe("Duo with AliceLeave");
-    expect(buttons(q(".play-ranked-row:not(.play-pair-row)")!).map((b) => b.textContent)).toEqual(["Play", "Duo"]);
+    idle();
+    expect(duoLine()).toBe("Duo with Alice");
+    expect(playRow()).toEqual(["Play", "Leave Duo"]);
+    expect(document.querySelectorAll(".play-ranked-row")).toHaveLength(1);    // no separate pair row
     await pastGuard();
     click(button("Play", lobby()));
     expect(lastSent()).toEqual({ type: "queue_join", party_id: "d1", mode: "ranked" });
+  });
+
+  it("(a) a paired Duo whose room keeps your seat: Rejoin Duo and Leave Duo, and Rejoin Duo takes that seat back", async () => {
+    await renderApp();
+    say(duoParty(true));
+    idle({ code: "R2D2", duo: true, until: null, room: true, seat: 2 });
+    expect(duoLine()).toBe("Duo with Alice");
+    expect(playRow()).toEqual(["Rejoin Duo", "Leave Duo"]);
+    expect(q(".play-presence")).not.toBeNull();                         // the presence line stays
+    await pastGuard();
+    click(button("Rejoin Duo", lobby()));
+    expect(lastSent()).toEqual({ type: "table_join", code: "R2D2", expect: "room", rejoin: true, seat: 2 });
+    expect(playRow()).toEqual(["Play", "Leave Duo"]);                   // until the server says otherwise
+  });
+
+  it("(a) the other member, back from the Duo's room, gets Rejoin Duo too; the Duo's end takes it away", async () => {
+    await renderApp();
+    say(duoParty(false));
+    idle({ code: "R2D2", duo: true, until: null, room: true, seat: 0 });
+    expect(playRow()).toEqual(["Rejoin Duo", "Leave Duo"]);
+    say({ type: "party_closed", party_id: "d1", reason: "left", by: "Alice", you: false });
+    expect(duoLine()).toBeNull();
+    expect(playRow()).toEqual(["Play", "Duo"]);
+  });
+
+  it("(a) Leave Duo of a paired Duo ends the pairing through the Duo sheet", async () => {
+    await renderApp();
+    say(duoParty(true));
+    idle({ code: "R2D2", duo: true, until: null, room: true, seat: 2 });
+    click(button("Leave Duo", lobby()));
+    expect(leaveSheetText()).toBe("Leave the Duo? / Alice keeps the table.");
+    confirmLeave();
+    expect(lastSent()).toEqual({ type: "party_leave" });
+  });
+
+  it("(c) not paired, nothing kept: Play and Duo as before", async () => {
+    await renderApp();
+    idle();
+    expect(duoLine()).toBeNull();
+    expect(playRow()).toEqual(["Play", "Duo"]);
+  });
+
+  it("your Duo table kept after a Leave: Rejoin Duo takes it back by its code, only until its hold ends", async () => {
+    await renderApp();
+    fakeClock();
+    idle({ code: "4N5Z", duo: true, until: nowSecs() + 300 });
+    expect(duoLine()).toBeNull();                                  // nobody is paired yet
+    expect(playRow()).toEqual(["Rejoin Duo", "Leave Duo"]);
+    await pastGuard();
+    click(button("Rejoin Duo", lobby()));
+    expect(lastSent()).toMatchObject({ type: "table_join", code: "4N5Z", rejoin: true });
+    expect(lastSent().expect).toBeUndefined();
+    say(duoState(true, 0, false));                                // the server's table: the panel
+    expect(button("Rejoin Duo", lobby())).toBeUndefined();
+    // a hold that runs out: Play and Duo again with no word from the server
+    idle({ code: "4N5Z", duo: true, until: nowSecs() + 2 });
+    expect(playRow()).toEqual(["Rejoin Duo", "Leave Duo"]);
+    tick(2500);
+    expect(playRow()).toEqual(["Play", "Duo"]);
+  });
+
+  it("a Rejoin Duo the server refuses (the seat taken meanwhile) falls back to the Duo's Play, quietly", async () => {
+    await renderApp();
+    say(duoParty(true));
+    idle({ code: "R2D2", duo: true, until: null, room: true, seat: 2 });
+    await pastGuard();
+    const toastBefore = q(".toast")?.textContent ?? null;
+    click(button("Rejoin Duo", lobby()));
+    expect(lastSent()).toMatchObject({ type: "table_join", rejoin: true });
+    idle();                                                     // the server's answer: nothing kept
+    expect(playRow()).toEqual(["Play", "Leave Duo"]);
+    expect(q(".toast")?.textContent ?? null).toBe(toastBefore);    // no new word about it
+  });
+
+  it("a kept seat taken by someone else: the server's push takes Rejoin Duo away before any tap", async () => {
+    await renderApp();
+    idle({ code: "4N5Z", duo: true, until: nowSecs() + 300 });
+    expect(playRow()).toEqual(["Rejoin Duo", "Leave Duo"]);
+    idle();
+    expect(playRow()).toEqual(["Play", "Duo"]);
+    expect(q(".toast")).toBeNull();
+  });
+
+  it("Leave Duo on a kept table gives it up through the plain table sheet", async () => {
+    await renderApp();
+    idle({ code: "4N5Z", duo: true, until: nowSecs() + 300 });
+    click(button("Leave Duo", lobby()));
+    expect(leaveSheetText()).toBe("Leave the table?");
+    confirmLeave();
+    expect(lastSent()).toEqual({ type: "table_leave" });
   });
 
   for (const leader of [true, false]) {
@@ -759,18 +853,18 @@ describe("a Duo is a table", () => {
     it(`${role}'s Leave goes through the Duo sheet, sends party_leave and no queue_join, and party_closed brings solo Play back`, async () => {
       await renderApp();
       say(duoParty(leader));
-      click(button("Leave", q(".play-pair-row")!));
+      click(button("Leave Duo", lobby()));
       expect(leaveSheetText()).toBe(`Leave the Duo? / ${other} keeps the table.`);
       click(q("[role='alertdialog'] .leave-sheet-stay"));
       expect(leaveSheetText()).toBeNull();
       expect(sentTypes()).not.toContain("party_leave");
-      click(button("Leave", q(".play-pair-row")!));
+      click(button("Leave Duo", lobby()));
       confirmLeave();
       expect(lastSent()).toEqual({ type: "party_leave" });
       expect(sentTypes()).not.toContain("queue_join");
       expect(leaveSheetText()).toBeNull();
       say({ type: "party_closed", party_id: "d1", reason: "left", by: leader ? "Jerry" : "Alice", you: true });
-      expect(q(".play-pair-row")).toBeNull();
+      expect(q(".play-pair-label")).toBeNull();
       expect(buttons(q(".play-ranked-row")!).map((b) => b.textContent)).toEqual(["Play", "Duo"]);
       await pastGuard();
       click(button("Play", lobby()));
@@ -789,12 +883,12 @@ describe("a Duo is a table", () => {
     expect(leaveSheetText()).toBeNull();
   });
 
-  it("the pair row's Leave waits for the socket", async () => {
+  it("Leave Duo waits for the socket", async () => {
     await renderApp();
     say(duoParty(true));
-    expect(button("Leave", q(".play-pair-row")!)?.disabled).toBe(false);
+    expect(button("Leave Duo", lobby())?.disabled).toBe(false);
     act(() => ws().close());
-    expect(button("Leave", q(".play-pair-row")!)?.disabled).toBe(true);
+    expect(button("Leave Duo", lobby())?.disabled).toBe(true);
   });
 
   it("alone with the seat held, Leave is the plain table's", async () => {

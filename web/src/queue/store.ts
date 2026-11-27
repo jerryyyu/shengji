@@ -13,7 +13,8 @@ import { decideIntent, intentToJoin } from "../intent";
 import { haptic } from "../native";
 import type { ChatMsg, ServerMsg } from "../protocol";
 import type {
-  BotLevel, OfferSeatMsg, OpenTableOfferMsg, PartyMsg, PresenceMsg, QueueClientMsg, QueueMode, QueueStateMsg, TableFrameMsg,
+  BotLevel, OfferSeatMsg, OpenTableOfferMsg, PartyMsg, PresenceMsg, QueueBackMsg, QueueClientMsg, QueueMode, QueueStateMsg,
+  TableFrameMsg,
   TableMovedMsg,
 } from "./messages";
 import { ERROR_ROUTES, QUEUE_ANSWERS } from "../errorCodes";
@@ -82,6 +83,11 @@ function keepPlayMode(mode: QueueMode): void {
  *  server's words, and whether this device knows the room to go back to. */
 export interface InGame { message: string; canReturn: boolean }
 
+/** The Duo seat you left that the server still keeps for you: a kept Duo
+ *  table or held partner seat by its code until `until` (local ms), or your
+ *  seat in the Duo's casual room (`room`), which has no deadline of its own. */
+export interface QueueBack { code: string; until: number | null; room: boolean; seat: number | null }
+
 export interface QueueView {
   count: number;
   queued: boolean;
@@ -104,6 +110,8 @@ export interface QueueView {
   botsPaused: boolean;
   /** Local ms a queue cooldown ends (Play counts it down); null when none runs. */
   cooldownUntil: number | null;
+  /** Not queued: the Duo seat Rejoin Duo returns you to. */
+  back: QueueBack | null;
   /** The cooldown came as the answer to a Play, whose message the lobby
    *  already shows; Play need not say why again. */
   cooldownTold: boolean;
@@ -145,7 +153,7 @@ const NOT_SEATED: Pick<QueueView, "queued" | "frame" | "pending" | "since" | "wa
 };
 
 const EMPTY: QueueView = {
-  ...NOT_SEATED, count: 0, leader: true, partyId: null, cooldownUntil: null, cooldownTold: false,
+  ...NOT_SEATED, count: 0, leader: true, partyId: null, cooldownUntil: null, back: null, cooldownTold: false,
   party: null, note: null, presence: null, inGame: null, playMode: "ranked",
 };
 
@@ -421,8 +429,9 @@ export class QueueStore {
         break;
       case "room":
       case "state":
-        // in a room: whatever refused Play no longer stands
-        if (this.view.inGame) this.set({ inGame: null });
+        // in a room: whatever refused Play no longer stands, and a seat you
+        // left is yours again or behind you
+        if (this.view.inGame || this.view.back) this.set({ inGame: null, back: null });
         break;
       case "queue_state": {
         this.clearResync();
@@ -432,7 +441,8 @@ export class QueueStore {
           const leaving = this.view.pending === "leave";
           // the one difference from any other end: a cooldown may run
           this.set({ ...NOT_SEATED, count: msg.count, cooldownTold: false,
-                     cooldownUntil: msg.cooldown_until != null ? this.local(msg.cooldown_until) : null });
+                     cooldownUntil: msg.cooldown_until != null ? this.local(msg.cooldown_until) : null,
+                     back: this.backOf(msg.back) });
           if (msg.replaced && wasQueued) {
             const win = msg.by === "window";
             this.notify(t(msg.stopped ? (win ? "queue.note.closedWindow" : "queue.note.closedDevice")
@@ -449,7 +459,7 @@ export class QueueStore {
                      since: msg.since !== undefined ? this.local(msg.since) : now,
                      waitPlayers: false, front: !!msg.front, leader: msg.leader !== false,
                      partyId: msg.party_id ?? null, pending: null, frame: null, offer: null,
-                     openTables: 0, botsPaused: false, cooldownUntil: null, inGame: null,
+                     openTables: 0, botsPaused: false, cooldownUntil: null, back: null, inGame: null,
                      panelSeq: msg.panel_seq ?? null, stillHereUntil: null, duo: false, duoReady: null });
           break;
         }
@@ -507,7 +517,8 @@ export class QueueStore {
       case "party_closed":
         if (this.view.party && this.view.party.party_id !== msg.party_id) break;
         this.clearPartyResync();
-        this.set({ party: null });
+        // a room seat is offered back only while the Duo stands
+        this.set({ party: null, ...(this.view.back?.room ? { back: null } : {}) });
         if (msg.by && !msg.you) this.notify(t("queue.note.duoLeft", { name: msg.by }));
         break;
       case "error":
@@ -601,7 +612,7 @@ export class QueueStore {
       waitPlayers: msg.wait_players === true,
       front: !!msg.front, leader: msg.leader !== false, partyId: msg.party_id ?? null,
       pending, offer, openTables: msg.open_tables ?? 0, botsPaused: msg.bots_paused === true,
-      elsewhere: false, cooldownUntil: null, inGame: null, panelSeq: msg.panel_seq ?? null,
+      elsewhere: false, cooldownUntil: null, back: null, inGame: null, panelSeq: msg.panel_seq ?? null,
       stillHereUntil: shared && msg.still_here_until != null ? this.local(msg.still_here_until) : null,
     });
   }
@@ -653,13 +664,13 @@ export class QueueStore {
     return () => this.view.playMode === mode && !this.view.queued && this.view.pending === null;
   }
 
-  private sendJoin(code: string | undefined, duo: boolean, name?: string): void {
+  private sendJoin(code: string | undefined, duo: boolean, name?: string, rejoin = false): void {
     const p = this.view.party;
     const pair = p && p.members.length === 2 ? p : null;
     if (pair && !pair.you_lead && code === undefined) return;
-    if (this.cooling()) return;
+    if (this.cooling() && !rejoin) return;
     const mode = this.view.playMode;
-    const sent = this.send(code !== undefined ? { type: "table_join", code, ...(name ? { name } : {}) }
+    const sent = this.send(code !== undefined ? { type: "table_join", code, ...(name ? { name } : {}), ...(rejoin ? { rejoin } : {}) }
       : pair ? { type: "queue_join", party_id: pair.party_id, mode }
       : duo ? { type: "queue_join", mode, duo: true } : { type: "queue_join", mode });
     if (!sent) {
@@ -805,6 +816,46 @@ export class QueueStore {
     const join = intentToJoin(intent);
     if (intent.kind === "resume" && join) conn.send(join as never);
     this.set({ inGame: null });
+  }
+
+  private backOf(m: QueueBackMsg | undefined): QueueBack | null {
+    if (!m || !m.code) return null;
+    return { code: m.code, until: m.until != null ? this.local(m.until) : null, room: m.room === true,
+             seat: typeof m.seat === "number" ? m.seat : null };
+  }
+
+  /** The Duo seat you left, while the server keeps it (`back`, and its
+   *  deadline not passed). */
+  backTo(now = Date.now()): QueueBack | null {
+    const b = this.view.back;
+    return b && (b.until === null || b.until > now) ? b : null;
+  }
+
+  /** Rejoin Duo (`rejoin`, never a plain join): the kept Duo table by its code, which the queue
+   *  gives back as it was, or your seat in the Duo's room by its code and
+   *  seat, which the server's left-seat rule gives back. A refusal is the
+   *  server's error; Play is Play again either way. */
+  rejoinDuo(): void {
+    const b = this.backTo();
+    if (!b) return;
+    this.set({ back: null });
+    if (!b.room) {
+      beforeOnlineSetup(() => this.sendJoin(b.code, false, undefined, true), this.sameIntent(), () => this.notTaken());
+      return;
+    }
+    if (!this.send({ type: "table_join", code: b.code, expect: "room", rejoin: true,
+                     ...(b.seat !== null ? { seat: b.seat } : {}) })) {
+      this.set({ back: b });
+      this.notify(t("queue.note.offline"), t("queue.note.playLater"));
+    }
+  }
+
+  /** Leave Duo on a kept Duo table you are not at: the queue's leave,
+   *  which gives the kept table up; false when it could not be sent. */
+  giveUpBack(): boolean {
+    if (!this.backTo()) return false;
+    this.leave();
+    return this.view.pending === "leave";
   }
 
   /** Put Play back after an in-game refusal. */

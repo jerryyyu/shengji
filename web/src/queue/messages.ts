@@ -36,7 +36,9 @@ export type QueueClientMsg = { name?: string } & (
    *  `expect` is "room" (a resume, a room link, a peek that showed a
    *  room), else with `table_not_found`. `seat` and `token` are a room's:
    *  the seat picked from its peek, and this device's resume token. */
-  | { type: "table_join"; code: string; seat?: number; token?: string; expect?: "room" }
+  /** `rejoin`: Rejoin Duo, which takes back only the Duo seat kept for you
+   *  and otherwise joins nothing (the answer is your idle queue_state). */
+  | { type: "table_join"; code: string; seat?: number; token?: string; expect?: "room"; rejoin?: boolean }
   /** Leave your search, waiting table or room seat. */
   | { type: "table_leave" }
   /** A joiner's Ready. `panel_seq` is the queue_state's: a tap sent against
@@ -84,6 +86,17 @@ export type QueueClientMsg = { name?: string } & (
 
 export type QueueMode = "ranked" | "casual";
 
+/** A Duo seat you left and may take back: a kept Duo table or held partner
+ *  seat by its `code` until `until`, or (`room`) your `seat` in the Duo's
+ *  casual room, with no deadline of its own. */
+export interface QueueBackMsg {
+  code: string;
+  duo: boolean;
+  until: number | null;
+  room?: boolean;
+  seat?: number;
+}
+
 export interface QueueStateMsg {
   type: "queue_state";
   queued: boolean;
@@ -105,6 +118,9 @@ export interface QueueStateMsg {
   stopped?: boolean;
   /** Not queued: a queue cooldown runs until then (Play counts it down). */
   cooldown_until?: number;
+  /** Not queued: the Duo seat you left that the server still keeps for you
+   *  (the Play tab shows Rejoin Duo). */
+  back?: QueueBackMsg;
   /** Another socket of yours (another device or window) holds the search:
    *  no table, offer or timer is sent here; any queue action takes it over. */
   elsewhere?: boolean;

@@ -417,8 +417,22 @@ other socket with `account_in_game`.
 
 ### Server → Client
 
-- `queue_state {queued, count, mode?, since?, front?, party_id?, leader?, bots_at?, wait_players?, bots_paused?, table?, offer?, open_tables?, replaced?, panel_seq?, still_here_until?, code?, allow_joiners?, start_level?, bot_level?, opener?, duo?, held_seat?, duo_ready?, you_ready?}`:
+- `queue_state {queued, count, mode?, since?, front?, party_id?, leader?, bots_at?, wait_players?, bots_paused?, table?, offer?, open_tables?, replaced?, panel_seq?, still_here_until?, code?, allow_joiners?, start_level?, bot_level?, opener?, duo?, held_seat?, duo_ready?, you_ready?, back?}`:
   your entry, after every change to it or to its table, and on reconnect.
+  Not queued, `back` is a Duo seat you left that the server keeps for you,
+  `{code, duo: true, until, room?, seat?}`: your Duo table, left while still
+  alone at it (Leave or a drop), kept with its code, settings and chat for
+  5 minutes (`until`), or a partner's seat its opener's table holds again;
+  Rejoin Duo, `table_join {code, rejoin: true}` in that window, takes it
+  back as it was. With `room: true` (no `until`) it is your `seat` in the
+  room your standing Duo last started from the queue, left by choice;
+  `table_join {code, seat, expect: "room", rejoin: true}` takes it back. A
+  `rejoin` join takes back only that kept seat: anything else (the seat
+  taken meanwhile, another room or code, the window over) joins nothing and
+  is answered with your `queue_state`, without `back` once nothing stands,
+  and no error. When a kept partner seat is taken by someone else, its
+  leaver is sent an idle `queue_state` without `back` at once. A
+  `table_leave` while not queued gives a kept table or seat up.
   `mode` is the search's mode (`"ranked"` or `"casual"`). The table
   fields (`table`, `code`, `allow_joiners`, `start_level`, `opener`,
   `held_seat`, `you_ready`) are sent until the table frame's step 3

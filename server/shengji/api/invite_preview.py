@@ -2,8 +2,8 @@
 link ``/?code=<code>`` while that table is live.
 
 ``table_view`` turns the seats anyone holding the code can already peek into
-the preview's view: per seat only open, held, a bot, or a person's initials,
-and never a full name, an account or a rating. ``page_tags`` rewrites the
+the preview's view: per seat only open, held, a bot, or a person's initials
+or companion, and never a full name, an account or a rating. ``page_tags`` rewrites the
 built page's preview tags for that view, and ``render_png`` draws its
 1200 x 630 card: the felt, the 升级 wordmark, the code, four seats (the
 opener's team first, in blue) and one line for the seat count. An unknown or
@@ -14,6 +14,10 @@ for an earlier state of the table get the site's own tags and
 The card is composed from baked coverage masks (``invite_atlas.npz``, made
 by web/scripts/og-table/bake.mjs), tinted and blended with numpy, and
 written as a PNG with zlib, so serving it needs no font or image library.
+A person whose Collection is on (``accounts.card_look``) shows their
+companion's round portrait in place of their initials: a pre-rendered PNG
+per look under ``portraits/<companion>/<colour>.png``, read with zlib and
+numpy once and kept, so no drawing is rasterized for a request.
 """
 
 from __future__ import annotations
@@ -32,7 +36,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import matchmaking
+from . import accounts, matchmaking
 
 SITE_ORIGIN = "https://playshengji.com"
 WIDTH, HEIGHT = 1200, 630
@@ -50,6 +54,7 @@ PERSON, BOT, OPEN, HELD = "person", "bot", "open", "held"
 class Seat:
     kind: str
     initials: str = ""    # PERSON only: one or two of A-Z 0-9, or "" for the person mark
+    look: str = ""        # PERSON only: the companion drawn in place of the initials, or ""
     us: bool = True       # on the opener's team
     free: bool = False    # a join by this code may take it
 
@@ -75,7 +80,7 @@ class TableView:
     def key(self) -> str:
         """The state the card draws and the table it is of, for the card's
         cache and its URL."""
-        seats = "".join(f"{s.kind[0]}{s.initials}{int(s.us)}{int(s.free)}" for s in self.seats)
+        seats = "".join(f"{s.kind[0]}{s.initials}{int(s.us)}{int(s.free)}{s.look}|" for s in self.seats)
         return f"{self.table}:{seats}{self.ask}"
 
     def state(self) -> str:
@@ -99,18 +104,21 @@ def initials(name: str | None) -> str:
     return picked.upper()
 
 
-def table_view(code: str, opener: int, seats: list[tuple[str, str | None, bool]],
+def table_view(code: str, opener: int, seats: list[tuple],
                table: str = "") -> TableView | None:
-    """The view of four seats ``(kind, name, free)`` by seat number, seen
-    from the opener's seat: the opener and their partner, then the other
-    team. ``free`` is what a join by ``code`` may take (the Join panel's own
-    projection). None when it may take nothing: a full or closed table has
-    no preview of its own. Names become initials here and go no further."""
+    """The view of four seats ``(kind, name, free)`` or ``(kind, name,
+    free, look)`` by seat number, seen from the opener's seat: the opener
+    and their partner, then the other team. ``free`` is what a join by
+    ``code`` may take (the Join panel's own projection); ``look`` is a
+    person's ``accounts.card_look``, kept only when a portrait of it ships.
+    None when it may take nothing: a full or closed table has no preview of
+    its own. Names become initials here and go no further."""
     order = [opener % 4, (opener + 2) % 4, (opener + 1) % 4, (opener + 3) % 4]
     view = []
     for n, i in enumerate(order):
-        kind, name, free = seats[i] if i < len(seats) else (OPEN, None, False)
-        view.append(Seat(kind, initials(name) if kind == PERSON else "", n < 2, bool(free)))
+        kind, name, free, *rest = seats[i] if i < len(seats) else (OPEN, None, False)
+        look = rest[0] if rest and kind == PERSON and portrait_path(rest[0]) is not None else ""
+        view.append(Seat(kind, initials(name) if kind == PERSON else "", look, n < 2, bool(free)))
     if not any(s.free for s in view):
         return None
     return TableView(code, tuple(view), table)
@@ -212,6 +220,115 @@ SUB, WHITE, OPEN_LINE = (0xC3, 0xCA, 0xD6), (0xFF, 0xFF, 0xFF), (0xE9, 0xEC, 0xF
 TEAM = {True: ((0x1F, 0x3E, 0x74), (0x5B, 0x9D, 0xFF)),     # fill, ring: blue, the opener's team
         False: ((0x5A, 0x34, 0x17), (0xFF, 0x9D, 0x4A))}    # orange, the other team
 MARGIN, SEAT_TOP, SEAT_GAP, LINE_BASE = 60, 214, 60, 560
+_PORTRAIT_DIR = Path(__file__).with_name("portraits")
+_portraits: dict[tuple[str, int], tuple[np.ndarray, np.ndarray]] = {}
+
+
+def portrait_path(look: object) -> Path | None:
+    """The shipped portrait of ``look`` ("<companion>/<colour>"), or None
+    when the look is unknown or has no portrait."""
+    parsed = accounts.parse_look(look)
+    if parsed is None:
+        return None
+    path = _PORTRAIT_DIR / parsed[0] / f"{parsed[1]}.png"
+    return path if path.is_file() else None
+
+
+def _paeth(a: int, b: int, c: int) -> int:
+    p = a + b - c
+    pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+    return a if pa <= pb and pa <= pc else b if pb <= pc else c
+
+
+def read_png(data: bytes) -> np.ndarray:
+    """An 8-bit, non-interlaced RGB or RGBA PNG as rows by columns by 4
+    (RGB gets an opaque alpha); ValueError for anything else."""
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError("not a PNG")
+    pos, idat, head = 8, [], None
+    while pos + 8 <= len(data):
+        length, kind = struct.unpack(">I4s", data[pos:pos + 8])
+        body = data[pos + 8:pos + 8 + length]
+        if kind == b"IHDR":
+            head = struct.unpack(">IIBBBBB", body)
+        elif kind == b"IDAT":
+            idat.append(body)
+        elif kind == b"IEND":
+            break
+        pos += 12 + length
+    if head is None:
+        raise ValueError("no IHDR")
+    w, h, depth, colour, _, _, interlace = head
+    if depth != 8 or colour not in (2, 6) or interlace:
+        raise ValueError("unsupported PNG")
+    bpp = 4 if colour == 6 else 3
+    raw = zlib.decompress(b"".join(idat))
+    stride = w * bpp
+    if len(raw) != h * (stride + 1):
+        raise ValueError("bad PNG data")
+    out = np.zeros((h, stride), dtype=np.uint8)
+    prior = np.zeros(stride, dtype=np.uint8)
+    for y in range(h):
+        kind = raw[y * (stride + 1)]
+        row = np.frombuffer(raw, dtype=np.uint8, count=stride, offset=y * (stride + 1) + 1)
+        if kind == 0:
+            cur = row.copy()
+        elif kind == 1:
+            cur = (np.cumsum(row.reshape(w, bpp).astype(np.int64), axis=0) % 256).astype(np.uint8).reshape(stride)
+        elif kind == 2:
+            cur = row + prior
+        elif kind in (3, 4):
+            line, up = bytearray(row.tobytes()), prior.tobytes()
+            for x in range(stride):
+                a = line[x - bpp] if x >= bpp else 0
+                b = up[x]
+                if kind == 3:
+                    line[x] = (line[x] + ((a + b) >> 1)) & 0xFF
+                else:
+                    c = up[x - bpp] if x >= bpp else 0
+                    line[x] = (line[x] + _paeth(a, b, c)) & 0xFF
+            cur = np.frombuffer(bytes(line), dtype=np.uint8)
+        else:
+            raise ValueError("bad PNG filter")
+        out[y], prior = cur, cur
+    px = out.reshape(h, w, bpp)
+    if bpp == 3:
+        px = np.concatenate([px, np.full((h, w, 1), 255, dtype=np.uint8)], axis=2)
+    return px
+
+
+def _resample(n_in: int, n_out: int) -> np.ndarray:
+    """The ``n_out`` by ``n_in`` matrix that averages each output pixel's
+    share of the input (area resampling)."""
+    scale = n_in / n_out
+    m = np.zeros((n_out, n_in), dtype=np.float32)
+    for i in range(n_out):
+        lo, hi = i * scale, (i + 1) * scale
+        for j in range(int(lo), min(int(np.ceil(hi)), n_in)):
+            m[i, j] = (min(hi, j + 1) - max(lo, j)) / scale
+    return m
+
+
+def _portrait(look: str, size: int) -> tuple[np.ndarray, np.ndarray] | None:
+    """``look``'s portrait at ``size`` pixels square: its premultiplied
+    colour and its coverage, read once and kept; None without one."""
+    key = (look, size)
+    with _atlas_lock:
+        hit = _portraits.get(key)
+    if hit is not None:
+        return hit
+    path = portrait_path(look)
+    if path is None:
+        return None
+    px = read_png(path.read_bytes()).astype(np.float32) / 255.0
+    alpha = px[..., 3:4]
+    rgba = np.concatenate([px[..., :3] * alpha, alpha], axis=2)
+    ry, rx = _resample(px.shape[0], size), _resample(px.shape[1], size)
+    small = np.einsum("ij,jkc->ikc", ry, np.einsum("lk,jkc->jlc", rx, rgba))
+    out = (np.ascontiguousarray(small[..., :3] * 255.0), np.ascontiguousarray(small[..., 3:4]))
+    with _atlas_lock:
+        _portraits[key] = out
+    return out
 
 
 def _load() -> dict:
@@ -299,6 +416,17 @@ def _seat(img, seat: Seat, left: float, top: float) -> None:
         return
     fill, ring = TEAM[seat.us]
     _blend(img, "disc", left, top, fill)
+    art = _portrait(seat.look, d - 2 * spec["seatBorder"] + 2) if seat.look else None
+    if art is not None:
+        # the companion inside the ring, which is drawn over its edge
+        colour, cover = art
+        size = colour.shape[0]
+        x, y = int(round(cx - size / 2)), int(round(cy - size / 2))
+        region = img[y:y + size, x:x + size]
+        region *= 1.0 - cover
+        region += colour
+        _blend(img, "ring", left, top, ring)
+        return
     _blend(img, "ring", left, top, ring)
     if seat.kind == BOT or not seat.initials:
         name = "bot" if seat.kind == BOT else "person"

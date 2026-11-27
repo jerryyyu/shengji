@@ -3017,6 +3017,19 @@ async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | Non
                         "message": SLOW_DOWN_MESSAGE})
         return None
     target = rooms.get(code)
+    rejoin = msg.get("rejoin") is True
+
+    def rejoin_refused() -> bool:
+        """Rejoin Duo takes back only the seat its Duo's own room keeps for
+        this person; anything else joins nothing."""
+        qid = queue_id()
+        return (qid is None or target is None or MATCHMAKER.duo_room(qid) != code
+                or not _rejoinable(target) or _left_seat_of(target, device, account_id()) is None)
+
+    if rejoin and rejoin_refused():
+        # quietly: the socket hears its idle state, with the offer gone
+        await send(ws, MATCHMAKER.idle_state(queue_id()))
+        return None
     if target is None or target.game is None:
         # a room is joined only once its game is on
         if target is None:
@@ -3060,6 +3073,10 @@ async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | Non
                    if refused == "cooldown" else {})})
         return None
     async with target.lock:
+        if rejoin and rejoin_refused():
+            # the seat went while this join waited for the lock
+            await send(ws, MATCHMAKER.idle_state(queue_id()))
+            return None
         name = player_name(msg.get("name"))
         # At a ranked table a person only comes back to
         # the seat they already hold: an account to its
@@ -4305,6 +4322,24 @@ def _joined_round_ended(room: Room) -> None:
             _joined_leave_penalty(room, sd.user_id, sd.queue_id)
 
 
+def room_back(code: str, user_id: int | None, device: str | None) -> int | None:
+    """The seat this account or device left by choice in room ``code`` (a
+    Duo's room from the queue) and may take back by Rejoin Duo, or None:
+    the room gone, over or ranked (a ranked room offers no leaver its seat),
+    or no such seat there."""
+    room = rooms.get(code)
+    if room is None or not _rejoinable(room):
+        return None
+    seat = _left_seat_of(room, device, user_id)
+    return room.seats.index(seat) if seat is not None else None
+
+
+def _rejoinable(room: Room) -> bool:
+    game = room.game
+    return (not room.matched and room.queued and not room.aborted and not room.closing
+            and game is not None and not game.game_over)
+
+
 MATCHMAKER = matchmaking.Matchmaker(start_room=start_matched_room,
                                     room_capacity=_room_capacity,
                                     room_live=lambda code: code in rooms,
@@ -4313,7 +4348,8 @@ MATCHMAKER = matchmaking.Matchmaker(start_room=start_matched_room,
                                     join_pair=join_pair_open_table,
                                     presence=presence_counts,
                                     watch=spectate.presence,
-                                    watch_key=spectate.presence_key)
+                                    watch_key=spectate.presence_key,
+                                    room_back=room_back)
 
 
 def _attach(room: Room, seat: Seat, ws: WebSocket) -> int:
@@ -4400,12 +4436,12 @@ async def healthz() -> dict:
             "web_build": WEB_BUILD}
 
 
-def room_invite_seats(room: Room) -> list[tuple[str, str | None, bool]] | None:
+def room_invite_seats(room: Room) -> list[tuple] | None:
     """A room's seats as its link preview shows them, from the Join panel's
     own projection (``room_seats_json``): a seat is free when that frame
     says a joiner may claim it, and none is when it says the table is full.
     A departed player's claimable seat is an empty seat, never their name;
-    a reserved one keeps its holder. None for a room a code join cannot
+    a reserved one keeps its holder, with its ``accounts.card_look``. None for a room a code join cannot
     enter: no game yet, over, aborted, closing or no longer the code's."""
     game = room.game
     if (rooms.get(room.code) is not room or room.aborted or room.closing
@@ -4424,7 +4460,9 @@ def room_invite_seats(room: Room) -> list[tuple[str, str | None, bool]] | None:
         elif free:
             seats.append((invite_preview.OPEN, None, True))
         else:
-            seats.append((invite_preview.PERSON, s["name"], False))
+            sd = room.seats[i]
+            seats.append((invite_preview.PERSON, s["name"], False,
+                          accounts.card_look(sd.user_id if sd is not None else None)))
     return seats
 
 

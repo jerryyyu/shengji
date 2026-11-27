@@ -5732,9 +5732,10 @@ body.keyboard-open .tabbar { display: none; }
 .play-tab .btn.play-duo,
 .play-tab .join-row .btn { flex: none; width: 96px; padding: 0; }
 .play-ranked-row, .join-row, .tp-acts { gap: var(--ctl-gap); }
-/* A pair's other member between games: who the Duo is with, and Leave. */
-.play-pair-row { align-items: center; min-height: var(--ctl-h); }
-.play-pair-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+/* A Duo between games, or its kept table: the one line naming the partner,
+   above Rejoin Duo (or the pair's Play) and Leave Duo. */
+.play-tab .btn.play-duo.play-pair-leave { width: auto; padding: 0 16px; }
+.play-pair-label { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: var(--fs-17); font-weight: 600; color: #e9ecf2; }
 /* A guest's line under Play: unrated, and the way to sign in. */
 .play-guest-line {

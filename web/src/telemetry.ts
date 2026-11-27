@@ -26,7 +26,7 @@ export type TapId =
   | "offer_join" | "offer_wait" | "offer_chip" | "next_round" | "round_end_leave"
   | "menu_leave" | "chip_leave" | "leave_confirm" | "leave_keep" | "howto_open"
   | "signin_open" | "coach_on" | "coach_off" | "invite_share" | "copy_code" | "app_store_badge"
-  | "hint_preselect" | "watch_open" | "watch_leave";
+  | "hint_preselect" | "watch_open" | "watch_leave" | "rejoin_duo";
 
 /** Where the identity sheet (the name, and Sign in) was opened. */
 export type SigninFrom =

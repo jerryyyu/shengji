@@ -2600,8 +2600,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
          cards plus a tag line under them, a gap apart; each side seat's label
          stands at its edge of the felt, level with the cross's centre;
        - in play your slot is also your row: Play (with "Your turn") sits where
-         your cards will land, just above the hand; while declaring and burying
-         the row sits under the cross;
+         your cards will land, just above the hand, and the bury and the round
+         end keep that layout (Bury stands in the same place); while dealing
+         and declaring the row sits under the cross;
        - the hand, the only thing in the bottom band, running 16px under the
          home indicator;
        - messages pass in the bottom-left corner.
@@ -2637,8 +2638,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     /* A slot's footprint is its cards plus a tag line under them (LEAD, WINS,
        "… declares"), so a tag never covers a card's index. */
     --tag-s: 20px;
-    /* While declaring and burying a row of controls sits under the cross; in
-       play your slot is the row (see .phase-play). */
+    /* While dealing and declaring a row of controls sits under the cross; in
+       play, the bury and the round end your slot is the row (see .phase-play). */
     --row-reserve: var(--row-h);
     /* The felt between the header and the hand (less the row, if any) holds
        the cross: two footprints and three equal gaps. The cards
@@ -2687,6 +2688,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   /* In play your slot is your row, so nothing is reserved under the cross.
+     The bury and the round end share this layout, so the cross, the side
+     seats and the row keep their places from the kitty to the scores.
      The cross spreads to fill the felt: the top slot starts a small gap under
      the header, your slot's tag line ends a small gap above the hand, and all
      the height left over goes between the rows. The side slots stay centred
@@ -2694,7 +2697,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
      slot's tag line stays a gap above your row; it never ends lower than the
      evenly spaced cross would. The card size still comes from --cross-avail,
      so it is the same in every phase. */
-  .table-screen.phase-play {
+  .table-screen:is(.phase-play, .phase-bury, .phase-round_end) {
     --row-reserve: 0px;
     --trick-top: calc(var(--header-bottom) + var(--space-s));
     --cross-bottom: min(calc(var(--zone-bottom) + var(--gap-v)), max(calc(var(--hand-h) + var(--space-s)),
@@ -2702,14 +2705,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     --gap-rows: calc(var(--view-h) - var(--trick-top) - var(--cross-bottom) - 2 * var(--foot));
     --dy-top: calc(var(--trick-ch) / 2 + var(--tag-s) + var(--gap-rows) / 2);
     --dy-bottom: calc(var(--trick-ch) / 2 + var(--gap-rows) / 2);
-  }
-
-  /* The banker's 33 cards fit one row by drawing smaller, as large as the
-     width allows (about 51px wide on a 14 Pro, 56 at most); the row and the
-     cross move down with the shorter hand. Back to full size once the bury
-     leaves 25. */
-  .table-screen:has(.hand.small-cards) {
-    --hand-cw: clamp(37px, calc(var(--safe-w) * 0.07), 56px);
   }
 
   /* --- HUD: no bar; one strip top-left, the menu top-right --- */
@@ -3542,9 +3537,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     bottom: calc(-1 * var(--lift));
   }
 
-  /* Over 25 cards (the banker with the kitty) the cards are smaller, so all
-     of them fit one row; the hand's glide (Hand.tsx) eases them in and out of
-     that size by a transform, so no frame lays the hand out again */
+  /* Over 25 cards (the banker with the kitty) the cards keep their size and
+     overlap more, so all of them fit one row and nothing above the hand
+     moves when the bury leaves 25 */
   .hand.small-cards {
     --pitch: min(calc(var(--hand-cw) * 0.8),
       calc((var(--safe-w) - 16px - var(--hand-cw)) / max(1, calc(var(--n, 25) - 1))));
@@ -3586,6 +3581,18 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     text-align: left;
     line-height: 15px;
     padding: 4px 12px;
+    border-radius: 14px;
+  }
+
+  /* Burying, the cross is play's, so the side seats' labels stand level
+     with the line over your row: it wraps between them rather than reach one. */
+  .table-screen.phase-bury .hand-line {
+    width: max-content;
+    max-width: calc(var(--view-w) - 2 * (max(var(--safe-l), var(--safe-r)) + var(--pill-max) + 3 * var(--space-s)));
+    white-space: normal;
+    text-wrap: pretty;
+    text-align: center;
+    line-height: 15px;
     border-radius: 14px;
   }
 

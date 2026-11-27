@@ -13,9 +13,9 @@ const ARRIVAL_STAGGER = 40;
 /** The class a slot wears while its card flies in: index.css stacks it
  *  above your row (z-index 3). */
 const ARRIVING = "arriving";
-/** A longer hand (the banker's 33 with the kitty) is drawn with smaller
- *  cards on a phone, so it still fits one row; only the phone layout styles
- *  `.hand.small-cards`. */
+/** A longer hand (the banker's 33 with the kitty) overlaps its cards more
+ *  (a phone keeps their size; a wider layout narrows them), so it still fits
+ *  one row; `.hand.small-cards` marks it. */
 export const FULL_SIZE_MAX = 25;
 
 /** Last drawn position of each hand card, by card id. A card that has just

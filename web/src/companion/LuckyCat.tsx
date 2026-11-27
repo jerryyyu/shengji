@@ -8,7 +8,7 @@
 // `data-suit` (s, h, c, d or j), set by the owner on each play, shows one.
 import { CAT_COLOURS } from "./storePalette";
 import type { CatColour, CatColourId } from "./storePalette";
-import { ball, confetti, dataUrl, eye, glow, groundShadow, part, portraitSvg, ramp, sharedDefs, spark, teamPad, teamPaint } from "./rig";
+import { ball, confetti, dataUrl, eye, glow, groundShadow, part, portraitSvg, ramp, sharedDefs, spark, teamPaint } from "./rig";
 import type { CharOpts, CharPose, EyeMode } from "./rig";
 
 /** A colour by id, or a palette given whole (the CSS-variable master passes one). */
@@ -97,7 +97,7 @@ export function catMarkup(colour: CatColourId | CatColour, id: string, { pose = 
     + `</g>`) : "";
   const body = part("cmp-body", part("cmp-arm-r", arm, at.arm) + part("cmp-torso", torso)
     + part("cmp-head", head + `<ellipse cx="186" cy="232" rx="78" ry="16" fill="${u("under")}"/>`, at.head) + collar + part("cmp-prop", card), at.body);
-  return defs + (team ? teamPad(team, 186, 124) : "") + (shadow ? groundShadow(id, 186, 124) : "") + body + trick + (pose === "cheer" ? confetti(186, 150) : "");
+  return defs + (shadow ? groundShadow(id, 186, 124) : "") + body + trick + (pose === "cheer" ? confetti(186, 150) : "");
 }
 
 const portraits = new Map<string, string>();

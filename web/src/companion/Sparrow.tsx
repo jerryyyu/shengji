@@ -5,7 +5,7 @@
 // two quick pecks at the felt, tail in the air.
 import { SPARROW_COLOURS } from "./storePalette";
 import type { SparrowColour, SparrowColourId } from "./storePalette";
-import { ball, confetti, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, ramp, sharedDefs, teamPad } from "./rig";
+import { ball, confetti, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, ramp, sharedDefs } from "./rig";
 import type { CharOpts, CharPose, EyeMode } from "./rig";
 
 /** A colour by id, or a palette given whole (the CSS-variable master passes one). */
@@ -52,7 +52,7 @@ export function sparrowMarkup(colour: SparrowColourId | SparrowColour, id: strin
     + eye(258, 150, eyes, id, { k: 0.9, detail }) + eye(301, 148, eyes, id, { k: 0.82, detail });
 
   const body = part("cmp-body", part("cmp-torso", torso, at.torso) + (team ? kerchief(team, 166, 300, 214, 9, 200) : "") + part("cmp-head", head, at.head), at.body);
-  return defs + (team ? teamPad(team, 196, 108) : "") + (shadow ? groundShadow(id, 196, 112) : "") + body + (pose === "cheer" ? confetti(222, 160) : "");
+  return defs + (shadow ? groundShadow(id, 196, 112) : "") + body + (pose === "cheer" ? confetti(222, 160) : "");
 }
 
 const portraits = new Map<string, string>();

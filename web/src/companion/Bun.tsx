@@ -5,7 +5,7 @@
 // of steam rise.
 import { BUN_COLOURS } from "./storePalette";
 import type { BunColour, BunColourId } from "./storePalette";
-import { ball, confetti, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, ramp, sharedDefs, teamPad } from "./rig";
+import { ball, confetti, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, ramp, sharedDefs } from "./rig";
 import type { CharOpts, CharPose, EyeMode } from "./rig";
 
 /** A colour by id, or a palette given whole (the CSS-variable master passes one). */
@@ -65,7 +65,7 @@ export function bunMarkup(colour: BunColourId | BunColour, id: string, { pose = 
   const body = part("cmp-body", basket
     + part("cmp-head", bun + (team ? kerchief(team, 96, 284, 246, 8, 150) : "") + part("cmp-arm-l", arm(98), at.armL) + part("cmp-arm-r", arm(282), at.armR), at.head)
     + front + steam);
-  return defs + (team ? teamPad(team, 190, 124) : "") + (shadow ? groundShadow(id, 190, 128) : "") + body + (pose === "cheer" ? confetti(190, 180) : "");
+  return defs + (shadow ? groundShadow(id, 190, 128) : "") + body + (pose === "cheer" ? confetti(190, 180) : "");
 }
 
 const portraits = new Map<string, string>();

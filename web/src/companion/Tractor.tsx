@@ -9,7 +9,7 @@ import type { ReactNode } from "react";
 import { TRACTOR_COLOURS } from "./palette";
 import type { TractorColour, TractorColourId } from "./palette";
 import { riderMarkup } from "./TractorRider";
-import { TEAM, confetti, teamPad } from "./rig";
+import { TEAM, confetti } from "./rig";
 import type { CharPose, Team } from "./rig";
 
 export type Eyes = "open" | "sleep";
@@ -65,8 +65,7 @@ export function tractorMarkup(colour: TractorColourId, id: string, { eyes = "ope
     ? `<g fill="none" stroke="#2a4fb0" stroke-width="3" stroke-linecap="round" opacity=".9">${CURLS.map(([x, y, r, s]) =>
       `<path transform="translate(${x} ${y}) rotate(${r}) scale(${s})" d="${CURL}"/>`).join("")}<path d="M96 250q12-8 24 0M236 268q10-7 20 0"/></g>`
     : "";
-  return defs + (team ? teamPad(team, 200, 140) : "")
-    + (shadow ? `<ellipse class="cmp-shadow" cx="200" cy="356" rx="140" ry="17" fill="url(#shadow-${id})"/>` : "")
+  return defs + (shadow ? `<ellipse class="cmp-shadow" cx="200" cy="356" rx="140" ry="17" fill="url(#shadow-${id})"/>` : "")
     + `<g class="cmp-body">`
     + `<rect x="286" y="96" width="20" height="96" rx="8" fill="#3a3038"/>`
     + (puffs ? `<g fill="#fff8ea"><circle class="cmp-puff cmp-puff1" cx="300" cy="72" r="13"/><circle class="cmp-puff cmp-puff2" cx="318" cy="52" r="10"/><circle class="cmp-puff cmp-puff3" cx="328" cy="34" r="6.5"/></g>` : "")

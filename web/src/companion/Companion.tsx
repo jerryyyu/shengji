@@ -28,7 +28,7 @@ export const pickSuit = (r: number): string => (r < 1 / 12 ? "j" : "shcd"[Math.m
 
 /** The whole companion in a `size`-pixel square. `hop`, `cheer` and `react`
  *  play once and then call `onPoseEnd`, so the owner returns it to `idle`.
- *  At the table, `team` stands it on its team's pad in its team's scarf, and
+ *  At the table, `team` dresses it in its team's scarf, and
  *  `level` (the team's level index, 2 is 0) grows it from `size` toward
  *  `max`; a level gained pops it from its old size, unless `grow` is false
  *  (the table plays its own level-up move). `still` draws the pose at

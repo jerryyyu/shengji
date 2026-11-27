@@ -8,7 +8,7 @@
 // and tosses its head.
 import { LAMB_COLOURS } from "./storePalette";
 import type { LambColour, LambColourId } from "./storePalette";
-import { ball, bits, confetti, curl, dataUrl, eye, glow, groundShadow, part, portraitSvg, puff, ramp, sharedDefs, spark, teamPad, teamPaint } from "./rig";
+import { ball, bits, confetti, curl, dataUrl, eye, glow, groundShadow, part, portraitSvg, puff, ramp, sharedDefs, spark, teamPaint } from "./rig";
 import type { CharOpts, CharPose, EyeMode } from "./rig";
 
 /** A colour by id, or a palette given whole (the CSS-variable master passes one). */
@@ -112,7 +112,7 @@ export function lambMarkup(colour: LambColourId | LambColour, id: string, { pose
     + (special ? `<g class="cmp-dizzy">${spark(192, 66, 1.5, "#fff3c0")}${spark(246, 44, 1.2, "#f2c14e")}${spark(284, 70, 1.5, "#fff3c0")}</g>` : "");
 
   const body = part("cmp-body", part("cmp-torso", torso) + part("cmp-head", head, at.head), at.body);
-  return defs + (team ? teamPad(team, 186, 128) : "") + (shadow ? groundShadow(id, 186, 128) : "") + (special ? `<g class="cmp-dust" fill="#e9dcc6"><circle cx="104" cy="346" r="13"/><circle cx="84" cy="338" r="9"/><circle cx="120" cy="334" r="7"/></g>` : "")
+  return defs + (shadow ? groundShadow(id, 186, 128) : "") + (special ? `<g class="cmp-dust" fill="#e9dcc6"><circle cx="104" cy="346" r="13"/><circle cx="84" cy="338" r="9"/><circle cx="120" cy="334" r="7"/></g>` : "")
     + body + (pose === "react" ? bits("cmp-impact", 372, 190, 48, 5, ["#fff6d6", "#f2c14e", "#fff6d6"], -80, 80, 1.15) + petals("cmp-petals", 366, 186, 58, 7) : "")
     + (special ? petals("cmp-petals2", 180, 236, 92, 8) : "") + (pose === "cheer" ? confetti(236, 150) : "");
 }

@@ -15,7 +15,7 @@
 .cmp-char .cmp-flap,
 .cmp-char .cmp-prop { transform-box: view-box; }
 
-/* at the table: the neckwear and the pad take the team's colour */
+/* at the table: the neckwear takes the team's colour */
 .cmp-us { --team: #5b9dff; --team-lo: #2f6fd6; }
 .cmp-them { --team: #ff9d4d; --team-lo: #d96a14; }
 .cmp-us .cmp-team,

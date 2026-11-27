@@ -26,6 +26,9 @@ export interface Layout {
   hand?: Rect | null;
   /** The felt between the screen's safe-area edges, where a figure may stand. */
   safe?: { x0: number; x1: number };
+  /** A phone's table: no name line of its own (`tagline` is only the banker's
+   *  crown and turn chips), and a full hand starts at the safe left edge. */
+  phone?: boolean;
   /** What no figure may cover. */
   obstacles: readonly Rect[];
 }
@@ -50,7 +53,8 @@ export const HAND_LIFT = 20;
 export const meets = (a: Rect, b: Rect): boolean =>
   a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
-/** How far a figure rises off its spot as it hops, walks or sways, as a share of its size. */
+/** How far a figure rises off its spot as it hops, walks, sways or cheers
+ *  (the cheer's top), as a share of its size: no move rises further. */
 export const LIFT = 0.15;
 
 /** The box a figure of `size` standing at `s` may take as it moves there,
@@ -72,21 +76,28 @@ export function clear(s: Spot, size: number, tag: boolean, layout: Layout): bool
  *  any obstacle is weighed: under a side seat's nameplate, to the right of
  *  your partner's, and for you beside your name line or, on a phone (no
  *  nameplate of your own), over the left end of your hand, clear of a chosen
- *  card's lift. */
+ *  card's lift. A phone's is over where a full hand starts (the safe left
+ *  edge), so it holds still while the hand is dealt and as it empties, and
+ *  the banker's crown chip is not a name line there. */
 export function ideal(pos: SeatPos, size: number, layout: Layout): Spot | null {
   const p = layout.plates[pos];
   if (pos === "left") return p ? { x: p.x + 10, y: p.y + p.h + 4 } : null;
   if (pos === "right") return p ? { x: p.x + p.w - 10 - size, y: p.y + p.h + 4 } : null;
   if (pos === "top") return p ? { x: p.x + p.w + 8, y: Math.max(4, p.y + p.h - size + 8) } : null;
-  const tag = layout.tagline;
-  if (tag && tag.w > 0) return { x: tag.x + tag.w + 10, y: tag.y + tag.h - size };
+  const tag = nameLine(layout);
+  if (tag) return { x: tag.x + tag.w + 10, y: tag.y + tag.h - size };
   const hand = layout.hand;
-  if (hand && hand.w > 0) return { x: hand.x + 4, y: hand.y - HAND_LIFT - GAP - size };
+  if (hand && hand.w > 0) return { x: handLeft(layout, hand) + 4, y: hand.y - HAND_LIFT - GAP - size };
   const row = layout.row;
   const left = layout.plates.left;
   const bottom = row ? row.y + row.h : layout.felt.h - 120;
   return { x: (left ? left.x : 8) + 72, y: bottom - size };
 }
+
+/** Your name line, where the layout has one: never on a phone. */
+const nameLine = (layout: Layout): Rect | null => (!layout.phone && layout.tagline && layout.tagline.w > 0 ? layout.tagline : null);
+/** Where your hand's left end is: on a phone, where a full hand starts. */
+const handLeft = (layout: Layout, hand: Rect): number => (layout.phone && layout.safe ? layout.safe.x0 : hand.x);
 
 /** Where else a seat's figure may stand when its own corner is taken: by
  *  a side seat's nameplate on its inner side or above it, by your partner's
@@ -96,12 +107,12 @@ export function fallbacks(pos: SeatPos, size: number, layout: Layout): Spot[] {
   if (pos === "bottom") {
     // yours: over your name line, beside it, then the open felt left of your hand, then over the hand's left end
     const out: Spot[] = [];
-    const tag = layout.tagline;
-    if (tag && tag.w > 0) out.push({ x: tag.x, y: tag.y - 6 - size }, { x: tag.x - 10 - size, y: tag.y + tag.h - size });
+    const tag = nameLine(layout);
+    if (tag) out.push({ x: tag.x, y: tag.y - 6 - size }, { x: tag.x - 10 - size, y: tag.y + tag.h - size });
     const hand = layout.hand;
     if (hand && hand.w > 0) {
-      out.push({ x: hand.x - size - 14, y: hand.y + 8 });
-      if (tag && tag.w > 0) out.push({ x: hand.x + 4, y: hand.y - HAND_LIFT - GAP - size });
+      out.push({ x: handLeft(layout, hand) - size - 14, y: hand.y + 8 });
+      if (tag) out.push({ x: hand.x + 4, y: hand.y - HAND_LIFT - GAP - size });
     }
     return out;
   }
@@ -209,12 +220,13 @@ export function nextSpot(zone: Zone, from: Spot, size: number, rand: number): Sp
 }
 
 /** The clear spot of the zone nearest `s`: where a figure goes when cards
- *  land on it. */
-export function nearest(zone: Zone, s: Spot): Spot | null {
+ *  land on it. `upward` counts a step down twice, so of two ways out the
+ *  one up is taken. */
+export function nearest(zone: Zone, s: Spot, upward = false): Spot | null {
   let out: Spot | null = null;
   let best = Infinity;
   for (const z of zone.spots) {
-    const d = Math.hypot(z.x - s.x, z.y - s.y);
+    const d = Math.hypot(z.x - s.x, z.y - s.y) + (upward && z.y > s.y ? z.y - s.y : 0);
     if (d < best) { best = d; out = z; }
   }
   return out;

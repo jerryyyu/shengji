@@ -2826,7 +2826,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
      The bury and the round end share this layout, so the cross, the side
      seats and the row keep their places from the kitty to the scores.
      The cross spreads to fill the felt: the top slot starts a small gap under
-     the header, your slot's tag line ends a small gap above the hand, and all
+     the header, your slot's tag line ends a small gap above the hand's lift
+     (a card chosen while another seat plays rises into it), and all
      the height left over goes between the rows. The side slots stay centred
      between the two, so on a short phone the cross ends higher, where a side
      slot's tag line stays a gap above your row; it never ends lower than the
@@ -2835,7 +2836,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .table-screen:is(.phase-play, .phase-bury, .phase-round_end) {
     --row-reserve: 0px;
     --trick-top: calc(var(--header-bottom) + var(--space-s));
-    --cross-bottom: min(calc(var(--zone-bottom) + var(--gap-v)), max(calc(var(--hand-h) + var(--space-s)),
+    --cross-bottom: min(calc(var(--zone-bottom) + var(--gap-v)), max(calc(var(--hand-h) + var(--lift) + var(--space-s)),
       calc(var(--trick-top) - var(--view-h) + 2 * var(--zone-bottom) + 2 * var(--row-h) + 2 * var(--space-s) + var(--tag-s) + var(--trick-ch))));
     --gap-rows: calc(var(--view-h) - var(--trick-top) - var(--cross-bottom) - 2 * var(--foot));
     --dy-top: calc(var(--trick-ch) / 2 + var(--tag-s) + var(--gap-rows) / 2);

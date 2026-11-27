@@ -151,8 +151,8 @@ async function runDevice(device) {
       setup: pass === "companions" ? companions : null });
     await page.waitForSelector(".table-screen", { timeout: 10000 });
     for (const [id, frame, act] of STATES) {
-      // the phone's declare row scrolls sideways when it is wider than the screen
-      if (id === "declare_ten" && /^phone-/.test(device)) continue;
+      // the phone's declare row scrolls sideways when it is wider than the screen, in the deal as in the declare window
+      if ((id === "declare_ten" || id === "deal_ten") && /^phone-/.test(device)) continue;
       // a clean slate: the last state's choice and hint go with a frame from another phase
       await push(page, base({ ...dealt }, { banker: null }));
       await sleep(60);

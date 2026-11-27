@@ -392,9 +392,10 @@ describe("phone table geometry", () => {
         expect(setupGaps[0]).toBeGreaterThanOrEqual(8 - 0.01);
       });
 
-      it("in play spreads the rows: the top slot 8pt under the header, your slot at least 8pt above the hand and the side slots 8pt above your row, the rest between", () => {
+      it("in play spreads the rows: the top slot 8pt under the header, your slot at least 8pt above the hand's lift and the side slots 8pt above your row, the rest between", () => {
         expect(play.slots.top.y0 - play.header).toBeCloseTo(8, 0);
-        const toHand = play.handTop - play.slots.bottom.y1;
+        // a card chosen while another seat plays rises into the lift, so your slot's tag stays above it
+        const toHand = play.liftLine - play.slots.bottom.y1;
         const sideToRow = Math.min(play.row.y0 - play.slots.left.y1, play.row.y0 - play.slots.right.y1);
         expect(toHand).toBeGreaterThanOrEqual(8 - 0.01);
         expect(sideToRow).toBeGreaterThanOrEqual(8 - 0.01);

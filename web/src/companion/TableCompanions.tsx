@@ -29,6 +29,7 @@ import type { Pose } from "./Companion";
 import { useCollection } from "./feature";
 import { parseLook } from "./look";
 import { shownAtTable, useCompanionMode } from "./mode";
+import { countPoke, countWalk, roundEnded, seenTable } from "./usage";
 import { HAND_LIFT, LIFT, clear, figureBox, nearest, nearestClear, nextSpot, pathClear, TAPPED_HIGH, TAPPED_WIDE, zoneAround, zonesFor } from "./seatZones";
 import type { Layout, Rect, SeatPos, Spot, Zone } from "./seatZones";
 import { useT } from "../i18n";
@@ -687,9 +688,11 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     if (!you || away || playing || up) return;
     // a tap while the special cools down still answers, with a small hop
     if (Date.now() - lastSpecial.current < SPECIAL_COOLDOWN_MS) {
+      countPoke(false);
       if (!prefersReducedMotion()) { nudging.current?.stop(); nudging.current = play(box.current, "nudge"); }
       return;
     }
+    countPoke(true);
     setSpecial((n) => n + 1);
   };
 
@@ -924,6 +927,21 @@ export default function TableCompanions({ state }: { state: GameState }) {
   const key = JSON.stringify([state.phase, state.trick, state.last_trick?.winner, state.players.map((p) => [p.seat, p.is_bot, p.left]), tablet, levels]);
   const layout = useLayout(root, on, key, !tablet, state.phase === "deal");
   const people = state.players.filter((p) => !p.is_bot && !p.left);
+  // telemetry: this table's companions once, for a viewer shown the
+  // Collection, and each round's taps at its end on a table drawing them
+  const lookKind = me?.look ? parseLook(me.look).kind : undefined;
+  useEffect(() => {
+    if (!shown || state.joining_you === true || !state.room) return;
+    seenTable(state.room, { shown: on, setting: shownAtTable(mode) ? "on" : "off", figures: on ? people.length : 0,
+                            ...(lookKind ? { kind: lookKind } : {}) });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown, state.room, state.joining_you]);
+  const phaseWas = useRef(state.phase);
+  useEffect(() => {
+    const was = phaseWas.current;
+    phaseWas.current = state.phase;
+    if (on && state.phase === "round_end" && was !== "round_end") roundEnded();
+  }, [state.phase, on]);
   // the spot your last tap chose, at this table; yours stands round it, at
   // its full size, whatever room its zone by your hand has
   const home = tapped && tapped.room === state.room ? tapped.spot : null;
@@ -995,6 +1013,7 @@ export default function TableCompanions({ state }: { state: GameState }) {
       const spot = nearestClear({ x: p.x - f.x, y: p.y - f.y }, px, true, at.layout);
       if (!spot) return;
       at.last = now;
+      countWalk();
       setGoal({ spot, n: ++at.n });
     };
     // whether a panel was open as the tap began, before the tap closes it

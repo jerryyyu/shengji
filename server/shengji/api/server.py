@@ -3328,12 +3328,6 @@ async def _ws_session(ws: WebSocket, ip: str) -> None:
     await ws.accept()
     opened_at = last_frame_at = now()
     close_code: int | None = None   # the peer's close code, when it sent one
-    if ws.query_params.get("heartbeat") == "1":
-        ready: dict = {"type": "heartbeat_ready"}
-        if WEB_BUILD is not None:
-            # a page of an older build reloads itself at a safe moment
-            ready["build"] = WEB_BUILD
-        await send(ws, ready)
     room: Room | None = None
     me: Seat | None = None  # seat OBJECT — indexes shift when lobby seats leave
     my_gen = 0              # connection generation this socket owns
@@ -3343,6 +3337,16 @@ async def _ws_session(ws: WebSocket, ip: str) -> None:
     # name they chose, else their first name), whatever name the client sends.
     user = await accounts.websocket_user(ws)
     user_id = user["id"] if user else None
+    if ws.query_params.get("heartbeat") == "1":
+        ready: dict = {"type": "heartbeat_ready",
+                       # whether this account is shown the Collection now: a
+                       # secret change restarts the machine, every page
+                       # reconnects, and its companions follow this, no reload
+                       "collection": accounts.collection_for(user_id)}
+        if WEB_BUILD is not None:
+            # a page of an older build reloads itself at a safe moment
+            ready["build"] = WEB_BUILD
+        await send(ws, ready)
     default_name = accounts.effective_name(user) if user else ""
     # the handshake account's kind for telemetry's ``who``; never its id
     account_kind = "device" if user and accounts.is_device_account(user) else "linked"

@@ -756,3 +756,62 @@ def test_every_client_screen_and_invite_enum_is_on_the_server_allow_list():
         union = re.search(rf"export type {name} =(.*?);", codes, re.DOTALL)
         assert union is not None
         assert set(re.findall(r'"([a-z_]+)"', union.group(1))) == set(values)
+
+
+# companions
+
+@pytest.mark.parametrize("raw,kept", [
+    ({"e": "companions", "t": 5, "shown": True, "setting": "on", "kind": "bun", "figures": 4},
+     {"e": "companions", "t": 5, "shown": True, "setting": "on", "kind": "bun", "figures": 4}),
+    ({"e": "companions", "shown": False, "setting": "off", "kind": "panda", "figures": 0},
+     {"e": "companions", "shown": False, "setting": "off", "kind": "panda", "figures": 0}),
+    ({"e": "companion_round", "t": 9, "walk_taps": 2, "specials": 1, "nudges": 0},
+     {"e": "companion_round", "t": 9, "walk_taps": 2, "specials": 1, "nudges": 0}),
+    ({"e": "tap", "id": "companions_off"}, {"e": "tap", "id": "companions_off"}),
+    ({"e": "tap", "id": "collection_tile"}, {"e": "tap", "id": "collection_tile"}),
+    ({"e": "tap", "id": "try_on"}, {"e": "tap", "id": "try_on"}),
+    ({"e": "tap", "id": "look_use"}, {"e": "tap", "id": "look_use"}),
+])
+def test_the_companion_events_validate(raw, kept):
+    assert telemetry.clean_event(raw) == kept
+
+
+def test_the_companion_events_drop_an_unknown_field_a_look_id_and_a_bad_count():
+    # a look's colour, an account, a seat or a room never survives
+    assert telemetry.clean_event({
+        "e": "companions", "shown": True, "setting": "on", "kind": "bun/plain", "figures": 5,
+        "look": "bun/plain", "account": 7, "room": "ABCD", "seat": 0,
+    }) == {"e": "companions", "shown": True, "setting": "on"}
+    assert telemetry.clean_event({
+        "e": "companion_round", "walk_taps": 3, "specials": -1, "nudges": True, "taps": [1, 2],
+    }) == {"e": "companion_round", "walk_taps": 3}
+    assert telemetry.clean_event({"e": "companion_round", "walk_taps": 501}) is None
+    for name in ("companions", "companion_round"):
+        assert telemetry.clean_event({"e": name}) is None
+
+
+@pytest.mark.parametrize("value", ["u_1234", "Jerry", "ABCD", "tractor/red", "8f14e45fceea167a", 1234567, None])
+def test_no_companion_field_takes_an_id_or_a_name(value):
+    for name in ("companions", "companion_round"):
+        for field in telemetry.SCHEMA[name]:
+            raw = {"e": name, telemetry.REQUIRED[name]: value, field: value}
+            ev = telemetry.clean_event(raw) or {}
+            assert value not in [v for k, v in ev.items() if k != "e"], (name, field, value)
+
+
+def test_the_companion_kinds_are_the_accounts_looks(accounts_on):  # noqa: F811
+    assert telemetry.COMPANION_KINDS == frozenset(accounts_on.LOOKS)
+
+
+def test_a_companion_round_reaches_the_sink_with_only_its_counts(sink):
+    sock = _Sock()
+    n = telemetry.receive(sock, {"v": 1, "events": [
+        {"e": "companions", "t": 1, "shown": True, "setting": "on", "kind": "chick", "figures": 3},
+        {"e": "companion_round", "t": 2, "walk_taps": 2, "specials": 1, "nudges": 1, "room": "ABCD"},
+    ]}, "linked")
+    assert n == 2
+    rows = _records(sink)
+    assert [r["e"] for r in rows] == ["companions", "companion_round"]
+    assert {k: v for k, v in rows[1].items() if k not in ("ts", "sid", "build", "who")} == {
+        "e": "companion_round", "t": 2, "walk_taps": 2, "specials": 1, "nudges": 1}
+    assert all("room" not in r and "account" not in r for r in rows)

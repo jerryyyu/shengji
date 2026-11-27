@@ -10,6 +10,7 @@ import { tapHandlers } from "../tap";
 import { languageChoice, setLanguageChoice, useT } from "../i18n";
 import type { LanguageChoice } from "../i18n";
 import { showToast } from "../toast";
+import { telemetry } from "../telemetry";
 
 function useHaptics(): boolean {
   return useSyncExternalStore(subscribeHaptics, hapticsEnabled);
@@ -94,6 +95,7 @@ function CompanionsRow() {
     <li>
       <button type="button" className="grp-row me-companions" role="switch" aria-checked={on}
               onClick={() => {
+                telemetry.tap(on ? "companions_off" : "companions_on");
                 setCompanionMode(user, on ? "off" : "individual").catch((err: unknown) => {
                   showToast(err instanceof Error ? err.message : String(err));
                 });

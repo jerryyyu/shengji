@@ -421,3 +421,26 @@ def test_a_free_companion_equips_and_an_unknown_colour_is_refused(accounts_on, k
     for bad in ("bun/red", "sparrow/jade", "chick/", "goat/newyear"):
         assert client.put("/api/me/look", json={"look": bad}, headers=session).status_code == 400
     assert accounts_on.account_look(1) == "sparrow/oriole"
+
+
+def test_a_sockets_heartbeat_ready_says_whether_its_account_is_shown_the_collection(
+        accounts_on, keypair, client, monkeypatch):
+    monkeypatch.delenv("COLLECTION_ENABLED", raising=False)
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "2")
+    private_pem, _ = keypair
+    one = {"cookie": _session_cookie(accounts_on, client, private_pem)}
+    two = {"cookie": _session_cookie(accounts_on, client, private_pem, sub="222", email="two@example.com")}
+
+    def ready(headers=None):
+        with client.websocket_connect("/ws?heartbeat=1", headers=headers or {}) as ws:
+            return _drain(ws, "heartbeat_ready")["collection"]
+
+    # off for everyone: a guest and an unlisted account are told off, a listed one on
+    assert (ready(), ready(one), ready(two)) == (False, False, True)
+    # the secret set: every socket opened from then on is told on
+    monkeypatch.setenv("COLLECTION_ENABLED", "1")
+    assert (ready(), ready(one), ready(two)) == (True, True, True)
+    # and unset again, with the list gone too: off for every one of them
+    monkeypatch.delenv("COLLECTION_ENABLED")
+    monkeypatch.delenv("COLLECTION_ACCOUNTS")
+    assert (ready(), ready(one), ready(two)) == (False, False, False)

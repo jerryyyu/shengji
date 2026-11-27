@@ -318,8 +318,10 @@ export interface LeftMsg {
 }
 
 export type ServerMsg =
-  /** `build`: the page build the server serves now (reloadGate.ts). */
-  | { type: "heartbeat_ready"; build?: string }
+  /** `build`: the page build the server serves now (reloadGate.ts).
+   *  `collection`: whether this socket's account is shown the Collection now
+   *  (serverCollection.ts). */
+  | { type: "heartbeat_ready"; build?: string; collection?: boolean }
   | { type: "pong"; nonce: number }
   | ErrorMsg
   | RoomMsg

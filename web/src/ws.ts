@@ -4,6 +4,7 @@
 
 import type { ChatMsg, ClientMsg, ServerMsg } from "./protocol";
 import { noteServerBuild } from "./reloadGate";
+import { noteServerCollection } from "./serverCollection";
 import { noteLink, setStalled, type DropCause } from "./link";
 
 export type ConnStatus = "connecting" | "open" | "closed";
@@ -878,6 +879,8 @@ class Connection {
       if (msg.type === "heartbeat_ready") {
         if (!enabled) { enabled = true; schedulePing(); }
         noteServerBuild(msg.build);
+        // the device's own server (offline, nearby) has no say over the Collection
+        if (!OFFLINE && !NEARBY_SESSION) noteServerCollection(msg.collection);
         return;
       }
       if (msg.type === "pong") {

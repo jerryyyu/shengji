@@ -33,6 +33,8 @@ import { TABLES } from "./seatZones.fixtures";
 import CollectionPage from "../components/CollectionPage";
 import { SettingsGroup } from "../components/SettingsList";
 import { forgetHomeSession } from "../home/session";
+import { telemetry } from "../telemetry";
+import { resetUsage } from "./usage";
 
 // the settings list loads the audio module, whose first tap unlocks an AudioContext
 beforeAll(() => {
@@ -217,6 +219,28 @@ describe("the Collection's grid and the character page", () => {
     await act(async () => { use()!.click(); });
     await settle();
     expect(puts).toEqual([{ look: "chick/yellow" }]);
+  });
+
+  it("counts the Collection's screen, a tile selected, Try on and a look put in use, by id only", async () => {
+    signedIn();
+    telemetry.reset();
+    telemetry.screenView("play");
+    await draw(<CollectionPage />);
+    await openTile("Chick");
+    await act(async () => { host.querySelector<HTMLButtonElement>(".char-chip")!.click(); });
+    // turning Try on off again is no tap
+    await act(async () => { host.querySelector<HTMLButtonElement>(".char-chip")!.click(); });
+    await act(async () => { use()!.click(); });
+    await settle();
+    const sent = telemetry.pending().filter((e) => e.e === "screen" || e.e === "tap").map((e) => {
+      const { t: _t, ...rest } = e as { t: number; ms_on_prev?: number };
+      delete rest.ms_on_prev;
+      return rest;
+    });
+    expect(sent).toEqual([
+      { e: "screen", name: "play" }, { e: "screen", name: "collection", prev: "play" },
+      { e: "tap", id: "collection_tile" }, { e: "tap", id: "try_on" }, { e: "tap", id: "look_use" },
+    ]);
   });
 
   it("a colour tap only shows it; Use applies it, In use is inert, and the tick stays on what is in use", async () => {
@@ -519,8 +543,12 @@ describe("the Collection's grid and the character page", () => {
     expect(sw().textContent).toBe("Show companions at the table");
     expect(sw().getAttribute("role")).toBe("switch");
     expect(sw().getAttribute("aria-checked")).toBe("true");
+    telemetry.reset();
     await act(async () => { sw().click(); });
     expect(window.localStorage.getItem("shengji.companions")).toBe("off");
+    await act(async () => { sw().click(); });
+    expect(telemetry.pending().filter((e) => e.e === "tap").map((e) => e.e === "tap" && e.id)).toEqual(["companions_off", "companions_on"]);
+    await act(async () => { sw().click(); });
     expect(sw().getAttribute("aria-checked")).toBe("false");
     window.localStorage.setItem("shengji.companions", "team");
     await draw(<></>);
@@ -1348,6 +1376,38 @@ describe("the table", () => {
       act(() => { vi.advanceTimersByTime(600); });
       tap(felt(), 300, 230);
       expect(walks("0")).toHaveLength(2);
+    });
+
+    it("reports the table once and each round's taps at its end, as counts with no id, name or room", async () => {
+      resetUsage();
+      telemetry.reset();
+      const at = (over: Partial<GameState> = {}) => state({ room: "TELE", ...over } as Partial<GameState>);
+      await render(at());
+      tap(felt(), 420, 220);
+      await advance(700);
+      tap(felt(), 300, 230);
+      await advance(700);
+      const mine = () => host.querySelector('.tc-seat[data-seat="0"] .tc-walk')!;
+      tap(mine(), 0, 0);
+      await advance(1800);
+      // in the special's cooldown: a nudge, not a second special
+      tap(mine(), 0, 0);
+      await render(at({ phase: "round_end", round_result: { winner_team: 1, level_change: 0, new_levels: ["2", "A"] } } as unknown as Partial<GameState>));
+      // a later frame of the same round end sends nothing more
+      await render(at({ phase: "round_end", round_result: { winner_team: 1, level_change: 0, new_levels: ["2", "A"] }, ready: [0] } as unknown as Partial<GameState>));
+      const sent = telemetry.pending().filter((e) => e.e === "companions" || e.e === "companion_round")
+        .map(({ t: _t, ...rest }) => rest);
+      expect(sent).toEqual([
+        { e: "companions", shown: true, setting: "on", kind: "bun", figures: 4 },
+        { e: "companion_round", walk_taps: 2, specials: 1, nudges: 1 },
+      ]);
+      expect(JSON.stringify(sent)).not.toMatch(/TELE|P0|bun\/plain|seat/);
+      // the next round counts from zero
+      await render(at({ phase: "play" }));
+      await render(at({ phase: "round_end", round_result: { winner_team: 0, level_change: 0, new_levels: ["2", "A"] } } as unknown as Partial<GameState>));
+      expect(telemetry.pending().filter((e) => e.e === "companion_round").map(({ t: _t, ...rest }) => rest).at(-1))
+        .toEqual({ e: "companion_round", walk_taps: 0, specials: 0, nudges: 0 });
+      expect(telemetry.pending().filter((e) => e.e === "companions")).toHaveLength(1);
     });
 
     // the special is the drawing's own signature, animated (not the still peak)

@@ -15,10 +15,11 @@ vi.mock("../auth", async (importOriginal) => {
   return { ...real, useAuth: () => authState.current, auth: { updated: () => {}, get state() { return authState.current; } } };
 });
 
-import CollectionPage from "./CollectionPage";
-import EdgeSwipeBack, { BACK_PX, EDGE_PX } from "./EdgeSwipeBack";
-import { collectionItem, parseHome } from "../home/route";
-import { forgetHomeSession } from "../home/session";
+import CollectionPage from "../components/CollectionPage";
+import { useRef } from "react";
+import { BACK_PX, EDGE_PX, useEdgeSwipeBack } from "./useEdgeSwipeBack";
+import { collectionItem, parseHome } from "./route";
+import { forgetHomeSession } from "./session";
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -109,48 +110,89 @@ describe("the character page's history entry", () => {
   });
 });
 
+/** The hook on a full-width area, its page inside a narrower column. */
+function Harness({ onBack }: { onBack: () => void }) {
+  const area = useRef<HTMLDivElement>(null);
+  const page = useRef<HTMLDivElement>(null);
+  useEdgeSwipeBack(area, page, onBack, true);
+  return <div ref={area} className="area"><div ref={page} className="page" /></div>;
+}
+
 describe("the left-edge swipe", () => {
   const mount = async () => {
     const back = vi.fn();
-    await act(async () => { root.render(<EdgeSwipeBack onBack={back}><div className="inner" /></EdgeSwipeBack>); });
-    return { back, el: host.querySelector(".edge-swipe")! };
+    await act(async () => { root.render(<Harness onBack={back} />); });
+    return { back, el: host.querySelector(".area")!, page: host.querySelector<HTMLElement>(".page")! };
   };
+  afterEach(() => { delete (window as { matchMedia?: unknown }).matchMedia; });
 
-  it("from the edge, a drag past the threshold goes back; the page follows the finger meanwhile", async () => {
-    const { back, el } = await mount();
+  it("from left of the edge line, a drag past the threshold goes back; the page follows the finger meanwhile", async () => {
+    const { back, el, page } = await mount();
     await act(async () => {
-      touch("touchstart", EDGE_PX - 4, 300, el);
+      touch("touchstart", 2, 300, el);
       touch("touchmove", 50, 302, el);
     });
-    expect((el as HTMLElement).style.transform).toBe(`translateX(${50 - (EDGE_PX - 4)}px)`);
+    expect(page.style.transform).toBe("translateX(48px)");
     await act(async () => {
-      touch("touchmove", EDGE_PX + BACK_PX + 20, 304, el);
-      touch("touchend", EDGE_PX + BACK_PX + 20, 304, el);
+      touch("touchmove", 2 + BACK_PX + 20, 304, el);
+      touch("touchend", 2 + BACK_PX + 20, 304, el);
     });
     expect(back).toHaveBeenCalledTimes(1);
-    expect((el as HTMLElement).style.transform).toBe("");
+    expect(page.style.transform).toBe("");
+  });
+
+  it("the edge line itself belongs to the tab swipe: a start at it is not a back swipe", async () => {
+    const { back, el } = await mount();
+    await drag(el, EDGE_PX - 1, EDGE_PX - 1 + BACK_PX * 2);    // the last pixel left of the line
+    expect(back).toHaveBeenCalledTimes(1);
+    await drag(el, EDGE_PX, EDGE_PX + BACK_PX * 2);            // the line
+    expect(back).toHaveBeenCalledTimes(1);
   });
 
   it("a start away from the edge, a short drag, or a vertical one does nothing", async () => {
-    const { back, el } = await mount();
+    const { back, el, page } = await mount();
     await drag(el, 200, 200 + BACK_PX * 3);                // mid-screen
     await drag(el, 8, 8 + BACK_PX - 10);                   // too short: springs back
     await drag(el, 8, 8 + BACK_PX * 2, 120);               // mostly a scroll
     expect(back).not.toHaveBeenCalled();
-    expect((el as HTMLElement).style.transform).toBe("");
+    expect(page.style.transform).toBe("");
   });
 
-  it("on the character page, an edge swipe returns to the grid", async () => {
-    await act(async () => { root.render(<CollectionPage />); });
-    await settle();
-    await act(async () => { tile("Bun").click(); });
-    const done = traversed();
-    await drag(host.querySelector(".edge-swipe")!, 6, 6 + BACK_PX + 40);
-    await done;
-    expect(title()).toBe("Collection");
+  it("under Reduce Motion the page neither follows nor springs, and the release still goes back", async () => {
+    window.matchMedia = ((q: string) => ({ matches: q.includes("reduce"), media: q, addEventListener() {}, removeEventListener() {} })) as never;
+    const { back, el, page } = await mount();
+    await act(async () => {
+      touch("touchstart", 4, 300, el);
+      touch("touchmove", 40, 300, el);
+    });
+    expect(page.style.transform).toBe("");
+    expect(page.style.transition).toBe("");
+    await act(async () => {
+      touch("touchmove", 4 + BACK_PX + 10, 300, el);
+      touch("touchend", 4 + BACK_PX + 10, 300, el);
+    });
+    expect(back).toHaveBeenCalledTimes(1);
+    await drag(el, 4, 30);                                  // short: nothing to spring back
+    expect(page.style.transition).toBe("");
+    expect(back).toHaveBeenCalledTimes(1);
+  });
+
+  it("on the character page, a swipe on the full-width page from its outermost pixels returns to the grid", async () => {
+    for (const x of [2, 6, 20]) {
+      await act(async () => { root.render(<CollectionPage />); });
+      await settle();
+      await act(async () => { tile("Bun").click(); });
+      expect(title()).toBe("Bun");
+      const done = traversed();
+      await drag(host.querySelector(".coll-page")!, x, x + BACK_PX + 100);
+      await done;
+      expect(title()).toBe("Collection");
+    }
     // and a swatch tap on the page still only shows a colour
     await act(async () => { tile("Bun").click(); });
     await act(async () => { host.querySelectorAll<HTMLButtonElement>(".coll-swatch")[1].click(); });
     expect(title()).toBe("Bun");
+    // the page does not page the tabs: a sideways drag mid-page is left alone
+    expect(host.querySelector(".edge-swipe")?.hasAttribute("data-no-tab-swipe")).toBe(true);
   });
 });

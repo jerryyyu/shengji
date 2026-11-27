@@ -20,7 +20,7 @@ import { useShop } from "../store/shop";
 import { showToast } from "../toast";
 import CharacterPage, { Stage, Tick, kindName, lookName } from "./CharacterPage";
 import { BuyFoot, RestoreRow } from "./StoreFoot";
-import EdgeSwipeBack from "./EdgeSwipeBack";
+import { useEdgeSwipeBack } from "../home/useEdgeSwipeBack";
 import "../companion/collection.css";
 
 type Opened = CompanionKind | SoonKind | null;
@@ -203,6 +203,11 @@ export default function CollectionPage() {
     return !COMPANION_PRODUCTS[k] || owns(k) || shop.shown;
   };
   const showing = available(opened) ? opened : null;
+  // Whether the page asked for (a deep link, a reload) cannot be judged yet:
+  // the account is still loading, or the store's check is out for a store
+  // character's page. Until then the grid shows and the address stays.
+  const pending = opened !== null && showing === null
+    && (account.status === "loading" || (!shop.settled && (isSoon(opened) || !!COMPANION_PRODUCTS[opened])));
   // opening a character's page sees its new colours; their marks stay for this visit
   const openKind = showing !== null && !isSoon(showing) ? showing : null;
   useEffect(() => {
@@ -212,7 +217,7 @@ export default function CollectionPage() {
   const unseen = who === null ? [] : newLooks(who, user?.looks);
   const hasNew = (k: CompanionKind) => unseen.some((id) => parseLook(id).kind === k);
   useEffect(() => {
-    if (opened !== null && showing === null) {
+    if (opened !== null && showing === null && !pending) {
       setOpened(null);
       setStatus("");
       try {
@@ -222,7 +227,11 @@ export default function CollectionPage() {
         }
       } catch { /* a sandboxed location */ }
     }
-  }, [opened, showing, item]);
+  }, [opened, showing, item, pending]);
+
+  // a swipe from the screen's left edge, read on the full-width page, goes back too
+  const pageBody = useRef<HTMLDivElement>(null);
+  useEdgeSwipeBack(scroller, pageBody, leave, showing !== null);
 
   const back = (
     <button type="button" className="coll-back" onClick={leave}>
@@ -235,14 +244,14 @@ export default function CollectionPage() {
       return (
         <LargeTitlePage className="coll-page" scroller={scroller} title={kindName(t, showing)} phone={phone}
                        onRefresh={() => refreshAccount()} action={back}>
-          <EdgeSwipeBack onBack={leave}>
+          <div ref={pageBody} className="edge-swipe" data-no-tab-swipe>
             <div className="char-page">
               <Stage kind={showing} colour={soonColour(showing)} size={phone ? 176 : 208} label={kindName(t, showing)} />
               <div className="coll-use-row">
                 <button type="button" className="btn big coll-use done" disabled>{t("home.soon")}</button>
               </div>
             </div>
-          </EdgeSwipeBack>
+          </div>
         </LargeTitlePage>
       );
     }
@@ -256,10 +265,10 @@ export default function CollectionPage() {
     return (
       <LargeTitlePage className="coll-page" scroller={scroller} title={kindName(t, kind)} phone={phone}
                      onRefresh={() => refreshAccount()} action={back}>
-        <EdgeSwipeBack onBack={leave}>
+        <div ref={pageBody} className="edge-swipe" data-no-tab-swipe>
           <CharacterPage kind={kind} shown={shown} entries={entries} inUse={inUse} user={user} phone={phone}
                          fresh={fresh} onShow={show} onUse={use} price={price} status={status} cheer={cheer} />
-        </EdgeSwipeBack>
+        </div>
       </LargeTitlePage>
     );
   }

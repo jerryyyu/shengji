@@ -5,7 +5,7 @@
 // for, so each plays its largest form. Under Reduce Motion each holds one
 // still pose for `STILL_BEAT_MS`.
 import { BIG, LOOK_BACK_MS, LOOK_MS, LEANS, PERKS, READY_BOB, READY_BOBS, READY_BOB_GAP_MS, READY_HELD, RELAX,
-  facingCss, lookFrames } from "./beats";
+  facingCss, lookFrames, reachOfFrames } from "./beats";
 import type { Facing } from "./beats";
 import type { Pose } from "./Companion";
 import { prefersReducedMotion } from "../motion";
@@ -50,20 +50,44 @@ export function stageBeatMs(beat: StageBeat, still = prefersReducedMotion()): nu
   return Math.max(...STAGE_BEATS[beat].steps.map((s) => s.at + s.ms));
 }
 
-/** Play `beat` on `el` (the figure's move box) once; `stop` ends it at once. */
-export function playStageBeat(el: HTMLElement | null, beat: StageBeat): { stop: () => void } {
+/** `frames` with every rise (`translateY`) scaled by `k`. */
+const lowered = (frames: readonly Keyframe[], k: number): Keyframe[] => frames.map((f) => ({
+  ...f, transform: String(f.transform ?? "").replace(/translateY\((-?[\d.]+)%\)/, (_, y) => `translateY(${Number(y) * k}%)`),
+}));
+/** The rises tried, highest first, until a beat's apex stays inside the stage. */
+const RISES = [1, 0.85, 0.7, 0.55, 0.4, 0.25, 0.1, 0] as const;
+
+/** `beat`'s steps for a figure `px` wide with `up` px of stage above it: its
+ *  jumps lowered just enough that no frame reaches past the stage's top. */
+export function fittedSteps(beat: StageBeat, px: number, up: number): Step[] {
+  const steps = STAGE_BEATS[beat].steps;
+  for (const k of RISES) {
+    const tried = steps.map((s) => ({ ...s, frames: lowered(s.frames, k) }));
+    if (tried.every((s) => reachOfFrames(s.frames, px).up <= up)) return tried;
+  }
+  return steps.map((s) => ({ ...s, frames: lowered(s.frames, 0) }));
+}
+
+/** Play `beat` on `el` (the figure's move box, `px` wide, `up` px under the
+ *  stage's top) once; `stop` ends it at once. Each step holds its last frame
+ *  until the next starts (Ready keeps its larger size between its bobs), and
+ *  the whole beat lets go when its last step ends. */
+export function playStageBeat(el: HTMLElement | null, beat: StageBeat, room: { px: number; up: number }): { stop: () => void } {
   if (!el) return { stop: () => {} };
-  const { steps, still } = STAGE_BEATS[beat];
+  const { still } = STAGE_BEATS[beat];
   if (prefersReducedMotion() || typeof el.animate !== "function") {
     const was = el.style.transform;
     el.style.transform = still;
     const t = window.setTimeout(() => { el.style.transform = was; }, STILL_BEAT_MS);
     return { stop: () => { window.clearTimeout(t); el.style.transform = was; } };
   }
+  const steps = fittedSteps(beat, room.px, room.up);
   const running: Animation[] = [];
-  const start = (s: Step) => { running.push(el.animate(s.frames, { duration: s.ms, easing: s.easing })); };
+  const start = (s: Step) => { running.push(el.animate(s.frames, { duration: s.ms, easing: s.easing, fill: "forwards" })); };
+  const stop = () => { timers.forEach((t) => window.clearTimeout(t)); running.forEach((a) => a.cancel()); running.length = 0; };
   // the first step starts at once; the rest at their times
   steps.filter((s) => s.at === 0).forEach(start);
   const timers = steps.filter((s) => s.at > 0).map((s) => window.setTimeout(() => start(s), s.at));
-  return { stop: () => { timers.forEach((t) => window.clearTimeout(t)); running.forEach((a) => a.cancel()); } };
+  timers.push(window.setTimeout(stop, stageBeatMs(beat, false)));
+  return { stop };
 }

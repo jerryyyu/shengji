@@ -230,8 +230,11 @@ export function Stage({ kind, colour, size, box = size, label, partner, cheer = 
   // a table move: the box plays it while the figure holds the move's own pose
   const playBeat = (b: StageBeat) => {
     beat.current?.stop();
+    // the figure keeps the beat's pose for the whole beat
     play(STAGE_BEATS[b].pose, stageBeatMs(b));
-    beat.current = playStageBeat(moveBox.current, b);
+    const top = felt.current?.getBoundingClientRect().top ?? 0;
+    const at = moveBox.current?.getBoundingClientRect().top ?? top;
+    beat.current = playStageBeat(moveBox.current, b, { px: size, up: Math.max(0, at - top) });
   };
   const playPose = (p: "hop" | "cheer" | "sleep" | "react") => {
     beat.current?.stop();
@@ -245,7 +248,7 @@ export function Stage({ kind, colour, size, box = size, label, partner, cheer = 
   const stage = (
     <div ref={felt} className={`coll-felt char-stage${partner ? " char-try" : ""}${live.paused ? " live-paused" : ""}`}>
       <div className="char-figures" style={{ height: box }}>
-        <button type="button" className="coll-figure" aria-label={label} onClick={live.tap}>
+        <button type="button" className="coll-figure" aria-label={label} onClick={() => playPose("react")}>
           <span className="char-box" ref={moveBox}>
             <Companion key={live.key} kind={kind} colour={colour} size={size} state={live.pose}
                        onPoseEnd={live.onPoseEnd} />

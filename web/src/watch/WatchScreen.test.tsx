@@ -263,6 +263,49 @@ describe("back and Escape", () => {
     expect(window.location.href).toBe(href);
   });
 
+  /** Walk history by `delta` and wait for its popstate. */
+  const go = (delta: number) => act(async () => {
+    const landed = new Promise<void>((r) => window.addEventListener("popstate", () => r(), { once: true }));
+    window.history.go(delta);
+    await landed;
+  });
+
+  it("Back then Forward opens the watch again, and Back then leaves it again", async () => {
+    watch.open("ranked");
+    await open();
+    await go(-1);
+    expect(watch.get()).toBeNull();
+    await go(1);
+    expect(watch.get()).toEqual({ mode: "ranked" });
+    await go(-1);
+    expect(watch.get()).toBeNull();
+  });
+
+  it("an Escape then Forward opens the watch again", async () => {
+    watch.open("casual");
+    await open();
+    const landed = new Promise<void>((r) => window.addEventListener("popstate", () => r(), { once: true }));
+    await escape();
+    expect(watch.get()).toBeNull();
+    // the close walks its own entry back
+    await act(async () => { await landed; });
+    expect(watch.get()).toBeNull();
+    await go(1);
+    expect(watch.get()).toEqual({ mode: "casual" });
+  });
+
+  it("a close then an immediate reopen keeps the new watch, and Back leaves it", async () => {
+    watch.open("casual");
+    const landed = new Promise<void>((r) => window.addEventListener("popstate", () => r(), { once: true }));
+    watch.close();
+    watch.open("ranked");
+    await act(async () => { await landed; });
+    expect(watch.get()).toEqual({ mode: "ranked" });
+    await go(-1);
+    expect(watch.get()).toBeNull();
+    expect(window.location.pathname + window.location.hash).toBe("/");
+  });
+
   it("Escape leaves", async () => {
     watch.open("casual");
     await open();

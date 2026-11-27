@@ -178,6 +178,15 @@ for (const device of ["phone-land", "ipad11-land"]) {
       else await page.keyboard.press("Escape");
       const back = await page.waitForSelector(".play-presence-watch", { timeout: 3000 }).then(() => true, () => false);
       await rep.check(`${name}: lands on the Play tab`, back && !(await page.$(".watch-screen")) ? null : "still watching", page);
+      if (how === "back") {
+        // forward opens the watch again, and back leaves it again
+        await page.goForward();
+        const again = await page.waitForSelector(".watch-tabs", { timeout: 3000 }).then(() => true, () => false);
+        await rep.check(`${name}: forward opens the watch again`, again ? null : "no watch after forward", page);
+        await page.goBack();
+        const out = await page.waitForSelector(".play-presence-watch", { timeout: 3000 }).then(() => true, () => false);
+        await rep.check(`${name}: back again lands on the Play tab`, out ? null : "still watching", page);
+      }
       if (SHOTS?.test(name)) await shot(page, name);
     });
     await page.context().close();

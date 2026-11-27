@@ -4,7 +4,7 @@
 // real phone while every static screenshot looked fine.
 //   node e2e/client.mjs [scenario-regex]
 import fs from "node:fs";
-import { Report, contained, keyboard, launch, onShow, open, overlaps, scenario, shot, sleep, until } from "./lib.mjs";
+import { Report, contained, keyboard, launch, onShow, open, overlaps, scenario, shot, sleep, textCuts, until } from "./lib.mjs";
 import { HAND25, base, fakeSocketScript, hand, plays, push } from "./fake.mjs";
 
 const only = process.argv[2] ? new RegExp(process.argv[2]) : null;
@@ -358,6 +358,44 @@ if (!only || only.test("chosen-ring")) {
         gold ? null : `${what}: 2px above it is rgb(${px.join(",")}), not the gold ring`);
     }
     await rep.check(`${name}: a chosen joker and a chosen ordinary card both show the gold ring above them`, problems, page);
+    await shot(page, name);
+  });
+  await page.context().close();
+}
+
+// ---- How to play on the smallest phone: Next walks every step, and each one ends above
+// the fold in each language, down to the practice round and Done on the last
+for (const lang of ["en", "zh-Hans", "zh-Hant"]) {
+  const name = `howto-fit-${lang}`;
+  if (only && !only.test(name)) continue;
+  const presence = { type: "presence", tables: 0, playing: 0, waiting: 0, ranked: 0, casual: 0 };
+  const page = await open(browser, "phone-port-se", { url: "#/howto", still: true,
+    storage: { "shengji.language": lang, "shengji.muted": "1", "shengji.name": "Ana", "shengji.nameChosen": "1" },
+    fakeSocket: fakeSocketScript([presence]) });
+  await scenario(rep, name, page, async () => {
+    await page.waitForSelector(".howto-title");
+    const problems = [];
+    let steps = 0, buttons = [];
+    for (;;) {
+      steps++;
+      await sleep(350);
+      const fit = await page.evaluate(() => {
+        const sc = document.querySelector(".howto-screen");
+        const last = [...document.querySelectorAll(".howto-nav button")].pop().getBoundingClientRect();
+        return { scroll: sc.scrollHeight - sc.clientHeight, bottom: Math.round(last.bottom), h: innerHeight,
+          count: document.querySelector(".howto-count").textContent,
+          buttons: [...document.querySelectorAll(".howto-nav button")].map((b) => b.textContent) };
+      });
+      if (fit.scroll > 0) problems.push(`${fit.count}: the page scrolls ${fit.scroll}px`);
+      if (fit.bottom > fit.h) problems.push(`${fit.count}: the last button ends at ${fit.bottom}, the screen at ${fit.h}`);
+      problems.push(...(await textCuts(page)).map((c) => `${fit.count}: ${c}`));
+      buttons = fit.buttons;
+      if (buttons.length !== 1 || steps > 12) break;
+      await page.click(".howto-nav button");
+    }
+    await rep.check(`${name}: every step fits a 375x667 phone with no scroll and nothing cut`, problems, page);
+    await rep.check(`${name}: ten steps, ending on the practice round and Done`,
+      [steps === 10 ? null : `${steps} steps`, buttons.length === 2 ? null : `the last step's buttons: ${buttons.join(", ")}`], page);
     await shot(page, name);
   });
   await page.context().close();

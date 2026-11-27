@@ -5181,6 +5181,7 @@ button.games-row { cursor: pointer; }
 
 .howto-pill { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: rgba(16, 19, 26, 0.6); border: 1px solid var(--panel-edge); }
 .howto-pill.def { border-color: var(--text-dim); }
+.howto-crown { margin-right: 4px; font-size: 11px; }
 .howto-pill.att { border-color: var(--gold); color: var(--gold); }
 
 /* A trick, drawn by the table's own TrickArea on a replay-sized felt */
@@ -5395,6 +5396,27 @@ button.games-row { cursor: pointer; }
   .howto-panel { padding: 20px 16px; gap: 14px; }
   .howto-head { margin: -6px -8px 0; }
   .howto-count { padding-right: 8px; }
+}
+
+/* A short phone (an iPhone SE is 667 tall): every step fits without a scroll,
+   so Next stays on the screen. The text slots give up their fixed heights
+   and the scale its tick labels, which the table under it repeats. */
+@media (max-width: 899px) and (max-height: 700px) {
+  .howto-panel { gap: 10px; }
+  .howto-step { gap: 8px; }
+  .howto-title { font-size: 20px; }
+  .howto-body,
+  .howto-caption { min-height: 0; }
+  .howto-caption:empty { display: none; }
+  .howto-visual { gap: 8px; padding: 10px; }
+  .howto-nav { gap: 8px; }
+  .howto-cards { --cw: 42px; }
+  .howto-cards.sm { --cw: 32px; }
+  .howto-felt { height: 196px; }
+  .howto-felt .trick-cards { --cw: 38px; }
+  .howto-ticks { display: none; }
+  .howto-score { height: 52px; }
+  .howto-bands { gap: 3px; }
 }
 
 /* How to play on a desktop: a wider panel with the headline and rules in a

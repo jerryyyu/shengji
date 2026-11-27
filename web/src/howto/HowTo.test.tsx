@@ -279,3 +279,64 @@ describe("How to play over a timed game", () => {
     expect(host.querySelector(".howto-clock")).toBeNull();
   });
 });
+
+describe("the guide's pictures and copy against today's table", () => {
+  const chips = () => [...host.querySelectorAll(".level-chip")].map((c) => c.textContent);
+
+  it("draws the level chips as the top bar does: Us and Them, not Lv", async () => {
+    await render(<HowTo route={{ step: 1 }} />, "#/howto");
+    expect(chips()).toEqual(["Us 2", "Them 2"]);
+    act(() => root.unmount());
+    host.remove();
+    await render(<HowTo route={{ step: 10 }} />, "#/howto/10");
+    expect(chips()).toEqual(["Us A", "Us 2", "Them 2"]);
+    expect(host.textContent).not.toMatch(/Lv /);
+  });
+
+  it("labels the trump step's chip Trump, as the trick step does", async () => {
+    await render(<HowTo route={{ step: 2 }} />, "#/howto/2");
+    expect(host.querySelector(".howto-label")?.textContent).toBe("Trump");
+    expect(host.textContent).not.toContain("Example");
+  });
+
+  it("says who the banker is, declared or not, marks the banker's team with the table's crown and names the round's level", async () => {
+    await render(<HowTo route={{ step: 4 }} />, "#/howto/4");
+    const body = host.querySelector(".howto-body")!.textContent!;
+    expect(body).toContain("Round one's banker is whoever's declaration stands, or the first seat if no one declares.");
+    expect(body).toContain("Each round is played at the banker's level.");
+    const pill = host.querySelector(".howto-pill.def")!;
+    expect(pill.querySelector(".howto-crown")?.getAttribute("aria-hidden")).toBe("true");
+    expect(pill.textContent).toContain("Banker's team defends");
+    expect(host.querySelector(".howto-pill.att .howto-crown")).toBeNull();
+  });
+
+  it("says banker, never the deal, for the attackers' win", async () => {
+    for (const step of [9, 10]) {
+      await render(<HowTo route={{ step }} />, `#/howto/${step}`);
+      expect(host.textContent).not.toMatch(/the deal\b/);
+      expect(host.textContent).toMatch(/banker/);
+      act(() => root.unmount());
+      host.remove();
+    }
+    await render(<HowTo route={{ step: 9 }} />, "#/howto/9");
+    expect([...host.querySelectorAll(".howto-bands li")].map((li) => li.textContent)[3]).toBe("80–115Attackers become banker");
+  });
+
+  it("ends on what Ranked and Casual mean, with no promise to a guest or a mid-round joiner", async () => {
+    await render(<HowTo route={{ step: 10 }} />, "#/howto/10");
+    expect(host.querySelector(".howto-caption")?.textContent)
+      .toBe("The top bar keeps the games score. Signed in, a full Ranked round counts toward your rating; Casual rounds don't.");
+  });
+
+  it("keeps every step's rules to three sentences", async () => {
+    for (let step = 1; step <= 10; step++) {
+      await render(<HowTo route={{ step }} />, `#/howto/${step}`);
+      const body = host.querySelector(".howto-body")!.textContent!;
+      expect(body.split(/[.:](?:\s|$)/).filter(Boolean).length, body).toBeLessThanOrEqual(3);
+      expect(body.length, body).toBeLessThanOrEqual(175);
+      act(() => root.unmount());
+      host.remove();
+    }
+    await render(<HowTo route={{ step: 1 }} />, "#/howto");
+  });
+});

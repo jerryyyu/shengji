@@ -37,12 +37,15 @@ describe("How to play in zh-Hans", () => {
     expect(host.querySelector(".howto-nav")!.getAttribute("aria-label")).toBe("步骤");
     expect(labels()).toEqual(expect.arrayContaining(["级数 2 到 A", "重播动画", "显示静态图"]));
     expect(all()).toContain("Bea · 队友");
-    expect(all()).not.toMatch(/partner|Lv /);
+    expect([...host.querySelectorAll(".level-chip")].map((c) => c.textContent)).toEqual(["我方 2", "对方 2"]);
+    expect(all()).not.toMatch(/partner|Lv |Us |Them /);
   });
 
   it("names the trump order and the declarations in Chinese", async () => {
     await open(2);
     expect(text(".howto-title")).toBe("主牌最大");
+    expect(text(".howto-body")).toBe("这一局打 7。大小王、所有的 7 和一门花色都是主牌，算作同一门。从大到小：");
+    expect(text(".howto-label")).toBe("主");
     expect(all()).toContain("1 大王");
     expect(all()).toContain("2 小王");
     expect(all()).toContain("然后是其余的 ♥，从 A 到 2");
@@ -58,7 +61,7 @@ describe("How to play in zh-Hans", () => {
   it("uses 庄家方 / 闲家 and 埋底 for the banker and kitty", async () => {
     await open(4);
     expect(text(".howto-title")).toBe("庄家和底牌");
-    expect(text(".howto-body")).toContain("埋底");
+    expect(text(".howto-body")).toBe("第一局由亮主成立的人坐庄，没人亮主就由首位坐庄。庄家拿底牌、埋底，然后先出牌。每一局都打庄家方的级数。");
     expect(all()).toContain("庄家方守分");
     expect(all()).toContain("闲家捡分");
     expect(all()).not.toMatch(/守方|攻方|扣底/);
@@ -82,9 +85,9 @@ describe("How to play in zh-Hans", () => {
     act(() => root.unmount());
     host.remove();
     await open(10);
-    expect(text(".howto-caption")).toBe("顶栏记着盘数，我方在前。牌桌继续打。");
+    expect(text(".howto-caption")).toBe("顶栏记着盘数。登录后打完整的一局排位才计入积分，休闲局不计。");
     expect(all()).toContain("盘数 1–0");
-    expect(all()).toContain("打 A");
+    expect([...host.querySelectorAll(".level-chip")].map((c) => c.textContent)).toEqual(["我方 A", "我方 2", "对方 2"]);
     expect(text(".howto-nav button")).toBe("完成");
     act(() => root.unmount());
     host.remove();
@@ -109,5 +112,36 @@ describe("How to play in zh-Hans", () => {
     await open(1);
     expect(text(".howto-title")).toBe("Climb from 2 to Ace");
     expect(text(".howto-count")).toBe("1 of 10");
+  });
+});
+
+describe("How to play in zh-Hant", () => {
+  beforeEach(() => setLanguageChoice("zh-Hant"));
+
+  it("is written in Traditional characters on every step, with no Simplified form left over", async () => {
+    const titles: (string | undefined)[] = [];
+    let seen = "";
+    for (let step = 1; step <= 10; step++) {
+      await open(step);
+      titles.push(text(".howto-title"));
+      seen += all();
+      act(() => root.unmount());
+      host.remove();
+    }
+    expect(titles).toEqual(["從 2 打到 A", "主牌最大", "亮主定主", "莊家和底牌", "出一輪牌",
+      "對子和拖拉機", "甩牌", "分數", "一局的結算", "贏下一盤"]);
+    expect(seen).not.toMatch(/[庄闲对张门级赢轮队这谁选盘积闲机发]/);
+    await open(1);
+  });
+
+  it("says who is banker, the round's level and what ranked means in Traditional Chinese", async () => {
+    await open(4);
+    expect(text(".howto-body")).toBe("第一局由亮主成立的人坐莊，沒人亮主就由首位坐莊。莊家拿底牌、埋底，然後先出牌。每一局都打莊家方的級數。");
+    expect(all()).toContain("莊家方守分");
+    act(() => root.unmount());
+    host.remove();
+    await open(10);
+    expect(text(".howto-caption")).toBe("頂欄記著盤數。登入後打完整的一局排位才計入積分，休閒局不計。");
+    expect([...host.querySelectorAll(".level-chip")].map((c) => c.textContent)).toEqual(["我方 A", "我方 2", "對方 2"]);
   });
 });

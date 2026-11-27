@@ -633,9 +633,11 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   sit under the cards and controls.
 - **Taps** (Jerry 2026-11-26: "If you tap on the board (outside of cards), the character walks there"): a tap on
   empty felt (not a card, a played trick, a seat, a button or any panel) walks your companion, facing its way, to
-  the clear spot nearest the tap inside the safe area; it passes under the cards if they are in the way, and
-  stays there until its next walk takes it home; it never lands over another companion, and under Reduce Motion
-  it stays at home. Taps are half a second apart at least. A tap on your own
+  the clear spot nearest the tap inside the safe area; it passes under the cards if they are in the way. That
+  spot is its home for the rest of the table (Jerry 2026-11-26: "The companion shouldn't walk home, just try to
+  stay in the safe zone where it was last clicked"): its walks are small ones round it, and when cards or a moved
+  layout cover it, it hops to the nearest clear spot and that becomes its home. A new table starts it by your
+  hand again. It never lands over another companion, and under Reduce Motion it stays at home. Taps are half a second apart at least. A tap on your own
   companion plays its special, at most once every 3 s. Nothing else at the table changes with these taps, and
   no other companion takes one.
 - **Colours** are a palette swap of the one Tractor: Icon red (the default), Paddy green and Enamel blue from the

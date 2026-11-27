@@ -864,6 +864,73 @@ describe("the table", () => {
       expect(spotOf(0)).toEqual(end);
     });
 
+    // every spot yours walks to from the walks numbered `from` on
+    const stops = (from: number) => walks("0").slice(from).map((w) => {
+      const [x, y] = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(String(w.frames[1].transform))!.slice(1).map(Number);
+      return { x, y };
+    });
+    const near = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+    const cycle = (vals: number[]) => { let i = 0; rnd.mockImplementation(() => vals[i++ % vals.length]); };
+
+    it("the spot a tap chose is yours' home from then on: 30 s of idle walks stay round it, never back by your hand", async () => {
+      await render(state());
+      const home = spotOf(0);
+      tap(felt(), 420, 220);
+      const end = spotOf(0);
+      expect(near(end, home)).toBeGreaterThan(100);
+      const taken = walks("0").length;
+      cycle([0.05, 0.95, 0.3, 0.7]);
+      for (let t = 0; t < 30000; t += 1000) await advance(1000);
+      const after = stops(taken);
+      // it did walk, each walk a small one round the tapped spot, every spot clear
+      expect(after.length).toBeGreaterThanOrEqual(2);
+      for (const s of after) {
+        expect(near(s, end)).toBeLessThanOrEqual(44);
+        expect(clear(s, 44, true, layout())).toBe(true);
+      }
+      expect(near(spotOf(0), end)).toBeLessThanOrEqual(44);
+    });
+
+    it("a new table forgets the tapped spot: yours goes back by your hand", async () => {
+      await render(state({ room: "A" } as Partial<GameState>));
+      const home = spotOf(0);
+      tap(felt(), 420, 220);
+      await advance(2000);
+      expect(near(spotOf(0), home)).toBeGreaterThan(100);
+      await render(state({ room: "B" } as Partial<GameState>));
+      await advance(2000);
+      expect(near(spotOf(0), home)).toBeLessThanOrEqual(22);
+    });
+
+    it("cards covering the tapped spot send yours on a quick hop to the nearest clear spot, its home from then on", async () => {
+      await render(state());
+      const home = spotOf(0);
+      tap(felt(), 420, 220);
+      await advance(2000);
+      const end = spotOf(0);
+      rects["trick-play"] = { x: end.x + 4, y: end.y + 10, w: 24, h: 24 };
+      const before = walks("0").length;
+      await render(state({ trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>));
+      const hop = walks("0").slice(before);
+      expect(hop).toHaveLength(1);
+      expect(hop[0].ms).toBeLessThanOrEqual(500);
+      const adopted = spotOf(0);
+      expect(clear(adopted, 44, true, layout())).toBe(true);
+      expect(clear(end, 44, true, layout())).toBe(false);
+      // the nearest clear spot, not the old home by your hand
+      expect(near(adopted, end)).toBeLessThan(60);
+      expect(near(adopted, home)).toBeGreaterThan(100);
+      const taken = walks("0").length;
+      cycle([0.05, 0.95, 0.3, 0.7]);
+      for (let t = 0; t < 30000; t += 1000) await advance(1000);
+      const after = stops(taken);
+      expect(after.length).toBeGreaterThanOrEqual(2);
+      for (const s of after) {
+        expect(near(s, adopted)).toBeLessThanOrEqual(44);
+        expect(clear(s, 44, true, layout())).toBe(true);
+      }
+    });
+
     it("a tap on a card, a button or another control is not a tap on the felt", async () => {
       await render(state());
       for (const sel of [".hand-slot", ".trick-play", ".opponent"]) tap(host.querySelector(sel)!, 300, 300);

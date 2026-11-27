@@ -29,7 +29,7 @@ import type { Pose } from "./Companion";
 import { useCollection } from "./feature";
 import { parseLook } from "./look";
 import { shownAtTable, useCompanionMode } from "./mode";
-import { HAND_LIFT, clear, figureBox, nearest, nearestClear, nextSpot, pathClear, zonesFor } from "./seatZones";
+import { HAND_LIFT, clear, figureBox, nearest, nearestClear, nextSpot, pathClear, zoneAround, zonesFor } from "./seatZones";
 import type { Layout, Rect, SeatPos, Spot, Zone } from "./seatZones";
 import { useT } from "../i18n";
 import { LEVELS, companionSize } from "./rig";
@@ -246,15 +246,18 @@ export const TAP_THROTTLE_MS = 500;
  *  its zone, facing the way it goes; when cards land on it, it walks to the
  *  nearest clear spot. `goal` (yours only) is where a tap on the felt sends
  *  it: it walks there, passing under the cards if they are in the way, and
- *  stays until its next walk takes it home. A tap on yours plays its special
+ *  that spot (`tapped`) is its home from then on, its walks small ones round
+ *  it; when cards or a moved layout cover it, it hops to the nearest clear
+ *  spot and makes that its home (`onTapped`). A tap on yours plays its special
  *  (at most every 3 s), and `wins` counts your team's rounds won, each
  *  played as a special once any level-up has ended. Every move is a Web
  *  Animation of a transform. Under Reduce Motion it stands on its home;
  *  while the page is hidden it rests. */
-function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal, wins, onEnd, onUpEnd, onGoal }: {
+function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal, tapped, wins, onEnd, onUpEnd, onGoal, onTapped }: {
   player: StatePlayer; team: Team; px: number; pos: SeatPos;
   zone: Zone; layout: Layout; roam: Layout; pose: Pose; up: LevelUp | null; you: boolean; goal: { spot: Spot; n: number } | null;
-  wins: number; onEnd: () => void; onUpEnd: () => void; onGoal?: (n: number) => void;
+  tapped: Spot | null; wins: number; onEnd: () => void; onUpEnd: () => void; onGoal?: (n: number) => void;
+  onTapped?: (s: Spot | null) => void;
 }) {
   const t = useT();
   const { kind, colour } = parseLook(player.look);
@@ -267,8 +270,14 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
   const walking = useRef<Animation[]>([]);
   // the walk in flight, from where to where; null at rest
   const path = useRef<{ from: Spot; to: Spot } | null>(null);
-  // sent by a tap on the felt, away from its zone until its next walk
-  const roaming = useRef(false);
+  // where it stands and wanders: round the spot a tap chose (clear of the
+  // other companions' zones as well as the table), else its own zone
+  const here = useMemo(() => (tapped ? zoneAround(tapped, px, roam, you) : zone),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [tapped?.x, tapped?.y, zone, roam, px, you]);
+  const room = tapped ? roam : layout;
+  const tappedDone = useRef(onTapped);
+  tappedDone.current = onTapped;
   const ended = useRef(onEnd);
   ended.current = onEnd;
   const upEnded = useRef(onUpEnd);
@@ -332,40 +341,44 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
   // no clear spot is not drawn and forgets where it stood, so the next one
   // drawn is placed afresh; a figure that must move (cards landing on it, a
   // walk whose way they now block, a moved layout) hops there quickly from
-  // where it is drawn, passing under the cards, never jumping. A figure a tap
-  // sent away keeps its spot while it stays clear.
+  // where it is drawn, passing under the cards, never jumping. A tapped home
+  // cards now cover gives way to the nearest clear spot, which becomes the
+  // home; with none clear it goes back to its zone.
   useLayoutEffect(() => {
     if (!zone.home) {
       stop();
       cur.current = null;
-      roaming.current = false;
       return;
     }
     const now = cur.current;
-    if (!now || !walk.current?.style.transform) {
-      place(now && clear(now, px, you, layout) ? now : zone.home);
+    const drawn = now !== null && !!walk.current?.style.transform;
+    const quick = { under: true, quick: true };
+    if (tapped && !clear(tapped, px, you, roam)) {
+      const to = nearestClear({ x: tapped.x + px / 2, y: tapped.y + px }, px, you, roam);
+      tappedDone.current?.(to);
+      if (drawn) goTo(to ?? zone.home, quick);
+      else place(to ?? zone.home);
+      return;
+    }
+    const home = tapped ?? zone.home;
+    if (!now || !drawn) {
+      place(now && clear(now, px, you, room) ? now : home);
       if (face.current && !now) face.current.style.transform = `scaleX(${pos === "right" ? -1 : 1})`;
       return;
     }
-    const quick = { under: true, quick: true };
-    if (roaming.current) {
-      // away from its zone it keeps clear of the other companions' zones too
-      if (!clear(now, px, you, roam)) goTo(nearestClear({ x: now.x + px / 2, y: now.y + px }, px, you, roam) ?? zone.home, quick);
-      return;
-    }
     const flight = path.current;
-    if (flight && !pathClear(flight.from, flight.to, px, you, layout)) {
-      goTo(clear(now, px, you, layout) ? now : nearest(zone, now) ?? zone.home, quick);
+    if (flight && !pathClear(flight.from, flight.to, px, you, room)) {
+      goTo(clear(now, px, you, room) ? now : nearest(here, now) ?? home, quick);
       return;
     }
-    const near = nearest(zone, now);
+    const near = nearest(here, now);
     const off = !near || Math.hypot(near.x - now.x, near.y - now.y) > px / 2;
-    if (off || !clear(now, px, you, layout)) goTo(off ? zone.home : near, quick);
-  }, [zone, layout, roam, px, you]);
+    if (off || !clear(now, px, you, room)) goTo(off ? home : near, quick);
+  }, [zone, here, layout, roam, px, you]);
 
-  // a tap on the felt sends yours there, once: each tap is taken (or
-  // dropped) the first time it is seen, and one whose spot is no longer
-  // clear of the table and the other companions is dropped
+  // a tap on the felt sends yours there, once, and makes it the home: each
+  // tap is taken (or dropped) the first time it is seen, and one whose spot
+  // is no longer clear of the table and the other companions is dropped
   const goalN = goal?.n;
   const tookGoal = useRef(0);
   const goalDone = useRef(onGoal);
@@ -375,14 +388,16 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     tookGoal.current = goal.n;
     goalDone.current?.(goal.n);
     if (!placed || !clear(goal.spot, px, you, roam)) return;
-    roaming.current = true;
     goTo(goal.spot, { under: true });
+    tappedDone.current?.(goal.spot);
   }, [goalN]);
 
-  // a walk now and then, on its own clock, while the page is shown; one a
-  // tap sent away walks home
-  const zoneNow = useRef(zone);
-  zoneNow.current = zone;
+  // a walk now and then, on its own clock, while the page is shown, within
+  // where it stands (round a tapped home, or its zone)
+  const zoneNow = useRef(here);
+  zoneNow.current = here;
+  const roomNow = useRef(room);
+  roomNow.current = room;
   const idle = placed && move === "idle" && !up && !playing;
   useEffect(() => {
     if (!idle || prefersReducedMotion()) return;
@@ -391,16 +406,10 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         const from = cur.current;
-        const home = zoneNow.current.home;
-        if (roaming.current && home) {
-          roaming.current = false;
-          goTo(home, { under: true });
-        } else {
-          // a spot it can reach without crossing anything; it stays put when none is
-          for (let i = 0; from && i < 6; i++) {
-            const to = nextSpot(zoneNow.current, from, px, Math.random());
-            if (to && pathClear(from, to, px, you, layoutNow.current)) { goTo(to); break; }
-          }
+        // a spot it can reach without crossing anything; it stays put when none is
+        for (let i = 0; from && i < 6; i++) {
+          const to = nextSpot(zoneNow.current, from, px, Math.random());
+          if (to && pathClear(from, to, px, you, roomNow.current)) { goTo(to); break; }
         }
         wait();
       }, WALK_GAP[0] + Math.random() * (WALK_GAP[1] - WALK_GAP[0]));
@@ -447,7 +456,7 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     const timer = window.setTimeout(() => setPlaying(false), prefersReducedMotion() ? 1000 : REACT_MS[kind]);
     return () => { window.clearTimeout(timer); setPlaying(false); };
   }, [special, kind]);
-  const tapped = (e: MouseEvent) => {
+  const poked = (e: MouseEvent) => {
     e.stopPropagation();
     if (!you || away || playing || up || Date.now() - lastSpecial.current < SPECIAL_COOLDOWN_MS) return;
     setSpecial((n) => n + 1);
@@ -458,7 +467,7 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
   if (!zone.home) return null;
   return (
     <span className="tc-seat" data-seat={player.seat} data-pos={pos}>
-      <span className={`tc-walk${you ? " tc-mine" : ""}`} ref={walk} onClick={you ? tapped : undefined}>
+      <span className={`tc-walk${you ? " tc-mine" : ""}`} ref={walk} onClick={you ? poked : undefined}>
         {you ? <span className="tc-you">{t("table.companionYou")}</span> : null}
         {up && !away ? <span className="tc-level" key={up.n}>{up.glyph}</span> : null}
         <span className="tc-face" ref={face}>
@@ -595,6 +604,8 @@ export default function TableCompanions({ state }: { state: GameState }) {
   const tablet = useMediaQuery(TABLET_SCREEN);
   const [poses, setPoses] = useState<Record<number, Pose>>({});
   const [goal, setGoal] = useState<{ spot: Spot; n: number } | null>(null);
+  // the spot your last tap chose: yours stays round it for the rest of this table
+  const [tapped, setTapped] = useState<{ room: string; spot: Spot } | null>(null);
   const prev = useRef<GameState | null>(null);
   const root = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -661,6 +672,8 @@ export default function TableCompanions({ state }: { state: GameState }) {
   const end = (seat: number) => () => setPoses((p) => ({ ...p, [seat]: "idle" }));
   // a tap's goal is cleared once yours has taken it, so no later render replays it
   const takeGoal = (n: number) => setGoal((g) => (g && g.n === n ? null : g));
+  const home = tapped && tapped.room === state.room ? tapped.spot : null;
+  const takeHome = (s: Spot | null) => setTapped(s ? { room: state.room, spot: s } : null);
   return (
     <div className="table-companions" ref={root} aria-hidden="true">
       {layout && zones ? people.map((p) => {
@@ -671,8 +684,9 @@ export default function TableCompanions({ state }: { state: GameState }) {
           <Walker key={p.seat} player={p} team={p.team === ours ? "us" : "them"}
                   px={zone.size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max)}
                   pos={pos} zone={zone} layout={layout} roam={you && roam ? roam : layout} pose={poses[p.seat] ?? "idle"}
-                  up={ups[p.seat] ?? null} you={you} goal={you ? goal : null} wins={p.team === ours ? wins : 0}
-                  onEnd={end(p.seat)} onUpEnd={done(p.seat)} onGoal={you ? takeGoal : undefined} />
+                  up={ups[p.seat] ?? null} you={you} goal={you ? goal : null} tapped={you ? home : null}
+                  wins={p.team === ours ? wins : 0} onEnd={end(p.seat)} onUpEnd={done(p.seat)}
+                  onGoal={you ? takeGoal : undefined} onTapped={you ? takeHome : undefined} />
         );
       }) : null}
     </div>

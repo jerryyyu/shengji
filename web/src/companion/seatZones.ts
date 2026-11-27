@@ -119,12 +119,12 @@ export function zoneFor(pos: SeatPos, size: number, layout: Layout, tag = pos ==
   return zoneAt(ideal(pos, size, layout), size, layout, tag);
 }
 
-function zoneAt(at: Spot | null, size: number, layout: Layout, tag: boolean): Zone {
+function zoneAt(at: Spot | null, size: number, layout: Layout, tag: boolean, wide = 2, high = 0.5): Zone {
   if (!at) return { home: null, spots: [] };
   const step = Math.max(4, Math.round(size / 4));
   const spots: Spot[] = [];
-  for (let dy = -size / 2; dy <= size / 2 + 0.01; dy += step) {
-    for (let dx = -2 * size; dx <= 2 * size + 0.01; dx += step) {
+  for (let dy = -high * size; dy <= high * size + 0.01; dy += step) {
+    for (let dx = -wide * size; dx <= wide * size + 0.01; dx += step) {
       const s = { x: Math.round(at.x + dx), y: Math.round(at.y + dy) };
       if (clear(s, size, tag, layout)) spots.push(s);
     }
@@ -136,6 +136,18 @@ function zoneAt(at: Spot | null, size: number, layout: Layout, tag: boolean): Zo
     if (d < best) { best = d; home = s; }
   }
   return { home, spots };
+}
+
+/** How far a figure wanders from a spot a tap chose, either way, in
+ *  figures across and up or down. */
+export const TAPPED_WIDE = 0.75;
+export const TAPPED_HIGH = 0.25;
+
+/** The small zone round a spot a tap chose: the clear spots within
+ *  `TAPPED_WIDE` figures across and `TAPPED_HIGH` up or down, and the one
+ *  nearest the spot as its home. */
+export function zoneAround(at: Spot, size: number, layout: Layout, tag: boolean): Zone {
+  return zoneAt(at, size, layout, tag, TAPPED_WIDE, TAPPED_HIGH);
 }
 
 /** The sizes a figure tries, as shares of the size asked for, where its

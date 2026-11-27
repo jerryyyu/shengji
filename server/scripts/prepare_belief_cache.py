@@ -67,8 +67,6 @@ def sealed_leg(store, terminal, pin):
         sidecar = store / shard['sidecar']
         if (store / shard['path']).is_symlink() or sidecar.is_symlink():
             raise ValueError('linked member in sealed leg')
-        if belief_labels._file_sha256(sidecar) != shard['sidecar_sha256']:
-            raise ValueError(f'{sidecar}: sidecar sha256 differs from sealed manifest')
     return manifest, seal['manifest_sha256']
 
 
@@ -113,10 +111,28 @@ def main(argv=None):
         parser.error('--cluster-offset must be in [0, cluster-stride)')
     store, out = args.store.resolve(), args.out.resolve()
     manifest = None
+    verify_inventory = None
+    quality = None
     if args.sealed_rt4_leg:
         if args.limit_clusters is not None or args.cluster_stride != 1:
             parser.error('sealed RT4 extraction requires the whole leg')
         manifest, manifest_sha = sealed_leg(store, *args.sealed_rt4_leg)
+
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tools' / 'y_datagen'))
+        from check_leg import check_leg
+
+        def verify_inventory(inventory):
+            nonlocal quality
+            if len(inventory) != len(manifest['shards']):
+                raise ValueError('incomplete extraction inventory')
+            for item, shard in zip(inventory, manifest['shards']):
+                identity = item['source']
+                if (identity.get('manifest_sha256') != manifest_sha
+                        or identity['path'] != str(store / shard['path'])
+                        or identity['sha256'] != shard['sha256']):
+                    raise ValueError('extraction inventory differs from sealed leg')
+            terminal, pin = args.sealed_rt4_leg
+            quality = check_leg(store, Path(terminal), pin)
 
     def log(*messages, **kwargs):
         print(*messages, file=sys.stderr, flush=True)
@@ -125,7 +141,7 @@ def main(argv=None):
         max_clusters_per_store=args.limit_clusters, calib=0.06, test=0.04 if manifest is not None else 0.12,
         sampler_worlds=0, sampler_splits=('calib', 'test'), sampler_stride=1,
         workers=args.workers, task_clusters=args.task_clusters, log=log, resume=args.resume,
-        verify_cached_sources=manifest is not None)
+        verify_inventory=verify_inventory)
     if labels['status'] != 'complete' or labels['failed_clusters']:
         raise RuntimeError('incomplete label extraction')
     if manifest is not None:
@@ -142,7 +158,7 @@ def main(argv=None):
             raise RuntimeError('incomplete sealed round coverage')
         splits = validate_unified(out, store, manifest_sha, manifest['counts']['decisions'])
         scope = 'sealed RT4 labels/history/unified policy and outcome batches'
-        binding = {'terminal_sha256': args.sealed_rt4_leg[1]}
+        binding = {'terminal_sha256': args.sealed_rt4_leg[1], 'trajectory_quality': quality}
     rows = sum(s['rows'] for s in splits.values())
     if history[str(out)]['rows'] != rows:
         raise RuntimeError('history/consumer row mismatch')

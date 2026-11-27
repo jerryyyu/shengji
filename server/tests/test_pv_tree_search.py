@@ -1534,14 +1534,9 @@ def test_reserved_deck_cli_scores_both_mirrors_and_publishes_once(
         return bot
 
     monkeypatch.setattr(bank, "make_bot", make_registered)
-    if substitution:
-        with pytest.raises(ValueError, match="history-legal worlds"):
-            bank.main(argv)
-        assert not output.exists()
-        # With zero tilt the stochastic policy uses its prior directly.
-        argv[-1] = "0"
     bank.main(argv)
     result = json.loads(output.read_bytes())
+    assert result["settings"]["reply_value_weight"] == 1.
     assert result["schema"] == "belief-tree-paired-deck-v2"
     assert result["bank_sha256"] == pin and result["shard_sha256"] == sha
     assert [r["decision_index"] for r in result["rows"]] == [t["decision_index"] for t in targets]

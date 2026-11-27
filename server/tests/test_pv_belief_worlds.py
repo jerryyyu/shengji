@@ -399,3 +399,53 @@ def test_depth_redraw_keeps_banker_kitty_and_refuses_incomplete_draw(package, mo
     monkeypatch.setattr(teacher, "first_violation", lambda *args: 0)
     with pytest.raises(ValueError, match="0 of 2 history-legal worlds"):
         teacher.draw_depth_worlds(child, **options)
+
+
+def test_depth_redraw_continues_the_same_checked_proposal_stream(package, monkeypatch):
+    from shengji.ai.refusal import observe_refusal
+    from shengji.train import belief_tree_teacher as teacher
+    from test_world_history_legal import started
+
+    child, _ = started(13)
+    child.play(child.turn, ["BJ", "H10"])
+    notice = observe_refusal(child)
+    assert notice is not None
+    model = bn.load_belief_numpy(package["path"], package["sha256"])
+    build = teacher.BeliefProposal
+    consistent = teacher.refusal_consistent
+    calls = []
+    valid = []
+    streams = []
+
+    def proposal(*args, **kwargs):
+        streams.append(kwargs["seed"])
+        return build(*args, **kwargs)
+
+    def thin(rnd, hands, event):
+        assert event == notice
+        calls.append(None)
+        ok = consistent(rnd, hands, event)
+        # Leave the first valid world in place while forcing the next one past 16.
+        if ok and (not valid or len(calls) > 16):
+            valid.append(copy.deepcopy(hands))
+            return True
+        return False
+
+    monkeypatch.setattr(teacher, "BeliefProposal", proposal)
+    monkeypatch.setattr(teacher, "refusal_consistent", thin)
+    options = dict(belief=model, refusals=(notice,), seed=7, worlds=2)
+    worlds = teacher.draw_depth_worlds(child, **options)
+    assert streams == [7] and len(calls) > 16
+    assert [hands for hands, _ in worlds] == valid and len(valid) == 2
+
+    def impossible(*args):
+        calls.append(None)
+        return False
+
+    calls.clear()
+    monkeypatch.setattr(teacher, "refusal_consistent", impossible)
+    with pytest.raises(ValueError, match="0 of 2 history-legal worlds") as failure:
+        teacher.draw_depth_worlds(child, **options)
+    assert len(calls) == 256
+    assert "after 256 proposals" in str(failure.value)
+    assert "recorded refusal rejections=256" in str(failure.value)

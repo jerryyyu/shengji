@@ -6,14 +6,18 @@ import numpy as np
 
 from ..ai.belief_numpy import BeliefNumpy, BeliefProposal
 from ..ai.cwv_policy import afterstate
-from ..ai.history_legality import (HISTORY_ATTEMPT_FACTOR, draw_constraints,
-                                   first_throw_violation, first_violation,
-                                   follow_events, throw_events)
+from ..ai.history_legality import (draw_constraints, first_throw_violation,
+                                   first_violation, follow_events, throw_events)
 from ..ai.mcbot import MCBot
 from ..ai.refusal import Refusal, observe_refusal, on_record, refusal_consistent
 from ..engine.legal import validate_follow
 from ..engine.round import Round, actual_play_after
 from .pv_tree_search import value_batches
+
+
+# Offline depth searches can afford a longer rejection tail for sparse public
+# histories. The proposal and its batch size stay fixed through the draw.
+_DEPTH_ATTEMPTS_PER_WORLD = 128
 
 
 def draw_depth_worlds(
@@ -46,20 +50,31 @@ def draw_depth_worlds(
                               forbidden=draw_constraints(child, seat, follows))
     sampler = MCBot(seed=seed)
     accepted = []
-    for _ in range(worlds * HISTORY_ATTEMPT_FACTOR):
+    follow_rejections = throw_rejections = refusal_rejections = 0
+    attempt_limit = worlds * _DEPTH_ATTEMPTS_PER_WORLD
+    for _ in range(attempt_limit):
         hidden, buried = proposal(child, seat, None)
         hands = sampler._complete_determinized_hands(child, seat, hidden, buried=buried)
-        if (first_violation(follows, hands, child.ordering) is not None
-                or first_throw_violation(throws, hands, child.ordering) is not None
-                or not all(refusal_consistent(child, hands, r) for r in ledger)):
+        if first_violation(follows, hands, child.ordering) is not None:
+            follow_rejections += 1
+            continue
+        if first_throw_violation(throws, hands, child.ordering) is not None:
+            throw_rejections += 1
+            continue
+        if not all(refusal_consistent(child, hands, r) for r in ledger):
+            refusal_rejections += 1
             continue
         accepted.append((hands, buried))
         if len(accepted) == worlds:
-            break
-    if len(accepted) != worlds:
-        raise ValueError(f"depth draw supplied {len(accepted)} of {worlds} history-legal worlds")
+            return accepted
 
-    return accepted
+    raise ValueError(
+        f"depth draw supplied {len(accepted)} of {worlds} history-legal worlds "
+        f"after {attempt_limit} proposals "
+        f"(historical follow rejections={follow_rejections}, "
+        f"standing throw rejections={throw_rejections}, "
+        f"recorded refusal rejections={refusal_rejections})"
+    )
 
 
 def paired_reply_values(

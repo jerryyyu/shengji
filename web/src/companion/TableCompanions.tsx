@@ -758,13 +758,13 @@ function useLayout(root: RefObject<HTMLDivElement | null>, on: boolean, key: str
       }
     };
     let frame = 0;
-    // set from a measure to the end of its task: the nodes a commit added
-    // before its measure are already in it, so they ask for no other
-    let fresh = false;
+    // the changes queued before a measure are in it: it takes them, so
+    // they ask for no other; ones queued after it still do
+    let mo: MutationObserver | null = null;
     const read = () => {
       window.cancelAnimationFrame(frame);
       frame = 0;
-      if (!fresh) { fresh = true; queueMicrotask(() => { fresh = false; }); }
+      mo?.takeRecords();
       insets ??= safeEdges(felt);
       const next = measure(felt, opts.current.phone, opts.current.dealing, insets, ro ? note : null);
       watch();
@@ -798,10 +798,9 @@ function useLayout(root: RefObject<HTMLDivElement | null>, on: boolean, key: str
     window.addEventListener("orientationchange", resized);
     // a line, a control, a chat bubble or a panel that comes or goes:
     // never for the companions' own changes or for nodes that are none of those
-    let mo: MutationObserver | null = null;
     if (typeof MutationObserver === "function") {
       mo = new MutationObserver((list) => {
-        if (!frame && !fresh && list.some((m) => [...m.addedNodes, ...m.removedNodes].some(measured))) soon();
+        if (!frame && list.some((m) => [...m.addedNodes, ...m.removedNodes].some(measured))) soon();
       });
       mo.observe(screen, { childList: true, subtree: true });
     }

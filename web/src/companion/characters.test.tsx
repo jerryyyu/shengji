@@ -4,6 +4,7 @@
 // only a gain pops, the character page's foot follows ownership, and the
 // table draws people's companions in their team's corner in Team view only.
 import { act } from "react";
+import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthState, AuthUser } from "../auth";
@@ -999,6 +1000,21 @@ describe("the table", () => {
       });
       await settle(100);
       expect(measures() - n).toBe(1);
+    });
+
+    it("a bubble that appears in the same task after a card's commit measured is still stepped clear of within half a second", async () => {
+      await render(state());
+      await settle(1500);
+      const was = spotOf(0);
+      const bubble: Rect = { x: was.x + 20, y: was.y - 30, w: 200, h: 50 };
+      await act(async () => {
+        // a label queued, then a card committed (which measures), then a bubble over yours, in one task
+        add("trick-tag", { x: 300, y: 150, w: 40, h: 16 });
+        flushSync(() => { root.render(table(state({ trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>))); });
+        add("chat-bubble", bubble);
+      });
+      await settle(500);
+      expect(meets(boxOf(0), bubble)).toBe(false);
     });
 
     it("a commit that adds, takes off or resizes nothing the zones are measured round measures nothing", async () => {

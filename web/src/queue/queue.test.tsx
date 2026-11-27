@@ -2325,6 +2325,72 @@ describe("the unified table on the client", () => {
     expect(panel()!.querySelector("button.tp-seat.open")).toBeNull();
   });
 
+  it("a tapped open seat is where you are drawn next, from every seat: the columns stay put while you move", async () => {
+    // the seats as drawn: [column][row]; a seat's name is its label's first word
+    const cells = () => [...panel()!.querySelectorAll(".tp-col")].map((col) => [...col.children] as HTMLElement[]);
+    const who = (el: HTMLElement) => (el.getAttribute("aria-label") ?? "").split(/[,.]/)[0];
+    await renderApp();
+    for (let start = 0; start < 4; start++) {
+      for (const [c, r] of [[0, 0], [1, 0]] as const) {
+        // each case is a table of its own (its own code), drawn around you afresh
+        const code = `T${start}${c}`;
+        // you and Alice, on the other team, drawn bottom right as in the report
+        const alice = (start + 3) % 4;
+        const at = (you: number) => {
+          const seats: Seat[] = [null, null, null, null];
+          seats[you] = seat("Jerry", { you: true });
+          seats[alice] = seat("Alice");
+          return atTable(seats, { id: code, you, opener: alice }, { code, mode: "casual" });
+        };
+        say(at(start));
+        const before = cells();
+        expect(who(before[0][1]), `seat ${start}: you are drawn bottom left`).toBe("You");
+        expect(who(before[1][1]), `seat ${start}: Alice is drawn bottom right`).toBe("Alice");
+        const tapped = before[c][r];
+        expect(tapped.classList.contains("open"), `seat ${start}: column ${c} row ${r} is open`).toBe(true);
+        click(tapped);
+        const sent = lastSent() as { type: string; seat: number };
+        // the cell's seat: your partner's above you, the seat to your right atop the other column
+        expect(sent).toEqual({ type: "table_move", seat: (start + (c === 0 ? 2 : 1)) % 4 });
+        // the server seats you where you asked
+        say(at(sent.seat));
+        const after = cells();
+        expect(who(after[c][r]), `seat ${start}: the seat tapped at column ${c} row ${r} is yours`).toBe("You");
+        expect(who(after[1][1]), `seat ${start}: Alice stays where she was drawn`).toBe("Alice");
+        expect(panel()!.querySelectorAll(".tp-team-label")[c].textContent).toBe("Us");
+      }
+    }
+  });
+
+  it("the columns stay put through a move, still here? and its answer at one table; a new table draws around you again", async () => {
+    const cells = () => [...panel()!.querySelectorAll(".tp-col")]
+      .map((col) => [...col.children].map((el) => (el.getAttribute("aria-label") ?? "").split(/[,.]/)[0]));
+    const at = (you: number, code: string, over: Record<string, unknown> = {}) => {
+      const seats: Seat[] = [null, null, null, null];
+      seats[you] = seat("Jerry", { you: true });
+      seats[3] = seat("Alice");
+      return atTable(seats, { id: code, you, opener: 3 }, { code, mode: "casual", ...over });
+    };
+    await renderApp();
+    say(at(0, "QQPF"));
+    expect(cells()).toEqual([["Open seat", "You"], ["Open seat", "Alice"]]);
+    // the top-right open seat is seat 1
+    click(panel()!.querySelectorAll<HTMLElement>(".tp-col")[1].children[0] as HTMLElement);
+    expect(lastSent()).toEqual({ type: "table_move", seat: 1 });
+    say(at(1, "QQPF"));
+    const moved = [["Open seat", "Open seat"], ["You", "Alice"]];
+    expect(cells()).toEqual(moved);
+    // the prompt's panel has no settings rows: the seats still stay put
+    say(at(1, "QQPF", { still_here_until: nowSecs() + 30 }));
+    expect(lines()[0]).toMatch(/^You leave the table in/);
+    expect(cells()).toEqual(moved);
+    say(at(1, "QQPF", { still_here_until: null }));
+    expect(cells()).toEqual(moved);
+    // another table is drawn around your seat there
+    say(at(1, "ZZ9K"));
+    expect(cells()).toEqual([["Alice", "You"], ["Open seat", "Open seat"]]);
+  });
+
   it("a Duo's seats never move", async () => {
     await renderApp();
     say(atTable([seat("Jerry", { you: true, pair: true }), seat("Li"), seat("Kai", { pair: true }), null],

@@ -612,7 +612,8 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
         rt4m_joint.completed_inputs(directory / "reserved", recipe)
     run_path.write_text(json.dumps(actual))
     cache_root = directory / "cache"
-    cache_options = {"encode_rounds": 4} if interrupt else {}
+    encode_rounds = 4 if interrupt or killed else 32
+    cache_options = {"encode_rounds": encode_rounds}
     refused_links = set()
     if interrupt:
         host_link = os.link
@@ -629,11 +630,11 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
     if interrupt:
         assert {"cache_device.json", "cache_encode.json"} <= refused_links
     cache, = (cache_root / "A").iterdir()
-    assert cache.name.endswith("-encode4") == interrupt
+    assert cache.name.endswith("-encode4") == (encode_rounds == 4)
     marker = cache / "cache_encode.json"
     binding = json.loads(marker.read_text())
-    assert binding["rounds_per_batch"] == (4 if interrupt else 32)
-    marker.write_text(json.dumps(dict(binding, rounds_per_batch=32 if interrupt else 4)))
+    assert binding["rounds_per_batch"] == encode_rounds
+    marker.write_text(json.dumps(dict(binding, rounds_per_batch=32 if encode_rounds == 4 else 4)))
     with pytest.raises(ValueError, match="encoder batch size"):
         rt4m_cache.polish(directory / "reserved", cache_root, recipe, **cache_options)
     marker.write_text(json.dumps(binding))
@@ -650,7 +651,6 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
         old_polish = root / "A/polish"
         old_polish.mkdir()
         (old_polish / "status.log").write_text("partial legacy run")
-        cache_options.update(post_root=post_root, epoch_checkpoint=True)
     if interrupt:
         import sz2_polish_arm
         original_link = sz2_polish_arm.os.link
@@ -688,6 +688,47 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
         monkeypatch.setattr(sys, "argv", [*polish_argv, "--finish-selection"])
         assert rt4m_cache.main() == 0
         assert log_path.read_bytes() == saved_log
+    elif post_root:
+        from shengji.train import unified_readout
+
+        monkeypatch.setattr(rt4m_joint, "RECIPE", recipe)
+        cli = ["rt4m_cache.py", "--root", str(root), "--cache-root", str(cache_root),
+               "--post-root", str(post_root), "--encode-rounds-per-batch", str(encode_rounds),
+               "--polish", "--epoch-checkpoint"]
+        monkeypatch.setattr(sys, "argv", cli)
+        record_status = unified_readout._status
+
+        def interrupt_polish(path, line):
+            record_status(path, line)
+            if line.startswith("POLISH EPOCH 2 "):
+                raise InterruptedError("interrupted after saving polish epoch two")
+
+        with monkeypatch.context() as fault:
+            fault.setattr(unified_readout, "_status", interrupt_polish)
+            with pytest.raises(SystemExit) as err:
+                rt4m_cache.main()
+            assert err.value.code == 2
+            assert "interrupted after saving polish epoch two" in capsys.readouterr().err
+        polish_dir = post_root / "A/polish"
+        log_path = polish_dir / "status.log"
+        before = log_path.read_bytes()
+        assert (polish_dir / unified_readout.POLISH_CHECKPOINT).is_file()
+        assert b"POLISH DONE" not in before and not (polish_dir / "selected.pt").exists()
+
+        monkeypatch.setattr(sys, "argv", cli[:-1])
+        with pytest.raises(SystemExit) as err:
+            rt4m_cache.main()
+        assert err.value.code == 2
+        assert "File exists" in capsys.readouterr().err
+        assert log_path.read_bytes() == before
+        monkeypatch.setattr(sys, "argv", cli)
+        assert rt4m_cache.main() == 0
+        complete = log_path.read_text()
+        assert complete.count("POLISH START ") == 1
+        assert " POLISH RESUME completed_epochs=2" in complete
+        for epoch in range(1, 9):
+            assert complete.count(f"POLISH EPOCH {epoch} ") == 1
+        assert " POLISH DONE " in complete.splitlines()[-1]
     else:
         assert rt4m_cache.polish(directory / "reserved", cache_root, recipe, **cache_options) == 0
     assert ((post_root or root) / "A/polish/selected.pt").is_file()

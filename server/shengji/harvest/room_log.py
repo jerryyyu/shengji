@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any, Iterator, Sequence
 
 from ..engine.round import Round
-from ..rl.replay_log import rebuild_round
+from ..rl.replay_log import human_decision_names, rebuild_round
 from .common import (REPO, ROOM_LOG_GLOBS, ExtractResult, InputRegistry,
                      action_key, human_policy)
 from .legal import bury_action_count, enumerate_legal
@@ -185,6 +185,7 @@ def extract_round(ref: str, round_no: int, events: list[dict], *,
     names = {int(p["seat"]): str(p["name"]) for p in players}
     if set(names) != {0, 1, 2, 3}:
         raise RoomLogError("round_player_seats")
+    decision_names = human_decision_names(events, start, names)
     rnd = rebuild_round(events)
     if rnd is None:
         raise RoomLogError("round_missing_setup")
@@ -218,12 +219,12 @@ def extract_round(ref: str, round_no: int, events: list[dict], *,
             engine_level_change(final_points):
         raise RoomLogError("logged level_change drift")
 
-    def policy_for(event: dict) -> str:
+    def policy_for(event_index: int, event: dict) -> str:
         # the event's own flag decides: a bot may act for a human seat
         # (disconnect takeover, ``bot_timing.mode == "takeover"``)
         seat = int(event["seat"])
         if event.get("bot") is False:
-            return human_policy(names[seat])
+            return human_policy(decision_names[event_index])
         decision = event.get("decision")
         if isinstance(decision, dict) and isinstance(decision.get("policy"), str):
             return decision["policy"]
@@ -235,10 +236,11 @@ def extract_round(ref: str, round_no: int, events: list[dict], *,
     # ---- bury record (state before the bury)
     pre = round_from_setup(deck, setup, stop_before_bury=True)
     hand_before = sorted(pre.hands[banker])
+    bury_index = events.index(bury)
     records.append(finalize_record({
         "source": "room-log",
-        "source_ref": f"{ref}:round-{round_no}:event-{events.index(bury)}",
-        "policy": policy_for(bury),
+        "source_ref": f"{ref}:round-{round_no}:event-{bury_index}",
+        "policy": policy_for(bury_index, bury),
         "decision_kind": "bury",
         "deck": deck,
         "setup": setup,
@@ -286,7 +288,7 @@ def extract_round(ref: str, round_no: int, events: list[dict], *,
         fields = {
             "source": "room-log",
             "source_ref": f"{ref}:round-{round_no}:event-{event_index}",
-            "policy": policy_for(event),
+            "policy": policy_for(event_index, event),
             "deck": deck,
             "setup": setup,
             "plays_prefix": [dict(p) for p in prefix],
@@ -381,8 +383,3 @@ def extract_room_logs(files: Sequence[Path] | None = None, *, cap: int | None = 
     result.notes.append("decisions = play records; bury records are counted "
                         "separately (decision_kind = 'bury')")
     return result
-
-
-def player_names(events: list[dict]) -> dict[int, str]:
-    start = next(e for e in events if e.get("e") == "round_start")
-    return {int(p["seat"]): str(p["name"]) for p in start["players"]}

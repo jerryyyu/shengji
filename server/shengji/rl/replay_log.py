@@ -36,6 +36,25 @@ def group_rounds(path: str) -> dict[int, list[dict]]:
     return by_round
 
 
+def human_decision_names(evs: list[dict], start: dict,
+                         names: dict[int, str]) -> dict[int, str]:
+    """Return the seat holder at each human play or bury, keyed by event index."""
+    holders = names.copy()
+    decisions = {}
+    start_index = evs.index(start)
+    for index in range(start_index + 1, len(evs)):
+        event = evs[index]
+        kind = event.get("e")
+        if kind == "seat_claimed":
+            seat, name = event.get("seat"), event.get("name")
+            if type(seat) is not int or seat not in holders or not isinstance(name, str):
+                raise ValueError(f"invalid seat claim at event {index}")
+            holders[seat] = name
+        elif kind in ("play", "bury") and event.get("bot") is False:
+            decisions[index] = holders[int(event["seat"])]
+    return decisions
+
+
 def rebuild_round(evs: list[dict]) -> Round | None:
     """Reconstruct a Round to the start of play from one round's events.
     Returns None if the log lacks setup events (partial round)."""

@@ -950,6 +950,22 @@ describe("the table", () => {
     });
   });
 
+  it("a line that appears over your companion (a hint once a card is chosen) moves it off", async () => {
+    await draw(table(state()));
+    const was = spotOf(0);
+    const line = document.createElement("div");
+    line.className = "hand-line";
+    rects["hand-line"] = { x: was.x + 4, y: was.y + 10, w: 24, h: 24 };
+    await act(async () => {
+      host.querySelector(".felt")!.appendChild(line);
+      await new Promise((r) => setTimeout(r, 60));
+    });
+    await act(async () => { await new Promise((r) => setTimeout(r, 60)); });
+    const now = spotOf(0);
+    expect(now).not.toEqual(was);
+    expect(clear(now, 44, true, { ...layout(), obstacles: [...layout().obstacles, rects["hand-line"]] })).toBe(true);
+  });
+
   it("under Reduce Motion it stands on its home and never walks", async () => {
     vi.useFakeTimers();
     const mm = window.matchMedia;

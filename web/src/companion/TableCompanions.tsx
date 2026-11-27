@@ -444,18 +444,40 @@ function useLayout(root: RefObject<HTMLDivElement | null>, on: boolean, key: str
     if (!on) return;
     const felt = root.current?.parentElement;
     if (!felt) return;
-    const read = () => setLayout(measure(felt));
+    // a measure that finds nothing moved keeps the layout as it was
+    let last = "";
+    const read = () => {
+      const next = measure(felt);
+      const seen = JSON.stringify(next);
+      if (seen === last) return;
+      last = seen;
+      setLayout(next);
+    };
     read();
     // once more as the cards finish flying in, and again after a slow flight
     const later = window.setTimeout(read, 450);
-    const last = window.setTimeout(read, 1200);
+    const slow = window.setTimeout(read, 1200);
     window.addEventListener("resize", read);
     let ro: ResizeObserver | null = null;
     if (typeof ResizeObserver === "function") {
       ro = new ResizeObserver(read);
       ro.observe(felt);
     }
-    return () => { window.clearTimeout(later); window.clearTimeout(last); window.removeEventListener("resize", read); ro?.disconnect(); };
+    // a line or a control that comes and goes with a card chosen (not with
+    // the game): measured again on the next frame, never for the companions' own changes
+    let frame = 0;
+    let mo: MutationObserver | null = null;
+    if (typeof MutationObserver === "function") {
+      mo = new MutationObserver((list) => {
+        if (frame || list.every((m) => (m.target as Element).closest?.(".table-companions"))) return;
+        frame = window.requestAnimationFrame(() => { frame = 0; read(); });
+      });
+      mo.observe(felt, { childList: true, subtree: true });
+    }
+    return () => {
+      window.clearTimeout(later); window.clearTimeout(slow); window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", read); ro?.disconnect(); mo?.disconnect();
+    };
   }, [root, on, key]);
   return on ? layout : null;
 }

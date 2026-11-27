@@ -718,6 +718,8 @@ describe("the table", () => {
 
   it("walks now and then within its zone, facing the way it goes, and never while hidden", async () => {
     vi.useFakeTimers();
+    // a fixed draw: every walk waits 11.5 s and goes to its zone's middle far spot, which each seat can reach
+    const rnd = vi.spyOn(Math, "random").mockReturnValue(0.5);
     let hidden = false;
     const vis = vi.spyOn(document, "visibilityState", "get").mockImplementation(() => (hidden ? "hidden" : "visible"));
     const walks: { el: Element; frames: Keyframe[] }[] = [];
@@ -751,6 +753,7 @@ describe("the table", () => {
     } finally {
       proto.animate = had;
       vis.mockRestore();
+      rnd.mockRestore();
       vi.useRealTimers();
     }
   });
@@ -1021,6 +1024,18 @@ describe("the table", () => {
       tap(host.querySelector('.tc-seat[data-seat="2"] .tc-walk')!, 0, 0);
       expect(specialOn("2")).toBe(false);
     });
+
+    it.each([["lamb/newyear", 2600], ["panda/classic", 1900], ["bun/plain", 1540]] as const)(
+      "a tap on yours as %s holds its special for the drawing's whole length (%i ms), from the one timing table", async (look, ms) => {
+        await render(state({ players: [player(0, { look }), player(1), player(2), player(3)] } as Partial<GameState>));
+        expect(DRAWINGS[look.split("/")[0] as keyof typeof DRAWINGS].reactMs).toBe(ms);
+        tap(host.querySelector('.tc-seat[data-seat="0"] .tc-walk')!, 0, 0);
+        expect(specialOn("0")).toBe(true);
+        await advance(ms - 50);
+        expect(specialOn("0")).toBe(true);
+        await advance(100);
+        expect(specialOn("0")).toBe(false);
+      });
 
     it("your team's round win plays each of its companions' special once the round-end sheet closes", async () => {
       await render(state());

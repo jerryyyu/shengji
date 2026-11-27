@@ -24,7 +24,7 @@ import { useAuth } from "../auth";
 import { prefersReducedMotion } from "../motion";
 import { useMediaQuery, TABLET_SCREEN } from "../phoneLayout";
 import { Companion } from "./Companion";
-import { REACT_MS } from "./kinds";
+import { DRAWINGS } from "./kinds";
 import type { Pose } from "./Companion";
 import { useCollection } from "./feature";
 import { parseLook } from "./look";
@@ -458,7 +458,7 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     if (special === 0) return;
     lastSpecial.current = Date.now();
     setPlaying(true);
-    const timer = window.setTimeout(() => setPlaying(false), prefersReducedMotion() ? 1000 : REACT_MS[kind]);
+    const timer = window.setTimeout(() => setPlaying(false), prefersReducedMotion() ? 1000 : DRAWINGS[kind].reactMs);
     return () => { window.clearTimeout(timer); setPlaying(false); };
   }, [special, kind]);
   const poked = (e: MouseEvent) => {

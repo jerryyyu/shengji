@@ -17,6 +17,7 @@ export const common = defineMessages({
   "settings.coach": { en: "Coach", zh: "新手提示", hant: "新手提示" },
   "settings.sound": { en: "Sound", zh: "音效", hant: "音效" },
   "settings.haptics": { en: "Haptics", zh: "振动", hant: "震動" },
+  "settings.companions": { en: "Show companions at the table", zh: "牌桌上显示伙伴", hant: "牌桌上顯示夥伴" },
   "settings.howto": { en: "How to play", zh: "怎么玩", hant: "怎麼玩" },
   "language.row": { en: "Language", zh: "语言", hant: "語言" },
   "language.system": { en: "Follow system", zh: "跟随系统", hant: "跟隨系統" },

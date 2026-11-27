@@ -1,6 +1,6 @@
 // Where your own screen draws companions at the table: an account keeps it
-// on the server, a guest on this device. The Collection shows it as one
-// switch, Show at the table: Off is off, and every other mode (an older
+// on the server, a guest on this device. Me's settings show it as one
+// switch, Show companions at the table: Off is off, and every other mode (an older
 // "team" or "individual") is on, drawn by each player (`TableCompanions.tsx`).
 import { useSyncExternalStore } from "react";
 import type { AuthUser } from "../auth";

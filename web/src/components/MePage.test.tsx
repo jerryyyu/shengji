@@ -14,7 +14,8 @@ const { authState, signOut, deleted, updated } = vi.hoisted(() => ({
 vi.mock("../ws", () => ({ conn: { send: () => {}, reconnect: () => {} } }));
 vi.mock("../auth", async (importOriginal) => {
   const real = await importOriginal<typeof import("../auth")>();
-  return { ...real, useAuth: () => authState.current, auth: { signOut, deleted, updated, signedIn: vi.fn() } };
+  return { ...real, useAuth: () => authState.current,
+           auth: { signOut, deleted, updated, signedIn: vi.fn(), get state() { return authState.current; } } };
 });
 
 import MePage from "./MePage";
@@ -65,6 +66,9 @@ beforeEach(() => {
     const method = init?.method ?? "GET";
     calls.push({ url, method });
     if (method === "DELETE" && url === "/api/me") return { status: deleteStatus, json: async () => { throw new Error("no body"); } } as unknown as Response;
+    if (method === "PUT" && url === "/api/me/look") {
+      return { status: 200, json: async () => ({ ...JERRY, ...JSON.parse(String(init?.body)) }) } as Response;
+    }
     if (method === "POST" && url === "/api/me/leaderboard-visibility") {
       return { status: 200, json: async () => JSON.parse(String(init?.body)) } as Response;
     }
@@ -808,6 +812,40 @@ describe("the Settings group", () => {
     expect(sw().getAttribute("aria-checked")).toBe("false");
     act(() => setMuted(false));
     expect(sw().getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("Show companions at the table is a switch for an account shown the Collection; it writes the account's companions", async () => {
+    updated.mockImplementation((u) => { authState.current = { ...authState.current, user: u } as AuthState; });
+    authState.current = { status: "in", clientId: "cid", user: { ...JERRY, companions: "individual", features: { collection: true } } };
+    await render();
+    expect(groupLabels()).toEqual(["Coach", "Sound", "Show companions at the table", "Language", "How to play"]);
+    const sw = () => host.querySelector<HTMLButtonElement>(".me-settings .me-companions")!;
+    expect(sw().getAttribute("role")).toBe("switch");
+    expect(sw().getAttribute("aria-checked")).toBe("true");
+    await act(async () => { sw().click(); await new Promise((r) => setTimeout(r, 0)); });
+    const put = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([u, i]) => u === "/api/me/look" && i?.method === "PUT");
+    expect(JSON.parse(String(put?.[1]?.body))).toEqual({ companions: "off" });
+    expect(authState.current.status === "in" && authState.current.user?.companions).toBe("off");
+    // the account's new value redraws Me (the real useAuth subscribes; this mock is read on render)
+    await act(async () => { root.render(<><MePage section="stats" /><IdentitySheet /></>); });
+    expect(sw().getAttribute("aria-checked")).toBe("false");
+    updated.mockReset();
+  });
+
+  it("Show companions at the table shows only where the Collection is shown, and reads in Chinese", async () => {
+    authState.current = { status: "in", clientId: "cid", user: JERRY };
+    await render();
+    expect(host.querySelector(".me-companions")).toBeNull();
+    act(() => root.unmount());
+    host.remove();
+    authState.current = { status: "out", clientId: "cid", user: null, collection: true } as AuthState;
+    await render();
+    expect(groupLabels()).toEqual(["Coach", "Sound", "Show companions at the table", "Language", "How to play"]);
+    act(() => setLanguageChoice("zh-Hans"));
+    expect(host.querySelector(".me-companions .grp-label")?.textContent).toBe("牌桌上显示伙伴");
+    act(() => setLanguageChoice("zh-Hant"));
+    expect(host.querySelector(".me-companions .grp-label")?.textContent).toBe("牌桌上顯示夥伴");
+    act(() => setLanguageChoice("system"));
   });
 
   it("a browser has no Haptics row; a guest gets the same settings list as an account", async () => {

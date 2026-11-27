@@ -8,7 +8,6 @@ import { Companion } from "../companion/Companion";
 import { SOON, soonColour } from "../companion/characters";
 import type { SoonKind } from "../companion/characters";
 import { lookAccount, markLooksSeen, markSeen, newLooks } from "../companion/seen";
-import { setCompanionMode, shownAtTable, useCompanionMode } from "../companion/mode";
 import { equip, intend, refreshAccount } from "../companion/writes";
 import LargeTitlePage from "../home/LargeTitlePage";
 import { WIDE, settleCollectionItem, useCollectionItem } from "../home/route";
@@ -57,7 +56,7 @@ function Tile({ kind, colour, label, sub, gold, dim, worn, isNew, selected, arri
  *  one in use until a tile is tapped) live on felt: its moves cycle by
  *  themselves and a tap plays its special. Under it, its colours, Try on your
  *  table, the one status line and the one button (Use, In use, the unlock
- *  line, Buy, Sign in to buy, or Soon); then Show at the table, then the
+ *  line, Buy, Sign in to buy, or Soon); then the
  *  grid. Yours: the free companions and the ones bought, a tick on the one in
  *  use. Where the store can sell (`useShop`), More companions: the store's
  *  characters with StoreKit's price, or Soon, and Restore purchases as the
@@ -161,7 +160,6 @@ export default function CollectionPage() {
     if (next !== null) setShown(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [who, inUse, user?.looks]);
-  const atTable = shownAtTable(useCompanionMode(user));
 
   // the counts that unlock a colour move with play: read them again on
   // every open and every return to the app
@@ -294,19 +292,6 @@ export default function CollectionPage() {
     <LargeTitlePage className="coll-page" scroller={scroller} title={t("home.tabCollection")} phone={phone}
                    onRefresh={() => refreshAccount()}>
       <div key={selected} className={swaps > 0 ? "coll-swap" : undefined}>{stage}</div>
-      <ul className="grp coll-mode">
-        <li>
-          <button type="button" className="grp-row coll-at-table" role="switch" aria-checked={atTable}
-                  onClick={() => {
-                    setCompanionMode(user, atTable ? "off" : "individual").catch((err: unknown) => {
-                      showToast(err instanceof Error ? err.message : String(err));
-                    });
-                  }}>
-            <span className="grp-label">{t("home.showAtTable")}</span>
-            <span className={`ios-switch${atTable ? " on" : ""}`} aria-hidden="true" />
-          </button>
-        </li>
-      </ul>
       <h2 className="coll-section">{t("home.yours")}</h2>
       <div className="coll-grid coll-yours">
         {yours.map((k) => (

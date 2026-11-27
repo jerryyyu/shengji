@@ -488,7 +488,9 @@ describe("the Collection, behind its allowlist", () => {
     await act(async () => { openTab("collection"); await new Promise((r) => setTimeout(r, 0)); });
     expect(host.querySelector(".large-title")?.textContent).toBe("Collection");
     expect(host.querySelector(".coll-felt svg.cmp")).not.toBeNull();
-    expect(host.querySelector(".coll-mode")).not.toBeNull();
+    expect(host.querySelector(".coll-page [role=switch]")).toBeNull();
+    await act(async () => { openTab("me"); await new Promise((r) => setTimeout(r, 0)); });
+    expect(host.querySelector(".me-settings .me-companions")?.textContent).toBe("Show companions at the table");
   });
 
   it("another account sees three tabs and its initial, and the Collection's hash opens Play", async () => {
@@ -500,6 +502,10 @@ describe("the Collection, behind its allowlist", () => {
     expect(host.querySelector(".tabbar .avatar")?.getAttribute("data-initial")).toBe("J");
     expect(host.querySelector(".coll-page")).toBeNull();
     expect(host.querySelector(".lobby-panel")).not.toBeNull();
+    const { openTab } = await import("./home/route");
+    await act(async () => { openTab("me"); await new Promise((r) => setTimeout(r, 0)); });
+    expect(host.querySelector(".me-settings")).not.toBeNull();
+    expect(host.querySelector(".me-companions")).toBeNull();
   });
 
   it("a guest sees three tabs and initials until the Collection is on for everyone", async () => {

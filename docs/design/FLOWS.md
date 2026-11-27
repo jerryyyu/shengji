@@ -106,7 +106,10 @@ the ⋯ menu. "Kitty 8 cards" moves out of ⋯. Me alone adds a Language row bef
 the choice, and a tap opens the choices in place under it, as Edit name opens its field (Follow system,
 English, 简体中文, 繁體中文, in the app and on the website alike). Follow system is the default: a device or browser
 whose first language is Chinese reads it in its script (Hant, TW, HK and MO read 繁體中文 in Taiwan usage, every
-other Chinese tag 简体中文), every other reads English. No sheet, no new surface.
+other Chinese tag 简体中文), every other reads English. No sheet, no new surface. For a viewer the Collection is
+shown to, Me also adds **Show companions at the table** (牌桌上显示伙伴 / 牌桌上顯示夥伴) after the switches, before
+Language (Jerry 2026-11-27: "i dont really like the show at table toggle in collection- should it be under settings?"
+then "yea"); the ⋯ menu has neither row.
 
 **Section 7, guest name.** One name control: the chip opens the same edit sheet on every tab. Me shows the
 guest's name and initial with "Guest · not ranked" (cut to "Guest" by the copy rule; the iOS app's own account
@@ -561,7 +564,7 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   tap playing its special from its start, still under Reduce Motion (a tap shows the special drawn still). Under
   it, the selected character's Try on your table (it stands beside a partner on your team's pads), its colour
   swatches (56 px, four in a row on a phone), one status line naming what is shown ("Bun · Taro") and the one
-  button. Then the one switch; then **Yours**, the free companions and the ones bought, as tiles idling on felt
+  button. Then **Yours** (the page has no switch; Show companions at the table is in Me's settings), the free companions and the ones bought, as tiles idling on felt
   with their names and a tick on the one in use; then, where the store can sell, **More companions**, the store's
   characters with StoreKit's own price or Soon for one not launched, and Restore purchases as the last, text, row;
   where it cannot, **Coming soon** (即将推出 / 即將推出; Jerry 2026-11-27: "show coming soon section? even if we dont
@@ -608,11 +611,10 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   at the table: all seven now paint inside it, and the Lion's dance runs 2.5 s. The stage plays each reaction to its end. At the
   table they are drawn as the free companions are: still drawings on their team's pads that walk, hop, cheer and
   grow.
-- **Show at the table** (Jerry 2026-11-26, finding 2: one labelled switch, on by default) replaces Team ·
+- **Show companions at the table** (Jerry 2026-11-26, finding 2: one labelled switch, on by default) replaces Team ·
   Individual · Off. It is stored where the mode was (the account's `companions`, a guest's device), so an older
-  client keeps working: off is off, and an older Team or Individual reads as on. The row has no card behind it
-  (Jerry 2026-11-26: "The show at table toggle doesn't need background"): the label and the switch sit on the page,
-  the label on the grid's gutter, the row still 44 px tall.
+  client keeps working: off is off, and an older Team or Individual reads as on. It is a row of Me's settings
+  (Jerry 2026-11-27, see Section 6), shown wherever the Collection is; the Collection page has no switch.
 - **The companions** (Jerry 2026-11-26: "we can start with tractor, bun, chick, sparrow"), all free from the start:
   the Tractor, now with its rider (a farm kid in a straw hat at the cab window), the Bun 包子, the Chick 小鸡 and the
   Sparrow 麻雀, four colours each beside the Tractor's eight. Hop and cheer are two different moves: hop one small

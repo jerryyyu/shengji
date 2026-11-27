@@ -2064,6 +2064,21 @@ def _level_changed(room: Room, decision: _BotTurnDecision) -> bool:
             or (snapshot.phase == "play" and decision.level != snapshot.level))
 
 
+def _turn_moved_on(room: Room, decision: _BotTurnDecision) -> bool:
+    """In the same round, the decision the search was for has been made by
+    someone else: the live turn is a later one. A new round, or a turn that
+    is still the searched one, is not a move on."""
+    snapshot = decision.snapshot
+    rnd = room.round
+    if (room.game is not snapshot.game_token or rnd is not snapshot.round_token
+            or rnd is None):
+        return False
+    if rnd.phase != snapshot.phase or rnd.turn != snapshot.seat:
+        return True
+    return (snapshot.phase == "play"
+            and snapshot.play_cursor != (len(rnd.history), len(rnd.trick.plays)))
+
+
 def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
     """Commit only if snapshot ownership and the live turn are unchanged.
 
@@ -2216,7 +2231,11 @@ async def pump_bots(room: Room) -> None:
             acted = _commit_bot_turn(room, prepared)
             _log_bot_timing(room, prepared, acted=acted)
             if not acted:
-                if _level_changed(room, prepared.decision):
+                # another actor moved this turn while the search ran: the
+                # pump goes on to the live turn, since a kick that came while
+                # this task was still running started no second pump
+                if (_level_changed(room, prepared.decision)
+                        or _turn_moved_on(room, prepared.decision)):
                     continue
                 return
             await broadcast(room)
@@ -2304,6 +2323,11 @@ async def move_timer_tick(room: Room) -> bool:
             return True
         seat = current_actor(room)
         if seat is None or not _turn_eligible(room, seat, "timeout"):
+            return False
+        if _auto_mode(room, seat) == "timeout":
+            # a present seat that is away has one actor, the bot pump; here
+            # the tick only restarts a pump that is not running
+            kick_bots(room)
             return False
     prepared = await _paced_bot_step(
         room, seat, mode="timeout", minimum_turn_seconds=0.0)

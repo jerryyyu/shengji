@@ -2834,6 +2834,107 @@ def test_ws_one_human_at_a_matched_table_has_no_move_clock_until_a_second_sits(
             assert room.seats[0].timeouts_in_row == 1
 
 
+# ------------------------------------------------- an away seat has one actor
+def _pump_idle(room):
+    return room.bot_task is None or room.bot_task.done()
+
+
+def _send_legal_play(srv, room, ws, seat):
+    """The seat's player sends a legal play over its socket, as a person would."""
+    import copy
+
+    codes = copy.deepcopy(room.bot).decide_play(copy.deepcopy(room.round), seat)
+    ws.send_json({"type": "play", "card_ids": room.ids_for_codes(seat, codes)})
+
+
+def _host_away_with_the_pump_on_its_turn(srv, store, client, monkeypatch, h, f, t):
+    """A queue-started ranked table: the host at seat 0, a friend at seat 2,
+    bots at 1 and 3. The host lets its clock run out twice in a row, which
+    marks the seat away (the server's own mechanism), and the friend plays
+    its own turns. Returns the room once the bot pump is mid-turn for the
+    away host, with a served-pace wait still ahead of it."""
+    code, room = _start_ranked(srv, h)
+    f.send_json({"type": "table_join", "expect": "room", "code": code, "seat": 2})
+    _drain(f, "match_started")
+    _wait_until(lambda: room.seats[2].user_id is not None and room.seats[2].connected)
+
+    def owing():
+        async def check():
+            async with room.lock:
+                if not _pump_idle(room):
+                    return None
+                owed = srv._owing_seats(room)
+                return next((s for s in (0, 2) if s in owed), None)
+        return client.portal.call(check)
+
+    while not room.seats[0].away:
+        _wait_until(lambda: owing() is not None)
+        seat = owing()
+        if seat == 2 and room.round.phase == "play":
+            before = len(room.round.history), len(room.round.trick.plays)
+            _send_legal_play(srv, room, f, 2)
+            _wait_until(lambda: (len(room.round.history), len(room.round.trick.plays)) != before)
+            continue
+        t["v"] += srv.MOVE_TIMER + 1
+        assert client.portal.call(srv.move_timer_tick, room) is True
+    assert room.seats[0].connected and room.round.phase == "play"
+    # the served pace from here: each pump turn waits BOT_DELAY seconds
+    monkeypatch.setattr(srv, "BOT_DELAY", 2.0)
+    while True:
+        _wait_until(lambda: room.round.turn in (0, 2))
+        if room.round.turn == 0 and not _pump_idle(room):
+            return room
+        _wait_until(lambda: _pump_idle(room) and room.round.turn == 2)
+        before = len(room.round.history), len(room.round.trick.plays)
+        _send_legal_play(srv, room, f, 2)
+        _wait_until(lambda: (len(room.round.history), len(room.round.trick.plays)) != before)
+
+
+def _seat_plays(room, seat):
+    rnd = room.round
+    return (sum(1 for tr in rnd.history for p in tr.plays if p.seat == seat)
+            + sum(1 for p in rnd.trick.plays if p.seat == seat))
+
+
+def test_ws_the_move_timer_yields_an_away_seat_to_the_bot_pump(wsenv, monkeypatch):
+    """The pump is the one actor for a present-but-away seat: the 1 s move-timer
+    tick that lands mid-search does not play the turn too, so the pump's
+    commit is not discarded and the bot seat after it still moves."""
+    srv, store, client, clock = wsenv
+    t = {"v": 5000.0}
+    monkeypatch.setattr(srv, "now", lambda: t["v"])
+    _, host_headers = _ranked_host(srv, store, client, monkeypatch)
+    _, friend_headers = _user(store, "friend", "Friend")
+    with client.websocket_connect("/ws", headers=host_headers) as h, \
+            client.websocket_connect("/ws", headers=friend_headers) as f:
+        room = _host_away_with_the_pump_on_its_turn(srv, store, client, monkeypatch, h, f, t)
+        host_before, next_before = _seat_plays(room, 0), _seat_plays(room, 1)
+        acted = client.portal.call(srv.move_timer_tick, room)
+        # the bot seat after the away seat moves on
+        _wait_until(lambda: _seat_plays(room, 1) == next_before + 1)
+        assert _seat_plays(room, 0) == host_before + 1
+        assert acted is False, "the tick played a turn the pump owns"
+
+
+def test_ws_an_away_seat_s_own_play_mid_search_leaves_the_next_bot_moving(wsenv, monkeypatch):
+    """The away player plays its own card while the pump searches that turn:
+    the pump's result is stale, and the pump goes on to the live turn instead
+    of ending with nobody left to move the next bot seat."""
+    srv, store, client, clock = wsenv
+    t = {"v": 5000.0}
+    monkeypatch.setattr(srv, "now", lambda: t["v"])
+    _, host_headers = _ranked_host(srv, store, client, monkeypatch)
+    _, friend_headers = _user(store, "friend", "Friend")
+    with client.websocket_connect("/ws", headers=host_headers) as h, \
+            client.websocket_connect("/ws", headers=friend_headers) as f:
+        room = _host_away_with_the_pump_on_its_turn(srv, store, client, monkeypatch, h, f, t)
+        host_before, next_before = _seat_plays(room, 0), _seat_plays(room, 1)
+        _send_legal_play(srv, room, h, 0)
+        _wait_until(lambda: _seat_plays(room, 0) == host_before + 1)
+        assert not room.seats[0].away
+        _wait_until(lambda: _seat_plays(room, 1) == next_before + 1)
+
+
 # ------------------------------------------------- a guest signs in
 _next = _next_where
 

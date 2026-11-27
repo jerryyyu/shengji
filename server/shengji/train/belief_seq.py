@@ -64,7 +64,7 @@ from .belief_eval import (SUBSETS, copy_terms, deal_bootstrap, fit_scalar, maske
                           sampler_probs, strata_of, summarize, uniform_probs)
 from .belief_history import MAX_PLAYS, N_CARD_FEATURES, N_TOKEN_FLOAT
 from .belief_history import SCHEMA as HIST_SCHEMA
-from .belief_labels import FEATURE_BLOCKS, FEATURE_DIM, KITTY, N_RECV, PHASES, ROLES, phase_of_trick
+from .belief_labels import FEATURE_BLOCKS, FEATURE_DIM, KITTY, N_RECV, PHASES, ROLES, phase_of_trick, reject_reserved_deals
 
 N_CARDS = 54
 ROW_KEYS = ("X", "Y", "M", "sizes", "trick", "role", "deal")
@@ -164,7 +164,11 @@ def load_part(entry: Mapping[str, Any], keys: Sequence[str], verified: _Verified
     """One chunk's rows (residualized: unknown copies only) joined with its
     history; round arrays keep their chunk-local indices."""
     with np.load(io.BytesIO(verified.read(entry["path"], entry["sha256"]))) as z:
-        part = {k: z[k] for k in keys}
+        deals = z["deal"]
+        reject_reserved_deals(deals)
+        if len(deals) != entry["rows"]:
+            raise BeliefSeqError("deal identity count differs from manifest")
+        part = {k: deals if k == "deal" else z[k] for k in keys}
         keep = np.ones(len(part["X"]), dtype=bool)
         source_rows = None
         if source_seed_windows:

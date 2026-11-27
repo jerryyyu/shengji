@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import sys
@@ -73,6 +74,7 @@ from ..harvest.rebuild import round_from_setup
 from ..rl.encode import CARD_INDEX, N_CARDS
 from ..rl.encode_versions import OBS_DIM_BY_VERSION, encode_obs
 from .data import deal_key
+from .reserved_deals import BELIEF_TREE_TEST_DEALS
 
 SCHEMA = "shengji-belief-labels-v1"
 TASK_RECEIPT_SCHEMA = "shengji-belief-label-task-receipt-v1"
@@ -116,6 +118,23 @@ EXTRACT_PUBLIC = (0, 561)
 
 class BeliefLabelError(ValueError):
     """A record stream, state or label the extractor refuses."""
+
+
+def _stored_deal_id(key: str) -> np.uint64:
+    return np.uint64(int(hashlib.sha256(key.encode()).hexdigest()[:16], 16))
+
+
+_RESERVED_DEAL_IDS = np.array([_stored_deal_id(key) for key in BELIEF_TREE_TEST_DEALS],
+                              dtype=np.uint64)
+
+
+def reject_reserved_deals(deals: np.ndarray) -> None:
+    """Validate stored deck identities before exposing a chunk to a model consumer."""
+    deals = np.asarray(deals)
+    if deals.ndim != 1 or deals.dtype.kind not in "iu" or np.any(deals < 0):
+        raise BeliefLabelError("invalid stored deal identities")
+    if np.intersect1d(deals.astype(np.uint64, copy=False), _RESERVED_DEAL_IDS).size:
+        raise BeliefLabelError("reserved belief-tree test deal in model input")
 
 
 # ------------------------------------------------------------------ helpers
@@ -455,7 +474,7 @@ def extract_cluster(path: Path, *, store_index: int, cluster_index: int, calib: 
     if any(deal_key(list(r["deck"])) != key for r in plays):
         raise BeliefLabelError(f"{path}: a cluster must be one deal")
     split = split_of(key, calib, test)
-    deal_hash = np.uint64(int(hashlib.sha256(key.encode()).hexdigest()[:16], 16))
+    deal_hash = _stored_deal_id(key)
     xs, ys, ms, sizes, meta, samp, samp_n = [], [], [], [], [], [], []
     stats = Counter()
     for d in iter_decisions(plays):
@@ -857,12 +876,17 @@ def load_split(out: str | os.PathLike, split: str, keys: Sequence[str] = ARRAY_K
     at = 0
     for entry in entries:                    # preallocated: one copy of the split in memory
         path = out_dir / entry["file"]
-        if hashlib.sha256(path.read_bytes()).hexdigest() != entry["sha256"]:
+        raw = path.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != entry["sha256"]:
             raise BeliefLabelError(f"{path}: sha256 mismatch")
-        with np.load(path) as z:
+        with np.load(io.BytesIO(raw), allow_pickle=False) as z:
+            deals = z["deal"]
+            reject_reserved_deals(deals)
             n = int(entry["rows"])
+            if len(deals) != n:
+                raise BeliefLabelError("deal identity count differs from manifest")
             for k in keys:
-                a = z[k]
+                a = deals if k == "deal" else z[k]
                 if k not in out:
                     out[k] = np.empty((total, *a.shape[1:]), a.dtype)
                 out[k][at:at + n] = a

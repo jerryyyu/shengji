@@ -468,3 +468,25 @@ def test_completed_resume_preserves_existing_history_consumer(tmp_path, monkeypa
                 np.testing.assert_array_equal(actual[key], expected[entry["path"]][key])
     assert manifest_path.read_bytes() == manifest_bytes
     assert manifest_path.stat().st_mtime_ns == manifest_mtime
+
+
+@pytest.mark.parametrize("split", ["train", "calib", "test"])
+def test_reserved_deck_refused_before_reading_features_or_history(tmp_path, split):
+    from shengji.train import belief_seq, unified_seq
+    from shengji.train.seed_clearance import key_for_seed
+
+    chunk = tmp_path / "renamed.npz"
+    key = key_for_seed(2675015049)
+    stored = int(hashlib.sha256(key.encode()).hexdigest()[:16], 16)
+    np.savez(chunk, deal=np.array([0, stored, stored], np.uint64))
+    sha = hashlib.sha256(chunk.read_bytes()).hexdigest()
+    info = {"file": chunk.name, "sha256": sha, "rows": 3}
+    manifest = {"schema": bl.SCHEMA, "chunks": [{"files": {split: info}}]}
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(bl.BeliefLabelError, match="reserved belief-tree test deal"):
+        bl.load_split(tmp_path, split, keys=["X"])
+    entry = dict(info, path=str(chunk))
+    with pytest.raises(bl.BeliefLabelError, match="reserved belief-tree test deal"):
+        belief_seq.load_part(entry, ["X"], belief_seq._Verified())
+    with pytest.raises(bl.BeliefLabelError, match="reserved belief-tree test deal"):
+        unified_seq.load_unified_part(entry, belief_seq._Verified(), None)

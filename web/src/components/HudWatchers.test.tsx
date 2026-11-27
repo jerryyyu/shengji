@@ -9,6 +9,7 @@ import Hud from "./Hud";
 import { clearToast, currentToast } from "../toast";
 import { setLanguageChoice } from "../i18n";
 import { conn } from "../ws";
+import { noteReceipt } from "../stateReceipt";
 
 const player = (seat: number): StatePlayer => ({
   seat, name: `P${seat}`, is_bot: false, connected: true, team: (seat % 2) as 0 | 1, cards_left: 16,
@@ -132,23 +133,31 @@ describe("the toast", () => {
     expect(currentToast()).toBeNull();
   });
 
+  /** A state as it arrives on socket `gen`: App notes its receipt. */
+  const arrived = (s: GameState, gen: number) => { noteReceipt(s, gen); return s; };
+
   it("after a reconnect to the same table, tells nothing from the time away", () => {
-    show(state(w(1, 1, [null])));
+    const room = `R${n}`;
+    const old = arrived(state(w(1, 1, [null]), room), 1);
+    show(old);
     clearToast();
-    // the socket drops; Mei starts watching meanwhile; the new socket's first
-    // frame already carries that toast's number
+    // the socket reopens: the table renders again with the state it kept
+    // from the old socket, before anything arrives on the new one
     act(() => { conn.generation += 1; });
-    show(state(w(2, 2, [{ name: "Mei" }])));
+    show(old);
     expect(currentToast()).toBeNull();
-    // the next arrival on the new connection is told
-    show(state(w(3, 3, [{ name: "Sam" }])));
+    // Mei started watching while the socket was away: the new socket's
+    // first state already carries that toast's number
+    show(arrived(state(w(2, 2, [{ name: "Mei" }]), room), 2));
+    expect(currentToast()).toBeNull();
+    // the next arrival on the new socket is told
+    show(arrived(state(w(3, 3, [{ name: "Sam" }]), room), 2));
     expect(currentToast()?.text).toBe("Sam is watching");
     clearToast();
     // a reconnect with nothing new: the next arrival is still told
-    act(() => { conn.generation += 1; });
-    show(state(w(3, 3, [{ name: "Sam" }])));
+    show(arrived(state(w(3, 3, [{ name: "Sam" }]), room), 3));
     expect(currentToast()).toBeNull();
-    show(state(w(4, 4, [null])));
+    show(arrived(state(w(4, 4, [null]), room), 3));
     expect(currentToast()?.text).toBe("Someone is watching");
   });
 

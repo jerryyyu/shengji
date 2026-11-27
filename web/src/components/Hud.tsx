@@ -13,7 +13,7 @@ import { attackingTeam, myTeam } from "../tableCopy";
 import { clearToast, currentToast, heldToastKey, hideHeldToast, holdToast, releaseHeldToast, showToast } from "../toast";
 import { tookSeatText } from "../queue/tableText";
 import { useNearbyUi } from "../nearbyGate";
-import { conn } from "../ws";
+import { receiptOf } from "../stateReceipt";
 import { displayName, t, useT } from "../i18n";
 
 export function TrumpChip({ state }: { state: GameState }) {
@@ -170,10 +170,11 @@ export function watchersLine(names: readonly string[], n: number): string {
   return n <= 1 ? t("table.someoneWatching") : t("table.peopleWatching", { n });
 }
 
-/** The last watchers toast seen at this table on this connection: the first
- *  frame of each table and of each new socket (`conn.generation`) is the
- *  baseline, so a remount, a reconnect (arrivals while away included) or a
- *  page opened later tells no toast that was told before it. */
+/** The last watchers toast seen at this table on one socket: the first state
+ *  of each table that ARRIVED on a new socket (its receipt's generation, noted
+ *  as the frame came in) is the baseline. A render of a state kept from the
+ *  old socket is not, so a remount, a reconnect (arrivals while away
+ *  included) or a page opened later tells no toast told before it. */
 const toldWatchers = { key: "", told: -1 };
 
 /** One toast as watchers start watching (the server sends one per 30 s at
@@ -181,8 +182,8 @@ const toldWatchers = { key: "", told: -1 };
 function useWatcherToast(state: GameState) {
   const w = state.watchers;
   const told = w?.told ?? 0;
-  // read with each frame: a new socket's first frame is its own baseline
-  const gen = conn.generation;
+  // the socket this state arrived on, not the socket open now
+  const gen = receiptOf(state)?.generation ?? -1;
   useEffect(() => {
     if (!w) return;
     const key = `${state.room}#${gen}`;

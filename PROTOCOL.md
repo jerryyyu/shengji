@@ -777,8 +777,9 @@ account may watch any live table's last finished round.
   `told` bumps and whose `joined` lists who arrived since the last one (at
   most one a table per 30 s; arrivals in between come together; none as a
   watcher leaves). A client tells a toast only for a `told` above one it has
-  already seen at that table on the same socket: each new socket's first
-  frame is its baseline. A watcher in the foreground reads
+  already seen at that table on the same socket: the first state that
+  arrives on a new socket is its baseline (a state kept from the old socket
+  and drawn again is not). A watcher in the foreground reads
   `/api/watch/{table}` every 15 s while it plays a round back as well as
   once caught up, so it stays counted (a read from a counted token is no
   new arrival). The server reads the watcher's account before it checks the

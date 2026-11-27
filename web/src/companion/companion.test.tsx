@@ -280,6 +280,10 @@ describe("entitlements and writes stay with their session and their order", () =
       const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
       const apply = (status = 200) => {
         if (status === 200) server = { ...server, ...body } as AuthUser;
+        // the server keeps the order of use: a look put in use goes first
+        if (status === 200 && typeof body.look === "string") {
+          server.recent_looks = [body.look, ...(server.recent_looks ?? []).filter((l) => l !== body.look)];
+        }
         return answer({ status, body: status === 200 ? { ...server } : {} });
       };
       if (!holdPuts) return Promise.resolve(apply());
@@ -411,6 +415,42 @@ describe("entitlements and writes stay with their session and their order", () =
     await flush();
     expect(server.look).toBe("tractor/green");
     expect(authState.current.user?.look).toBe("tractor/green");
+  });
+
+  it("a read the looks outran never puts the older order of use back", async () => {
+    const order = ["chick/ink", "bun/plain", "tractor/red"];
+    server = { ...server, look: "chick/ink", recent_looks: order };
+    authState.current = { status: "in", clientId: "cid", user: { ...server } };
+    holdGets = true;
+    const { equip, refreshAccount } = await import("./writes");
+    let read: Promise<unknown> = Promise.resolve();
+    await act(async () => { read = refreshAccount(); });          // sees chick, bun, tractor
+    await act(async () => { await equip("tractor/red", true); });
+    await act(async () => { await equip("sparrow/tree", true); });
+    expect(authState.current.user?.recent_looks).toEqual(["sparrow/tree", "tractor/red", "chick/ink", "bun/plain"]);
+    await act(async () => { gets()[gets().length - 1].reply(); await read; });
+    expect(authState.current.user?.look).toBe("sparrow/tree");
+    expect(authState.current.user?.recent_looks).toEqual(["sparrow/tree", "tractor/red", "chick/ink", "bun/plain"]);
+  });
+
+  it("an answer that set only where companions show never touches the order of use", async () => {
+    server = { ...server, look: "chick/ink", recent_looks: ["chick/ink", "bun/plain", "tractor/red"] };
+    authState.current = { status: "in", clientId: "cid", user: { ...server } };
+    const answered = globalThis.fetch;
+    let release: () => void = () => {};
+    // the server takes the mode first, but its answer arrives after the look's
+    globalThis.fetch = vi.fn((url: string, init?: RequestInit) => {
+      const p = (answered as (u: string, i?: RequestInit) => Promise<Response>)(url, init);
+      if (url !== "/api/me/look" || !String(init?.body).includes("companions")) return p;
+      return new Promise<Response>((res) => { release = () => { void p.then(res); }; });
+    }) as unknown as typeof fetch;
+    const { equip, writeMode } = await import("./writes");
+    let mode: Promise<void> = Promise.resolve();
+    await act(async () => { mode = writeMode("off"); });
+    await act(async () => { await equip("sparrow/tree", true); });
+    await act(async () => { release(); await mode; });
+    expect(authState.current.user?.companions).toBe("off");
+    expect(authState.current.user?.recent_looks).toEqual(["sparrow/tree", "chick/ink", "bun/plain", "tractor/red"]);
   });
 
   it("an older read answering after a newer one never puts its counts back", async () => {

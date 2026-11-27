@@ -75,14 +75,16 @@ export function intend(field: Field): number {
 const valueOf = (user: AuthUser, field: Field): Value =>
   field === "look" ? user.look ?? "" : user.companions ?? "team";
 
-function show(field: Field, value: Value): void {
+function show(field: Field, value: Value, recent?: string[]): void {
   const now = signedInUser();
   if (!now) return;
-  auth.updated(field === "look" ? { ...now, look: value } : { ...now, companions: value as CompanionMode });
+  auth.updated(field === "look" ? { ...now, look: value, ...(recent ? { recent_looks: recent } : {}) }
+    : { ...now, companions: value as CompanionMode });
 }
 
 /** Read the account again: its counts and what they unlock. A read answers
- *  only if no later read has answered first. A field takes the read's value
+ *  only if no later read has answered first. A field (the look with its
+ *  order of use, `recent_looks`) takes the read's value
  *  only if it was not chosen since the read began and had no write on the
  *  wire or waiting at either end: the server may have answered the read
  *  before it took that write. */
@@ -101,8 +103,11 @@ export async function refreshAccount(): Promise<AuthUser | null> {
   const next = { ...user };
   for (const field of ["look", "companions"] as const) {
     if (f[field].gen !== started[field] || busyAtStart[field] || busy(f[field])) {
-      if (field === "look") next.look = now.look;
-      else next.companions = now.companions;
+      // the order of use belongs to the look: a read the look outran keeps both
+      if (field === "look") {
+        next.look = now.look;
+        next.recent_looks = now.recent_looks;
+      } else next.companions = now.companions;
     } else if (f[field].confirmed === null || f[field].confirmed.gen <= f[field].gen) {
       f[field].confirmed = { gen: f[field].gen, value: valueOf(user, field) };
     }
@@ -124,12 +129,10 @@ function send(field: Field, gen: number, value: Value, scope: string, settle: Se
     (user) => {
       if (scopeNow() !== scope) return finish(false, null);
       const st = fields()[field];
-      // the order of use is the server's latest word, whichever field was written
-      const now = signedInUser();
-      if (now && user.recent_looks) auth.updated({ ...now, recent_looks: user.recent_looks });
       if (!st.confirmed || gen >= st.confirmed.gen) st.confirmed = { gen, value: valueOf(user, field) };
-      // the answer shows only while its choice is the latest
-      if (st.gen === gen) show(field, valueOf(user, field));
+      // the answer shows only while its choice is the latest; the order of use
+      // goes with the look, so only the latest look's answer brings it
+      if (st.gen === gen) show(field, valueOf(user, field), field === "look" ? user.recent_looks : undefined);
       finish(true, null);
     },
     (err: unknown) => {

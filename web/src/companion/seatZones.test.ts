@@ -179,3 +179,42 @@ describe("a tap on the felt", () => {
     expect(clear(s, px, true, layout)).toBe(true);
   });
 });
+
+describe("your home on a phone", () => {
+  const m = TABLES["phone-land-w2"];
+  const px = SEAT_SIZE.phone.base;
+  const phone = (over: Partial<Layout> = {}): Layout => ({ ...layoutOf(m), phone: true, ...over });
+
+  it("holds still while the hand is dealt: over where a full hand starts, not over its first card so far", () => {
+    // the hand dealt from one card in the middle out to 25, as it was measured: the first card moves left
+    const homes = new Set<string>();
+    for (const n of [1, 2, 4, 8, 12, 16, 20, 25]) {
+      const w = 31 + (n - 1) * 33;
+      const first: Rect = { x: Math.round(422 - w / 2), y: m.firstCard.y, w: 31, h: m.firstCard.h };
+      const hand: Rect = { x: first.x, y: m.hand.y, w, h: m.hand.h };
+      const top = Math.min(hand.y, first.y - HAND_LIFT);
+      const layout = phone({ hand: first, obstacles: [...m.buttons, ...m.hud, ...Object.values(m.plates),
+        { x: hand.x, y: top, w: hand.w, h: hand.y + hand.h - top }] });
+      const home = zonesFor(seats(px), layout).bottom.home!;
+      homes.add(JSON.stringify(home));
+      expect(home.x).toBeLessThan(m.plates.left.x + 30);
+    }
+    expect(homes.size).toBe(1);
+  });
+
+  it("is not moved by the banker's crown chip (no name line on a phone)", () => {
+    const plain = zonesFor(seats(px), phone()).bottom.home!;
+    const chip: Rect = { x: 324, y: 226, w: 28, h: 28 };
+    const banker = zonesFor(seats(px), phone({ tagline: chip, obstacles: [...phone().obstacles, chip] })).bottom.home!;
+    expect(banker).toEqual(plain);
+    // a tablet's name line still places it
+    expect(zonesFor(seats(px), layoutOf(TABLES["ipad11-land-w2"])).bottom.home!.x)
+      .toBeGreaterThan(TABLES["ipad11-land-w2"].tagline!.x + TABLES["ipad11-land-w2"].tagline!.w);
+  });
+
+  it("a covered figure's way out is upward before downward", () => {
+    const zone = { home: { x: 100, y: 100 }, spots: [{ x: 100, y: 120 }, { x: 100, y: 79 }] };
+    expect(nearest(zone, { x: 100, y: 100 })).toEqual({ x: 100, y: 120 });
+    expect(nearest(zone, { x: 100, y: 100 }, true)).toEqual({ x: 100, y: 79 });
+  });
+});

@@ -23,10 +23,10 @@ import { DRAWINGS } from "./kinds";
 import { COMPANIONS, COMPANION_KINDS, FREE_KINDS, lookCatalogue, parseLook } from "./look";
 import { companionSize } from "./rig";
 import { parseArt } from "./Tractor";
-import TableCompanions, { LEVEL_UP_MS, SEAT_SIZE, levelIndex } from "./TableCompanions";
+import TableCompanions, { LEVEL_UP_MS, MOVES, SEAT_SIZE, around, levelIndex } from "./TableCompanions";
 import { hasNewLook } from "./seen";
 import type { LookEntry } from "./look";
-import { HAND_LIFT, clear, figureBox, meets, zonesFor } from "./seatZones";
+import { HAND_LIFT, LIFT, clear, figureBox, meets, pathClear, zonesFor } from "./seatZones";
 import type { Layout, Rect, SeatPos } from "./seatZones";
 import { TABLES } from "./seatZones.fixtures";
 import CollectionPage from "../components/CollectionPage";
@@ -768,7 +768,7 @@ describe("the table", () => {
     expect(clear(now, 56, false, layout())).toBe(true);
   });
 
-  it("a figure hidden while cards cover its whole zone is placed afresh when they clear", async () => {
+  it("a figure whose whole zone cards cover steps out to the nearest clear spot, never off the table, and goes home when they clear", async () => {
     const mm = window.matchMedia;
     window.matchMedia = ((q: string) => ({ matches: q.includes("reduce"), addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
     try {
@@ -778,7 +778,10 @@ describe("the table", () => {
       // cards over the whole of seat 1's corner: it has nowhere clear to stand
       rects["trick-play"] = { x: 0, y: 40, w: 340, h: 225 };
       await draw(table(state({ trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>)));
-      expect(host.querySelector('.tc-seat[data-seat="1"]')).toBeNull();
+      expect(host.querySelector('.tc-seat[data-seat="1"]')).not.toBeNull();
+      const out = spotOf(1);
+      expect(meets(figureBox(out, 56, false), rects["trick-play"])).toBe(false);
+      expect(clear(out, 56, false, { ...layout(), obstacles: [...layout().obstacles, rects["trick-play"]] })).toBe(true);
       rects["trick-play"] = { x: 0, y: 0, w: 0, h: 0 };
       await draw(table(state({ trick: { leader: 2, plays: [] } } as Partial<GameState>)));
       const w = host.querySelector<HTMLElement>('.tc-seat[data-seat="1"] .tc-walk')!;
@@ -850,7 +853,10 @@ describe("the table", () => {
       await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
     };
     const walks = (seat: string) => anims.filter((a) => a.seat === seat && a.box.split(" ").includes("tc-walk"));
-    const moves = (seat: string) => anims.filter((a) => a.seat === seat && a.box === "tc-move");
+    // a special drawn larger is its own animation of the move box, apart from the moves
+    const grow = (a: { frames: Keyframe[] }) => /^scale\([\d.]+\)$/.test(String(a.frames[1]?.transform));
+    const moves = (seat: string) => anims.filter((a) => a.seat === seat && a.box === "tc-move" && !grow(a));
+    const grows = (seat: string) => anims.filter((a) => a.seat === seat && a.box === "tc-move" && grow(a));
     const felt = () => host.querySelector(".felt")!;
 
     it("a tap on empty felt walks your companion to the clear spot nearest the tap, and nothing else moves", async () => {
@@ -937,6 +943,191 @@ describe("the table", () => {
       // and no tapped home is left: later walks stay in the zone
       for (let t = 0; t < 30000; t += 1000) await advance(1000);
       expect(zone.spots).toContainEqual(spotOf(0));
+    });
+
+    // an element added to the felt (or the screen) as the page would, measured where `rects` says
+    const add = (cls: string, at: Rect, parent: Element = felt()) => {
+      const el = document.createElement("div");
+      el.className = cls;
+      rects[cls.split(" ").at(-1)!] = at;
+      parent.appendChild(el);
+      return el;
+    };
+    // the observer's next frame, and the walk it starts
+    const settle = async (ms = 500) => { await act(async () => { await Promise.resolve(); }); await advance(ms); };
+    const boxOf = (seat: number, px = 44) => figureBox(spotOf(seat), px, seat === 0);
+
+    it("a control that appears over yours (the clock's ring) is drawn over it, and yours walks clear within half a second", async () => {
+      await render(state());
+      const was = spotOf(0);
+      const bar = add("action-bar", { x: 0, y: 0, w: 0, h: 0 });
+      const ring: Rect = { x: was.x - 4, y: was.y - 4, w: 44, h: 44 };
+      add("timer-ring", ring, bar);
+      await settle(500);
+      const hop = walks("0");
+      expect(hop).toHaveLength(1);
+      expect(hop[0].ms).toBeLessThanOrEqual(500);
+      expect(meets(boxOf(0), ring)).toBe(false);
+      // out the way up, not down into the hand
+      expect(spotOf(0).y).toBeLessThanOrEqual(was.y);
+    });
+
+    for (const [phase, row] of [
+      ["deal", [["deal-deck", { x: 401, y: 77, w: 48, h: 66 }], ["deal-deck-count", { x: 390, y: 148, w: 72, h: 23 }]]],
+      ["declare", [["you-tagline", { x: 317, y: 229, w: 37, h: 30 }], ["timer-ring", { x: 315, y: 190, w: 44, h: 44 }],
+                   ["btn", { x: 362, y: 229, w: 66, h: 27 }], ["declare-tag", { x: 436, y: 221, w: 53, h: 43 }]]],
+      ["bury", [["btn", { x: 377, y: 222, w: 90, h: 40 }], ["timer-ring", { x: 315, y: 190, w: 44, h: 44 }]]],
+      ["play", [["you-tagline", { x: 325, y: 241, w: 37, h: 30 }], ["timer-ring", { x: 315, y: 190, w: 44, h: 44 }],
+                ["your-turn-tag", { x: 371, y: 234, w: 109, h: 43 }], ["hand-line", { x: 300, y: 250, w: 240, h: 16 }]]],
+      ["round_end", []],
+    ] as const) {
+      it(`as banker in ${phase} on a phone, yours and its tag clear every control of the row`, async () => {
+        await render(state({ phase } as Partial<GameState>));
+        const bar = add("action-bar", { x: 0, y: 0, w: 0, h: 0 });
+        const placed: Rect[] = [];
+        for (const [cls, r] of row) {
+          const el = add(cls === "you-tagline" || cls === "hand-line" || cls.startsWith("deal") ? cls : `x ${cls}`, r,
+                         cls === "you-tagline" || cls === "hand-line" || cls.startsWith("deal") ? felt() : bar);
+          if (!cls.startsWith("deal") && cls !== "you-tagline" && cls !== "hand-line") { el.className = cls; rects[cls] = r; }
+          placed.push(r);
+        }
+        await settle(1500);
+        for (const r of placed) expect(meets(boxOf(0), r), JSON.stringify(r)).toBe(false);
+      });
+    }
+
+    it("a chat bubble shown over a companion has it walk clear", async () => {
+      await act(async () => { root.render(<div className="table-screen">{table(state())}<div className="chat-bubbles" /></div>); });
+      const was = spotOf(1);
+      const bubble: Rect = { x: was.x - 10, y: was.y + 6, w: 80, h: 30 };
+      add("chat-bubble", bubble, host.querySelector(".chat-bubbles")!);
+      await settle(500);
+      expect(walks("1")).toHaveLength(1);
+      expect(meets(boxOf(1, 56), bubble)).toBe(false);
+    });
+
+    it("a tap while the menu, Chat or Last trick is open (or the tap that closes one) leaves yours where it is", async () => {
+      await render(state());
+      for (const cls of ["hud-menu", "chat-panel", "last-trick-panel"]) {
+        const el = add(cls, { x: 600, y: 60, w: 200, h: 120 }, cls === "last-trick-panel" ? felt() : document.body);
+        tap(felt(), 420, 220);
+        await advance(600);
+        expect(walks("0")).toHaveLength(0);
+        // the tap that closes it: open as it begins, gone by its click
+        felt().dispatchEvent(new Event("pointerdown", { bubbles: true }));
+        el.remove();
+        tap(felt(), 420, 220);
+        await advance(600);
+        expect(walks("0")).toHaveLength(0);
+        felt().dispatchEvent(new Event("pointerdown", { bubbles: true }));
+      }
+      // with none open, a tap walks it
+      tap(felt(), 420, 220);
+      expect(walks("0")).toHaveLength(1);
+    });
+
+    it("an open Last trick over yours has it walk out from under", async () => {
+      await render(state());
+      const was = spotOf(0);
+      const panel: Rect = { x: was.x + 20, y: was.y - 30, w: 200, h: 50 };
+      add("last-trick-panel", panel);
+      await settle(500);
+      expect(walks("0")).toHaveLength(1);
+      expect(meets(boxOf(0), panel)).toBe(false);
+    });
+
+    it("never stands under a notch or the Dynamic Island: a 59 px left inset keeps every figure right of it", async () => {
+      const real = window.getComputedStyle;
+      const cs = vi.spyOn(window, "getComputedStyle").mockImplementation((el: Element, p?: string | null) => {
+        const out = real(el, p);
+        if (!el.classList.contains("tc-safe-probe")) return out;
+        return { ...out, paddingLeft: "59px", paddingRight: "0px", paddingTop: "0px", paddingBottom: "21px" } as CSSStyleDeclaration;
+      });
+      try {
+        await render(state());
+        for (const seat of [0, 1, 2, 3]) {
+          const w = Number(host.querySelector(`.tc-seat[data-seat="${seat}"] svg`)!.getAttribute("width"));
+          const b = figureBox(spotOf(seat), w, seat === 0);
+          expect(b.x, `seat ${seat}`).toBeGreaterThanOrEqual(59);
+          expect(b.y + b.h, `seat ${seat}`).toBeLessThanOrEqual(390 - 21);
+        }
+        // the partner's stays by its nameplate (the left seat's)
+        const left = m.plates.left;
+        expect(Math.abs(spotOf(1).y - (left.y + left.h))).toBeLessThan(60);
+      } finally {
+        cs.mockRestore();
+      }
+    });
+
+    it("a special is drawn larger for its length where there is room; a tap in its cooldown answers with a small hop", async () => {
+      await render(state());
+      tap(host.querySelector('.tc-seat[data-seat="0"] .tc-walk')!, 0, 0);
+      const g = grows("0");
+      expect(g).toHaveLength(1);
+      const k = Number(/scale\(([\d.]+)\)/.exec(String(g[0].frames[1].transform))![1]);
+      expect(k).toBeGreaterThanOrEqual(1.2);
+      expect(k).toBeLessThanOrEqual(1.5);
+      expect(g[0].ms).toBe(DRAWINGS.bun.reactMs);
+      const s = spotOf(0);
+      expect(clear({ x: s.x - ((k - 1) * 44) / 2, y: s.y - (k - 1) * 44 }, 44 * k, true, layout())).toBe(true);
+      await advance(1700);
+      const before = moves("0").length;
+      tap(host.querySelector('.tc-seat[data-seat="0"] .tc-walk')!, 0, 0);
+      const nudge = moves("0").slice(before);
+      expect(nudge).toHaveLength(1);
+      expect(nudge[0].frames).toEqual(MOVES.nudge.frames);
+      expect(specialOn("0")).toBe(false);
+    });
+
+    it("no move lifts a figure past the room its zone keeps over it", () => {
+      for (const [name, mv] of Object.entries(MOVES)) {
+        for (const f of mv.frames) {
+          const t = String(f.transform);
+          const y = Number(/translateY\((-?[\d.]+)%\)/.exec(t)?.[1] ?? 0);
+          const sy = Number(/scale\([\d.]+, ([\d.]+)\)/.exec(t)?.[1] ?? 1);
+          expect(-y / 100 + (sy - 1), name).toBeLessThanOrEqual(LIFT + 1e-9);
+        }
+      }
+    });
+
+    it("a tapped walk goes round another companion in two legs, never through it", async () => {
+      await render(state());
+      const from = spotOf(0);
+      const zones = zonesFor([{ pos: "bottom", size: 44, tag: true }, { pos: "left", size: 56, tag: false },
+        { pos: "top", size: 44, tag: false }, { pos: "right", size: 56, tag: false }], layout());
+      const peers = (["left", "top", "right"] as const).flatMap((pos) => zones[pos].spots.map((q) => figureBox(q, zones[pos].size ?? 44, false)));
+      const others: Layout = { ...layout(), obstacles: peers };
+      // a tap whose straight way crosses the left seat's companion
+      let target: { x: number; y: number } | null = null;
+      for (let y = 60; y < 200 && !target; y += 10) {
+        for (let x = 120; x < 400 && !target; x += 10) {
+          const to = { x: x - 22, y: y - 44 };
+          if (clear(to, 44, true, { ...layout(), obstacles: [...layout().obstacles, ...peers] }) && !pathClear(from, to, 44, true, others)) target = { x, y };
+        }
+      }
+      expect(target).not.toBeNull();
+      tap(felt(), target!.x, target!.y);
+      const w = walks("0");
+      expect(w).toHaveLength(1);
+      expect(w[0].frames).toHaveLength(3);
+      const pt = (f: Keyframe) => { const [x, y] = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(String(f.transform))!.slice(1).map(Number); return { x, y }; };
+      const [a, via, b] = w[0].frames.map(pt);
+      expect(pathClear(a, via, 44, true, others) && pathClear(via, b, 44, true, others)).toBe(true);
+      expect(around(a, b, 44, true, others)).toEqual(via);
+    });
+
+    it("cards flying in are measured where they land: a companion there steps aside as they set off", async () => {
+      await render(state());
+      const was = spotOf(1);
+      // the trick's box mid-flight is far off; its landing is on the left seat's companion
+      const landing: Rect = { x: was.x + 4, y: was.y + 10, w: 30, h: 30 };
+      const flying = { x: 400, y: 300 };
+      rects["trick-play"] = { ...landing, x: flying.x, y: flying.y };
+      (host.querySelector(".trick-play") as HTMLElement).style.transform = `translate(${flying.x - landing.x}px, ${flying.y - landing.y}px)`;
+      await render(state({ trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>));
+      expect(walks("1")).toHaveLength(1);
+      await advance(500);
+      expect(meets(boxOf(1, 56), landing)).toBe(false);
     });
 
     it("a new table forgets the tapped spot: yours goes back by your hand", async () => {

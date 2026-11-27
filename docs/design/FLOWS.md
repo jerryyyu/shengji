@@ -610,11 +610,17 @@ watcher's card does this; a player's round end still waits for Next or Leave.
 - **At the table** (Jerry 2026-11-26, finding 1: "yes, have it stand by the nameplate and randomly walk around")
   each person's companion stands by their nameplate: under a side seat's, to the right of your partner's, and
   yours over the left end of your hand on a phone (Jerry 2026-11-26: it had stood by the left seat's card; beside
-  your name line on a tablet), tagged You 你. Every 8 to 15 s, on its own clock, it walks a few hopping steps,
+  your name line on a tablet), tagged You 你. On a phone that is where a full hand starts, so it holds still while
+  the hand is dealt, and the banker's crown chip does not move it. Every 8 to 15 s, on its own clock, it walks a few hopping steps,
   facing the way it goes, to another spot in a small zone by the nameplate that keeps clear of the cards played
-  and their LEAD / WINS labels, the hand (and a chosen card's lift), the buttons, the HUD, the nameplates and the
-  other companions; the zone is worked out again as cards land, and a companion they land on (or a
-  layout that moves under it) hops quickly aside, 0.3 to 0.5 s from where it is drawn, never jumping; only a
+  and their LEAD / WINS labels, the hand (and a chosen card's lift), every control of your row (the clock's ring,
+  the crown, Declare and its options, Bury, Play, Clear, the turn pill, the hint line), the deck and its count, chat
+  bubbles, an open menu, Chat or Last trick, the HUD, the nameplates and the other companions, and never goes under
+  a notch or the Dynamic Island (the screen's safe-area insets); the zone is worked out again as cards set off
+  (where they will land) and as anything appears, and a companion covered (Jerry 2026-11-27: "It's fine for
+  elements to be on top of companion but companion should walk up"; or a layout that moves under it) hops quickly
+  aside, upward first, 0.3 to 0.5 s from where it is drawn, never jumping; one whose whole zone is covered steps
+  out to the nearest clear spot and comes back when there is room, never leaving the table; only a
   figure drawn for the first time, a hidden page or Reduce Motion is placed at once. Where
   a corner is too cramped, its companion stands on another side of its nameplate, and failing that a step smaller. It stands on its team's pad (a disc for Us, a diamond for
   Them) in its team's scarf. A team's companions grow an equal step a level from 2 to the seat cap at 6 (44 to 56 px
@@ -626,7 +632,8 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   gained, none for a team whose level held, and a new game's levels starting over shrink the figures with no move.
   A table opened onto a result draws the settled size. A team's companions hop
   when it takes a trick, and cheer when the trick is worth 10 points or more (Jerry may tune
-  this); when your team wins the round, each of its companions plays its signature special once the round-end
+  this; a cheer rises no higher than its zone keeps room for); when your team wins the round, each of its
+  companions plays its signature special once the round-end
   sheet has closed (after the level-up, when there is one). A companion sleeps while its person is away, and
   between moves fidgets once every 6 to 10 s: a sway, a blink, a small hop, in turn. Nothing moves while the page
   is hidden or under Reduce Motion (each stands on its home). A bot, and a seat its owner left, has none. They
@@ -637,8 +644,11 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   spot is its home for the rest of the table (Jerry 2026-11-26: "The companion shouldn't walk home, just try to
   stay in the safe zone where it was last clicked"): its walks are small ones round it, and when cards or a moved
   layout cover it, it hops to the nearest clear spot and that becomes its home. A new table starts it by your
-  hand again. It never lands over another companion, and under Reduce Motion it stays at home. Taps are half a second apart at least. A tap on your own
-  companion plays its special, at most once every 3 s. Nothing else at the table changes with these taps, and
+  hand again. It never lands over another companion, and a walk whose straight way meets one goes round it in
+  two legs; under Reduce Motion it stays at home. Taps are half a second apart at least, and a tap while the menu,
+  Chat or Last trick is open (or the tap that closes one) is not one. A tap on your own companion plays its
+  special, drawn up to 1.5 times larger for its length where that stays clear, at most once every 3 s; a tap in
+  between answers with a small hop. Nothing else at the table changes with these taps, and
   no other companion takes one.
 - **Colours** are a palette swap of the one Tractor: Icon red (the default), Paddy green and Enamel blue from the
   start; the rest are won by ranked games (Jerry 2026-11-26: "win 10/25/50/100", and Ink black the top): Imperial

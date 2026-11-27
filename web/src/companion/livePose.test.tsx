@@ -144,13 +144,29 @@ describe("the grid's top felt", () => {
 });
 
 describe("each kind's special", () => {
-  it("lasts as long as its body's animation in the companions' CSS", () => {
+  it("lasts as long as its longest part in the companions' CSS, that part's delay included (the Bun's last puff)", () => {
     const css = readFileSync(join(__dirname, "companion.store.css"), "utf8");
     const kinds = Object.keys(DRAWINGS) as (keyof typeof DRAWINGS)[];
     const timed = kinds.filter((kind) => {
-      const m = new RegExp(`\\.cmp-${kind}\\.cmp-react \\.cmp-body \\{ animation: [a-z-]+ ([\\d.]+)s`).exec(css);
-      if (m) expect([kind, DRAWINGS[kind].reactMs]).toEqual([kind, Math.round(parseFloat(m[1]) * 1000)]);
-      return m !== null;
+      // each react part: its own animation, or its base part's (.cmp-puff3 takes .cmp-puff's), plus its delay
+      const parts = new Map<string, { s?: number; n?: number; delay?: number }>();
+      for (const m of css.matchAll(new RegExp(`\\.cmp-${kind}\\.cmp-react ([^{]+)\\{([^}]*)\\}`, "g"))) {
+        const part = parts.get(m[1].trim()) ?? {};
+        const a = /animation: [a-z0-9-]+ ([\d.]+)s(?: [a-z-]+(?:\([^)]*\))?)?(?: (\d+))?/.exec(m[2]);
+        if (a) { part.s = parseFloat(a[1]); part.n = a[2] ? Number(a[2]) : 1; }
+        const d = /animation-delay: (-?[\d.]+)s/.exec(m[2]);
+        if (d) part.delay = parseFloat(d[1]);
+        parts.set(m[1].trim(), part);
+      }
+      if (!parts.get(".cmp-body")?.s) return false;
+      let longest = 0;
+      for (const [sel, part] of parts) {
+        const base = part.s !== undefined ? part : parts.get(sel.replace(/\d+$/, "")) ?? {};
+        if (base.s === undefined) continue;
+        longest = Math.max(longest, Math.round((base.s * (base.n ?? 1) + (part.delay ?? 0)) * 1000));
+      }
+      expect([kind, DRAWINGS[kind].reactMs]).toEqual([kind, longest]);
+      return true;
     });
     // every companion a player can own has its special timed by its CSS
     for (const kind of COMPANION_KINDS) expect(timed).toContain(kind);

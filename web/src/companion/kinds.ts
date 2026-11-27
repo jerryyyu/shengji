@@ -33,7 +33,8 @@ export interface Drawing {
   portraitUrl(colour: DrawnColour, small: boolean): string;
   /** Where the sleeping z rises from, in the 400 box. */
   z: readonly [number, number];
-  /** How long the signature reaction (`react`) runs, as its CSS does. */
+  /** How long the signature reaction (`react`) runs, as its CSS does: its
+   *  longest part, that part's delay included. */
   reactMs: number;
   /** Spoken only (a swatch's label), never drawn. */
   colourName(colour: DrawnColour): Name;
@@ -71,7 +72,8 @@ const TRACTOR: Drawing = {
 
 export const DRAWINGS: Record<DrawnKind, Drawing> = {
   tractor: TRACTOR,
-  bun: drawn(BUN_COLOURS, BUN_Z, 1300, bunMarkup, bunPortraitUrl),
+  // its third puff starts 0.24 s in and runs 1.3 s
+  bun: drawn(BUN_COLOURS, BUN_Z, 1540, bunMarkup, bunPortraitUrl),
   chick: drawn(CHICK_COLOURS, CHICK_Z, 1300, chickMarkup, chickPortraitUrl),
   sparrow: drawn(SPARROW_COLOURS, SPARROW_Z, 1200, sparrowMarkup, sparrowPortraitUrl),
   lamb: drawn(LAMB_COLOURS, LAMB_Z, 2600, lambMarkup, lambPortraitUrl),
@@ -82,3 +84,4 @@ export const DRAWINGS: Record<DrawnKind, Drawing> = {
   lion: drawn(LION_COLOURS, LION_Z, 3300, lionMarkup, lionPortraitUrl),
   dragon: drawn(DRAGON_COLOURS, DRAGON_Z, 2400, dragonMarkup, dragonPortraitUrl),
 };
+

@@ -2,9 +2,11 @@
 // a home spot beside the nameplate and the small zone round it that it
 // walks in. Pure: the table measures its rects, in px relative to the felt,
 // and passes them here. A spot is allowed only where the figure (and the
-// "You" tag over your own) clears every obstacle: the played cards, the
-// hand, the buttons, the HUD and the nameplates. The zone is worked out
-// again whenever those move, so it follows the cards played.
+// "You" tag over your own) clears every obstacle: the played cards and
+// their LEAD / WINS labels, the hand (with room for a chosen card's lift),
+// the buttons, the HUD and the nameplates, and no two seats' zones meet.
+// The zone is worked out again whenever those move, so it follows the cards
+// played. A tap on the felt finds the clear spot nearest it (`nearestClear`).
 
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface Spot { x: number; y: number }
@@ -20,6 +22,10 @@ export interface Layout {
   tagline: Rect | null;
   /** Your row of controls above the hand. */
   row: Rect | null;
+  /** The first card of your hand, where a phone stands your own companion. */
+  hand?: Rect | null;
+  /** The felt between the screen's safe-area edges, where a figure may stand. */
+  safe?: { x0: number; x1: number };
   /** What no figure may cover. */
   obstacles: readonly Rect[];
 }
@@ -29,12 +35,17 @@ export interface Zone {
   home: Spot | null;
   /** Every clear spot it may walk to, `home` among them. */
   spots: Spot[];
+  /** The size the figure is drawn at here: the size asked for, or a step
+   *  smaller where its corner is too cramped for it (`zonesFor`). */
+  size?: number;
 }
 
 /** The room the figure keeps from everything else, in px. */
 const GAP = 3;
 /** The height of the "You" tag over your own companion. */
 export const TAG_H = 16;
+/** How far a chosen card rises out of the hand. */
+export const HAND_LIFT = 20;
 
 export const meets = (a: Rect, b: Rect): boolean =>
   a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
@@ -53,13 +64,15 @@ export const figureBox = (s: Spot, size: number, tag: boolean): Rect => {
 export function clear(s: Spot, size: number, tag: boolean, layout: Layout): boolean {
   const box = figureBox(s, size, tag);
   if (box.x < 0 || box.y < 0 || box.x + box.w > layout.felt.w || box.y + box.h > layout.felt.h) return false;
+  if (layout.safe && (box.x < layout.safe.x0 || box.x + box.w > layout.safe.x1)) return false;
   return !layout.obstacles.some((o) => meets(box, o));
 }
 
 /** The spot a seat's figure would stand on beside its nameplate, before
  *  any obstacle is weighed: under a side seat's nameplate, to the right of
- *  your partner's, and for you beside your name line or, on a phone, above
- *  your hand at the left. */
+ *  your partner's, and for you beside your name line or, on a phone (no
+ *  nameplate of your own), over the left end of your hand, clear of a chosen
+ *  card's lift. */
 export function ideal(pos: SeatPos, size: number, layout: Layout): Spot | null {
   const p = layout.plates[pos];
   if (pos === "left") return p ? { x: p.x + 10, y: p.y + p.h + 4 } : null;
@@ -67,22 +80,51 @@ export function ideal(pos: SeatPos, size: number, layout: Layout): Spot | null {
   if (pos === "top") return p ? { x: p.x + p.w + 8, y: Math.max(4, p.y + p.h - size + 8) } : null;
   const tag = layout.tagline;
   if (tag && tag.w > 0) return { x: tag.x + tag.w + 10, y: tag.y + tag.h - size };
+  const hand = layout.hand;
+  if (hand && hand.w > 0) return { x: hand.x + 4, y: hand.y - HAND_LIFT - GAP - size };
   const row = layout.row;
   const left = layout.plates.left;
   const bottom = row ? row.y + row.h : layout.felt.h - 120;
   return { x: (left ? left.x : 8) + 72, y: bottom - size };
 }
 
+/** Where else a seat's figure may stand when its own corner is taken: by
+ *  a side seat's nameplate on its inner side or above it, by your partner's
+ *  on its left; yours over or beside your name line, or on the open felt
+ *  left of your hand. */
+export function fallbacks(pos: SeatPos, size: number, layout: Layout): Spot[] {
+  if (pos === "bottom") {
+    // yours: over your name line, beside it, then the open felt left of your hand, then over the hand's left end
+    const out: Spot[] = [];
+    const tag = layout.tagline;
+    if (tag && tag.w > 0) out.push({ x: tag.x, y: tag.y - 6 - size }, { x: tag.x - 10 - size, y: tag.y + tag.h - size });
+    const hand = layout.hand;
+    if (hand && hand.w > 0) {
+      out.push({ x: hand.x - size - 14, y: hand.y + 8 });
+      if (tag && tag.w > 0) out.push({ x: hand.x + 4, y: hand.y - HAND_LIFT - GAP - size });
+    }
+    return out;
+  }
+  const p = layout.plates[pos];
+  if (!p) return [];
+  if (pos === "left") return [{ x: p.x + p.w + 4, y: p.y + p.h - size }, { x: p.x + 10, y: p.y - 4 - size }];
+  if (pos === "right") return [{ x: p.x - 4 - size, y: p.y + p.h - size }, { x: p.x + p.w - 10 - size, y: p.y - 4 - size }];
+  return [{ x: p.x - 8 - size, y: Math.max(4, p.y + p.h - size + 8) }];
+}
+
 /** A seat's zone: the clear spots on a grid round its ideal spot, two
  *  figures wide either way and half a figure up or down, and the clear spot
  *  nearest the ideal as its home. */
 export function zoneFor(pos: SeatPos, size: number, layout: Layout, tag = pos === "bottom"): Zone {
-  const at = ideal(pos, size, layout);
+  return zoneAt(ideal(pos, size, layout), size, layout, tag);
+}
+
+function zoneAt(at: Spot | null, size: number, layout: Layout, tag: boolean, wide = 2, high = 0.5): Zone {
   if (!at) return { home: null, spots: [] };
   const step = Math.max(4, Math.round(size / 4));
   const spots: Spot[] = [];
-  for (let dy = -size / 2; dy <= size / 2 + 0.01; dy += step) {
-    for (let dx = -2 * size; dx <= 2 * size + 0.01; dx += step) {
+  for (let dy = -high * size; dy <= high * size + 0.01; dy += step) {
+    for (let dx = -wide * size; dx <= wide * size + 0.01; dx += step) {
       const s = { x: Math.round(at.x + dx), y: Math.round(at.y + dy) };
       if (clear(s, size, tag, layout)) spots.push(s);
     }
@@ -94,6 +136,68 @@ export function zoneFor(pos: SeatPos, size: number, layout: Layout, tag = pos ==
     if (d < best) { best = d; home = s; }
   }
   return { home, spots };
+}
+
+/** How far a figure wanders from a spot a tap chose, either way, in
+ *  figures across and up or down. */
+export const TAPPED_WIDE = 0.75;
+export const TAPPED_HIGH = 0.25;
+
+/** The small zone round a spot a tap chose: the clear spots within
+ *  `TAPPED_WIDE` figures across and `TAPPED_HIGH` up or down, and the one
+ *  nearest the spot as its home. */
+export function zoneAround(at: Spot, size: number, layout: Layout, tag: boolean): Zone {
+  return zoneAt(at, size, layout, tag, TAPPED_WIDE, TAPPED_HIGH);
+}
+
+/** The sizes a figure tries, as shares of the size asked for, where its
+ *  corner is too cramped for the full size. */
+const SHRINK = [1, 0.85, 0.7] as const;
+
+/** Every seat's zone, so that no two meet: your own first (by your hand),
+ *  then the left seat, the top and the right, each kept clear of the spots
+ *  of those before it. A figure whose corner has no clear spot stands on
+ *  another side of its nameplate (`fallbacks`), and failing that a step
+ *  smaller (`Zone.size`). */
+export function zonesFor(seats: readonly { pos: SeatPos; size: number; tag: boolean }[], layout: Layout): Record<SeatPos, Zone> {
+  const order: readonly SeatPos[] = ["bottom", "left", "top", "right"];
+  const out = {} as Record<SeatPos, Zone>;
+  let taken: Rect[] = [];
+  for (const pos of order) {
+    const seat = seats.find((s) => s.pos === pos);
+    if (!seat) { out[pos] = { home: null, spots: [] }; continue; }
+    const room = { ...layout, obstacles: [...layout.obstacles, ...taken] };
+    let zone: Zone = { home: null, spots: [] };
+    for (const k of SHRINK) {
+      const size = Math.round(seat.size * k);
+      for (const at of [ideal(pos, size, room), ...fallbacks(pos, size, room)]) {
+        zone = { ...zoneAt(at, size, room, seat.tag), size };
+        if (zone.home) break;
+      }
+      if (zone.home) break;
+    }
+    out[pos] = zone;
+    taken = [...taken, ...zone.spots.map((s) => figureBox(s, zone.size ?? seat.size, seat.tag))];
+  }
+  return out;
+}
+
+/** The clear spot nearest a tap at `p` (where the figure's feet go), on the
+ *  felt's safe area, searched out to `reach` px; null when none is clear. */
+export function nearestClear(p: Spot, size: number, tag: boolean, layout: Layout, reach = 260): Spot | null {
+  const want = { x: Math.round(p.x - size / 2), y: Math.round(p.y - size) };
+  const step = Math.max(4, Math.round(size / 6));
+  let out: Spot | null = null;
+  let best = Infinity;
+  for (let dy = -reach; dy <= reach; dy += step) {
+    for (let dx = -reach; dx <= reach; dx += step) {
+      const d = Math.hypot(dx, dy);
+      if (d >= best || d > reach) continue;
+      const s = { x: want.x + dx, y: want.y + dy };
+      if (clear(s, size, tag, layout)) { best = d; out = s; }
+    }
+  }
+  return out;
 }
 
 /** The next spot a walk goes to: a clear one of the zone at least half a

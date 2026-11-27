@@ -16,7 +16,7 @@ export type EyeMode = "open" | "happy" | "sleep" | "fierce";
 export const LEVELS = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"] as const;
 /** The levels a table companion takes to grow from its base to its seat's
  *  cap: it reaches the cap at 6, so each of the first levels gained is a
- *  step that shows (2 px on a phone, 3 on a tablet). */
+ *  step that shows (3 px on a phone, 4 on a tablet). */
 export const GROW_LEVELS = 4;
 
 /** A table companion's size in px: its base size, grown an equal step a

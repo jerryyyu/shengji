@@ -34,10 +34,11 @@ export const pickSuit = (r: number): string => (r < 1 / 12 ? "j" : "shcd"[Math.m
  *  (the table plays its own level-up move). `still` draws the pose at
  *  its peak with nothing moving; it is on by itself under Reduce Motion.
  *  `idle` says how idle and sleep move: `loop` (their own endless loops) or
- *  `rest` (still, so a page at rest draws no frames). */
-export function Companion({ kind = "tractor", colour, size, state = "idle", team, level, max, still, idle = "loop", grow = true, onPoseEnd }: {
+ *  `rest` (still, so a page at rest draws no frames). `blink` shuts the
+ *  eyes of a still drawing for a moment. */
+export function Companion({ kind = "tractor", colour, size, state = "idle", team, level, max, still, idle = "loop", grow = true, blink = false, onPoseEnd }: {
   kind?: DrawnKind; colour: DrawnColour; size: number; state?: Pose; team?: Team; level?: number; max?: number;
-  still?: boolean; idle?: "loop" | "rest"; grow?: boolean; onPoseEnd?: () => void;
+  still?: boolean; idle?: "loop" | "rest"; grow?: boolean; blink?: boolean; onPoseEnd?: () => void;
 }) {
   const id = useId().replace(/[^a-zA-Z0-9]/g, "");
   const drawing = DRAWINGS[kind];
@@ -68,7 +69,7 @@ export function Companion({ kind = "tractor", colour, size, state = "idle", team
   const resting = !ONCE.has(state);
   const poseCls = calm && ONCE.has(state) ? "" : resting && idle === "rest" ? `cmp-${state} cmp-rest` : `cmp-${state}`;
   const cls = ["cmp", drawing.char ? "cmp-char" : "", `cmp-${kind}`, poseCls, calm ? "cmp-still" : "",
-    team ? `cmp-${team}` : "", from !== null ? "cmp-grow" : ""].filter(Boolean).join(" ");
+    team ? `cmp-${team}` : "", from !== null ? "cmp-grow" : "", blink ? "cmp-blink" : ""].filter(Boolean).join(" ");
   const [zx, zy] = drawing.z;
   return (
     <svg className={cls} data-pose={state} width={px} height={px} viewBox="0 0 400 400" aria-hidden="true" focusable="false" data-suit={suit}

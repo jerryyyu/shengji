@@ -222,9 +222,25 @@ describe("a replay", () => {
 describe("a live table", () => {
   it("says its round in the strip and offers Next table", async () => {
     await open();
-    expect(host.querySelector(".watch-round")!.textContent).toBe("Round 3");
+    expect(host.querySelector(".watch-round")!.textContent).toBe("Round 3 · previous round");
     await act(async () => { button("More").click(); });
     expect([...host.querySelectorAll("[role=menuitem]")].map((b) => b.textContent)).toEqual(["Next table", "Leave"]);
+  });
+
+  it("counts the table's watchers in the strip, in every language", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ...feed, watchers: 3 }), { status: 200 })));
+    for (const [choice, text, label] of [["en", "3Round 3 · previous round", "3 watching"],
+      ["zh-Hans", "3第 3 局 · 上一局", "3 人观战"], ["zh-Hant", "3第 3 局 · 上一局", "3 人觀戰"]] as const) {
+      setLanguageChoice(choice);
+      try {
+        await open();
+        const chip = host.querySelector(".watch-round")!;
+        expect(chip.textContent).toBe(text);
+        expect(chip.querySelector(".watch-count")!.getAttribute("aria-label")).toBe(label);
+      } finally {
+        setLanguageChoice("system");
+      }
+    }
   });
 
   it("puts the transport, the tabs and the kitty in one row above the hand", async () => {
@@ -854,7 +870,7 @@ describe("watch telemetry", () => {
     for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); });
     await act(async () => { vi.advanceTimersByTime(CARD_HOLD_MS); });
     for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); });
-    expect(host.querySelector(".watch-round")!.textContent).toBe("Round 3");
+    expect(host.querySelector(".watch-round")!.textContent).toBe("Round 3 · previous round");
     expect(open_.mock.calls).toEqual([["replay", "presence"], ["live", "next"]]);
     expect(leave.mock.calls).toEqual([["ended", 5, "replay"]]);
     await act(async () => { vi.advanceTimersByTime(30_000); });
@@ -876,7 +892,7 @@ describe("watch telemetry", () => {
     for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); });
     await act(async () => { vi.advanceTimersByTime(CARD_HOLD_MS); });
     for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); });
-    expect(host.querySelector(".watch-round")!.textContent).toBe("Round 4");
+    expect(host.querySelector(".watch-round")!.textContent).toBe("Round 4 · previous round");
     expect(open_.mock.calls).toEqual([["live", "presence"]]);
     expect(leave).not.toHaveBeenCalled();
   });

@@ -3,7 +3,8 @@ import { defineMessages } from "../define";
 // Watching a table: the round chip, the controls' names, the ⋯ menu, the
 // kitty peek and the round end's watcher line and buttons.
 export const watch = defineMessages({
-  "watch.round": { en: "Round {n}", zh: "第 {n} 局", hant: "第 {n} 局" },
+  "watch.previousRound": { en: "Round {n} · previous round", zh: "第 {n} 局 · 上一局", hant: "第 {n} 局 · 上一局" },
+  "watch.watching": { en: "{n} watching", zh: "{n} 人观战", hant: "{n} 人觀戰" },
   "watch.replay": { en: "Replay", zh: "回放", hant: "回放" },
   "watch.liveLink": { en: "Watch a table", zh: "看一桌", hant: "看一桌" },
   "watch.rerunLink": { en: "Watch a replay", zh: "看回放", hant: "看回放" },

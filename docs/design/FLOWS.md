@@ -540,8 +540,20 @@ live table to watch and a replay to show, the line says so: "Nobody is playing r
 (现在没人在玩 · 看回放 ›); "Nobody is playing" itself never opens a game. A replay (always a ranked round) names a player only if the leaderboard shows them (Jerry 2026-11-26: "For
 ranked, we don't need to anonymize spectate", then "only if that player is shown on the leaderboard"); a guest or an
 account not on it is Player 1–4 (玩家 1–4), and bots keep their names. Its strip says Replay (回放), not a round
-number. A watcher sees the table's last FINISHED round, one round behind: it never opens the table's socket,
-and the players are not told. The watch screen is the table (`watch/WatchScreen.tsx` draws the table's own seats,
+number. A watcher sees the table's last FINISHED round, one round behind: it never opens the table's socket.
+The top-left strip of a live table says so: "Round 4 · previous round" (第 4 局 · 上一局), after the eye and the
+table's watcher count (watchers see a count, never names); a replay shows neither.
+
+The players are told who watches (Jerry 2026-11-27, on the watchers mock: "Who's watching should be toast"). While
+anyone watches, an eye with the count (👁 3, 3 watching / 3 人观战 / 3 人觀戰 to a screen reader) sits just left of ⋯
+in the strip, phone and iPad alike, live with each state frame and gone at zero; it adds no line and no menu row.
+As watchers start watching, the players get the one table toast: "Mei is watching" (Mei 在观战 / Mei 在觀戰) for a
+leaderboard-listed account, "Someone is watching" (有人在观战 / 有人在觀戰) for a guest or an unlisted one; the
+server tells at most one toast per table each 30 s, and the watchers who arrive in between come as one: "Mei and 2
+others are watching" (Mei 等 3 人在观战), or "3 people are watching" (3 人在观战) with nobody listed. A tap on the eye
+shows the same toast for who watches now. Nothing is told as watchers leave, and a toast told before the table was
+on screen is never told late. A watcher is named only by the leaderboard rule a replay uses; its account id never
+leaves the server, and what it sees is unchanged: the previous round only. The watch screen is the table (`watch/WatchScreen.tsx` draws the table's own seats,
 trick and hand read-only), turned landscape as a game is: four tabs (team dot, crown, name, cards left; the
 selected one filled) in table order from the seat it lands behind, the banker; a tab turns the table to that
 player (cards and seats travel about 0.5 s, a fade under Reduce Motion) and docks their hand in the game's order.

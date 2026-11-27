@@ -232,6 +232,17 @@ export interface RoundRating {
   game_delta?: number;
 }
 
+/** The players' view of their watchers: how many watch now, the latest
+ *  "is watching" toast (`told` bumps once per toast; `joined` is who it
+ *  tells of, a leaderboard-listed watcher by name, anyone else null), and the
+ *  listed watchers' names now (at most two). */
+export interface Watchers {
+  count: number;
+  told: number;
+  joined: ({ name: string } | null)[];
+  named: string[];
+}
+
 export interface GameState {
   type: "state";
   room: string;
@@ -260,6 +271,9 @@ export interface GameState {
   /** Who held this seat before this viewer took it mid-round, at any table;
    *  sent only while that round is in play. */
   took_seat?: { name: string; is_bot: boolean };
+  /** Who watches this table one round behind (PROTOCOL.md "Watching a
+   *  table"). Absent offline. */
+  watchers?: Watchers;
   phase: Phase;
   ready?: number[];   // seats that confirmed the round end
   players: StatePlayer[];

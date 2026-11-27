@@ -250,6 +250,13 @@ interface GameState {
     point_scored: boolean;        // this round won a game (a defence at A); levels restart
   } | null;
   message: string | null;         // transient info line ("Alice declared Hearts", "Throw failed \u2014 forced to play S3+S3", ...)
+  watchers?: {                    // who watches this table one round behind ("Watching a table")
+    count: number;                // watching now
+    told: number;                 // bumps once per "is watching" toast; at most one per table per 30 s
+    joined: ({ name: string } | null)[];  // who that toast tells of: a leaderboard-listed watcher
+                                  // by name, anyone else null
+    named: string[];              // the listed watchers now, at most two
+  };
   notice: {                       // outlives `message`; null when there is none
     id: number;                   // bumps per notice, so a client dismissal binds to one notice
     kind: "failed_throw";
@@ -763,6 +770,17 @@ account may watch any live table's last finished round.
   not followed by a new watcher and not counted in `watch`. 30 reads a minute per
   address. `code` is set only for a casual table seating joiners now.
 - Only a round whose `round_end` is logged is ever served.
+- A live table's answers carry `watchers`, how many watch it now (this
+  watcher among them); a rerun's carry none.
+- The players are told through their `state` frame's `watchers`: the count
+  with every frame, and, as watchers start watching, one more frame whose
+  `told` bumps and whose `joined` lists who arrived since the last one (at
+  most one a table per 30 s; arrivals in between come together; none as a
+  watcher leaves). A client tells a toast only for a `told` above one it has
+  already seen at that table. The server reads a watcher's account from its
+  session as it starts watching a table and keeps it by its token, server-side
+  only; a watcher is named only when the leaderboard lists its account (the
+  rerun rule), and no account id is ever sent.
 
 ## Reconnect & lifecycle
 

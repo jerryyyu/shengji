@@ -4,7 +4,11 @@ A watcher reads a table's latest FINISHED round from the room log and plays
 it back; by then every card has been played face up and the kitty turned
 over, so nothing it shows can reach a player at the table. A watcher never
 opens the room's socket, holds no seat and sends nothing to the table: it
-reads over HTTP, and the players are not told.
+reads over HTTP. The players are told how many watch and, in one toast per
+``ANNOUNCE_GAP``, who started watching (``players_field``): a watcher's
+account is read from its session as it starts watching a table and held
+server-side by its token; the players get its name only when the
+leaderboard lists it (``ratings.listed_ids``), and never an id.
 
 Which tables. A table a stranger could already find: a ranked table, or a
 casual table with Allow joiners on (the queue offers those to strangers),
@@ -90,6 +94,9 @@ INDEX_CAP = 256 * 1024
 # Built round documents kept: a table's last few rounds, the reruns, and a
 # rerun's masks while the leaderboard changes under it.
 DOC_CACHE = 64
+# The players hear "X is watching" at most once per this many seconds per
+# table; watchers who arrive in between are told together.
+ANNOUNCE_GAP = 30.0
 
 
 ACCOUNTS_ENV = "SPECTATE_ACCOUNTS"
@@ -152,10 +159,29 @@ class WatchState:
     claims: dict = field(default_factory=dict)
     # watcher token -> when it last read this table
     watchers: dict[str, float] = field(default_factory=dict)
+    # watcher token -> (its account id, its name), read from the session as
+    # it starts watching here; (None, None) for a guest
+    who: dict[str, tuple] = field(default_factory=dict)
+    # watcher token -> its name as the players may read it, once told: the
+    # name when the leaderboard listed the account then, else None
+    shown: dict[str, str | None] = field(default_factory=dict)
+    # tokens that started watching since the players were last told, oldest first
+    arrivals: list[str] = field(default_factory=list)
+    # the players' latest "is watching" toast: its number and who it names
+    told: int = 0
+    joined: list = field(default_factory=list)
+    told_at: float = float("-inf")
+    # the announcement waiting for its turn (``ANNOUNCE_GAP``), if any
+    announcing: Any = None
+
+    def drop(self, token: str) -> None:
+        self.watchers.pop(token, None)
+        self.who.pop(token, None)
+        self.shown.pop(token, None)
 
     def live_watchers(self, now: float) -> int:
         for tok in [t for t, at in self.watchers.items() if now - at > WATCH_TTL]:
-            del self.watchers[tok]
+            self.drop(tok)
         return len(self.watchers)
 
 
@@ -739,14 +765,99 @@ async def _serve(room: Any, token: str, after: int | None,
     if not _still(room, wide):
         return None
     head = {"table": st.id, "watcher": token, "mode": _mode(room),
-            "live_round": room.game.round_no, "code": _join_code(room), "rerun": False}
+            "live_round": room.game.round_no, "code": _join_code(room), "rerun": False,
+            "watchers": st.live_watchers(time.time())}
     if built is None or not _is_over(room, built.doc["round"]):
         return {**head, "waiting": True}, None
     return {**head, "waiting": False}, built
 
 
+# ------------------------------------------------------------- the players are told
+def players_field(room: Any) -> dict:
+    """The state frame's ``watchers``: how many watch the table now, the
+    latest "is watching" toast (``told`` bumps once per toast; ``joined`` is
+    who it tells of, a listed watcher by name and anyone else as null) and
+    the names of the listed watchers now (at most two). A name is sent only
+    for an account the leaderboard listed when it was told; never an id."""
+    st = getattr(room, "watch", None)
+    if st is None:
+        return {"count": 0, "told": 0, "joined": [], "named": []}
+    n = st.live_watchers(time.time())
+    named = [v for tok in st.watchers if (v := st.shown.get(tok))][:2]
+    return {"count": n, "told": st.told, "joined": list(st.joined), "named": named}
+
+
+def announcement(st: WatchState, listed: set[int], now: float) -> bool:
+    """Tell the players of the watchers who arrived since they were last
+    told and still watch: each is named when the leaderboard lists its
+    account, else null. False when nobody is left to tell of."""
+    st.live_watchers(now)
+    fresh = [tok for tok in dict.fromkeys(st.arrivals) if tok in st.watchers]
+    st.arrivals = []
+    if not fresh:
+        return False
+    for tok in fresh:
+        uid, name = st.who.get(tok, (None, None))
+        st.shown[tok] = name if uid is not None and uid in listed and name else None
+    st.told += 1
+    st.joined = [{"name": st.shown[tok]} if st.shown[tok] else None for tok in fresh]
+    st.told_at = now
+    return True
+
+
+def _schedule(room: Any) -> None:
+    """One announcement, as soon as ``ANNOUNCE_GAP`` has passed since the
+    last; arrivals in between wait for it."""
+    st = room.watch
+    task = st.announcing
+    if task is not None and not task.done() and task.get_loop() is asyncio.get_running_loop():
+        return
+    st.announcing = asyncio.ensure_future(
+        _announce(room, max(0.0, st.told_at + ANNOUNCE_GAP - time.time())))
+
+
+async def _announce(room: Any, delay: float) -> None:
+    from . import server
+    st = room.watch
+    try:
+        if delay > 0:
+            await asyncio.sleep(delay)
+        listed = await asyncio.to_thread(_listed)
+        if announcement(st, listed, time.time()):
+            await server._broadcast_locked(room)
+    except Exception:               # noqa: BLE001 - a toast never breaks a table
+        log.exception("spectate announcement failed")
+    st.announcing = None
+    if st.arrivals:
+        _schedule(room)
+
+
+async def _arrived(room: Any, token: str, request: Request) -> None:
+    """A watcher new at this table: its account (server-side only) and the
+    players' toast."""
+    user = await _viewer(request)
+    uid = user.get("id") if user else None
+    st = room.watch
+    st.who[token] = ((uid, accounts.effective_name(user) or None)
+                     if isinstance(uid, int) and not isinstance(uid, bool) else (None, None))
+    st.arrivals.append(token)
+    _schedule(room)
+
+
 # ------------------------------------------------------------- endpoints
 router = APIRouter(prefix="/api")
+
+
+async def _viewer(request: Request) -> dict | None:
+    """The signed-in account reading, once per request; None for a guest."""
+    if not hasattr(request.state, "watch_user"):
+        try:
+            user = await accounts.STORE.run(accounts.STORE.session_user,
+                                            request.cookies.get(accounts.COOKIE))
+        except Exception:           # noqa: BLE001 - no account store reads as signed out
+            user = None
+        request.state.watch_user = user
+    return request.state.watch_user
 
 
 async def _admit(request: Request) -> bool:
@@ -754,11 +865,7 @@ async def _admit(request: Request) -> bool:
     an allowlisted account (it may watch any live table)."""
     how = "all" if enabled() else None
     if how is None and allowlist():
-        try:
-            user = await accounts.STORE.run(accounts.STORE.session_user,
-                                            request.cookies.get(accounts.COOKIE))
-        except Exception:           # noqa: BLE001 - no account store reads as signed out
-            user = None
+        user = await _viewer(request)
         how = access(user["id"] if user else None)
     if how is None:
         raise HTTPException(status_code=404, detail="Not found.")
@@ -785,13 +892,16 @@ async def watch(request: Request, mode: str | None = None, skip: str | None = No
         for other in _rooms():
             st = getattr(other, "watch", None)
             if st is not None and other is not room:
-                st.watchers.pop(token, None)
+                st.drop(token)
+        new = token not in room.watch.watchers
         room.watch.watchers[token] = now
         out = await _serve(room, token, None, wide)
         if out is not None and out[1] is not None:
+            if new:
+                await _arrived(room, token, request)
             return _answer(*out)
         # no live round for this watcher after all: it holds no place there
-        room.watch.watchers.pop(token, None)
+        room.watch.drop(token)
     _ensure_loaded()
     listed = await asyncio.to_thread(_listed) if _reruns else set()
     for rerun in reversed(list(_reruns)):
@@ -824,11 +934,14 @@ async def follow(table: str, request: Request, after: int | None = None,
     st = room.watch
     if token not in st.watchers and not _free(room, now):
         raise HTTPException(status_code=404, detail="Not found.")
+    new = token not in st.watchers
     st.watchers[token] = now
     out = await _serve(room, token, after, wide)
     if out is None:
-        st.watchers.pop(token, None)
+        st.drop(token)
         raise HTTPException(status_code=404, detail="Not found.")
+    if new:
+        await _arrived(room, token, request)
     head, built = out
     if built is None:
         return Response(content=_dumps(head), media_type="application/json")

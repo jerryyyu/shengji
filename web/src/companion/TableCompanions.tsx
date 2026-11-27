@@ -253,7 +253,9 @@ function framedPoint(el: Element, x: number, y: number): Spot {
 /** Where each side seat's played cards and their label have landed at this
  *  felt size, kept as one box per seat: no figure stands there, so the left
  *  and right seats' companions are not chased off by every card their
- *  person plays. A new felt size forgets them. */
+ *  person plays. Only a trick's plays (`[data-play]`) are kept; a
+ *  declaration shown for a moment stays an obstacle only while it is up.
+ *  A new felt size forgets them. */
 interface Slots { size: string; seen: Partial<Record<"left" | "right", Rect>> }
 const union = (a: Rect, b: Rect): Rect => {
   const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
@@ -309,7 +311,7 @@ function measure(felt: HTMLElement, phone = false, dealing = false, insets: Safe
     const size = `${Math.round(f.w)}x${Math.round(f.h)}`;
     if (slots.size !== size) { slots.size = size; slots.seen = {}; }
     for (const pos of ["left", "right"] as const) {
-      const play = felt.querySelector(`.trick-play.pos-${pos}`);
+      const play = felt.querySelector(`.trick-play[data-play].pos-${pos}`);
       if (play && !inFlight(play)) {
         const boxes = [play, ...play.querySelectorAll(".trick-tag")].map(rel).filter((r) => r.w > 2 && r.h > 2);
         for (const r of boxes) slots.seen[pos] = slots.seen[pos] ? union(slots.seen[pos], r) : r;
@@ -484,13 +486,15 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
   useEffect(() => () => strayDone.current?.(null), []);
   // a figure taken off the table is drawn again only with a spot to stand on
   const [, redraw] = useState(0);
-  // a walk back to its zone waits until the zone has stayed where it is for
-  // RETURN_MS: `settled` counts each wait that ran out, and `back` is set as
-  // one does, so the next look at the zone walks back
+  // a walk back to its zone waits RETURN_MS: `waiting` is the wait (its
+  // timer, 0 while the way home is blocked), the home it is for and whether
+  // the way there was open as it began, `settled`
+  // counts each wait that ran out, and `back` is set as one does, so the
+  // next look at the zone walks back
   const [settled, setSettled] = useState(0);
   const back = useRef(false);
-  const waiting = useRef(0);
-  const unwait = () => { window.clearTimeout(waiting.current); waiting.current = 0; };
+  const waiting = useRef<{ timer: number; to: Spot; open: boolean } | null>(null);
+  const unwait = () => { if (waiting.current) window.clearTimeout(waiting.current.timer); waiting.current = null; };
   useEffect(() => unwait, []);
   // a tapped home stands on its own: the zone only matters without one; a
   // drawn figure stays drawn until it has been moved or taken off
@@ -567,56 +571,74 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     const quick = { under: true, quick: true };
     const due = back.current;
     back.current = false;
-    unwait();
-    if (tapped && !clear(tapped, px, you, roam)) {
-      // with no clear spot near it the tapped home is dropped: yours goes back
-      // to its zone, at the zone's own spot and size
-      const near = nearestClear({ x: tapped.x + px / 2, y: tapped.y + px }, px, you, roam);
-      tappedDone.current?.(near);
-      const to = near ?? zone.home;
-      if (!to) { stop(); cur.current = null; redraw((n) => n + 1); }
-      else if (drawn) goTo(to, quick);
-      else place(to);
-      return;
-    }
-    if (!tapped && !zone.home) {
-      // its whole zone covered: a drawn figure walks out to the nearest
-      // clear spot and waits there; one not drawn yet stays off
-      if (stray && now && clear(now, px, you, roam)) return;
-      const out = drawn ? nearestClear({ x: now.x + px / 2, y: now.y + px }, px, you, roam) : null;
-      if (out) { setStray(out); goTo(out, quick); return; }
-      stop();
-      if (cur.current) { cur.current = null; redraw((n) => n + 1); }
-      if (stray) setStray(null);
-      return;
-    }
-    const home = (tapped ?? zone.home)!;
-    // clear where it stands but off its zone (it stepped out and the way
-    // back opened): it walks back only once that has held for RETURN_MS
-    if (!tapped && drawn && !due && !path.current) {
-      const near = nearest(here, now, false);
-      const off = !near || Math.hypot(near.x - now.x, near.y - now.y) > px / 2;
-      if (off && clear(now, px, you, room)) {
-        waiting.current = window.setTimeout(() => { waiting.current = 0; back.current = true; setSettled((n) => n + 1); }, RETURN_MS);
+    // the wait for a walk back runs on only while the figure still waits for it
+    let kept = false;
+    step();
+    if (!kept) unwait();
+    function step() {
+      if (tapped && !clear(tapped, px, you, roam)) {
+        // with no clear spot near it the tapped home is dropped: yours goes back
+        // to its zone, at the zone's own spot and size
+        const near = nearestClear({ x: tapped.x + px / 2, y: tapped.y + px }, px, you, roam);
+        tappedDone.current?.(near);
+        const to = near ?? zone.home;
+        if (!to) { stop(); cur.current = null; redraw((n) => n + 1); }
+        else if (drawn) goTo(to, quick);
+        else place(to);
         return;
       }
+      if (!tapped && !zone.home) {
+        // its whole zone covered: a drawn figure walks out to the nearest
+        // clear spot and waits there; one not drawn yet stays off
+        if (stray && now && clear(now, px, you, roam)) return;
+        const out = drawn ? nearestClear({ x: now.x + px / 2, y: now.y + px }, px, you, roam) : null;
+        if (out) { setStray(out); goTo(out, quick); return; }
+        stop();
+        if (cur.current) { cur.current = null; redraw((n) => n + 1); }
+        if (stray) setStray(null);
+        return;
+      }
+      const home = (tapped ?? zone.home)!;
+      // clear where it stands but off its zone (it stepped out and the way
+      // back opened): it walks back once RETURN_MS has passed with the same
+      // home. Something appearing elsewhere does not start the wait again; a
+      // way home that was open and is then blocked pauses it, and it starts
+      // again once the way clears. A way blocked from the start (a nameplate
+      // between) does not hold it: it walks back under, as any step does
+      if (!tapped && drawn && !due && !path.current) {
+        const near = nearest(here, now, false);
+        const off = !near || Math.hypot(near.x - now.x, near.y - now.y) > px / 2;
+        if (off && clear(now, px, you, room)) {
+          kept = true;
+          const open = pathClear(now, home, px, you, room);
+          const w = waiting.current;
+          const same = !!w && w.to.x === home.x && w.to.y === home.y;
+          if (same && w.timer && (open || !w.open)) return;
+          if (same && w.timer && !open) { window.clearTimeout(w.timer); w.timer = 0; return; }
+          if (same && !w.timer && !open) return;
+          unwait();
+          const timer = window.setTimeout(() => { waiting.current = null; back.current = true; setSettled((n) => n + 1); }, RETURN_MS);
+          waiting.current = { timer, to: home, open };
+          return;
+        }
+      }
+      if (stray) setStray(null);
+      if (!now || !drawn) {
+        place(now && clear(now, px, you, room) ? now : home);
+        if (face.current && !now) face.current.style.transform = `scaleX(${pos === "right" ? -1 : 1})`;
+        return;
+      }
+      const flight = path.current;
+      if (flight && !pathClear(flight.from, flight.to, px, you, room)) {
+        goTo(clear(now, px, you, room) ? now : nearest(here, now) ?? home, quick);
+        return;
+      }
+      const near = nearest(here, now);
+      const off = !near || Math.hypot(near.x - now.x, near.y - now.y) > px / 2;
+      // covered (a control or a bubble appeared over it): out by the nearest
+      // way, upward before downward
+      if (off || !clear(now, px, you, room)) goTo(off ? home : nearest(here, now, true) ?? home, quick);
     }
-    if (stray) setStray(null);
-    if (!now || !drawn) {
-      place(now && clear(now, px, you, room) ? now : home);
-      if (face.current && !now) face.current.style.transform = `scaleX(${pos === "right" ? -1 : 1})`;
-      return;
-    }
-    const flight = path.current;
-    if (flight && !pathClear(flight.from, flight.to, px, you, room)) {
-      goTo(clear(now, px, you, room) ? now : nearest(here, now) ?? home, quick);
-      return;
-    }
-    const near = nearest(here, now);
-    const off = !near || Math.hypot(near.x - now.x, near.y - now.y) > px / 2;
-    // covered (a control or a bubble appeared over it): out by the nearest
-    // way, upward before downward
-    if (off || !clear(now, px, you, room)) goTo(off ? home : nearest(here, now, true) ?? home, quick);
   }, [zone, here, layout, roam, px, you, dealing, settled]);
 
   // a tap on the felt sends yours there, once, and makes it the home: each

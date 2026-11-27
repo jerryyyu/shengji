@@ -8,7 +8,7 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthState, AuthUser } from "../auth";
-import type { GameState, StatePlayer } from "../protocol";
+import type { Declaration, GameState, StatePlayer } from "../protocol";
 
 const { authState } = vi.hoisted(() => ({
   authState: { current: { status: "out", clientId: "cid", user: null } as AuthState },
@@ -31,6 +31,7 @@ import { HAND_LIFT, LIFT, clear, figureBox, meets, pathClear, zonesFor } from ".
 import type { Layout, Rect, SeatPos } from "./seatZones";
 import { TABLES } from "./seatZones.fixtures";
 import CollectionPage from "../components/CollectionPage";
+import TrickArea from "../components/TrickArea";
 import { SettingsGroup } from "../components/SettingsList";
 import { forgetHomeSession } from "../home/session";
 
@@ -1482,40 +1483,87 @@ describe("the table", () => {
       }
     });
 
-    it("50 tricks at 844×390: the left seat's figure steps off at most once in 10 tricks and never walks back within 1 s", async () => {
-      // the boxes measured on the real phone table (headless Chrome, 844×390):
-      // the left nameplate, Last trick, the HUD, and where each seat's cards and the LEAD label land
-      const at: Record<string, Rect> = {
-        "pos-left": { x: 8, y: 130, w: 115, h: 32 }, "last-trick-btn": { x: 8, y: 44, w: 84, h: 32 }, "hud-group": { x: 4, y: 6, w: 199, h: 32 },
-        "play-left": { x: 169, y: 106, w: 58, h: 82 }, "play-top": { x: 393, y: 46, w: 58, h: 82 }, "play-right": { x: 617, y: 106, w: 58, h: 82 },
-        "play-bottom": { x: 182, y: 195, w: 74, h: 98 }, "tag-left": { x: 172, y: 191, w: 52, h: 19 },
-      };
-      Object.assign(rects, { "pos-left": at["pos-left"], "last-trick-btn": at["last-trick-btn"], "hud-group": at["hud-group"] });
+    // the real phone table at 844×390 (headless Chrome): the left nameplate,
+    // Last trick, the HUD, and where each seat's cards, a declaration and the
+    // LEAD label land, drawn by the real TrickArea round the companions
+    const AT: Record<string, Rect> = {
+      "pos-left": { x: 8, y: 130, w: 115, h: 32 }, "last-trick-btn": { x: 8, y: 44, w: 84, h: 32 }, "hud-group": { x: 4, y: 6, w: 199, h: 32 },
+      "play-left": { x: 169, y: 106, w: 58, h: 82 }, "play-top": { x: 393, y: 46, w: 58, h: 82 }, "play-right": { x: 617, y: 106, w: 58, h: 82 },
+      "play-bottom": { x: 182, y: 195, w: 74, h: 98 }, "tag-left": { x: 172, y: 191, w: 52, h: 19 },
+      // a declaration drawn over the whole left corner, and one on the right
+      "decl-left": { x: 0, y: 40, w: 250, h: 225 }, "decl-right": { x: 617, y: 106, w: 58, h: 82 },
+    };
+    const zero: Rect = { x: 0, y: 0, w: 0, h: 0 };
+    const measured = () => {
+      Object.assign(rects, { "pos-left": AT["pos-left"], "last-trick-btn": AT["last-trick-btn"], "hud-group": AT["hud-group"] });
       spy.mockImplementation(function (this: Element) {
         const cls = [...this.classList];
         const pos = cls.find((c) => c.startsWith("pos-"))?.slice(4);
-        const r = cls.includes("trick-tag") ? at[`tag-${this.closest(".trick-play")?.className.split("pos-")[1]}`]
-          : cls.includes("trick-play") ? at[`play-${pos}`]
-          : rects[Object.keys(rects).find((c) => c !== "trick-play" && cls.includes(c)) ?? ""] ?? { x: 0, y: 0, w: 0, h: 0 };
+        const play = this.closest(".trick-play");
+        const r = cls.includes("trick-tag") ? AT[`tag-${play?.className.split("pos-")[1]?.split(" ")[0]}`] ?? zero
+          : cls.includes("trick-play") ? AT[`${cls.includes("declaration") ? "decl" : "play"}-${pos}`] ?? zero
+          : play ? zero
+          : rects[Object.keys(rects).find((c) => c !== "trick-play" && cls.includes(c)) ?? ""] ?? zero;
         return { left: r.x, top: r.y, width: r.w, height: r.h, right: r.x + r.w, bottom: r.y + r.h, x: r.x, y: r.y, toJSON: () => ({}) } as DOMRect;
       });
+    };
+    const felted = (s: GameState, declaration: Declaration | null = null) => (
+      <div className="felt">
+        <div className="hud-group" /><button type="button" className="last-trick-btn" />
+        <div className="opponent pos-left" /><div className="opponent pos-top" /><div className="opponent pos-right" />
+        <TrickArea state={s} trick={s.trick} winner={null} declaration={declaration} />
+        <div className="you-row" /><div className="hand"><div className="hand-slot" /></div>
+        <TableCompanions state={s} />
+      </div>
+    );
+    const show = async (s: GameState, declaration: Declaration | null = null) => { await act(async () => { root.render(felted(s, declaration)); }); };
+    const state2 = (over: Partial<GameState> = {}) => state({ levels: ["2", "2"], hand: [], trump: { suit: "H", rank: "2" }, ...over } as Partial<GameState>);
+
+    it("a declaration over a side seat's figure moves it only while it is up: it walks home 1 s after it clears", async () => {
+      measured();
+      const declaring = state2({ phase: "declare", trick: null } as Partial<GameState>);
+      await show(declaring);
+      await advance(500);
+      const home = spotOf(1);
+      await show(declaring, { seat: 1, cards: ["BJ", "BJ"] });
+      await advance(500);
+      const out = spotOf(1);
+      expect(out).not.toEqual(home);
+      expect(meets(boxOf(1, 44), AT["decl-left"])).toBe(false);
+      // the felt is measured on the next frame after the declaration goes
+      await show(declaring);
+      await advance(50);
+      await advance(RETURN_MS - 200);
+      expect(spotOf(1)).toEqual(out);
+      await advance(400);
+      expect(spotOf(1)).toEqual(home);
+    });
+
+    it("something appearing far off while a figure waits to walk home does not start the wait again: it is home at about 1 s", async () => {
+      measured();
+      const declaring = state2({ phase: "declare", trick: null } as Partial<GameState>);
+      await show(declaring);
+      await advance(500);
+      const home = spotOf(1);
+      await show(declaring, { seat: 1, cards: ["BJ", "BJ"] });
+      await advance(500);
+      const out = spotOf(1);
+      await show(declaring);
+      await advance(50);
+      await advance(650);
+      expect(spotOf(1)).toEqual(out);
+      // the right seat's declaration, across the felt, 700 ms into the wait
+      await show(declaring, { seat: 3, cards: ["SJ", "SJ"] });
+      await advance(50);
+      await advance(350);
+      const back = walks("1").filter((w) => w.frames[w.frames.length - 1].transform === `translate(${home.x}px, ${home.y}px)`);
+      expect(back).toHaveLength(1);
+      expect(spotOf(1)).toEqual(home);
+    });
+
+    it("50 tricks at 844×390: the left seat's figure steps off at most once in 10 tricks and never walks back within 1 s", async () => {
+      measured();
       const order = [1, 2, 3, 0];
-      const felted = (s: GameState) => (
-        <div className="felt">
-          <div className="hud-group" /><button type="button" className="last-trick-btn" />
-          <div className="opponent pos-left" /><div className="opponent pos-top" /><div className="opponent pos-right" />
-          <div className="trick-area">
-            {(s.trick?.plays ?? []).map((p) => {
-              const pos = ["bottom", "left", "top", "right"][p.seat];
-              return <div key={p.seat} className={`trick-play pos-${pos}`}>{pos === "left" ? <span className="trick-tag" /> : null}</div>;
-            })}
-          </div>
-          <div className="you-row" /><div className="hand"><div className="hand-slot" /></div>
-          <TableCompanions state={s} />
-        </div>
-      );
-      const show = async (s: GameState) => { await act(async () => { root.render(felted(s)); }); };
-      const state2 = (over: Partial<GameState> = {}) => state({ levels: ["2", "2"], ...over } as Partial<GameState>);
       await show(state2());
       await advance(2000);
       const px = Number(host.querySelector('.tc-seat[data-seat="1"] svg')!.getAttribute("width"));

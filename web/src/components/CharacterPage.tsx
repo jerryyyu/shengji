@@ -5,6 +5,8 @@ import { Companion, Portrait } from "../companion/Companion";
 import { DRAWINGS } from "../companion/kinds";
 import type { DrawnColour, DrawnKind } from "../companion/kinds";
 import { PAGE_CYCLE, useLivePose } from "../companion/livePose";
+import { playStageBeat, stageBeatMs, STAGE_BEATS } from "../companion/stageBeats";
+import type { StageBeat } from "../companion/stageBeats";
 import { parseLook } from "../companion/look";
 import type { Colour, CompanionKind, LookEntry, UnlockCount } from "../companion/look";
 import { guestName } from "../guestName";
@@ -42,6 +44,11 @@ const SPECIAL_NAME: Record<DrawnKind, MessageKey> = {
 /** The stage's move chips, in order: each plays its move once. */
 const MOVES: readonly { pose: "hop" | "cheer" | "sleep"; name: MessageKey }[] = [
   { pose: "hop", name: "home.moveHop" }, { pose: "cheer", name: "home.moveCheer" }, { pose: "sleep", name: "home.moveSleep" },
+];
+
+/** The table's moves, after the special: each plays once on the stage. */
+const BEATS: readonly { beat: StageBeat; name: MessageKey }[] = [
+  { beat: "ready", name: "home.moveReady" }, { beat: "watch", name: "home.moveWatch" }, { beat: "big", name: "home.moveBigPlay" },
 ];
 
 /** The spoken name of a companion's colour, in the app's language. */
@@ -215,8 +222,23 @@ export function Stage({ kind, colour, size, box = size, label, partner, cheer = 
 }) {
   const t = useT();
   const felt = useRef<HTMLDivElement>(null);
+  const moveBox = useRef<HTMLSpanElement>(null);
+  const beat = useRef<{ stop: () => void } | null>(null);
   const live = useLivePose(kind, PAGE_CYCLE, felt);
   const { play } = live;
+  useEffect(() => () => beat.current?.stop(), []);
+  // a table move: the box plays it while the figure holds the move's own pose
+  const playBeat = (b: StageBeat) => {
+    beat.current?.stop();
+    play(STAGE_BEATS[b].pose, stageBeatMs(b));
+    beat.current = playStageBeat(moveBox.current, b);
+  };
+  const playPose = (p: "hop" | "cheer" | "sleep" | "react") => {
+    beat.current?.stop();
+    beat.current = null;
+    if (p === "react") live.tap();
+    else play(p);
+  };
   useEffect(() => {
     if (cheer > 0) play("cheer");
   }, [cheer, play]);
@@ -224,8 +246,10 @@ export function Stage({ kind, colour, size, box = size, label, partner, cheer = 
     <div ref={felt} className={`coll-felt char-stage${partner ? " char-try" : ""}${live.paused ? " live-paused" : ""}`}>
       <div className="char-figures" style={{ height: box }}>
         <button type="button" className="coll-figure" aria-label={label} onClick={live.tap}>
-          <Companion key={live.key} kind={kind} colour={colour} size={size} state={live.pose}
-                     onPoseEnd={live.onPoseEnd} />
+          <span className="char-box" ref={moveBox}>
+            <Companion key={live.key} kind={kind} colour={colour} size={size} state={live.pose}
+                       onPoseEnd={live.onPoseEnd} />
+          </span>
         </button>
         {partner ? (
           <span className="char-partner" aria-hidden="true">
@@ -242,9 +266,12 @@ export function Stage({ kind, colour, size, box = size, label, partner, cheer = 
       {stage}
       <div className="char-poses" role="group" aria-label={label}>
         {MOVES.map((m) => (
-          <button key={m.pose} type="button" className="char-move" onClick={() => play(m.pose)}>{t(m.name)}</button>
+          <button key={m.pose} type="button" className="char-move" onClick={() => playPose(m.pose)}>{t(m.name)}</button>
         ))}
-        <button type="button" className="char-move" onClick={live.tap}>{t(SPECIAL_NAME[kind])}</button>
+        <button type="button" className="char-move" onClick={() => playPose("react")}>{t(SPECIAL_NAME[kind])}</button>
+        {BEATS.map((b) => (
+          <button key={b.beat} type="button" className="char-move" onClick={() => playBeat(b.beat)}>{t(b.name)}</button>
+        ))}
         {trail}
       </div>
     </>

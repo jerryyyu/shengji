@@ -594,8 +594,10 @@ keeps the table on screen.
   tap playing its special from its start, still under Reduce Motion (a tap shows the special drawn still). Under
   it, one row of chips (Jerry 2026-11-27: "yea lets add them", reversing the cut of state chips): **Hop · Cheer ·
   Sleep · the special by name** (Wheelie, Steamer pop, Flutter, Loop; Horn butt and Bamboo bite for the store's),
-  each playing its move once before the cycle resumes, the special's chip the same as a tap on the figure, each
-  drawn still under Reduce Motion; then, in the same row, the selected character's Try on your table (it stands
+  then the table's own moves (see At the table below): **Ready · Watch · Big play** (准备 · 看牌 · 大牌: the jump and
+  bobs of your turn, the lean toward a card played, the two-bounce jump), each playing its move once before the
+  cycle resumes, the special's chip the same as a tap on the figure, each drawn still under Reduce Motion; then, in
+  the same row, the selected character's Try on your table (it stands
   beside a partner on your team's pads). The row wraps to two lines on a narrow phone; its chips are labels only.
   Then its colour
   swatches (56 px, four in a row on a phone), one status line and the one button. The status line says how an

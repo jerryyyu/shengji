@@ -306,7 +306,7 @@ describe("the Collection's grid and the character page", () => {
     await draw(<CollectionPage />);
     await openTile("Bun");
     expect([...host.querySelectorAll(".char-poses button")].map((b) => b.textContent)).toEqual(
-      ["Hop", "Cheer", "Sleep", "Steamer pop", "Try on your table"]);
+      ["Hop", "Cheer", "Sleep", "Steamer pop", "Ready", "Watch", "Big play", "Try on your table"]);
     expect([...host.querySelectorAll(".char-chip")].map((b) => b.textContent)).toEqual(["Try on your table"]);
     await act(async () => { host.querySelector<HTMLButtonElement>(".char-chip")!.click(); });
     const figs = [...host.querySelectorAll(".char-stage svg.cmp")];

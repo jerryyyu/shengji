@@ -105,11 +105,11 @@
 /* a character's page: the live figure, its states, its colours, its portraits, its foot */
 .char-stage { padding-top: 36px; overflow: hidden; }
 .char-poses { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 12px 16px 0; }
-/* a short phone's stage row wraps to two lines: the felt and the row give
-   back that line's height, so the colours and the one button stay above the tab bar */
+/* a short phone's stage: smaller felt padding and compact chips keep the row
+   to two lines, so the colours and the one button stay above the tab bar */
 @media (max-height: 700px) {
   .char-stage { padding-top: 26px; }
-  .char-poses { margin-top: 8px; }
+  .char-poses { margin-top: 8px; gap: 4px; }
 }
 .char-chip, .char-move {
   appearance: none;
@@ -126,9 +126,14 @@
   -webkit-tap-highlight-color: transparent;
 }
 .char-chip.on { background: #e8ede8; border-color: #e8ede8; color: #14171e; }
+@media (max-height: 700px) {
+  .char-chip, .char-move { min-height: 30px; padding: 0 9px; font-size: 12px; }
+}
 /* the figures' area keeps one height (Stage's box), with a try-on's two
    smaller figures side by side at its foot, so nothing below it moves */
 .char-figures { display: flex; justify-content: center; align-items: flex-end; }
+/* the figure's move box: the table's moves turn and scale it about its feet */
+.char-box { display: block; line-height: 0; transform-origin: 50% 100%; }
 .char-partner { display: block; line-height: 0; transform: scaleX(-1); }
 /* the colours: four in a row on a phone, each a 56 px portrait */
 .char-swatches {

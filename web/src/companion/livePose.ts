@@ -38,7 +38,8 @@ const once = (p: Pose) => p === "hop" || p === "cheer" || p === "react";
  *  element `on` is on screen. `tap()` plays the special now, from its start
  *  even during one: the figure's `key` changes so its animation restarts
  *  from the top. `play(pose)` plays any move now, once (a
- *  purchase's cheer, a move chip): a resting one rests `PLAYED_REST_MS`. While the figure is off screen or the page hidden,
+ *  purchase's cheer, a move chip): a resting one rests `ms` (`PLAYED_REST_MS`
+ *  by default). While the figure is off screen or the page hidden,
  *  `paused` is true (the owner pauses its animations) and a move that ends
  *  then is counted only once it is back in view. `onPoseEnd` goes to the
  *  figure. */
@@ -46,6 +47,7 @@ export function useLivePose(kind: DrawnKind, cycle: readonly CycleStep[], on: Re
   const still = prefersReducedMotion();
   const [step, setStep] = useState(0);
   const [extra, setExtra] = useState<Pose | null>(null);
+  const restMs = useRef(PLAYED_REST_MS);
   const [nonce, setNonce] = useState(0);
   const [shown, setShown] = useState(true);
   const shownNow = useRef(true);
@@ -102,7 +104,7 @@ export function useLivePose(kind: DrawnKind, cycle: readonly CycleStep[], on: Re
     if (!shown) return;
     if (extra !== null) {
       if (still && once(extra)) return;           // the still frame ends itself (Companion's own timer)
-      const t = window.setTimeout(end, once(extra) ? poseMs(kind, extra) + END_SLACK_MS : PLAYED_REST_MS);
+      const t = window.setTimeout(end, once(extra) ? poseMs(kind, extra) + END_SLACK_MS : restMs.current);
       return () => window.clearTimeout(t);
     }
     if (still) return;
@@ -111,7 +113,8 @@ export function useLivePose(kind: DrawnKind, cycle: readonly CycleStep[], on: Re
     return () => window.clearTimeout(t);
   }, [shown, still, extra, nonce, stepPose, rest, step, kind, end]);
 
-  const play = useCallback((p: Pose) => {
+  const play = useCallback((p: Pose, ms: number = PLAYED_REST_MS) => {
+    restMs.current = ms;
     setExtra(p);
     setNonce((n) => n + 1);
   }, []);

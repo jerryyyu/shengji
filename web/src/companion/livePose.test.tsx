@@ -25,6 +25,8 @@ import { forgetHomeSession } from "../home/session";
 import { DRAWINGS } from "./kinds";
 import { COMPANION_KINDS } from "./look";
 import { poseMs } from "./livePose";
+import { BIG, PERKS } from "./beats";
+import { STAGE_BEATS, stageBeatMs } from "./stageBeats";
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -237,7 +239,8 @@ describe("the stage's move chips", () => {
     await stage();
     const row = host.querySelector(".char-poses")!;
     expect([...row.children].map((c) => [c.tagName, c.textContent])).toEqual([
-      ["BUTTON", "Hop"], ["BUTTON", "Cheer"], ["BUTTON", "Sleep"], ["BUTTON", "Steamer pop"], ["BUTTON", "Try"]]);
+      ["BUTTON", "Hop"], ["BUTTON", "Cheer"], ["BUTTON", "Sleep"], ["BUTTON", "Steamer pop"],
+      ["BUTTON", "Ready"], ["BUTTON", "Watch"], ["BUTTON", "Big play"], ["BUTTON", "Try"]]);
     expect(row.getAttribute("role")).toBe("group");
     expect(row.getAttribute("aria-label")).toBe("Bun");
   });
@@ -284,6 +287,51 @@ describe("the stage's move chips", () => {
       expect(svg.getAttribute("data-pose")).toBe(p);
       expect(svg.classList.contains("cmp-still")).toBe(true);
       await tick(ms);
+      expect(pose(".char-stage")).toBe("idle");
+    }
+  });
+
+  it("Ready, Watch and Big play play the table's own moves once on the figure's box, then the cycle resumes", async () => {
+    const calls: { el: Element; frames: Keyframe[]; ms: number }[] = [];
+    const animate = vi.fn(function (this: Element, frames: Keyframe[], o: KeyframeAnimationOptions) {
+      calls.push({ el: this, frames, ms: Number(o.duration) });
+      return { cancel() {}, finished: Promise.resolve() } as unknown as Animation;
+    });
+    (Element.prototype as unknown as { animate: unknown }).animate = animate;
+    try {
+      await stage();
+      const box = host.querySelector(".char-stage .char-box")!;
+      await press("Ready");
+      expect(pose(".char-stage")).toBe("idle");                // the figure holds still while its box jumps
+      await tick(stageBeatMs("ready", false));
+      expect(calls.map((c) => c.frames)).toEqual(STAGE_BEATS.ready.steps.map((s) => s.frames));
+      expect(calls[0].frames).toEqual(PERKS[0].frames);
+      expect(calls.every((c) => c.el === box)).toBe(true);
+      calls.length = 0;
+      await press("Watch");
+      await tick(stageBeatMs("watch", false));
+      expect(calls.map((c) => c.frames)).toEqual(STAGE_BEATS.watch.steps.map((s) => s.frames));
+      calls.length = 0;
+      await press("Big play");
+      expect(pose(".char-stage")).toBe("cheer");               // as the table draws a big play
+      expect(calls.map((c) => c.frames)).toEqual([BIG.frames]);
+      await ended(".char-stage");
+      await tick(3000);                                        // the cycle's own idle, then its hop
+      expect(pose(".char-stage")).toBe("hop");
+    } finally {
+      delete (Element.prototype as unknown as { animate?: unknown }).animate;
+    }
+  });
+
+  it("under Reduce Motion Ready, Watch and Big play each hold one still pose, then stand again", async () => {
+    reduced();
+    await stage();
+    const box = host.querySelector<HTMLElement>(".char-stage .char-box")!;
+    for (const b of ["ready", "watch", "big"] as const) {
+      await press({ ready: "Ready", watch: "Watch", big: "Big play" }[b]);
+      expect(box.style.transform).toBe(STAGE_BEATS[b].still);
+      await tick(1000);
+      expect(box.style.transform).toBe("");
       expect(pose(".char-stage")).toBe("idle");
     }
   });

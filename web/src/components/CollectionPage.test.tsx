@@ -282,20 +282,20 @@ describe("the stage's move chips", () => {
   it("sit in the stage's row with Try on your table: labels only, and still one status line", async () => {
     authState.current = { status: "in", clientId: "cid", user };
     await draw();
-    expect(row()).toEqual(["Hop", "Cheer", "Sleep", "Wheelie", "Try on your table"]);
+    expect(row()).toEqual(["Hop", "Cheer", "Sleep", "Wheelie", "Ready", "Watch", "Big play", "Try on your table"]);
     expect([...host.querySelectorAll(".char-page .char-poses > *")].every((c) => c.tagName === "BUTTON")).toBe(true);
     expect(host.querySelectorAll(".char-page .coll-status")).toHaveLength(1);
     expect(host.querySelectorAll(".char-page p")).toHaveLength(1);          // no sentence under the chips
     await act(async () => { tile("Chick").click(); });
-    expect(row()).toEqual(["Hop", "Cheer", "Sleep", "Flutter", "Try on your table"]);
+    expect(row()).toEqual(["Hop", "Cheer", "Sleep", "Flutter", "Ready", "Watch", "Big play", "Try on your table"]);
     await act(async () => { tile("Sparrow").click(); });
     expect(row()[3]).toBe("Loop");
   });
 
   it("read in Simplified and Traditional Chinese", async () => {
     for (const [lang, names] of [
-      ["zh-Hans", ["跳一跳", "欢呼", "睡觉", "出笼", "在牌桌上试试"]],
-      ["zh-Hant", ["跳一跳", "歡呼", "睡覺", "出籠", "在牌桌上試試"]],
+      ["zh-Hans", ["跳一跳", "欢呼", "睡觉", "出笼", "准备", "看牌", "大牌", "在牌桌上试试"]],
+      ["zh-Hant", ["跳一跳", "歡呼", "睡覺", "出籠", "準備", "看牌", "大牌", "在牌桌上試試"]],
     ] as const) {
       setLanguageChoice(lang);
       authState.current = { status: "in", clientId: "cid", user: { ...user, look: "bun/plain" } };

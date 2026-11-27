@@ -580,3 +580,47 @@ def test_only_a_ranked_round_is_ever_a_rerun(feed):
     srv.rooms.pop("CASU")
     assert list(spectate._reruns) == []
     assert _watch(client).status_code == 404
+
+
+def _claim(srv, spectate, room, seat, name, user_id):
+    """A person takes ``seat`` as the server's claim writers do: the seat, the
+    record, and the claim's own account for the replay."""
+    room.seats[seat] = srv.Seat(name=name, user_id=user_id, connected=True)
+    spectate.claimed(room, room.log_event("seat_claimed", seat=seat, name=name, bot=False), user_id)
+
+
+@pytest.mark.parametrize("order", ["unlisted_then_listed", "listed_then_unlisted"])
+def test_each_claim_is_named_by_its_own_claimer(accounts_on, feed, order):
+    srv, spectate, client = feed
+    store = accounts_on.STORE
+    listed = _rated(store, "claim-listed", "Lena")
+    unlisted = store.upsert_user(_claims(sub="claim-unlisted", email="cu@example.com"))["id"]
+    t = Table(srv, code="CLAM", ranked=True)
+    t.deal()
+    t.declare()
+    t.act(plays=8)
+    first, second = ((("Una Unlisted", unlisted), ("Lena Listed", listed)) if order == "unlisted_then_listed"
+                     else (("Lena Listed", listed), ("Una Unlisted", unlisted)))
+    _claim(srv, spectate, t.room, 1, *first)
+    t.act(plays=8)
+    _claim(srv, spectate, t.room, 1, *second)
+    t.act()
+    srv.rooms.pop("CLAM")
+    rerun = _watch(client).json()
+    assert rerun["rerun"] is True
+    blob = json.dumps(rerun)
+    assert "Lena Listed" in blob
+    assert "Una Unlisted" not in blob
+    claims = [e for e in rerun["events"] if e["e"] == "seat_claimed"]
+    assert [e["name"] for e in claims] == [("Player 2" if n == "Una Unlisted" else n) for n, _ in (first, second)]
+    assert "_at" not in blob
+
+
+def test_every_claim_writer_records_its_claimer():
+    import re
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / "shengji" / "api" / "server.py").read_text()
+    writes = re.findall(r'.*log_event\("seat_claimed".*', src)
+    assert len(writes) == 3
+    assert all("spectate.claimed(" in line for line in writes), writes

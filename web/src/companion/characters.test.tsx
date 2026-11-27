@@ -891,6 +891,28 @@ describe("the table", () => {
       expect(near(spotOf(0), end)).toBeLessThanOrEqual(44);
     });
 
+    it("with only its old area by your hand covered, yours stays drawn on its tapped home and takes a second tap", async () => {
+      const bots = state({ players: [player(0), player(1, { is_bot: true, look: null }), player(2, { is_bot: true, look: null }), player(3, { is_bot: true, look: null })] } as Partial<GameState>);
+      await render(bots);
+      tap(felt(), 420, 220);
+      await advance(2000);
+      const end = spotOf(0);
+      expect(end).toEqual({ x: 397, y: 175 });
+      rects["trick-play"] = { x: 0, y: 40, w: 340, h: 225 };
+      await render({ ...bots, trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as GameState);
+      await advance(2000);
+      // the hand zone has nowhere clear, the tapped home is still clear: it stays drawn there
+      expect(clear(end, 44, true, layout())).toBe(true);
+      expect(host.querySelector('.tc-seat[data-seat="0"]')).not.toBeNull();
+      expect(spotOf(0)).toEqual(end);
+      const before = walks("0").length;
+      tap(felt(), 470, 230);
+      expect(walks("0").length).toBe(before + 1);
+      const second = spotOf(0);
+      expect(second).not.toEqual(end);
+      expect(clear(second, 44, true, layout())).toBe(true);
+    });
+
     it("a new table forgets the tapped spot: yours goes back by your hand", async () => {
       await render(state({ room: "A" } as Partial<GameState>));
       const home = spotOf(0);
@@ -1000,16 +1022,17 @@ describe("the table", () => {
       expect(specialOn("0")).toBe(true);
     });
 
-    it("a tap is taken once: hidden and drawn again, yours never replays an old tap over a companion that has arrived", async () => {
+    it("a tap is taken once: moved off and on again, yours never replays an old tap over a companion that has arrived", async () => {
       const bots = [player(0), player(1, { is_bot: true, look: null }), player(2, { is_bot: true, look: null }), player(3, { is_bot: true, look: null })];
       await render(state({ players: bots } as Partial<GameState>));
       // a tap where the left seat's companion will stand once a person sits there
       tap(felt(), 124 + 22, 118 + 44);
       expect(walks("0")).toHaveLength(1);
-      // cards cover your corner: yours is not drawn
+      const tapped = walks("0")[0].frames[1].transform;
+      // cards cover the tapped spot and your corner: yours hops to the nearest clear spot
       rects["trick-play"] = { x: 0, y: 40, w: 340, h: 225 };
       await render(state({ players: bots, trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>));
-      expect(host.querySelector('.tc-seat[data-seat="0"]')).toBeNull();
+      expect(clear(spotOf(0), 44, true, layout())).toBe(true);
       // the cards clear and a person takes the left seat
       rects["trick-play"] = { x: 0, y: 0, w: 0, h: 0 };
       const people = [player(0), player(1), player(2, { is_bot: true, look: null }), player(3, { is_bot: true, look: null })];
@@ -1019,7 +1042,8 @@ describe("the table", () => {
       const theirs = spotOf(1);
       const w1 = Number(host.querySelector('.tc-seat[data-seat="1"] svg')!.getAttribute("width"));
       expect(meets(figureBox(mine, 44, true), figureBox(theirs, w1, false))).toBe(false);
-      expect(walks("0")).toHaveLength(1);
+      // no later walk goes back to the old tap's spot
+      expect(walks("0").slice(1).map((w) => w.frames[1].transform)).not.toContain(tapped);
     });
 
     it("under Reduce Motion a tap on the felt leaves your companion at home", async () => {

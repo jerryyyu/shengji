@@ -290,7 +290,8 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
   const [playing, setPlaying] = useState(false);
   const lastSpecial = useRef(-Infinity);
   // a figure with nowhere clear to stand is not drawn, and keeps no clock
-  const placed = zone.home !== null;
+  // a tapped home stands on its own: the zone only matters without one
+  const placed = (tapped ?? zone.home) !== null;
   useFidget(box, placed && move === "idle" && !up && !playing, setBlink);
 
   const stop = () => { for (const a of walking.current) a.cancel(); walking.current = []; path.current = null; };
@@ -345,22 +346,23 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
   // cards now cover gives way to the nearest clear spot, which becomes the
   // home; with none clear it goes back to its zone.
   useLayoutEffect(() => {
-    if (!zone.home) {
-      stop();
-      cur.current = null;
-      return;
-    }
     const now = cur.current;
     const drawn = now !== null && !!walk.current?.style.transform;
     const quick = { under: true, quick: true };
     if (tapped && !clear(tapped, px, you, roam)) {
-      const to = nearestClear({ x: tapped.x + px / 2, y: tapped.y + px }, px, you, roam);
+      const to = nearestClear({ x: tapped.x + px / 2, y: tapped.y + px }, px, you, roam) ?? zone.home;
       tappedDone.current?.(to);
-      if (drawn) goTo(to ?? zone.home, quick);
-      else place(to ?? zone.home);
+      if (!to) { stop(); cur.current = null; }
+      else if (drawn) goTo(to, quick);
+      else place(to);
       return;
     }
-    const home = tapped ?? zone.home;
+    if (!tapped && !zone.home) {
+      stop();
+      cur.current = null;
+      return;
+    }
+    const home = (tapped ?? zone.home)!;
     if (!now || !drawn) {
       place(now && clear(now, px, you, room) ? now : home);
       if (face.current && !now) face.current.style.transform = `scaleX(${pos === "right" ? -1 : 1})`;
@@ -464,7 +466,7 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
 
   const drawn: Pose = away ? "sleep" : up ? "cheer" : playing ? "react" : move;
 
-  if (!zone.home) return null;
+  if (!placed) return null;
   return (
     <span className="tc-seat" data-seat={player.seat} data-pos={pos}>
       <span className={`tc-walk${you ? " tc-mine" : ""}`} ref={walk} onClick={you ? poked : undefined}>
@@ -642,9 +644,15 @@ export default function TableCompanions({ state }: { state: GameState }) {
   }, [layout, zones, size.base]);
 
   // a tap on empty felt walks yours to the clear spot nearest the tap
-  const tapState = useRef({ layout: roam, mine, last: -Infinity, n: 0 });
+  // the spot your last tap chose, at this table; yours stands round it, at
+  // its full size, whatever room its zone by your hand has
+  const home = tapped && tapped.room === state.room ? tapped.spot : null;
+  const myPx = companionSize(size.base, levelIndex(levels[ours]), size.max);
+  const tapState = useRef({ layout: roam, mine, home, px: myPx, last: -Infinity, n: 0 });
   tapState.current.layout = roam;
   tapState.current.mine = mine;
+  tapState.current.home = home;
+  tapState.current.px = myPx;
   useEffect(() => {
     const felt = root.current?.parentElement;
     if (!on || !felt) return;
@@ -652,13 +660,13 @@ export default function TableCompanions({ state }: { state: GameState }) {
       const at = tapState.current;
       const target = e.target as Element | null;
       // under Reduce Motion nothing walks: yours stays at home
-      if (!at.layout || !at.mine?.home || !target || target.closest(NOT_FELT) || prefersReducedMotion()) return;
+      if (!at.layout || !at.mine || !(at.home ?? at.mine.home) || !target || target.closest(NOT_FELT) || prefersReducedMotion()) return;
       const now = Date.now();
       if (now - at.last < TAP_THROTTLE_MS) return;
       const f = framed(felt, felt.getBoundingClientRect());
       const { clientX, clientY } = e as globalThis.MouseEvent;
       const p = framedPoint(felt, clientX, clientY);
-      const px = at.mine.size ?? size.base;
+      const px = at.px;
       const spot = nearestClear({ x: p.x - f.x, y: p.y - f.y }, px, true, at.layout);
       if (!spot) return;
       at.last = now;
@@ -672,7 +680,6 @@ export default function TableCompanions({ state }: { state: GameState }) {
   const end = (seat: number) => () => setPoses((p) => ({ ...p, [seat]: "idle" }));
   // a tap's goal is cleared once yours has taken it, so no later render replays it
   const takeGoal = (n: number) => setGoal((g) => (g && g.n === n ? null : g));
-  const home = tapped && tapped.room === state.room ? tapped.spot : null;
   const takeHome = (s: Spot | null) => setTapped(s ? { room: state.room, spot: s } : null);
   return (
     <div className="table-companions" ref={root} aria-hidden="true">
@@ -682,7 +689,7 @@ export default function TableCompanions({ state }: { state: GameState }) {
         const you = p.seat === state.you;
         return (
           <Walker key={p.seat} player={p} team={p.team === ours ? "us" : "them"}
-                  px={zone.size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max)}
+                  px={you && home ? myPx : zone.size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max)}
                   pos={pos} zone={zone} layout={layout} roam={you && roam ? roam : layout} pose={poses[p.seat] ?? "idle"}
                   up={ups[p.seat] ?? null} you={you} goal={you ? goal : null} tapped={you ? home : null}
                   wins={p.team === ours ? wins : 0} onEnd={end(p.seat)} onUpEnd={done(p.seat)}

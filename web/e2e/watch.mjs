@@ -2,7 +2,8 @@
 // trick never covers a seat's name tag, the watcher's row (transport, tabs,
 // kitty) or the LEAD / WINS labels, on the phones and the iPad, from every
 // tab, with narrow and wide tricks; and the hand keeps its size when the bury
-// ends; and a replay is left in one tap, by back or by Escape.
+// ends; a live table's menu stays as a tap left it while plays arrive; and a
+// replay is left in one tap, by back or by Escape.
 //   node e2e/watch.mjs [device-regex]
 import fs from "node:fs";
 import path from "node:path";
@@ -150,6 +151,54 @@ for (const device of ["phone-land-max", "phone-land", "phone-land-se", "ipad11-l
     });
     await page.context().close();
   }
+}
+// A live table's ⋯, tapped while the plays arrive: one tap opens it and it
+// stays open across the plays, one more closes it and it stays closed.
+for (const device of ["phone-land", "ipad11-land"]) {
+  const name = `watch-menu-steady-${device}`;
+  if (only && !only.test(name)) continue;
+  const page = await open(browser, device, {
+    storage: { "shengji.coach": "off", "shengji.muted": "1", "shengji.name": "Jerry" },
+    fakeSocket: fakeSocketScript([presence]),
+    setup: async (p) => {
+      await p.route("**/api/**", (r) => r.fulfill({ status: 404, json: {} }));
+      await p.route("**/api/watch/**", (r) => r.fulfill({ json: { ...doc(0), waiting: true, events: undefined } }));
+      await p.route("**/api/watch?**", (r) => r.fulfill({ json: doc(0) }));
+    },
+  });
+  await scenario(rep, name, page, async () => {
+    await page.waitForSelector(".play-presence-watch");
+    await page.tap(".play-presence-watch");
+    await page.waitForSelector(".watch-tabs");
+    // every change of the menu's state, and every play, from here on
+    await page.evaluate(() => {
+      const q = (window.__menu = { states: [], plays: 0 });
+      const felt = document.querySelector(".felt");
+      let html = felt.innerHTML;
+      new MutationObserver(() => {
+        const s = document.querySelector('.watch-hud [aria-haspopup="menu"]')?.getAttribute("aria-expanded") ?? "none";
+        if (q.states[q.states.length - 1] !== s) q.states.push(s);
+        if (felt.innerHTML !== html) { html = felt.innerHTML; q.plays++; }
+      }).observe(document.querySelector(".watch-screen"), { subtree: true, childList: true, attributes: true, characterData: true });
+    });
+    const across = async (want) => {
+      const t0 = await page.evaluate(() => { window.__menu.states = []; return window.__menu.plays; });
+      for (let i = 0; i < 40 && (await page.evaluate(() => window.__menu.plays)) < t0 + 3; i++) await sleep(250);
+      const q = await page.evaluate(() => window.__menu);
+      const shown = await page.evaluate(() => document.querySelector(".watch-hud [role=menu]") !== null);
+      return q.plays < t0 + 3 ? `only ${q.plays - t0} plays arrived`
+        : q.states.some((s) => s !== String(want)) || shown !== want ? `menu went ${q.states.join(" > ")} (shown ${shown})` : null;
+    };
+    await rep.check(`${name}: closed across plays with no tap`, await across(false), page);
+    await page.tap('.watch-hud [aria-haspopup="menu"]');
+    await rep.check(`${name}: one tap opens it`, await page.evaluate(() => document.querySelector(".watch-hud [role=menu]") ? null : "not open"), page);
+    await rep.check(`${name}: open across plays`, await across(true), page);
+    await page.tap('.watch-hud [aria-haspopup="menu"]');
+    await rep.check(`${name}: one tap closes it`, await page.evaluate(() => document.querySelector(".watch-hud [role=menu]") ? "still open" : null), page);
+    await rep.check(`${name}: closed across plays after the tap`, await across(false), page);
+    if (SHOTS?.test(name)) await shot(page, name);
+  });
+  await page.context().close();
 }
 // A replay's top right is one Leave control: a tap, the browser's back or
 // Escape each land on the Play tab with its presence line.

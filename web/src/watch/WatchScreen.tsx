@@ -14,6 +14,7 @@ import { EASE, canAnimate, prefersReducedMotion } from "../motion";
 import { queue } from "../queue/store";
 import { codes } from "../codeJoin";
 import { rounds } from "../roundTelemetry";
+import { tapHandlers } from "../tap";
 import { fetchWatch, followWatch } from "./api";
 import type { WatchDoc } from "./api";
 import {
@@ -363,22 +364,25 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
             </span>
           </div>
           <div className="hud-group">
+            {/* the table changes under these on every play, and iOS WebKit
+                holds a tap's click back until it settles: they answer the
+                touch itself (tap.ts) */}
             {doc.rerun ? (
               // a replay has nothing but Leave there: one tap, no menu
               <div className="hud-more">
                 <button type="button" className="hud-more-btn watch-close" aria-label={t("common.leave")}
-                        onClick={leave}><Icon d={ICON.close} /></button>
+                        {...tapHandlers(leave)}><Icon d={ICON.close} /></button>
               </div>
             ) : (
               <div className="hud-more">
                 <button type="button" className="hud-more-btn" aria-label={t("watch.menu")} aria-haspopup="menu"
-                        aria-expanded={menu} onClick={() => setMenu((m) => !m)}>⋯</button>
+                        aria-expanded={menu} {...tapHandlers(() => setMenu((m) => !m))}>⋯</button>
                 {menu ? (
                   <div className="hud-menu" role="menu">
                     <button className="hud-menu-row" role="menuitem"
-                            onClick={() => { setMenu(false); pick(doc.table); }}>{t("watch.next")}</button>
+                            {...tapHandlers(() => { setMenu(false); pick(doc.table); })}>{t("watch.next")}</button>
                     <div className="hud-menu-sep" role="separator" />
-                    <button className="hud-menu-row leave" role="menuitem" onClick={leave}>{t("common.leave")}</button>
+                    <button className="hud-menu-row leave" role="menuitem" {...tapHandlers(leave)}>{t("common.leave")}</button>
                   </div>
                 ) : null}
               </div>

@@ -36,7 +36,9 @@ export type QueueClientMsg = { name?: string } & (
    *  `expect` is "room" (a resume, a room link, a peek that showed a
    *  room), else with `table_not_found`. `seat` and `token` are a room's:
    *  the seat picked from its peek, and this device's resume token. */
-  | { type: "table_join"; code: string; seat?: number; token?: string; expect?: "room" }
+  /** `rejoin`: Rejoin Duo, which takes back only the Duo seat kept for you
+   *  and otherwise joins nothing (the answer is your idle queue_state). */
+  | { type: "table_join"; code: string; seat?: number; token?: string; expect?: "room"; rejoin?: boolean }
   /** Leave your search, waiting table or room seat. */
   | { type: "table_leave" }
   /** A joiner's Ready. `panel_seq` is the queue_state's: a tap sent against

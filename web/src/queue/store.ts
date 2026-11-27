@@ -664,13 +664,13 @@ export class QueueStore {
     return () => this.view.playMode === mode && !this.view.queued && this.view.pending === null;
   }
 
-  private sendJoin(code: string | undefined, duo: boolean, name?: string): void {
+  private sendJoin(code: string | undefined, duo: boolean, name?: string, rejoin = false): void {
     const p = this.view.party;
     const pair = p && p.members.length === 2 ? p : null;
     if (pair && !pair.you_lead && code === undefined) return;
-    if (this.cooling()) return;
+    if (this.cooling() && !rejoin) return;
     const mode = this.view.playMode;
-    const sent = this.send(code !== undefined ? { type: "table_join", code, ...(name ? { name } : {}) }
+    const sent = this.send(code !== undefined ? { type: "table_join", code, ...(name ? { name } : {}), ...(rejoin ? { rejoin } : {}) }
       : pair ? { type: "queue_join", party_id: pair.party_id, mode }
       : duo ? { type: "queue_join", mode, duo: true } : { type: "queue_join", mode });
     if (!sent) {
@@ -831,7 +831,7 @@ export class QueueStore {
     return b && (b.until === null || b.until > now) ? b : null;
   }
 
-  /** Rejoin Duo: the kept Duo table by its code, which the queue
+  /** Rejoin Duo (`rejoin`, never a plain join): the kept Duo table by its code, which the queue
    *  gives back as it was, or your seat in the Duo's room by its code and
    *  seat, which the server's left-seat rule gives back. A refusal is the
    *  server's error; Play is Play again either way. */
@@ -840,10 +840,11 @@ export class QueueStore {
     if (!b) return;
     this.set({ back: null });
     if (!b.room) {
-      this.join(b.code);
+      beforeOnlineSetup(() => this.sendJoin(b.code, false, undefined, true), this.sameIntent(), () => this.notTaken());
       return;
     }
-    if (!this.send({ type: "table_join", code: b.code, expect: "room", ...(b.seat !== null ? { seat: b.seat } : {}) })) {
+    if (!this.send({ type: "table_join", code: b.code, expect: "room", rejoin: true,
+                     ...(b.seat !== null ? { seat: b.seat } : {}) })) {
       this.set({ back: b });
       this.notify(t("queue.note.offline"), t("queue.note.playLater"));
     }

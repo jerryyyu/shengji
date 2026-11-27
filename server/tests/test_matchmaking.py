@@ -5855,7 +5855,7 @@ def test_a_lone_duo_openers_leave_keeps_its_table_for_the_window_and_its_code_re
         env.clock.advance(mm.KEEP_TABLE_SECS - 1)
         await env.mm.pump()
         env.conns[1].clear()
-        await env.send(1, "queue_join", code=code)
+        await env.send(1, "queue_join", code=code, rejoin=True)       # Rejoin Duo
         state = env.conns[1].last("queue_state")
         assert state["queued"] and state["code"] == code and state["duo"] is True
         assert state["held_seat"] == 2 and state["mode"] == "casual" and state["start_level"] == "5"
@@ -5924,7 +5924,7 @@ def test_a_lone_duo_opener_that_drops_keeps_its_table_and_hears_it_on_return():
         assert env.mm._entry(1) is None and env.mm.kept[1].code == code
         back = env.player(1)                          # the app comes back
         assert back.last("queue_state")["back"]["code"] == code
-        await env.send(1, "queue_join", code=code)
+        await env.send(1, "queue_join", code=code, rejoin=True)
         assert back.last("queue_state")["queued"] and back.last("queue_state")["code"] == code
     run(go())
 
@@ -5935,8 +5935,8 @@ def test_a_duo_partners_leave_offers_its_held_seat_back():
         code = await _duo_table(env, 1, friend=2)
         await env.send(2, "queue_leave")
         assert env.conns[2].last("queue_state")["back"]["code"] == code
-        # the seat is the opener's held seat again: the partner's code join pairs them
-        await env.send(2, "queue_join", code=code)
+        # the seat is the opener's held seat again: Rejoin Duo pairs them
+        await env.send(2, "queue_join", code=code, rejoin=True)
         e = env.mm._entry(1)
         assert e.members == [1, 2] and e.table.seats[2] == 2 and 2 not in env.mm.kept
         # once the opener's table no longer holds it, nothing is offered
@@ -5953,13 +5953,16 @@ def test_a_paired_duo_member_out_of_its_room_is_offered_its_left_seat():
     async def go():
         env = Env()
         found = {}
-        env.mm.room_back = lambda user_id, device: found.get(user_id)
+        env.mm.room_back = lambda code, user_id, device: found.get((code, user_id))
         env.player(1)
         assert "back" not in env.mm._idle_state(1)
-        found[1] = ("ROOMX", 2)
+        found[("ROOMX", 1)] = 2
+        found[("OTHER", 1)] = 0
         assert "back" not in env.mm._idle_state(1)             # not paired
         env.player(2)
-        lobby_duo(env.mm, 1, 2)
+        p = lobby_duo(env.mm, 1, 2)
+        assert "back" not in env.mm._idle_state(1)             # the Duo has played in no room yet
+        p.room = "ROOMX"                                       # only this Duo's room is asked
         assert env.mm._idle_state(1)["back"] == {"code": "ROOMX", "duo": True, "until": None,
                                                  "room": True, "seat": 2}
         again = env.player(1)                                    # a new socket hears it at once
@@ -5985,4 +5988,58 @@ def test_leave_duo_on_a_kept_table_gives_it_up():
         gone = env.conns[1].last("queue_state")
         assert gone["queued"] is False and "back" not in gone
         assert env.mm.kept == {} and not env.mm.has_code(code)
+    run(go())
+
+
+def test_a_stale_partner_rejoin_never_seats_the_partner_with_a_new_pair():
+    """Partner 2 leaves leader 1's Duo; player 3 then takes the held seat by
+    the code. 2 is told at once that its seat is gone, and its Rejoin Duo,
+    sent before that reached it, joins nothing: no seat at the table, no
+    error, just its idle state; the table and the new pair stand."""
+    async def go():
+        env = Env()
+        code = await _duo_table(env, 1, friend=2)
+        await env.send(2, "queue_leave")
+        assert env.conns[2].last("queue_state")["back"]["code"] == code
+        env.player(3)
+        env.conns[2].clear()
+        await env.send(3, "queue_join", code=code)
+        e = env.mm._entry(1)
+        assert e.members == [1, 3] and e.table.seats == [1, None, 3, None]
+        told = env.conns[2].last("queue_state")
+        assert told is not None and told["queued"] is False and "back" not in told
+        assert 2 not in env.mm.kept
+        env.conns[2].clear()
+        await env.send(2, "queue_join", code=code, rejoin=True)       # the tap in flight
+        assert env.mm._entry(2) is None and e.table.seats == [1, None, 3, None]
+        assert env.mm.parties[e.party_id].members == [1, 3]
+        assert env.conns[2].of("error") == []
+        answer = env.conns[2].last("queue_state")
+        assert answer["queued"] is False and "back" not in answer
+    run(go())
+
+
+def test_a_rejoin_with_nothing_kept_or_another_code_joins_nothing():
+    async def go():
+        env = Env()
+        code = await _duo_table(env, 1)
+        env.player(2)
+        await env.send(2, "queue_join", code=code, rejoin=True)        # never sat there
+        assert env.mm._entry(2) is None and env.mm._entry(1).table.seats[2] is None
+        assert env.conns[2].of("error") == [] and env.conns[2].last("queue_state")["queued"] is False
+        # a kept opener's Rejoin by some other code is refused the same way
+        await env.send(1, "queue_leave")
+        await env.send(1, "queue_join", code="ZZZZ", rejoin=True)
+        assert env.mm._entry(1) is None and env.mm.kept[1].code == code
+    run(go())
+
+
+def test_a_duo_records_the_room_it_starts_as_its_rejoin_room():
+    async def go():
+        env = Env()
+        await _duo_table(env, 1, friend=2)
+        await env.send(2, "table_start")
+        await env.send(1, "queue_start_bots")
+        assert env.started
+        assert env.mm.duo_room(1) == env.mm.duo_room(2) == "ROOM"
     run(go())

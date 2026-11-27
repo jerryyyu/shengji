@@ -766,7 +766,7 @@ describe("a Duo is a table", () => {
     expect(q(".play-presence")).not.toBeNull();                         // the presence line stays
     await pastGuard();
     click(button("Rejoin Duo", lobby()));
-    expect(lastSent()).toEqual({ type: "table_join", code: "R2D2", expect: "room", seat: 2 });
+    expect(lastSent()).toEqual({ type: "table_join", code: "R2D2", expect: "room", rejoin: true, seat: 2 });
     expect(playRow()).toEqual(["Play", "Leave Duo"]);                   // until the server says otherwise
   });
 
@@ -805,7 +805,7 @@ describe("a Duo is a table", () => {
     expect(playRow()).toEqual(["Rejoin Duo", "Leave Duo"]);
     await pastGuard();
     click(button("Rejoin Duo", lobby()));
-    expect(lastSent()).toMatchObject({ type: "table_join", code: "4N5Z" });
+    expect(lastSent()).toMatchObject({ type: "table_join", code: "4N5Z", rejoin: true });
     expect(lastSent().expect).toBeUndefined();
     say(duoState(true, 0, false));                                // the server's table: the panel
     expect(button("Rejoin Duo", lobby())).toBeUndefined();
@@ -814,6 +814,28 @@ describe("a Duo is a table", () => {
     expect(playRow()).toEqual(["Rejoin Duo", "Leave Duo"]);
     tick(2500);
     expect(playRow()).toEqual(["Play", "Duo"]);
+  });
+
+  it("a Rejoin Duo the server refuses (the seat taken meanwhile) falls back to the Duo's Play, quietly", async () => {
+    await renderApp();
+    say(duoParty(true));
+    idle({ code: "R2D2", duo: true, until: null, room: true, seat: 2 });
+    await pastGuard();
+    const toastBefore = q(".toast")?.textContent ?? null;
+    click(button("Rejoin Duo", lobby()));
+    expect(lastSent()).toMatchObject({ type: "table_join", rejoin: true });
+    idle();                                                     // the server's answer: nothing kept
+    expect(playRow()).toEqual(["Play", "Leave Duo"]);
+    expect(q(".toast")?.textContent ?? null).toBe(toastBefore);    // no new word about it
+  });
+
+  it("a kept seat taken by someone else: the server's push takes Rejoin Duo away before any tap", async () => {
+    await renderApp();
+    idle({ code: "4N5Z", duo: true, until: nowSecs() + 300 });
+    expect(playRow()).toEqual(["Rejoin Duo", "Leave Duo"]);
+    idle();
+    expect(playRow()).toEqual(["Play", "Duo"]);
+    expect(q(".toast")).toBeNull();
   });
 
   it("Leave Duo on a kept table gives it up through the plain table sheet", async () => {

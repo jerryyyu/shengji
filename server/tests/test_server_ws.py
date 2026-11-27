@@ -4293,37 +4293,86 @@ def test_a_leave_owed_across_a_drop_resumes_by_token_and_is_covered_at_once(clie
         assert seat["left"] is True and seat["takeover_in"] is None
 
 
-def test_a_paired_leaver_of_a_casual_queue_room_is_offered_its_seat_and_takes_it_back(client, monkeypatch):
-    """A Duo's casual room from the queue: the partner taps Leave while the
-    pair stands. Its socket, back in the lobby, hears ``back`` with the room
-    and seat (``room_back``), and the Play tab's table_join by the code
-    alone (no seat, no ``expect``) takes that same seat back. A ranked room
-    offers nothing."""
+def _duo_of(monkeypatch, device: str, room: str = ""):
+    """A standing Duo for the guest on ``device`` and a partner who never
+    played, whose last room together is ``room``."""
     from shengji.api import matchmaking as mm
     from shengji.api import server as srv
 
-    dev_b = "b" * 24
-    qid = srv.guest_queue_id(dev_b)
+    qid = srv.guest_queue_id(device)
     party = mm.Party(id="duo1", leader=qid, members=[qid, -999], names={qid: "sk", -999: "jy"},
                      idle_since=0.0)
+    party.room = room
     monkeypatch.setitem(srv.MATCHMAKER.parties, party.id, party)
     monkeypatch.setitem(srv.MATCHMAKER.party_of, qid, party.id)
-    with client.websocket_connect("/ws") as a:
+    return party
+
+
+def _sit_and_leave(client, sockets, code, device, name, seat):
+    w = sockets.enter_context(client.websocket_connect(f"/ws?device={device}"))
+    w.send_json({"type": "table_join", "expect": "room", "code": code, "name": name, "seat": seat})
+    assert _drain(w, "state")["you"] == seat
+    w.send_json({"type": "table_leave"})
+    _drain(w, "left")
+    return w
+
+
+def test_a_paired_leaver_of_its_duos_casual_room_is_offered_its_seat_and_takes_it_back(client, monkeypatch):
+    """A Duo's casual room from the queue: the partner taps Leave while the
+    pair stands. Its socket, back in the lobby, hears ``back`` with the room
+    and seat, and Rejoin Duo (``table_join`` with ``rejoin``) takes that same
+    seat back. A ranked room offers nothing."""
+    from shengji.api import server as srv
+
+    dev_b = "b" * 24
+    with client.websocket_connect("/ws") as a, ExitStack() as sockets:
         code = _room_with_bots(a)
         room = srv.rooms[code]
         room.queued = True
-        with client.websocket_connect(f"/ws?device={dev_b}") as b:
-            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "sk", "seat": 2})
-            assert _drain(b, "state")["you"] == 2
-            b.send_json({"type": "table_leave"})
-            _drain(b, "left")
-            back = _drain(b, "queue_state")["back"]
-            assert back == {"code": code, "duo": True, "until": None, "room": True, "seat": 2}
-            assert srv.room_back(None, dev_b) == (code, 2)
-            room.matched = True
-            assert srv.room_back(None, dev_b) is None          # a ranked room keeps its bar
-            room.matched = False
-            b.send_json({"type": "table_join", "code": code, "name": "sk"})
-            st = _drain(b, "state")
-            assert st["you"] == 2 and room.seats[2].connected and not room.seats[2].left_by_choice
-            assert srv.room_back(None, dev_b) is None
+        _duo_of(monkeypatch, dev_b, room=code)
+        b = _sit_and_leave(client, sockets, code, dev_b, "sk", 2)
+        back = _drain(b, "queue_state")["back"]
+        assert back == {"code": code, "duo": True, "until": None, "room": True, "seat": 2}
+        assert srv.room_back(code, None, dev_b) == 2
+        room.matched = True
+        assert srv.room_back(code, None, dev_b) is None          # a ranked room keeps its bar
+        room.matched = False
+        b.send_json({"type": "table_join", "code": code, "seat": 2, "expect": "room", "rejoin": True,
+                     "name": "sk"})
+        st = _drain(b, "state")
+        assert st["you"] == 2 and room.seats[2].connected and not room.seats[2].left_by_choice
+        assert srv.room_back(code, None, dev_b) is None
+
+
+def test_rejoin_duo_offers_and_takes_back_only_its_own_duos_room(client, monkeypatch):
+    """The same device left seats in two casual rooms from the queue, the
+    first with another partner. Its standing Duo played in the second: the
+    offer names that room only, and a Rejoin Duo aimed at the first joins
+    nothing (its idle state comes back, no error) and leaves that seat as
+    it was; aimed at its own room it takes the seat back."""
+    from shengji.api import server as srv
+
+    dev_b = "b" * 24
+    with ExitStack() as sockets:
+        a1 = sockets.enter_context(client.websocket_connect("/ws?device=" + "a" * 24))
+        old_code = _room_with_bots(a1, "amy")
+        a2 = sockets.enter_context(client.websocket_connect("/ws?device=" + "c" * 24))
+        duo_code = _room_with_bots(a2, "jy")
+        old, duo = srv.rooms[old_code], srv.rooms[duo_code]
+        old.queued = duo.queued = True
+        _sit_and_leave(client, sockets, old_code, dev_b, "sk", 2)
+        b = _sit_and_leave(client, sockets, duo_code, dev_b, "sk", 1)
+        assert list(srv.rooms).index(old_code) < list(srv.rooms).index(duo_code)
+        _duo_of(monkeypatch, dev_b, room=duo_code)
+        b.send_json({"type": "queue_status"})
+        assert _drain(b, "queue_state")["back"] == {"code": duo_code, "duo": True, "until": None,
+                                                    "room": True, "seat": 1}
+        b.send_json({"type": "table_join", "code": old_code, "seat": 2, "expect": "room",
+                     "rejoin": True, "name": "sk"})
+        answer = _drain(b, "queue_state")
+        assert answer["queued"] is False and answer["back"]["code"] == duo_code
+        assert old.seats[2].left_by_choice and not old.seats[2].connected
+        b.send_json({"type": "table_join", "code": duo_code, "seat": 1, "expect": "room",
+                     "rejoin": True, "name": "sk"})
+        assert _drain(b, "state")["you"] == 1
+        assert duo.seats[1].connected and old.seats[2].left_by_choice

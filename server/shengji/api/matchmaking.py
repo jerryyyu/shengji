@@ -330,6 +330,9 @@ class Party:
     members: list[int]
     names: dict[int, str]
     idle_since: float             # the 5-minute expiry runs while not queued
+    # The room the pair last started together from the queue: the only
+    # room its Rejoin Duo offers and takes back.
+    room: str = ""
 
 
 @dataclass
@@ -337,10 +340,13 @@ class Kept:
     """A Duo seat its person left, theirs to take back by ``code`` until
     ``until``: a lone opener's whole entry and table (``entry``), whose code
     stays reserved for it; or, with no ``entry``, a partner's seat at the
-    opener's table, which still holds it while the opener waits."""
+    opener's table, which still holds it while that ``opener`` waits; its
+    reclaim pairs the two again at the partner's ``rating``."""
     code: str
     until: float
     entry: Entry | None = None
+    opener: int | None = None
+    rating: float = 0.0
 
 
 @dataclass
@@ -633,7 +639,7 @@ class Matchmaker:
                  presence: Callable[[], tuple[int, int, int, int]] | None = None,
                  watch: Callable[[int | None], dict | None] | None = None,
                  watch_key: Callable[[], tuple] | None = None,
-                 room_back: Callable[[int | None, str | None], tuple[str, int] | None] | None = None,
+                 room_back: Callable[[str, int | None, str | None], int | None] | None = None,
                  autorun: bool = True) -> None:
         self.clock = clock
         self.rating_of = rating_of or _store_rating
@@ -661,9 +667,9 @@ class Matchmaker:
         # and what they are read from, so a change of it is sent again.
         self.watch = watch or (lambda uid: None)
         self.watch_key = watch_key or (lambda: ())
-        # The casual room and seat an account or device left by choice and
-        # may take back (``server._left_seat_of``), as ``(code, seat)``.
-        self.room_back = room_back or (lambda user_id, device: None)
+        # The seat an account or device left by choice in room ``code`` and
+        # may take back there (``server._left_seat_of``), or None.
+        self.room_back = room_back or (lambda code, user_id, device: None)
         self.autorun = autorun
         self._task: asyncio.Task | None = None
         self.reset()
@@ -984,6 +990,13 @@ class Matchmaker:
             out["back"] = back
         return out
 
+    def idle_state(self, uid: int | None) -> dict:
+        """What a refused Rejoin Duo answers: ``uid``'s ``queue_state``,
+        whose ``back`` is there only if a Duo seat still stands."""
+        if uid is None:
+            return {"type": "queue_state", "queued": False, "count": self.count()}
+        return self.queue_state(uid)
+
     def _idle_news(self, uid: int) -> bool:
         """Whether an idle socket arriving for ``uid`` has a state to hear:
         a cooldown running or a Duo seat to take back."""
@@ -1000,19 +1013,36 @@ class Matchmaker:
         k = self._kept_back(uid)
         if k is not None:
             return {"code": k.code, "duo": True, "until": k.until}
-        p = self._party(uid)
-        if p is None or len(p.members) != 2:
+        code = self.duo_room(uid)
+        if not code:
             return None
         c = self.conns.get(uid)
         try:
-            found = self.room_back(c.user_id if c is not None else None,
-                                   c.device if c is not None else None)
+            seat = self.room_back(code, c.user_id if c is not None else None,
+                                  c.device if c is not None else None)
         except Exception:      # noqa: BLE001 - the way back is an offer; the queue goes on
             log.exception("room back lookup failed")
-            found = None
-        if found is None:
+            seat = None
+        if seat is None:
             return None
-        return {"code": found[0], "duo": True, "until": None, "room": True, "seat": found[1]}
+        return {"code": code, "duo": True, "until": None, "room": True, "seat": seat}
+
+    def duo_room(self, uid: int) -> str:
+        """The room ``uid``'s standing Duo last started together, or ""."""
+        p = self._party(uid)
+        return p.room if p is not None and len(p.members) == 2 else ""
+
+    def _revalidate_kept(self) -> None:
+        """A partner's kept seat that no longer stands (the held seat taken,
+        the opener gone or its game started) is dropped at once, and its
+        leaver's Play tab hears that it is gone."""
+        for uid, k in list(self.kept.items()):
+            if k.entry is not None or self._kept_back(uid) is not None:
+                continue
+            self.kept.pop(uid, None)
+            c = self._live(uid)
+            if c is not None and not c.in_room and uid not in self.entry_of:
+                c.push(self._idle_state(uid))
 
     def _kept_back(self, uid: int) -> Kept | None:
         """``uid``'s kept Duo seat while it still stands: its kept table,
@@ -1023,7 +1053,8 @@ class Matchmaker:
         if k.entry is not None:
             return k if self.entry_codes.get(k.code) == k.entry.id else None
         host = self._code_entry(k.code)
-        if host is None or not host.hold or host.table is None or host.table.held_for(host) is None:
+        if (host is None or host.leader != k.opener or not host.hold or host.size != 1
+                or host.claiming or host.table is None or host.table.held_for(host) is None):
             return None
         return k
 
@@ -1061,6 +1092,38 @@ class Matchmaker:
         self._enlist(e)
         self._qlog("join", e, mode=e.mode, by_code=True, duo=True, back=True)
         return e
+
+    def _rejoin(self, conn: Conn, uid: int, code: str) -> bool:
+        """Rejoin Duo by ``code``: the kept Duo table back as it was, or the
+        held partner seat at the same opener's table, pairing the two again.
+        Anything else (a seat taken since, a window run out, another code)
+        joins nothing: the socket hears its idle state, with no offer left
+        and no error, and its Play tab is Play again."""
+        if conn.closed or conn.in_room:
+            return False
+        k = self._kept_back(uid)
+        if k is None or not code or k.code != code:
+            conn.push(self._idle_state(uid))
+            return False
+        if k.entry is not None:
+            e = self._restore(uid, k)
+            self.seat_waiting()
+            self._offer_open_tables(self.clock(), quiet={e.id})
+            if e.table_id is None:
+                self._send_state(e)
+            self._send_chat_history(e.table, [uid])
+            return True
+        host = self._code_entry(code)
+        assert host is not None
+        try:
+            self._check_room_for(host, [uid])
+        except QueueError:
+            conn.push(self._idle_state(uid))
+            return False
+        self.kept.pop(uid, None)
+        self.declined.pop(uid, None)
+        self._pair_up(host, uid, k.rating)
+        return True
 
     def _expire_kept(self, now: float) -> None:
         """A kept seat past its window is gone; its leaver's Play tab hears it."""
@@ -1536,17 +1599,10 @@ class Matchmaker:
                 raise QueueError("in_queue", "Cancel your search before joining a table.")
             self._resync(uid)
             return
-        kept = self._kept_back(uid)
-        if code and kept is not None and kept.entry is not None and kept.code == code:
-            if conn.closed or conn.in_room:
-                return
-            e = self._restore(uid, kept)
-            self.seat_waiting()
-            self._offer_open_tables(self.clock(), quiet={e.id})
-            if e.table_id is None:
-                self._send_state(e)
-            self._send_chat_history(e.table, [uid])
-            await self._start_due()
+        if msg.get("rejoin") is True:
+            # Rejoin Duo: only the kept seat it was offered, else nothing
+            if self._rejoin(conn, uid, code):
+                await self._start_due()
             return
         host = self._code_host(code, uid) if code else None
         # absent is ranked: an older client knows only the ranked queue
@@ -1671,6 +1727,7 @@ class Matchmaker:
         self._send_party(p)
         self.seat_waiting()
         self._offer_open_tables(self.clock())
+        self._revalidate_kept()
 
     def _split(self, e: Entry, uid: int, reason: str) -> None:
         """``uid`` leaves its table Duo before the game: the Duo ends and
@@ -1690,13 +1747,14 @@ class Matchmaker:
         t.ready.discard(e.id)
         e.members = [stay]
         e.taps.clear()
-        e.member_ratings.pop(uid, None)
+        rating = e.member_ratings.pop(uid, ratings.GUEST_RATING)
         if self.entry_of.get(uid) == e.id:
             del self.entry_of[uid]
         e.hold = uid != e.leader and t.entries[0] is e
         if e.hold and reason in ("leave", "party_leave", "away"):
             self._forget_kept(uid)
-            self.kept[uid] = Kept(t.code, self.clock() + KEEP_TABLE_SECS)
+            self.kept[uid] = Kept(t.code, self.clock() + KEEP_TABLE_SECS,
+                                  opener=stay, rating=rating)
         e.leader = stay
         if not t.waiting:
             self._seat_alone(t, e)     # its own table seats the one left at 0
@@ -2300,8 +2358,9 @@ class Matchmaker:
         the front, unseated, and is told. Never strands a player."""
         conns = {s.user_id: self.conns[s.user_id] for s in slots if s.user_id is not None}
         try:
-            await self._start(table_id, slots, conns, mode=mode, chat=chat or [],
-                              chat_senders=chat_senders, **room)
+            started = await self._start(table_id, slots, conns, mode=mode, chat=chat or [],
+                                        chat_senders=chat_senders, **room)
+            self._note_duo_room(entries, started)
             return True
         except Exception:          # noqa: BLE001 - players go back, never stranded
             log.exception("queued room failed to start")
@@ -2314,6 +2373,16 @@ class Matchmaker:
                                    "reason": "server_error"})
                 self._send_state(e)
             return False
+
+    def _note_duo_room(self, entries: list[Entry], code: Any) -> None:
+        """Each Duo among ``entries`` plays in room ``code`` now: the one
+        room its Rejoin Duo offers."""
+        if not isinstance(code, str) or not code:
+            return
+        for e in entries:
+            p = self.parties.get(e.party_id) if e.party_id is not None else None
+            if p is not None:
+                p.room = code
 
     async def _start(self, table_id: str | None, slots: list[Slot],
                      conns: dict[int, Conn], *, mode: str = "ranked",
@@ -2349,8 +2418,9 @@ class Matchmaker:
         slots = self._slots(t, [e], alone=True)
         conns = {u: self.conns[u] for u in e.members}
         try:
-            await self._start(None, slots, conns, mode=e.mode, chat=list(t.chat),
-                              chat_senders=dict(t.senders), **self._room_settings(t, e))
+            started = await self._start(None, slots, conns, mode=e.mode, chat=list(t.chat),
+                                        chat_senders=dict(t.senders), **self._room_settings(t, e))
+            self._note_duo_room([e], started)
         except Exception:          # noqa: BLE001
             log.exception("bot game failed to start")
             err = QueueError("start_failed", "Could not start the game.")
@@ -2781,6 +2851,7 @@ class Matchmaker:
         self._drop_away(now)
         self._drop_idle(now)
         self._expire_kept(now)
+        self._revalidate_kept()
         self._lapse_offers(now)
         for p in list(self.parties.values()):
             queued = any(u in self.entry_of for u in p.members)

@@ -2,8 +2,12 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { useModalHost } from "../modalHosts";
 
 /** A round result must be acknowledged, not silently dismissed. Native modal
- * isolation keeps the underlying table out of the tab order and accessibility tree. */
-export default function ResultDialog({ children, titleId }: { children: ReactNode; titleId: string }) {
+ * isolation keeps the underlying table out of the tab order and accessibility tree.
+ * `onDismiss` (a watcher's card, which acknowledges nothing): a tap on the
+ * backdrop outside the card, or Escape, closes it. */
+export default function ResultDialog({ children, titleId, onDismiss }: {
+  children: ReactNode; titleId: string; onDismiss?: () => void;
+}) {
   const ref = useRef<HTMLDialogElement>(null);
   useModalHost(ref);
   useEffect(() => {
@@ -17,7 +21,9 @@ export default function ResultDialog({ children, titleId }: { children: ReactNod
     };
   }, []);
   return <dialog ref={ref} className="modal-backdrop" aria-labelledby={titleId}
-    onCancel={(event) => event.preventDefault()} onKeyDown={(event) => event.stopPropagation()}>
+    onCancel={(event) => { event.preventDefault(); onDismiss?.(); }}
+    onClick={onDismiss ? (event) => { if (event.target === event.currentTarget) onDismiss(); } : undefined}
+    onKeyDown={(event) => event.stopPropagation()}>
     {children}
   </dialog>;
 }

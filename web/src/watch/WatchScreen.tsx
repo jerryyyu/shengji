@@ -232,6 +232,10 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   const beats = loaded?.beats ?? [];
   const beat = beats[Math.min(at, Math.max(0, beats.length - 1))];
   const atEnd = beat?.kind === "end";
+  // the round end closed from its backdrop: the transport is reachable again,
+  // and the card comes back whenever playback reaches the end once more
+  const [endClosed, setEndClosed] = useState(false);
+  useEffect(() => { if (!atEnd) setEndClosed(false); }, [atEnd]);
 
   // the steady rhythm; nothing advances past the finished round's end
   useEffect(() => {
@@ -404,10 +408,11 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
         </div>
       </div>
       {kitty && kittyShown ? <KittyPeek cards={buried} onClose={() => setKitty(false)} /> : null}
-      {atEnd && end ? (
+      {atEnd && end && !endClosed ? (
         <RoundEndModal state={{ ...state, you: 4 + (seat % 2) }} result={asResult(end, loaded.buried)}
                        watch={{
                          note: caughtUp,
+                         onDismiss: () => setEndClosed(true),
                          primary: <button type="button" className="btn primary big gold" onClick={takeSeat}>{seatLabel}</button>,
                          leave: <button type="button" className="btn danger big dialog-leave-btn" onClick={leave}>{t("common.leave")}</button>,
                        }} />

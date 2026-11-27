@@ -532,9 +532,10 @@ trick) with the watcher's buttons: Take a seat (a casual table seating joiners: 
 ranked table: the queue's Play), and Leave; under it the one line "Round N in play" until that round finishes,
 then its replay plays.
 
-TODO (needs Jerry's pick, red team item 9): the round end of a replay, and of a table that has gone, is a dead
-end: nothing plays after it and the card holds Play and Leave. The options and a recommendation are on the red
-team page; nothing is built until he picks.
+The watcher's round end closes from its backdrop (Jerry 2026-11-26, red team item 9: "tapping outside the card
+closes it"): a tap outside the card, or Escape, takes it away so the transport is reachable and Previous trick
+steps back into the last trick; the card comes back whenever playback reaches the round end again. Only the
+watcher's card does this; a player's round end still waits for Next or Leave.
 
 ## Collection and companions (Jerry 2026-11-26: "I like the Collection tab. Can we first build it with the default Tractor… do the character building with the Tractor first, before the store"; "let's add more colour schemes for free too")
 

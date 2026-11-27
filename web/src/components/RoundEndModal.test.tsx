@@ -97,6 +97,28 @@ describe("round end modal", () => {
     dialog.dispatchEvent(cancel);
     expect(cancel.defaultPrevented).toBe(true);
   });
+  it("a player's round end stays put on a backdrop tap", () => {
+    renderModal(makeResult());
+    const dialog = host.querySelector("dialog")!;
+    act(() => { dialog.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    expect(dialog.open).toBe(true);
+    expect(host.querySelector(".round-end")).not.toBeNull();
+  });
+  it("a watcher's round end closes on a backdrop tap or Escape, never on a tap inside the card", () => {
+    let closed = 0;
+    const watch = { primary: <button>Play</button>, leave: <button>Leave</button>, note: null, onDismiss: () => { closed++; } };
+    renderModal(makeResult());
+    act(() => { root.render(<RoundEndModal state={state} result={makeResult()} watch={watch} />); });
+    const dialog = host.querySelector("dialog")!;
+    act(() => { (host.querySelector(".round-end h2") as HTMLElement).click(); });
+    expect(closed).toBe(0);
+    act(() => { dialog.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    expect(closed).toBe(1);
+    const cancel = new Event("cancel", { cancelable: true });
+    act(() => { dialog.dispatchEvent(cancel); });
+    expect(cancel.defaultPrevented).toBe(true);
+    expect(closed).toBe(2);
+  });
   it("shows a level change on an ordinary round as the lanes, not a sentence", () => {
     const text = renderModal(makeResult({ new_levels: ["5", "2"] }));
     expect(lane(0)).toEqual({ was: "2", now: "5" });

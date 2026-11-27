@@ -203,6 +203,27 @@ describe("a live table", () => {
   });
 });
 
+describe("the watcher's round end", () => {
+  it("closes on a backdrop tap, and Previous trick then steps back into the last trick", async () => {
+    await open();
+    await act(async () => { button("Pause").click(); });
+    for (let i = 0; i < 40; i++) await act(async () => { button("Next trick")?.click(); });
+    await act(async () => { await Promise.resolve(); });
+    const dialog = document.querySelector("dialog.modal-backdrop")!;
+    expect(dialog).not.toBeNull();
+    await act(async () => { dialog.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    expect(document.querySelector(".round-end")).toBeNull();
+    expect(button("Next trick").disabled).toBe(true);
+    await act(async () => { button("Previous trick").click(); });
+    expect(button("Next trick").disabled).toBe(false);
+    expect(host.querySelectorAll(".trick-play").length).toBeGreaterThan(0);
+    // playback reaching the end again brings the card back
+    await act(async () => { button("Next trick").click(); });
+    await act(async () => { await Promise.resolve(); });
+    expect(document.querySelector(".round-end")).not.toBeNull();
+  });
+});
+
 describe("the entry", () => {
   it("leads somewhere only with the server's feed on and something to show", () => {
     expect(canWatch(null)).toBe(false);

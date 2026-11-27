@@ -696,3 +696,72 @@ describe("a store character by its address", () => {
     expect(title()).toBe("Spring Lamb");
   });
 });
+
+describe("an address the viewer cannot follow", () => {
+  it("with Bun selected, a link to the Lamb while the store is unavailable gives the stage back to the one in use", async () => {
+    // no plugin: the store is unavailable, so the Lamb is not for this viewer
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    await openTile(".coll-yours", 1);
+    expect(onStage()).toBe("Bun");
+    await act(async () => {
+      window.history.replaceState(null, "", "/#/collection/lamb");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    await settle();
+    expect(window.location.hash).toBe("#/collection");
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("Tractor · Icon red");
+    expect(host.querySelector(".coll-yours .coll-tile.selected")?.textContent).toBe("Tractor");
+  });
+});
+
+describe("each store answer on its own line", () => {
+  const announcements = () => [...host.querySelectorAll("[role=status]")].map((s) => s.textContent).filter(Boolean);
+  const refused = () => {
+    globalThis.fetch = vi.fn(async () => ({ status: 409, json: async () => ({ detail: "held_by_other" }) }) as Response) as unknown as typeof fetch;
+  };
+  const FAILED = "Purchase not completed (held_by_other)";
+
+  it("a refused purchase is said once, on the stage, and not under Restore purchases", async () => {
+    nativeShell();
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    await openTile(".coll-more", 0);
+    refused();
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")!.click(); });
+    await settle();
+    expect(announcements().filter((s) => s === FAILED)).toHaveLength(1);
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe(FAILED);
+    expect(host.querySelector(".coll-grid-status")?.textContent).toBe("");
+  });
+
+  it("a purchase answered after the selection moved is not said on the new stage", async () => {
+    nativeShell();
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    await openTile(".coll-more", 0);
+    let answer: (v: unknown) => void = () => {};
+    plugin.purchase.mockImplementationOnce(() => new Promise((r) => { answer = r; }) as never);
+    refused();
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")!.click(); });
+    await openTile(".coll-yours", 1);
+    await act(async () => { answer({ status: "purchased", jws: "header.payload.sig", productId: LAMB }); });
+    await settle();
+    expect(announcements()).not.toContain(FAILED);
+    expect(onStage()).toBe("Bun");
+  });
+
+  it("a failed restore is said once, under Restore purchases, and not on the stage", async () => {
+    nativeShell();
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    await openTile(".coll-more", 0);
+    plugin.restore.mockImplementationOnce(async () => { throw new Error("offline"); });
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-restore")!.click(); });
+    await settle();
+    const said = announcements().filter((s) => s !== "Spring Lamb · New Year");
+    expect(said).toHaveLength(1);
+    expect(host.querySelector(".coll-grid-status")?.textContent).toBe(said[0]);
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("Spring Lamb · New Year");
+  });
+});

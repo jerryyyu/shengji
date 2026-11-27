@@ -86,7 +86,10 @@ export default function CollectionPage() {
   const [picked, setPicked] = useState<Selected | null>(null);
   const [shown, setShown] = useState<string>(inUse);
   const [arrived, setArrived] = useState<CompanionKind | null>(null);
-  const [status, setStatus] = useState("");
+  // Buy's answer belongs to the product it was for, Restore's to its row:
+  // each is said on its own line, and a late answer never reaches another stage
+  const [bought, setBought] = useState<{ product: string; text: string } | null>(null);
+  const [restored, setRestored] = useState("");
   const [cheer, setCheer] = useState(0);
   // a selection the player made swaps the stage with a short crossfade
   const [swaps, setSwaps] = useState(0);
@@ -179,7 +182,7 @@ export default function CollectionPage() {
 
   // Select a character into the stage, in place.
   const choose = (k: Selected) => {
-    setStatus("");
+    setBought(null);
     setPicked(k);
     if (!isSoon(k)) {
       const list = entriesOf(k);
@@ -193,6 +196,13 @@ export default function CollectionPage() {
         if (user && entry.id === inUse) intend("look");
       }
     }
+  };
+  // a link this viewer may not follow puts the one in use back on the stage
+  const backToWorn = () => {
+    setBought(null);
+    setPicked(null);
+    manual.current = false;
+    setShown(inUse);
   };
   const select = (k: Selected) => {
     if (k !== selected) setSwaps((n) => n + 1);
@@ -210,8 +220,8 @@ export default function CollectionPage() {
 
   // A link to a character (`#/collection/<kind>`) selects it and leaves the
   // plain address. While the account loads, or the store's check is out for a
-  // store character, the address waits; one this viewer may not see leaves
-  // the stage on the one in use.
+  // store character, the address waits; one this viewer may not see puts
+  // the one in use back on the stage.
   const item = useCollectionItem();
   const linked = isSelectable(item) ? item : null;
   const waiting = linked !== null
@@ -219,6 +229,7 @@ export default function CollectionPage() {
   useEffect(() => {
     if (item === null || waiting) return;
     if (linked !== null && available(linked)) choose(linked);
+    else backToWorn();
     settleCollectionItem();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item, waiting]);
@@ -247,12 +258,13 @@ export default function CollectionPage() {
     const kind = selected;
     const product = COMPANION_PRODUCTS[kind];
     const price = product && !owns(kind) ? (
-      <BuyFoot product={product} shop={shop} onStatus={setStatus}
+      <BuyFoot product={product} shop={shop} onStatus={(text) => setBought({ product, text })}
                onOwned={() => { setArrived(kind); setCheer((n) => n + 1); }} />
     ) : undefined;
     stage = (
       <CharacterPage key={kind} kind={kind} shown={shown} entries={entriesOf(kind)} inUse={inUse} user={user} phone={phone} short={short}
-                     fresh={fresh} onShow={show} onUse={use} price={price} status={status} cheer={cheer} />
+                     fresh={fresh} onShow={show} onUse={use} price={price}
+                     status={bought && bought.product === product ? bought.text : ""} cheer={cheer} />
     );
   }
 
@@ -298,9 +310,9 @@ export default function CollectionPage() {
             ))}
           </div>
           <ul className="grp coll-restore-row">
-            <li><RestoreRow onStatus={setStatus} /></li>
+            <li><RestoreRow onStatus={setRestored} /></li>
           </ul>
-          <p className="coll-status coll-grid-status" role="status">{status}</p>
+          <p className="coll-status coll-grid-status" role="status">{restored}</p>
         </>
       ) : getApp ? (
         <ul className="grp coll-restore-row">

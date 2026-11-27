@@ -57,15 +57,15 @@ export function progressText(t: ReturnType<typeof useT>, entry: LookEntry, user:
   const { count, of } = entry.needs;
   const n = Math.min(countOf(user, count), of);
   if (count === "rounds") return t("home.lookRounds", { n, of });
-  return of === 1 ? t("home.lookRankedWin") : t("home.lookRankedGames", { n: num(n), of: num(of) });
+  return of === 1 ? t("home.lookRankedWin") : t("home.lookRankedRounds", { n: num(n), of: num(of) });
 }
 
 /** What unlocks a locked look, as the button says it. */
 function unlockLine(t: ReturnType<typeof useT>, entry: LookEntry, user: AuthUser | null): string {
-  const { count, of } = entry.needs ?? { count: "ranked_games" as const, of: 1 };
+  const { count, of } = entry.needs ?? { count: "ranked_wins" as const, of: 1 };
   const n = Math.min(countOf(user, count), of);
   if (count === "rounds") return t("home.unlockRounds", { of, n });
-  return of === 1 ? t("home.unlockRankedWin") : t("home.unlockRankedGames", { of: num(of), n: num(n) });
+  return of === 1 ? t("home.unlockRankedWin") : t("home.unlockRankedRounds", { of: num(of), n: num(n) });
 }
 
 /** What the one button may do for `entry` when `inUse` is worn. */

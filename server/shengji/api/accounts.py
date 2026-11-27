@@ -162,14 +162,14 @@ DEFAULT_COLOUR = "red"
 DEFAULT_LOOK = f"{DEFAULT_COMPANION}/{DEFAULT_COLOUR}"
 # What unlocks a look: (count, at least) over ``look_progress``'s counts.
 # A look not listed is free from the start. The Tractor's colours past the
-# three free ones are won by ranked games, each asking for more than the one
+# three free ones are won by winning ranked rounds (not games), each asking for more than the one
 # before it in Collection order.
 LOOK_UNLOCKS: dict[str, tuple[str, int]] = {
-    "tractor/yellow": ("ranked_games", 10),
-    "tractor/orange": ("ranked_games", 25),
-    "tractor/jade": ("ranked_games", 50),
-    "tractor/porcelain": ("ranked_games", 100),
-    "tractor/ink": ("ranked_games", 1000),
+    "tractor/yellow": ("ranked_wins", 10),
+    "tractor/orange": ("ranked_wins", 25),
+    "tractor/jade": ("ranked_wins", 50),
+    "tractor/porcelain": ("ranked_wins", 100),
+    "tractor/ink": ("ranked_wins", 1000),
 }
 # The Collection and companion portraits are shown to nobody unless
 # ``COLLECTION_ENABLED=1`` (everyone) or the signed-in account's id is in
@@ -1897,8 +1897,8 @@ class Store:
         return int(row["n"])
 
     def look_progress(self, user_id: int) -> dict[str, int]:
-        """The counts ``LOOK_UNLOCKS`` reads: rounds played, ranked rounds won
-        and ranked games won."""
+        """Rounds played and ranked rounds won, the counts ``LOOK_UNLOCKS``
+        reads, and ranked games won, which ``/api/me`` reports."""
         return {"rounds": self.rounds_played(user_id), "ranked_wins": self.ranked_wins(user_id),
                 "ranked_games": self.ranked_games(user_id)}
 

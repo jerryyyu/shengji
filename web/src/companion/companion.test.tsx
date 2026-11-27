@@ -71,10 +71,10 @@ describe("looks", () => {
   });
 
   it("unlocks by count, keeps the equipped one, and prefers the server's word", () => {
-    const at = (games: number, equipped = DEFAULT_LOOK) =>
-      lookCatalogue({ rounds: 500, ranked_wins: 300, ranked_games: games }, equipped)
+    const at = (wins: number, equipped = DEFAULT_LOOK) =>
+      lookCatalogue({ rounds: 5000, ranked_wins: wins, ranked_games: 500 }, equipped)
         .filter((e) => e.unlocked && e.id.startsWith("tractor/")).map((e) => e.id);
-    // rounds played and rounds won unlock nothing: ranked games won do
+    // rounds played and games won unlock nothing: ranked rounds won do
     expect(at(0)).toEqual(["tractor/red", "tractor/green", "tractor/blue"]);
     expect(at(25)).toEqual(["tractor/red", "tractor/green", "tractor/blue", "tractor/yellow", "tractor/orange"]);
     expect(at(99)).not.toContain("tractor/porcelain");
@@ -148,7 +148,7 @@ describe("the gold dot", () => {
 describe("the Collection tab", () => {
   const user: AuthUser = {
     name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry",
-    rounds_played: 14, ranked_wins: 40, ranked_games: 14, look: "tractor/red", companions: "team", features: { collection: true },
+    rounds_played: 14, ranked_wins: 14, ranked_games: 0, look: "tractor/red", companions: "team", features: { collection: true },
   };
   const fetches: { url: string; init?: RequestInit }[] = [];
   beforeEach(() => {
@@ -176,8 +176,8 @@ describe("the Collection tab", () => {
     const swatches = [...host.querySelectorAll<HTMLButtonElement>(".coll-swatch")];
     expect(swatches).toHaveLength(COMPANIONS.tractor.length);
     expect(swatches.filter((s) => s.classList.contains("locked")).map((s) => s.getAttribute("aria-label"))).toEqual([
-      "Lantern orange, 14 of 25 ranked games", "Jade, 14 of 50 ranked games", "Blue and white, 14 of 100 ranked games",
-      "Ink black, 14 of 1,000 ranked games",
+      "Lantern orange, 14 of 25 ranked rounds", "Jade, 14 of 50 ranked rounds", "Blue and white, 14 of 100 ranked rounds",
+      "Ink black, 14 of 1,000 ranked rounds",
     ]);
     expect(swatches[0].getAttribute("aria-checked")).toBe("true");
     expect(host.querySelector(".coll-status")?.textContent).toBe("Tractor · Icon red");
@@ -193,7 +193,7 @@ describe("the Collection tab", () => {
     authState.current = { status: "in", clientId: "cid", user };
     await drawOpen();
     await act(async () => { swatch("Lantern orange").click(); });
-    expect(host.querySelector(".coll-use")?.textContent).toBe("Win 25 ranked games to unlock · 14 of 25");
+    expect(host.querySelector(".coll-use")?.textContent).toBe("Win 25 ranked rounds to unlock · 14 of 25");
     expect(fetches.some((f) => f.url === "/api/me/look")).toBe(false);
     await act(async () => { swatch("Imperial yellow").click(); });
     expect(fetches.some((f) => f.url === "/api/me/look")).toBe(false);
@@ -202,6 +202,17 @@ describe("the Collection tab", () => {
     expect(put.init?.method).toBe("PUT");
     expect(JSON.parse(String(put.init?.body))).toEqual({ look: "tractor/yellow" });
     expect(updated).toHaveBeenCalledWith(expect.objectContaining({ look: "tractor/yellow" }));
+  });
+
+  it("45 ranked rounds won and no game won unlock yellow and orange, and jade reads 45 of 50", async () => {
+    authState.current = { status: "in", clientId: "cid", user: { ...user, rounds_played: 60, ranked_wins: 45, ranked_games: 0 } };
+    await drawOpen();
+    const locked = [...host.querySelectorAll<HTMLButtonElement>(".coll-swatch.locked")].map((s) => s.getAttribute("aria-label"));
+    expect(locked).toEqual(["Jade, 45 of 50 ranked rounds", "Blue and white, 45 of 100 ranked rounds", "Ink black, 45 of 1,000 ranked rounds"]);
+    expect(swatch("Imperial yellow").classList.contains("locked")).toBe(false);
+    expect(swatch("Lantern orange").classList.contains("locked")).toBe(false);
+    await act(async () => { swatch("Jade").click(); });
+    expect(host.querySelector(".coll-use")?.textContent).toBe("Win 50 ranked rounds to unlock · 45 of 50");
   });
 
   it("a guest's Show at the table stays on the device", async () => {
@@ -289,11 +300,11 @@ describe("entitlements and writes stay with their session and their order", () =
     await act(async () => { await refreshAccount(); });
   };
 
-  it("a tenth ranked game won while signed in unlocks yellow without a reload", async () => {
+  it("a tenth ranked round won while signed in unlocks yellow without a reload", async () => {
     await drawOpen();
     await flush();
     expect(swatch("Imperial yellow").classList.contains("locked")).toBe(true);
-    server = { ...base, ranked_games: 10 };
+    server = { ...base, ranked_wins: 10 };
     const { refreshAccount } = await import("./writes");
     await act(async () => { await refreshAccount(); });
     await drawOpen();
@@ -434,7 +445,7 @@ describe("entitlements and writes stay with their session and their order", () =
   it("an unlock read for an older tap never saves over a newer choice", async () => {
     await drawOpen();
     await flush();
-    server = { ...server, ranked_games: 10 };        // the client still shows none
+    server = { ...server, ranked_wins: 10 };        // the client still shows none
     holdGets = true;
     const { equip } = await import("./writes");
     await act(async () => { void equip("tractor/yellow", false); });   // locked here: reads first
@@ -454,7 +465,7 @@ describe("entitlements and writes stay with their session and their order", () =
   it("re-tapping the equipped colour also overtakes an older tap's unlock read", async () => {
     await drawOpen();
     await flush();
-    server = { ...server, ranked_games: 10 };
+    server = { ...server, ranked_wins: 10 };
     holdGets = true;
     const { equip } = await import("./writes");
     await act(async () => { void equip("tractor/yellow", false); });

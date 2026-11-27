@@ -20,10 +20,10 @@ function Spinner() {
  *  top calls `onRefresh`. Otherwise the page is the plain scroller and
  *  title, with no bar and no pull. A
  *  phone's title row ends with the Your table pill (the top bar holds it on
- *  a wide layout). `action` is one control at the end of the title row. */
-export default function LargeTitlePage({ className, scroller, title, phone, onRefresh, action, children }: {
+ *  a wide layout). */
+export default function LargeTitlePage({ className, scroller, title, phone, onRefresh, children }: {
   className: string; scroller: RefObject<HTMLDivElement | null>; title: string; phone: boolean;
-  onRefresh: () => Promise<unknown>; action?: ReactNode; children: ReactNode;
+  onRefresh: () => Promise<unknown>; children: ReactNode;
 }) {
   const t = useT();
   const { bar, title: titleRef, collapsed } = useLargeTitle(scroller, phone);
@@ -54,13 +54,7 @@ export default function LargeTitlePage({ className, scroller, title, phone, onRe
         {phone ? (
           <div className="large-title-row">
             <h1 className="large-title" ref={titleRef}>{title}</h1>
-            {action}
             <YourTablePill />
-          </div>
-        ) : action ? (
-          <div className="large-title-row">
-            <h1 className="large-title" ref={titleRef}>{title}</h1>
-            {action}
           </div>
         ) : <h1 className="large-title" ref={titleRef}>{title}</h1>}
         {children}

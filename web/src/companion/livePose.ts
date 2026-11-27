@@ -14,13 +14,9 @@ import type { DrawnKind } from "./kinds";
 /** One step of a cycle: a pose, and for idle or sleep how long it rests. */
 export type CycleStep = readonly [Pose, number?];
 
-/** The character page's cycle: idle, hop, cheer, the special, a short sleep. */
+/** The stage's cycle: idle, hop, cheer, the special, a short sleep. */
 export const PAGE_CYCLE: readonly CycleStep[] = [["idle", 3000], ["hop"], ["idle", 1200], ["cheer"], ["idle", 1200],
   ["react"], ["sleep", 2400]];
-/** The grid's top felt: idle, with a hop now and then. */
-export const TOP_CYCLE: readonly CycleStep[] = [["idle", 9000], ["hop"]];
-/** After a tapped special ends, further taps wait this long. */
-export const TAP_COOLDOWN_MS = 1000;
 /** A once-move whose animation end never comes (a figure off screen) ends
  *  after its length and this much more. */
 const END_SLACK_MS = 250;
@@ -37,17 +33,14 @@ export function poseMs(kind: DrawnKind, pose: Pose): number {
 const once = (p: Pose) => p === "hop" || p === "cheer" || p === "react";
 
 /** The pose of a live figure of `kind` cycling through `cycle` while the
- *  element `on` is on screen. `tap()` plays the special now: on the
- *  character page (`cooldown` false) every tap starts it over, even during
- *  one, and the figure's `key` changes so its animation restarts from the
- *  top; on the grid (`cooldown` true) a tap is ignored while one plays and
- *  for `TAP_COOLDOWN_MS` after. `play(pose)` plays any once-move now (a
+ *  element `on` is on screen. `tap()` plays the special now, from its start
+ *  even during one: the figure's `key` changes so its animation restarts
+ *  from the top. `play(pose)` plays any once-move now (a
  *  purchase's cheer). While the figure is off screen or the page hidden,
  *  `paused` is true (the owner pauses its animations) and a move that ends
  *  then is counted only once it is back in view. `onPoseEnd` goes to the
  *  figure. */
-export function useLivePose(kind: DrawnKind, cycle: readonly CycleStep[], on: RefObject<Element | null>,
-                            { cooldown = false }: { cooldown?: boolean } = {}) {
+export function useLivePose(kind: DrawnKind, cycle: readonly CycleStep[], on: RefObject<Element | null>) {
   const still = prefersReducedMotion();
   const [step, setStep] = useState(0);
   const [extra, setExtra] = useState<Pose | null>(null);
@@ -55,7 +48,6 @@ export function useLivePose(kind: DrawnKind, cycle: readonly CycleStep[], on: Re
   const [shown, setShown] = useState(true);
   const shownNow = useRef(true);
   const owed = useRef(false);
-  const cool = useRef(0);
   const [stepPose, rest] = cycle[step % cycle.length];
   const pose: Pose = extra ?? (still ? "idle" : stepPose);
 
@@ -80,14 +72,13 @@ export function useLivePose(kind: DrawnKind, cycle: readonly CycleStep[], on: Re
 
   const finish = useCallback(() => {
     if (extra !== null) {
-      if (extra === "react" && cooldown) cool.current = Date.now() + TAP_COOLDOWN_MS;
       setExtra(null);
       // a tap that restarted the cycle's own move stood in for it: move on past it
       if (!still && extra === stepPose && once(stepPose)) setStep((s) => s + 1);
       return;
     }
     if (once(stepPose)) setStep((s) => s + 1);
-  }, [extra, stepPose, cooldown, still]);
+  }, [extra, stepPose, still]);
   // a move that ends while the figure is out of view is counted when it is back
   const end = useCallback(() => {
     if (!shownNow.current) {
@@ -123,9 +114,8 @@ export function useLivePose(kind: DrawnKind, cycle: readonly CycleStep[], on: Re
     setNonce((n) => n + 1);
   }, []);
   const tap = useCallback(() => {
-    if (cooldown && (extra === "react" || Date.now() < cool.current)) return;
     setExtra("react");
     setNonce((n) => n + 1);
-  }, [extra, cooldown]);
+  }, []);
   return { pose, tap, play, onPoseEnd: end, key: nonce, paused: !shown };
 }

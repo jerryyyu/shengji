@@ -186,21 +186,22 @@ describe("the Collection's grid and the character page", () => {
     await act(async () => { tile(name).click(); });
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
   };
-  const back = async () => { await act(async () => { host.querySelector<HTMLButtonElement>(".coll-back")!.click(); }); };
+  // one page: the grid is always under the stage, so there is nothing to go back from
+  const back = async () => {};
   const signedIn = () => { authState.current = { status: "in", clientId: "cid", user }; };
   const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
-  it("Yours lists the four companions and ticks the one in use; a tile opens its page", async () => {
+  it("Yours lists the four companions and ticks the one in use; a tile selects it into the stage", async () => {
     signedIn();
     await draw(<CollectionPage />);
     const tiles = [...host.querySelectorAll<HTMLButtonElement>(".coll-yours .coll-tile")];
     expect(tiles.map((b) => b.querySelector(".coll-tile-name")!.textContent)).toEqual(["Tractor", "Bun", "Chick", "Sparrow"]);
     expect(tiles.filter((b) => b.querySelector(".coll-tick")).map((b) => b.querySelector(".coll-tile-name")!.textContent)).toEqual(["Bun"]);
-    // the one in use stands small at the top
-    expect(host.querySelector(".coll-worn svg.cmp-bun")).not.toBeNull();
+    // the one in use stands on the stage at the top
+    expect(host.querySelector(".char-stage svg.cmp-bun")).not.toBeNull();
     await openTile("Chick");
     expect(puts).toEqual([]);
-    expect(host.querySelector(".large-title")?.textContent).toBe("Chick");
+    expect(host.querySelector(".large-title")?.textContent).toBe("Collection");
     expect(host.querySelector(".char-stage svg.cmp-chick")).not.toBeNull();
     expect(host.querySelector(".coll-status")?.textContent).toBe("Chick · Chick yellow");
     expect(use()?.textContent).toBe("Use");
@@ -404,8 +405,8 @@ describe("the Collection's grid and the character page", () => {
     expect(hasNewLook("b@x", looksWith(["tractor/yellow"]))).toBe(true);
     as({ email: "b@x", unlocked: ["tractor/yellow"] });
     await draw(<CollectionPage />);
-    expect(tilesNew()).toEqual(["Tractor"]);
-    await openTile("Tractor");
+    // the Tractor is on the stage: its new colour is seen as it arrives, and marked on its swatch
+    expect(tilesNew()).toEqual([]);
     expect(newOn()).toEqual(["Imperial yellow New"]);
     expect(swatch("Imperial yellow").classList.contains("on")).toBe(true);
   });
@@ -424,7 +425,7 @@ describe("the Collection's grid and the character page", () => {
     expect(statusLine()).toBe("Tractor · Icon red");
     expect(swatch("Imperial yellow").classList.contains("on")).toBe(false);
     await back();
-    expect(host.querySelector(".coll-worn svg.cmp-bun")).not.toBeNull();
+    expect(tile("Bun").querySelector(".coll-tick")).not.toBeNull();
     await openTile("Bun");
     expect(statusLine()).toBe("Bun · Custard");
     expect(use()?.textContent).toBe("In use");

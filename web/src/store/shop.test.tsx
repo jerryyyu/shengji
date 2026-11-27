@@ -111,10 +111,8 @@ const openTile = async (sel: string, i = 0) => {
   await act(async () => { host.querySelectorAll<HTMLButtonElement>(`${sel} .coll-tile`)[i].click(); });
   await settle();
 };
-const backToGrid = async () => {
-  await act(async () => { host.querySelector<HTMLButtonElement>(".coll-back")!.click(); });
-  await settle();
-};
+/** The character on the stage, by the status line under it ("Kind · Colour", or a Soon one's name). */
+const onStage = () => (host.querySelector(".char-page .coll-status")?.textContent ?? "").split(" · ")[0];
 
 describe("the grid's sections", () => {
   it("More companions lists the store's characters with StoreKit's price, then Soon, and Restore purchases last", async () => {
@@ -192,24 +190,27 @@ describe("the grid's sections", () => {
     expect(host.querySelector(".coll-use")?.textContent).toBe("Use");
   });
 
-  it("a Soon tile opens a page that says Soon and sells nothing", async () => {
+  it("a Soon tile selects a stage that says Soon and sells nothing", async () => {
     nativeShell();
     authState.current = { status: "in", clientId: "cid", user };
     await draw();
     await openTile(".coll-more", 2);
-    expect(host.querySelector(".large-title")?.textContent).toBe("Jade Rabbit");
+    expect(onStage()).toBe("Jade Rabbit");
     const foot = host.querySelector<HTMLButtonElement>(".coll-use")!;
     expect(foot.textContent).toBe("Soon");
     expect(foot.disabled).toBe(true);
     expect(plugin.purchase).not.toHaveBeenCalled();
   });
 
-  it("buys on the character page: Apple's sheet, the server's verification, Use and the cheer, then the tile rises into Yours", async () => {
+  it("buys the store character selected on the stage: Apple's sheet, the server's verification, Use and the cheer, its tile up into Yours", async () => {
     nativeShell();
     authState.current = { status: "in", clientId: "cid", user };
     await draw();
     await openTile(".coll-more", 0);
-    expect(host.querySelector(".large-title")?.textContent).toBe("Spring Lamb");
+    expect(onStage()).toBe("Spring Lamb");
+    // selected in place: still the Collection, its tile ringed in More companions
+    expect(host.querySelector(".large-title")?.textContent).toBe("Collection");
+    expect(host.querySelectorAll(".coll-more .coll-tile")[0].classList.contains("selected")).toBe(true);
     // try a colour on the felt: a preview, nothing sent
     const swatches = [...host.querySelectorAll<HTMLButtonElement>(".coll-swatch")];
     expect(swatches.map((s) => s.getAttribute("aria-label"))).toEqual(["New Year", "Jade", "Ink wash", "Lacquer red"]);
@@ -226,9 +227,10 @@ describe("the grid's sections", () => {
     await draw();       // the mocked useAuth does not subscribe: draw again to read the account
     expect(host.querySelector(".coll-use")?.textContent).toBe("Use");
     expect(host.querySelector(".char-stage svg.cmp.cmp-cheer")).not.toBeNull();
-    await backToGrid();
+    // on the same page, the Lamb's tile has risen into Yours and stays selected
     expect(names(".coll-yours")).toEqual([...FREE_TILES, "Spring Lamb"]);
     expect(host.querySelectorAll(".coll-yours .coll-tile")[4].classList.contains("arrive")).toBe(true);
+    expect(host.querySelectorAll(".coll-yours .coll-tile")[4].classList.contains("selected")).toBe(true);
   });
 
   it("a cancelled purchase changes nothing; a refused one says so on the one status line", async () => {
@@ -501,7 +503,6 @@ describe("buying needs an Apple or Google sign-in", () => {
     expect(open).toHaveBeenCalledWith("shop");
     expect(plugin.purchase).not.toHaveBeenCalled();
     // restore asks for sign-in too, and never restores onto the device account
-    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-back")!.click(); });
     await act(async () => { host.querySelector<HTMLButtonElement>(".coll-restore")!.click(); });
     expect(open).toHaveBeenCalledTimes(2);
     expect(plugin.restore).not.toHaveBeenCalled();
@@ -518,7 +519,7 @@ describe("buying needs an Apple or Google sign-in", () => {
     // the sign-in links the device account; the account comes back with its token
     authState.current = { status: "in", clientId: "cid", user };
     await draw();
-    expect(host.querySelector(".large-title")?.textContent).toBe("Spring Lamb");
+    expect(onStage()).toBe("Spring Lamb");
     const price = host.querySelector<HTMLButtonElement>(".coll-use.gold")!;
     expect(price.textContent).toBe("Buy $3.99");
     await act(async () => { price.click(); });
@@ -581,7 +582,7 @@ describe("signing in on the item page", () => {
     await act(async () => { root.render(<CollectionPage />); });
     await settle();
     await settle();
-    expect(host.querySelector(".large-title")?.textContent).toBe("Spring Lamb");
+    expect(onStage()).toBe("Spring Lamb");
     expect(verifies()).toBe(2);
     expect(JSON.parse(String(fetches.filter((f) => f.url === "/api/store/verify")[1].init?.body)).jws).toBe("ask.to.buy");
     expect(plugin.finish).toHaveBeenCalledWith({ transactionId: "61" });
@@ -592,12 +593,13 @@ describe("signing in on the item page", () => {
   });
 });
 
-describe("an open character that goes away", () => {
+describe("a selected character that goes away", () => {
   const owner: AuthUser = { ...user, features: { collection: true }, products: [LAMB],
     looks: [...tractorLooks, ...lambLooks(true)] };
-  const title = () => host.querySelector(".large-title")?.textContent;
+  // the stage: a selection that goes away gives it back to the one in use (the Tractor)
+  const title = () => onStage();
 
-  it("a refund while the Lamb's page is open returns to the grid", async () => {
+  it("a refund while the Lamb is selected gives the stage back to the one in use", async () => {
     authState.current = { status: "in", clientId: "cid", user: owner };
     await draw();
     await openTile(".coll-yours", 4);
@@ -605,24 +607,24 @@ describe("an open character that goes away", () => {
     // a refresh brings the account back without the Lamb
     authState.current = { status: "in", clientId: "cid", user: { ...owner, products: [], looks: tractorLooks } };
     await draw();
-    expect(title()).toBe("Collection");
+    expect(title()).toBe("Tractor");
     expect(names(".coll-yours")).toEqual(FREE_TILES);
   });
 
-  it("an account switch while the Lamb's page is open returns to the grid", async () => {
+  it("an account switch while the Lamb is selected gives the stage back to the one in use", async () => {
     authState.current = { status: "in", clientId: "cid", user: owner };
     await draw();
     await openTile(".coll-yours", 4);
     authState.current = { status: "in", clientId: "cid", user: { ...user, email: "mei@x", features: { collection: true },
       products: [], looks: tractorLooks } };
     await draw();
-    expect(title()).toBe("Collection");
+    expect(title()).toBe("Tractor");
     authState.current = { status: "out", clientId: "cid", user: null };
     await draw();
-    expect(title()).toBe("Collection");
+    expect(title()).toBe("Tractor");
   });
 
-  it("the store turning off while a store character's page is open returns to the grid", async () => {
+  it("the store turning off while a store character is selected gives the stage back to the one in use", async () => {
     nativeShell();
     authState.current = { status: "in", clientId: "cid", user };
     await draw();
@@ -631,7 +633,7 @@ describe("an open character that goes away", () => {
     expect(host.querySelector(".coll-use.gold")?.textContent).toBe("Buy $3.99");
     authState.current = { status: "in", clientId: "cid", user: { ...user, features: { collection: true } } };
     await draw();
-    expect(title()).toBe("Collection");
+    expect(title()).toBe("Tractor");
     expect(host.querySelector(".coll-more")).toBeNull();
     // and a Soon page closes with the store too
     authState.current = { status: "in", clientId: "cid", user };
@@ -640,32 +642,33 @@ describe("an open character that goes away", () => {
     expect(title()).toBe("Jade Rabbit");
     authState.current = { status: "in", clientId: "cid", user: { ...user, features: { collection: true } } };
     await draw();
-    expect(title()).toBe("Collection");
+    expect(title()).toBe("Tractor");
   });
 });
 
-describe("a store character's page by its address", () => {
+describe("a store character by its address", () => {
   const later = (code: string) => async () => {
     await new Promise((r) => setTimeout(r, 180));
     return { countryCode: code };
   };
   const wait = (ms: number) => act(async () => { await new Promise((r) => setTimeout(r, ms)); });
-  const title = () => host.querySelector(".large-title")?.textContent;
+  // the stage: a selection that goes away gives it back to the one in use (the Tractor)
+  const title = () => onStage();
 
-  it("stays asked for while the store's check is out, then opens when the store is allowed", async () => {
+  it("stays asked for while the store's check is out, then selects it when the store is allowed", async () => {
     nativeShell();
     plugin.storefront.mockImplementation(later("USA"));
     window.history.replaceState(null, "", "/#/collection/rabbit");
     authState.current = { status: "in", clientId: "cid", user };
     await draw();
     expect(window.location.hash).toBe("#/collection/rabbit");
-    expect(title()).toBe("Collection");
+    expect(title()).toBe("Tractor");
     await wait(220);
     expect(title()).toBe("Jade Rabbit");
-    expect(window.location.hash).toBe("#/collection/rabbit");
+    expect(window.location.hash).toBe("#/collection");          // selected, and the plain address in its place
   });
 
-  it("falls back to the grid once the store's check says no", async () => {
+  it("leaves the stage on the one in use once the store's check says no", async () => {
     nativeShell();
     plugin.storefront.mockImplementation(later("CHN"));
     window.history.replaceState(null, "", "/#/collection/rabbit");
@@ -673,7 +676,7 @@ describe("a store character's page by its address", () => {
     await draw();
     expect(window.location.hash).toBe("#/collection/rabbit");
     await wait(220);
-    expect(title()).toBe("Collection");
+    expect(title()).toBe("Tractor");
     expect(window.location.hash).toBe("#/collection");
   });
 

@@ -20,10 +20,6 @@
 }
 /* a live figure out of view holds still where it is */
 .live-paused .cmp, .live-paused .cmp * { animation-play-state: paused !important; }
-/* the companion in use at the top of the grid answers a tap with a light press */
-.coll-press { transition: transform var(--dur-fast, 0.12s) ease-out; }
-.coll-press:active { transform: scale(0.96); }
-@media (prefers-reduced-motion: reduce) { .coll-press { transition: none; } }
 .coll-status { min-height: 1.4em; margin: 4px 0 0; color: #e8ede8; font-size: var(--fs-15); text-align: center; }
 .coll-swatches {
   display: flex;
@@ -156,7 +152,6 @@
 
 /* The grid: Yours, then More companions. Two tiles across on a phone, three
    or four on a wide layout. */
-.coll-worn { padding: 12px 16px 8px; }
 .coll-section { margin: 24px 16px 8px; font-size: var(--fs-17); font-weight: 700; color: var(--text); }
 .coll-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 16px; }
 @media (min-width: 700px) and (min-height: 501px) {
@@ -205,17 +200,18 @@
 }
 .coll-restore-row { margin: 24px 16px 0; }
 .coll-grid-status { margin: 8px 16px 0; padding-bottom: 104px; }
-.coll-back {
-  appearance: none;
-  min-height: 44px;
-  padding: 0 4px;
-  border: 0;
-  background: none;
-  color: var(--gold);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
 .store-price { margin: 0 0 8px; text-align: center; color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 /* on a grid tile, "New" sits inside the felt's top-left corner, across from the tick */
 .coll-tile-stage .coll-new { top: 8px; left: 8px; transform: none; }
+
+/* A tile selected into the stage wears a ring; the stage it fills swaps in
+   with a short crossfade (none under Reduce Motion). */
+.coll-tile.selected { box-shadow: 0 0 0 2px var(--gold); }
+.coll-swap { animation: coll-swap var(--dur-fast, 0.18s) ease-out 1; }
+@keyframes coll-swap {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .coll-swap { animation: none; }
+}

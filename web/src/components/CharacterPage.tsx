@@ -196,11 +196,11 @@ const TRY_PARTNER: Record<CompanionKind, { kind: CompanionKind; colour: Colour }
   lamb: { kind: "bun", colour: "plain" }, panda: { kind: "bun", colour: "plain" },
 };
 
-/** The one character page, opened from any tile of the Collection's grid:
- *  the live figure on felt, Try on your table, `strip`, the colours, the one
- *  status line (the look shown) and the one button, or for a store character
- *  not owned `price` (Buy, Sign in to buy). A tap on a colour only shows it;
- *  the button puts it in use. "New" marks the colours in `fresh`. */
+/** The selected character at the top of the Collection's one page (a tile
+ *  selects it): the live figure on felt, Try on your table, `strip`, the
+ *  colours, the one status line (the look shown) and the one button, or for a
+ *  store character not owned `price` (Buy, Sign in to buy). A tap on a colour
+ *  only shows it; the button puts it in use. "New" marks the colours in `fresh`. */
 export default function CharacterPage({ kind, shown, entries, inUse, user, phone, strip, fresh, onShow, onUse, price,
   status = "", cheer = 0 }: {
   kind: CompanionKind; shown: string; entries: readonly LookEntry[]; inUse: string; user: AuthUser | null; phone: boolean;

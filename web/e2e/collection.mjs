@@ -1,10 +1,11 @@
-// The Collection's character page goes back to the grid on a swipe from the
-// screen's left edge, measured with real touch input (CDP
-// Input.dispatchTouchEvent, so the browser's own hit testing picks the
-// target): a finger put down at x = 2, 6 or 20 returns to the grid, one at
-// x = 60 leaves the page as it is, on a phone and on an iPad. A sideways drag
-// over the page's title stays on the page (it does not page the tabs), while
-// on the grid the phone's tab swipe still works.
+// The Collection is one page, measured in a real browser: a tap on a tile
+// selects its character into the stage at the top, in place (the address
+// stays #/collection, no history entry, the tile ringed); on a phone a tile
+// tapped further down scrolls the page back up to the stage; a link to
+// #/collection/<kind> selects that character and leaves the plain address;
+// the phone's sideways tab swipe still works on the page. Real touch input
+// (CDP Input.dispatchTouchEvent) lets the browser's own hit testing pick
+// targets.
 //   node e2e/collection.mjs [device-regex]
 import { Report, launch, open, scenario, sleep, until } from "./lib.mjs";
 import { fakeSocketScript } from "./fake.mjs";
@@ -19,7 +20,8 @@ async function setup(page) {
   await page.route("**/api/auth/config", (r) => r.fulfill({ json: { google_client_id: null, device_accounts: false, collection: true } }));
 }
 
-const title = (page) => page.evaluate(() => document.querySelector(".large-title")?.textContent ?? "");
+const onStage = (page) => page.evaluate(() =>
+  [...(document.querySelector(".char-stage svg.cmp")?.classList ?? [])].find((c) => /^cmp-(tractor|bun|chick|sparrow)$/.test(c)) ?? "");
 
 /** One finger, put down at (x, y) and drawn right by `dx` in steps, then lifted. */
 async function swipe(cdp, x, y, dx) {
@@ -37,43 +39,64 @@ try {
     const page = await open(browser, device, { url: "#/collection", setup, fakeSocket: fakeSocketScript([]),
       storage: { "shengji.coach": "off", "shengji.muted": "1" } });
     const cdp = await page.context().newCDPSession(page);
-    const y = Math.round(page.qa.d.h * 0.45);
-    for (const x of [2, 6, 20, 60]) {
-      await scenario(rep, `${device} x=${x}`, page, async () => {
-        if ((await title(page)) !== "Collection") await page.goto(new URL("#/collection", page.url()).href);
-        await until(page, () => document.querySelector(".coll-yours .coll-tile") !== null);
-        await page.locator(".coll-yours .coll-tile", { hasText: "Bun" }).tap();
-        await until(page, () => document.querySelector(".large-title")?.textContent === "Bun");
-        await swipe(cdp, x, y, 160);
-        await sleep(400);
-        const now = await title(page);
-        const hash = await page.evaluate(() => location.hash);
-        const want = x < 24 ? "Collection" : "Bun";
-        await rep.check(`${device} drag from x=${x}`, now === want ? null : `expected ${want}, on ${now} (${hash})`, page);
-        if (x >= 24) await rep.check(`${device} x=${x} stays on its tab`, hash === "#/collection/bun" ? null : `address ${hash}`, page);
+    const phone = page.qa.d.w < 700;
+
+    await scenario(rep, `${device} select in place`, page, async () => {
+      await until(page, () => document.querySelector(".coll-yours .coll-tile") !== null);
+      const entries = await page.evaluate(() => history.length);
+      await page.locator(".coll-yours .coll-tile", { hasText: "Bun" }).tap();
+      await sleep(300);
+      const got = await page.evaluate(() => ({
+        hash: location.hash, entries: history.length, title: document.querySelector(".large-title")?.textContent,
+        ring: document.querySelector(".coll-tile.selected .coll-tile-name")?.textContent,
+      }));
+      await rep.check(`${device} a tile selects into the stage`, (await onStage(page)) === "cmp-bun" ? null : `stage ${await onStage(page)}`, page);
+      await rep.check(`${device} no page, no history entry`, got.hash === "#/collection" && got.entries === entries && got.title === "Collection"
+        ? null : JSON.stringify(got), page);
+      await rep.check(`${device} the selected tile is ringed`, got.ring === "Bun" ? null : `ring on ${got.ring}`, page);
+    });
+
+    if (phone) {
+      await scenario(rep, `${device} scroll back to the stage`, page, async () => {
+        await page.evaluate(() => { document.querySelector(".coll-page").scrollTop = 600; });
+        await sleep(200);
+        await page.locator(".coll-yours .coll-tile", { hasText: "Sparrow" }).tap();
+        await sleep(900);
+        const top = await page.evaluate(() => {
+          const s = document.querySelector(".char-stage").getBoundingClientRect();
+          return { scroll: document.querySelector(".coll-page").scrollTop, stageTop: Math.round(s.top), stageBottom: Math.round(s.bottom), h: innerHeight };
+        });
+        await rep.check(`${device} the stage is in view after a selection`,
+          top.stageTop >= 0 && top.stageBottom <= top.h && (await onStage(page)) === "cmp-sparrow" ? null : JSON.stringify(top), page);
       });
     }
-    // a sideways drag over the page's title stays on the page: the page does not
-    // page the tabs anywhere on it; on the grid the tab swipe still works
-    await scenario(rep, `${device} title swipe`, page, async () => {
-      if ((await title(page)) !== "Collection") await page.goto(new URL("#/collection", page.url()).href);
-      await until(page, () => document.querySelector(".coll-yours .coll-tile") !== null);
-      await page.locator(".coll-yours .coll-tile", { hasText: "Tractor" }).tap();
-      await until(page, () => document.querySelector(".large-title")?.textContent === "Tractor");
-      const ty = await page.evaluate(() => Math.round(document.querySelector(".large-title").getBoundingClientRect().top + 10));
-      await swipe(cdp, 24, ty, 171);
-      await sleep(500);
-      const on = await page.evaluate(() => [location.hash, document.querySelector(".large-title")?.textContent ?? ""]);
-      await rep.check(`${device} drag over the title from x=24`, on[0] === "#/collection/tractor" && on[1] === "Tractor" ? null
-        : `left the page: ${on.join(" ")}`, page);
-      if (page.qa.d.w >= 700) return;                   // the tab swipe is the phone's
-      await page.goto(new URL("#/collection", page.url()).href);
-      await until(page, () => document.querySelector(".large-title")?.textContent === "Collection");
-      await swipe(cdp, 60, y, 240);
-      await sleep(700);
-      const grid = await page.evaluate(() => location.hash);
-      await rep.check(`${device} the grid still pages the tabs`, grid !== "#/collection" ? null : "a rightward drag on the grid stayed on Collection", page);
+
+    await scenario(rep, `${device} a link selects`, page, async () => {
+      // followed in the open app: the address changes to the character's
+      await page.goto(new URL("#/collection/chick", page.url()).href);
+      await until(page, () => document.querySelector(".char-stage svg.cmp-chick") !== null, { timeout: 5000 });
+      const hash = await page.evaluate(() => location.hash);
+      await rep.check(`${device} #/collection/chick selects the Chick and leaves the plain address`,
+        (await onStage(page)) === "cmp-chick" && hash === "#/collection" ? null : `${await onStage(page)} ${hash}`, page);
+      // and opened fresh, as a shared link or a reload of one
+      const fresh = await open(browser, device, { url: "#/collection/sparrow", setup, fakeSocket: fakeSocketScript([]),
+        storage: { "shengji.coach": "off", "shengji.muted": "1" } });
+      await until(fresh, () => document.querySelector(".char-stage svg.cmp") !== null, { timeout: 5000 });
+      const loaded = { stage: await onStage(fresh), hash: await fresh.evaluate(() => location.hash) };
+      await rep.check(`${device} a fresh load of #/collection/sparrow selects the Sparrow`,
+        loaded.stage === "cmp-sparrow" && loaded.hash === "#/collection" ? null : JSON.stringify(loaded), fresh);
+      await fresh.context().close();
     });
+
+    if (phone) {
+      await scenario(rep, `${device} tab swipe`, page, async () => {
+        const y = Math.round(page.qa.d.h * 0.7);
+        await swipe(cdp, 60, y, 240);
+        await sleep(700);
+        const hash = await page.evaluate(() => location.hash);
+        await rep.check(`${device} a sideways drag still pages the tabs`, hash !== "#/collection" ? null : "stayed on Collection", page);
+      });
+    }
     await page.context().close();
   }
 } finally {

@@ -1,7 +1,7 @@
 // The Collection's live figures: the character page's stage cycles through
 // idle, hop, cheer, the special and a short sleep, each once-move for its own
-// animation's length; the grid's top felt plays the special on a tap, then
-// rests before another tap counts; Reduce Motion stops the cycling, and a tap
+// animation's length; every tap plays the special from its start; a figure
+// out of view pauses; Reduce Motion stops the cycling, and a tap
 // there shows the special drawn still. Each kind's special lasts as long as
 // its animation in companion.store.css.
 import { readFileSync } from "node:fs";
@@ -20,12 +20,11 @@ vi.mock("../auth", async (importOriginal) => {
   return { ...real, useAuth: () => authState.current, auth: { updated: () => {}, get state() { return authState.current; } } };
 });
 
-import CollectionPage from "../components/CollectionPage";
 import { Stage } from "../components/CharacterPage";
 import { forgetHomeSession } from "../home/session";
 import { DRAWINGS } from "./kinds";
 import { COMPANION_KINDS } from "./look";
-import { TAP_COOLDOWN_MS, poseMs } from "./livePose";
+import { poseMs } from "./livePose";
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -111,35 +110,6 @@ describe("the character page's stage", () => {
     expect(pose(".char-stage")).toBe("idle");
     await tick(30000);
     expect(pose(".char-stage")).toBe("idle");
-  });
-});
-
-describe("the grid's top felt", () => {
-  it("a tap plays the companion's special once, then rests before another tap counts", async () => {
-    await act(async () => { root.render(<CollectionPage />); });
-    await act(async () => { await Promise.resolve(); });
-    const felt = () => host.querySelector<HTMLButtonElement>(".coll-worn .coll-figure")!;
-    expect(pose(".coll-worn")).toBe("idle");
-    await act(async () => { felt().click(); });
-    expect(pose(".coll-worn")).toBe("react");
-    expect(host.querySelector(".large-title")?.textContent).toBe("Collection");     // it stays on the grid
-    await ended(".coll-worn");
-    expect(pose(".coll-worn")).toBe("idle");
-    await act(async () => { felt().click(); });                    // inside the cooldown: nothing
-    expect(pose(".coll-worn")).toBe("idle");
-    await tick(TAP_COOLDOWN_MS + 10);
-    await act(async () => { felt().click(); });
-    expect(pose(".coll-worn")).toBe("react");
-  });
-
-  it("idles with a hop now and then", async () => {
-    await act(async () => { root.render(<CollectionPage />); });
-    await tick(8900);
-    expect(pose(".coll-worn")).toBe("idle");
-    await tick(200);
-    expect(pose(".coll-worn")).toBe("hop");
-    await tick(poseMs("tractor", "hop") + 260);
-    expect(pose(".coll-worn")).toBe("idle");
   });
 });
 

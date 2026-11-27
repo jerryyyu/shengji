@@ -1329,6 +1329,20 @@ class Store:
                 (user_id, *envs)).fetchall()
         return frozenset(r["product_id"] for r in rows)
 
+    def purchase_dates(self, user_id: int) -> dict[str, str]:
+        """The UTC date (``YYYY-MM-DD``) each product ``owned_products`` counts
+        was first bought on, from its unrevoked entitlements; a date only."""
+        envs = sorted(store_environments())
+        if not envs:
+            return {}
+        marks = ",".join("?" * len(envs))
+        with closing(self._open()) as conn:
+            rows = conn.execute(
+                f"""SELECT product_id, MIN(purchased_at) AS at FROM entitlements
+                    WHERE user_id = ? AND revoked_at IS NULL AND environment IN ({marks})
+                    GROUP BY product_id""", (user_id, *envs)).fetchall()
+        return {r["product_id"]: time.strftime("%Y-%m-%d", time.gmtime(float(r["at"]))) for r in rows}
+
     def owned_by(self, user_ids: Collection[int]) -> dict[int, frozenset[str]]:
         """``owned_products`` of each of ``user_ids`` that owns any."""
         ids = sorted({int(u) for u in user_ids})
@@ -2617,7 +2631,8 @@ def card_look(user_id: int | None) -> str:
 
 def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int = 0,
                 owned: Collection[str] = frozenset(), store_token: str | None = None,
-                ranked_games: int = 0, recent: Collection[str] = ()) -> dict:
+                ranked_games: int = 0, recent: Collection[str] = (),
+                purchased: Mapping[str, str] | None = None) -> dict:
     """The ``/api/me`` payload: the Google profile, the chosen display name
     (null when none), ``name_shown``, the effective name, and
     ``rounds_played`` (``Store.rounds_played``), which tells the client
@@ -2630,7 +2645,8 @@ def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int
     ``recent_looks``, the looks put in use, the latest first
     (``Store.recent_looks``), which orders the Collection's Yours,
     ``companions`` (``companions_mode``), ``products``, the App Store
-    products the account owns (``Store.owned_products``), and
+    products the account owns (``Store.owned_products``), ``purchased_on``,
+    the date each of those was bought (``Store.purchase_dates``), and
     ``features.collection`` (``collection_for``) and ``features.store``
     (``store_for``), and, where the store is on for an account signed in
     with Apple or Google, ``store_token``, which the app passes to every
@@ -2650,6 +2666,7 @@ def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int
             "recent_looks": [r for r in recent if parse_look(r) is not None],
             "companions": companions_mode(row),
             "products": sorted(owned),
+            "purchased_on": {p: d for p, d in sorted((purchased or {}).items()) if p in owned},
             **({"store_token": store_token} if shop and store_token else {}),
             "features": {"collection": collection_for(user_id) if user_id is not None else False,
                          "store": shop}}
@@ -2667,8 +2684,9 @@ async def account_payload(store: "Store", row: Mapping[str, Any]) -> dict:
     token = (await store.run(store.store_token, int(row["id"]))
              if store_for(int(row["id"])) and not is_device_account(row) else None)
     recent = await store.run(store.recent_looks, int(row["id"]))
+    purchased = await store.run(store.purchase_dates, int(row["id"])) if owned else {}
     return public_user(row, progress["rounds"], progress["ranked_wins"], owned, token,
-                       ranked_games=progress["ranked_games"], recent=recent)
+                       ranked_games=progress["ranked_games"], recent=recent, purchased=purchased)
 
 
 def _cookie_secure(request: Request) -> bool:

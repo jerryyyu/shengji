@@ -44,6 +44,8 @@ export interface AuthUser {
   companions?: CompanionMode;
   /** The App Store products this account owns (verified by the server). */
   products?: string[];
+  /** The date (`YYYY-MM-DD`, UTC) each owned product was bought. */
+  purchased_on?: Record<string, string>;
   /** The UUID every purchase carries as its `appAccountToken`, so Apple
    *  signs which account paid; sent only where the store is on. */
   store_token?: string;
@@ -70,6 +72,10 @@ function toUser(body: Partial<AuthUser> & { name: string; email: string }): Auth
       ? { recent_looks: body.recent_looks.filter((l) => typeof l === "string") } : {}),
     ...(COMPANION_MODES.includes(body.companions as CompanionMode) ? { companions: body.companions } : {}),
     ...(Array.isArray(body.products) ? { products: body.products.filter((p) => typeof p === "string") } : {}),
+    ...(body.purchased_on && typeof body.purchased_on === "object"
+      ? { purchased_on: Object.fromEntries(Object.entries(body.purchased_on)
+            .filter(([p, d]) => typeof p === "string" && typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d))) }
+      : {}),
     ...(typeof body.store_token === "string" && body.store_token ? { store_token: body.store_token } : {}),
     ...(body.features?.collection === true || body.features?.store === true
       ? { features: { ...(body.features.collection === true ? { collection: true } : {}),

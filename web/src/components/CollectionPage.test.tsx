@@ -18,7 +18,14 @@ vi.mock("../auth", async (importOriginal) => {
 
 import CollectionPage from "./CollectionPage";
 import { forgetHomeSession } from "../home/session";
-import { guestLookFor } from "../companion/look";
+import { guestLookFor, lookCatalogue } from "../companion/look";
+import { setLanguageChoice } from "../i18n";
+
+/** The name line of a look in English, as the stage writes it. */
+const lookNameEn = (id: string) => {
+  const [kind, colour] = id.split("/");
+  return `${kind[0].toUpperCase()}${kind.slice(1)} · ${colour[0].toUpperCase()}${colour.slice(1)}`;
+};
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -197,5 +204,74 @@ describe("a guest", () => {
     expect(key).toMatch(/^[A-Za-z0-9_-]{22}$/);
     expect(stageKind()).toBe(`cmp-${guestLookFor(key).split("/")[0]}`);
     expect(host.querySelectorAll(".coll-yours .coll-tick")).toHaveLength(1);
+  });
+});
+
+describe("the stage's one line says how an owned look was got", () => {
+  const LAMB = "com.jerryyu.shengji.companion.lamb";
+  const tractor = lookCatalogue({ ranked_wins: 30 }, "tractor/red");
+  const lambOwned = ["newyear", "jade", "ink", "lacquer"].map((c) => ({ id: `lamb/${c}`, unlocked: true, needs: null, product: LAMB }));
+  const signIn = (over: Partial<AuthUser>) => {
+    authState.current = { status: "in", clientId: "cid", user: { ...user, ranked_wins: 30, looks: [...tractor, ...lambOwned], ...over } };
+  };
+  const line = () => {
+    const lines = host.querySelectorAll(".char-page .coll-status");
+    expect(lines).toHaveLength(1);                   // the copy rule: one status line, never a second
+    return lines[0].textContent;
+  };
+  const button = () => host.querySelector(".char-page .coll-use")?.textContent;
+  afterEach(() => setLanguageChoice("system"));
+
+  it("a Tractor colour won: the count that unlocked it, worn or only shown; the button is unchanged", async () => {
+    signIn({ look: "tractor/orange" });
+    await draw();
+    expect(line()).toBe("Unlocked with 25 ranked rounds won");
+    expect(button()).toBe("In use");
+    signIn({ look: "tractor/red" });
+    await draw();
+    await act(async () => { host.querySelector<HTMLButtonElement>('.char-swatches [aria-label^="Lantern orange"]')!.click(); });
+    expect(line()).toBe("Unlocked with 25 ranked rounds won");
+    expect(button()).toBe("Use");
+  });
+
+  it("a colour still locked keeps what unlocks it", async () => {
+    signIn({ look: "tractor/red" });
+    await draw();
+    await act(async () => { host.querySelector<HTMLButtonElement>('.char-swatches [aria-label^="Jade"]')!.click(); });
+    expect(line()).toBe("Win 50 ranked rounds to unlock · 30 of 50");
+  });
+
+  it("a purchase: the date it was bought, in the viewer's own date format", async () => {
+    signIn({ look: "lamb/ink", products: [LAMB], purchased_on: { [LAMB]: "2026-11-27" } });
+    await draw();
+    const date = new Date(2026, 10, 27).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+    expect(line()).toBe(`Purchased ${date}`);
+    expect(line()).toMatch(/27/);
+    expect(button()).toBe("In use");
+  });
+
+  it("a look free from the start, and one kept from before its count, name the look: no Free", async () => {
+    signIn({ look: "bun/plain" });
+    await draw();
+    expect(line()).toBe(lookNameEn("bun/plain"));
+    expect(line()).not.toMatch(/Free|Unlocked|Purchased/);
+    signIn({ look: "tractor/jade", ranked_wins: 3, looks: lookCatalogue({ ranked_wins: 3 }, "tractor/jade") });
+    await draw();
+    expect(line()).not.toMatch(/Unlocked/);
+  });
+
+  it("reads in Simplified and Traditional Chinese", async () => {
+    for (const [lang, won, bought] of [
+      ["zh-Hans", "赢 25 局排位解锁", "2026年11月27日购买"],
+      ["zh-Hant", "贏 25 局排位解鎖", "2026年11月27日購買"],
+    ] as const) {
+      setLanguageChoice(lang);
+      signIn({ look: "tractor/orange" });
+      await draw();
+      expect(line()).toBe(won);
+      signIn({ look: "lamb/ink", products: [LAMB], purchased_on: { [LAMB]: "2026-11-27" } });
+      await draw();
+      expect(line()).toBe(bought);
+    }
   });
 });

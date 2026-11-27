@@ -646,7 +646,11 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   (where they will land) and as anything appears, and a companion covered (Jerry 2026-11-27: "It's fine for
   elements to be on top of companion but companion should walk up"; or a layout that moves under it) hops quickly
   aside, upward first, 0.3 to 0.5 s from where it is drawn, never jumping; one whose whole zone is covered steps
-  out to the nearest clear spot and comes back when there is room, never leaving the table; only a
+  out to the nearest clear spot and comes back when there is room, never leaving the table. A figure that stepped
+  out walks back 1 s after the way back opened (something appearing elsewhere does not restart the wait; the way
+  home itself blocked pauses it), and where a side seat's played cards have landed at this window size (not a
+  declaration, which is in the way only while it is shown) stays out of its zone for the rest of the table, so the left and right figures are not chased
+  off and back by every card their person plays; only a
   figure drawn for the first time, a hidden page or Reduce Motion is placed at once. Where
   a corner is too cramped, its companion stands on another side of its nameplate, and failing that a step smaller. It wears its team's scarf and stands on a soft ground
   shadow; there is no team pad under it (Jerry 2026-11-27: "not very intuitive for teams", removed at the table and

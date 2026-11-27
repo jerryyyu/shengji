@@ -203,11 +203,11 @@ describe("the Collection's grid and the character page", () => {
   const signedIn = () => { authState.current = { status: "in", clientId: "cid", user }; };
   const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
-  it("Yours lists the four companions and ticks the one in use; a tile selects it into the stage", async () => {
+  it("Yours lists the four companions, the one in use first with its tick; a tile selects it into the stage", async () => {
     signedIn();
     await draw(<CollectionPage />);
     const tiles = [...host.querySelectorAll<HTMLButtonElement>(".coll-yours .coll-tile")];
-    expect(tiles.map((b) => b.querySelector(".coll-tile-name")!.textContent)).toEqual(["Tractor", "Bun", "Chick", "Sparrow"]);
+    expect(tiles.map((b) => b.querySelector(".coll-tile-name")!.textContent)).toEqual(["Bun", "Tractor", "Chick", "Sparrow"]);
     expect(tiles.filter((b) => b.querySelector(".coll-tick")).map((b) => b.querySelector(".coll-tile-name")!.textContent)).toEqual(["Bun"]);
     // the one in use stands on the stage at the top
     expect(host.querySelector(".char-stage svg.cmp-bun")).not.toBeNull();

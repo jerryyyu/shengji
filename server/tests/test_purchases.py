@@ -348,8 +348,9 @@ def test_a_refund_revokes_and_unequips(accounts_on, client, shop, chain):
     resp = client.post("/api/store/notify", json=_notification(chain, "REFUND", refunded))
     assert resp.status_code == 200
     me = client.get("/api/me", headers=shop).json()
-    assert me["products"] == [] and me["look"] == "tractor/red"
-    assert accounts_on.account_look(1) == "tractor/red"
+    # the refund unequips it: the account is given a free look again
+    assert me["products"] == [] and me["look"] == accounts_on.first_look(1)
+    assert accounts_on.account_look(1) == accounts_on.first_look(1)
     assert client.put("/api/me/look", json={"look": "lamb/ink"}, headers=shop).status_code == 403
     # the old, unrevoked JWS cannot buy it back
     resp = client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=shop)
@@ -405,7 +406,7 @@ def test_the_entitlements_migration_snapshots_first(accounts_on, tmp_path):
     with accounts_sqlite(path) as db:
         db.executescript(V1_SCHEMA)
     store = accounts_on.Store(path)
-    assert store.schema_version() == len(accounts_on.SCHEMA) == 12
+    assert store.schema_version() == len(accounts_on.SCHEMA) == 13
     with accounts_sqlite(path) as db:
         cols = [r[1] for r in db.execute("PRAGMA table_info(entitlements)")]
     assert cols == ["id", "user_id", "product_id", "original_transaction_id", "transaction_id",
@@ -426,7 +427,7 @@ def test_a_v11_database_gains_the_table_after_a_verified_backup(accounts_on, tmp
     for p in path.parent.glob("*.bak"):
         p.unlink()
     store = accounts_on.Store(path)
-    assert store.schema_version() == 12
+    assert store.schema_version() == len(accounts_on.SCHEMA)
     backup = store.backup_path(11)
     with accounts_sqlite(backup) as db:
         assert db.execute("SELECT MAX(version) FROM schema_version").fetchone() == (11,)

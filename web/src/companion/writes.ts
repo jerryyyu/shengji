@@ -124,6 +124,9 @@ function send(field: Field, gen: number, value: Value, scope: string, settle: Se
     (user) => {
       if (scopeNow() !== scope) return finish(false, null);
       const st = fields()[field];
+      // the order of use is the server's latest word, whichever field was written
+      const now = signedInUser();
+      if (now && user.recent_looks) auth.updated({ ...now, recent_looks: user.recent_looks });
       if (!st.confirmed || gen >= st.confirmed.gen) st.confirmed = { gen, value: valueOf(user, field) };
       // the answer shows only while its choice is the latest
       if (st.gen === gen) show(field, valueOf(user, field));

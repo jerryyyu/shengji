@@ -18,6 +18,7 @@ vi.mock("../auth", async (importOriginal) => {
 
 import CollectionPage from "./CollectionPage";
 import { forgetHomeSession } from "../home/session";
+import { guestLookFor } from "../companion/look";
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -155,5 +156,46 @@ describe("the stage's line and button", () => {
     } finally {
       setLanguageChoice("system");
     }
+  });
+});
+
+const names = () => [...host.querySelectorAll(".coll-yours .coll-tile-name")].map((n) => n.textContent);
+
+describe("Yours", () => {
+  it("is ordered by last use: the one in use first, then the latest used, then the rest in Collection order", async () => {
+    authState.current = { status: "in", clientId: "cid",
+      user: { ...user, look: "chick/ink", recent_looks: ["sparrow/java", "chick/ink", "bun/taro", "sparrow/tree"] } };
+    await draw();
+    expect(names()).toEqual(["Chick", "Sparrow", "Bun", "Tractor"]);
+    expect(tile("Chick").querySelector(".coll-tick")).not.toBeNull();
+  });
+
+  it("keeps Collection order for an account that has used nothing, the one in use first", async () => {
+    authState.current = { status: "in", clientId: "cid", user: { ...user, look: "sparrow/snow" } };
+    await draw();
+    expect(names()).toEqual(["Sparrow", "Tractor", "Bun", "Chick"]);
+  });
+});
+
+describe("a guest", () => {
+  it("wears the free look its device key draws, the same on every visit", async () => {
+    window.localStorage.setItem("shengji.device", "AAAAAAAAAAAAAAAAAAAAAA");    // draws bun/taro
+    await draw();
+    expect(stageKind()).toBe("cmp-bun");
+    expect(tile("Bun").querySelector(".coll-tick")).not.toBeNull();
+    act(() => root.unmount());
+    root = createRoot(host);
+    await draw();
+    expect(stageKind()).toBe("cmp-bun");
+    expect(window.localStorage.getItem("shengji.device")).toBe("AAAAAAAAAAAAAAAAAAAAAA");
+  });
+
+  it("is given a device key, and so a look, on a first visit", async () => {
+    window.localStorage.removeItem("shengji.device");
+    await draw();
+    const key = window.localStorage.getItem("shengji.device")!;
+    expect(key).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(stageKind()).toBe(`cmp-${guestLookFor(key).split("/")[0]}`);
+    expect(host.querySelectorAll(".coll-yours .coll-tick")).toHaveLength(1);
   });
 });

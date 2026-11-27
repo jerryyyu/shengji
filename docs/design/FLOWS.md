@@ -574,7 +574,9 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   it, the selected character's Try on your table (it stands beside a partner on your team's pads), its colour
   swatches (56 px, four in a row on a phone), one status line naming what is shown ("Bun · Taro") and the one
   button. Then **Yours** (the page has no switch; Show companions at the table is in Me's settings), the free companions and the ones bought, as tiles idling on felt
-  with their names and a tick on the one in use; then, where the store can sell, **More companions**, the store's
+  with their names and a tick on the one in use, ordered by last use (Jerry 2026-11-27: "for yours, can we order by
+  last used?"): the one in use first, then the others by when one of their looks was last put in use (the server
+  keeps it per look, `/api/me` `recent_looks`), then those never used in Collection order; then, where the store can sell, **More companions**, the store's
   characters with StoreKit's own price or Soon for one not launched, and Restore purchases as the last, text, row;
   where it cannot, **Coming soon** (即将推出 / 即將推出; Jerry 2026-11-27: "show coming soon section? even if we dont
   say shop or have a price"), the store's characters not owned as muted tiles with no price, no Buy and no store
@@ -624,6 +626,13 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   Individual · Off. It is stored where the mode was (the account's `companions`, a guest's device), so an older
   client keeps working: off is off, and an older Team or Individual reads as on. It is a row of Me's settings
   (Jerry 2026-11-27, see Section 6), shown wherever the Collection is; the Collection page has no switch.
+- **A first look** (Jerry 2026-11-27: "can we initialize users to a random free companion based on available
+  colors?"): an account that has chosen none is given one on its first `/api/me` or socket, stored, so every device
+  and its invite card show the same one: a free companion picked uniformly, then one of its colours the account has
+  (the free ones and any Tractor colour already won), never a locked or sold look, seeded by the account id. A stored
+  look is never replaced; a refunded companion's account is given a free one again. A guest's look is drawn the same
+  way from its device key, so it stays the same on that device and the table shows it too; a guest still cannot
+  change it (Sign in to use).
 - **The companions** (Jerry 2026-11-26: "we can start with tractor, bun, chick, sparrow"), all free from the start:
   the Tractor, now with its rider (a farm kid in a straw hat at the cab window), the Bun 包子, the Chick 小鸡 and the
   Sparrow 麻雀, four colours each beside the Tractor's eight. Hop and cheer are two different moves: hop one small

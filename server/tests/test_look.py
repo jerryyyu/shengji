@@ -1,6 +1,7 @@
-"""The equipped companion look (``accounts.LOOKS``): its default, its storage
-on an account, the snapshot taken before a migration, and where it travels
-(``/api/me``, each seat of a frame, each leaderboard row)."""
+"""The equipped companion look (``accounts.LOOKS``): its default, the free
+look a new account and a guest are given, its storage on an account with
+when each look was last used, the snapshot taken before a migration, and
+where it travels (``/api/me``, each seat of a frame, each leaderboard row)."""
 from __future__ import annotations
 
 import time
@@ -22,17 +23,19 @@ def test_the_default_look_and_what_parses(accounts_on):
         assert a.parse_look(bad) is None
     assert a.look_id(None) == "tractor/red"
     assert a.look_id({"look_companion": None, "look_colour": None}) == "tractor/red"
+    # a row that chose nothing shows the free look it will be given
+    assert a.look_id({"id": 5, "look_companion": None, "look_colour": None}) == a.first_look(5)
     # a stored look no longer offered falls back to the default
     assert a.look_id({"look_companion": "dragon", "look_colour": "jade"}) == "tractor/red"
     assert a.account_look(None) == "tractor/red"
 
 
-def test_a_new_account_has_the_default_and_put_persists_it(accounts_on, keypair, client, monkeypatch):
+def test_a_new_account_has_its_first_look_and_put_persists_it(accounts_on, keypair, client, monkeypatch):
     monkeypatch.setenv("COLLECTION_ACCOUNTS", "1")
     private_pem, _ = keypair
     cookie = _session_cookie(accounts_on, client, private_pem)
     session = {"cookie": cookie}
-    assert client.get("/api/me", headers=session).json()["look"] == "tractor/red"
+    assert client.get("/api/me", headers=session).json()["look"] == accounts_on.first_look(1)
     assert client.put("/api/me/look", json={"look": "tractor/red"}).status_code == 401
     assert client.put("/api/me/look", json={"look": "dragon/jade"}, headers=session).status_code == 400
     resp = client.put("/api/me/look", json={"look": "tractor/red"}, headers=session)
@@ -50,12 +53,13 @@ def test_seats_carry_the_look_and_bots_carry_none(accounts_on, keypair, client):
     with client.websocket_connect("/ws", headers={"cookie": cookie}) as a:
         a.send_json({"type": "create_room"})
         room = _drain(a, "room")
-        assert room["players"][0]["look"] == "tractor/red"
-        assert accounts_on.STORE.seen_looks == {1: "tractor/red"}    # learnt at the handshake
+        first = accounts_on.first_look(1)
+        assert room["players"][0]["look"] == first
+        assert accounts_on.STORE.seen_looks == {1: first}    # learnt at the handshake
         st = _drain(a, "state")             # the game starts at once, bots seated
         looks = {p["seat"]: p["look"] for p in st["players"]}
-        assert looks == {0: "tractor/red", 1: None, 2: None, 3: None}
-    # a guest seat shows the default, from no stored row
+        assert looks == {0: first, 1: None, 2: None, 3: None}
+    # a guest seat with no device key shows the default, from no stored row
     with client.websocket_connect("/ws") as g:
         g.send_json({"type": "create_room", "name": "Guest"})
         assert _drain(g, "room")["players"][0]["look"] == "tractor/red"
@@ -72,7 +76,7 @@ def test_a_room_table_frame_gives_each_person_a_look(accounts_on, client):
 
 
 def test_leaderboard_rows_carry_the_look(env):
-    from shengji.api import ratings
+    from shengji.api import accounts, ratings
 
     _srv, store, _ = env
     a = store.upsert_user(_claims(sub="a1", email="a@example.com", name="Ann"))
@@ -82,8 +86,10 @@ def test_leaderboard_rows_carry_the_look(env):
     _rounds_at(store, a["id"], [now - 60])
     _rounds_at(store, b["id"], [now - 30])
     board = ratings.leaderboard(store, "all", a["id"], now=now)
-    assert {r["look"] for r in board["players"]} == {"tractor/red"}
-    assert board["me"]["look"] == "tractor/red"
+    # Ann never read her account: her row shows the look she will be given
+    assert {r["name"]: r["look"] for r in board["players"]} == {
+        "Ann": accounts.first_look(a["id"]), "Bo": "tractor/red"}
+    assert board["me"]["look"] == accounts.first_look(a["id"])
     assert "look_companion" not in board["players"][0]
 
 
@@ -116,7 +122,8 @@ def test_the_look_migration_reruns_and_keeps_rows(accounts_on, tmp_path):
     with accounts_sqlite(path) as db:
         db.executescript(V1_SCHEMA)
     store = accounts_on.Store(path)
-    assert accounts_on.look_id(store.user(1)) == "tractor/red"
+    assert store.user(1)["look_companion"] is None          # the migration gives no look
+    assert accounts_on.look_id(store.user(1)) == accounts_on.first_look(1)
     with accounts_sqlite(path) as db:
         db.row_factory = accounts_on.sqlite3.Row
         accounts_on._migrate_v11(db)
@@ -226,7 +233,7 @@ def test_a_locked_colour_is_refused_and_unlocks_with_ranked_rounds_won(accounts_
     private_pem, _ = keypair
     session = {"cookie": _session_cookie(accounts_on, client, private_pem)}
     assert client.put("/api/me/look", json={"look": "tractor/yellow"}, headers=session).status_code == 403
-    assert accounts_on.STORE.user(1)["look_colour"] is None
+    assert accounts_on.look_id(accounts_on.STORE.user(1)) == accounts_on.first_look(1)   # nothing stored
     resp = client.put("/api/me/look", json={"look": "tractor/blue"}, headers=session)
     assert resp.status_code == 200 and resp.json()["look"] == "tractor/blue"
     assert accounts_on.account_look(1) == "tractor/blue"
@@ -268,7 +275,7 @@ def test_where_companions_show_is_stored_on_the_account(accounts_on, keypair, cl
     assert client.put("/api/me/look", json={"companions": "loud"}, headers=session).status_code == 400
     resp = client.put("/api/me/look", json={"companions": "off"}, headers=session)
     assert resp.status_code == 200 and resp.json()["companions"] == "off"
-    assert resp.json()["look"] == "tractor/red"           # the look is untouched
+    assert resp.json()["look"] == accounts_on.first_look(1)   # the look is untouched
     assert client.get("/api/me", headers=session).json()["companions"] == "off"
     both = client.put("/api/me/look", json={"look": "tractor/green", "companions": "individual"},
                       headers=session).json()
@@ -287,7 +294,7 @@ def test_the_collection_is_shown_only_to_listed_accounts_unless_on_for_all(accou
     # a listed account equips; any other is told the endpoint is not there
     assert client.put("/api/me/look", json={"look": "tractor/green"}, headers=one).status_code == 404
     assert client.put("/api/me/look", json={"companions": "off"}, headers=one).status_code == 404
-    assert accounts_on.STORE.user(1)["look_colour"] is None
+    assert accounts_on.look_id(accounts_on.STORE.user(1)) == accounts_on.first_look(1)   # nothing stored
     assert client.put("/api/me/look", json={"look": "tractor/green"}, headers=two).json()["look"] == "tractor/green"
     monkeypatch.setenv("COLLECTION_ENABLED", "1")
     assert client.get("/api/auth/config").json()["collection"] is True
@@ -444,3 +451,162 @@ def test_a_sockets_heartbeat_ready_says_whether_its_account_is_shown_the_collect
     monkeypatch.delenv("COLLECTION_ENABLED")
     monkeypatch.delenv("COLLECTION_ACCOUNTS")
     assert (ready(), ready(one), ready(two)) == (False, False, False)
+
+
+# ------------------------------------------------- the first look and recent looks
+def _free_from_the_start(a) -> set[str]:
+    return {f"{c}/{k}" for c, ks in a.LOOKS.items() if c not in a.COMPANION_PRODUCTS
+            for k in ks if f"{c}/{k}" not in a.LOOK_UNLOCKS}
+
+
+def test_a_new_account_is_given_a_free_look_that_stays_across_reads(accounts_on, keypair, client, monkeypatch):
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "1")
+    private_pem, _ = keypair
+    session = {"cookie": _session_cookie(accounts_on, client, private_pem)}
+    first = accounts_on.first_look(1)
+    assert first in _free_from_the_start(accounts_on)
+    reads = [client.get("/api/me", headers=session).json() for _ in range(3)]
+    assert {r["look"] for r in reads} == {first}
+    assert reads[0]["recent_looks"] == [first]
+    row = accounts_on.STORE.user(1)
+    assert f"{row['look_companion']}/{row['look_colour']}" == first     # stored, not only shown
+    # another process (another device's request) reads the same stored look
+    again = accounts_on.Store(accounts_on.STORE.path)
+    assert again.ensure_look(1)["look_colour"] == row["look_colour"]
+    assert accounts_on.look_id(again.user(1)) == first
+
+
+def test_first_looks_are_free_available_and_spread(accounts_on):
+    a = accounts_on
+    free = _free_from_the_start(a)
+    ids = range(1, 4001)
+    picks = [a.first_look(i) for i in ids]
+    assert set(picks) == free                       # never locked or sold, and every free one occurs
+    shares = {c: sum(p.startswith(c + "/") for p in picks) / len(picks)
+              for c in a.LOOKS if c not in a.COMPANION_PRODUCTS}
+    assert all(0.21 < s < 0.29 for s in shares.values()), shares      # a quarter each
+    assert [a.first_look(i) for i in ids] == picks  # seeded by the id: the same every time
+    # unlocked Tractor colours may be given, and never a colour still locked
+    for wins in (10, 60, 5000):
+        given = {a.first_look(i, {"ranked_wins": wins}) for i in ids}
+        unlocked = {k for k, (_, need) in a.LOOK_UNLOCKS.items() if wins >= need}
+        assert given == free | unlocked
+        assert not any(p.partition("/")[0] in a.COMPANION_PRODUCTS for p in given)
+
+
+def test_the_first_look_counts_the_colours_an_account_has_won(accounts_on):
+    store = accounts_on.STORE
+    uid = store.upsert_user(_claims(sub="sub-vet", email="vet@example.com"))["id"]
+    _rounds_won(store, uid, 120)
+    row = store.ensure_look(uid, now=50.0)
+    look = f"{row['look_companion']}/{row['look_colour']}"
+    assert look == accounts_on.first_look(uid, {"ranked_wins": 120})
+    assert store.recent_looks(uid) == [look]
+
+
+def test_an_account_that_has_a_look_keeps_it(accounts_on, keypair, client):
+    store = accounts_on.STORE
+    uid = store.upsert_user(_claims())["id"]
+    store.set_look(uid, "chick", "ink", now=10.0)
+    for _ in range(2):
+        row = store.ensure_look(uid, now=99.0)
+        assert (row["look_companion"], row["look_colour"]) == ("chick", "ink")
+    assert store.recent_looks(uid) == ["chick/ink"]          # the read records no use
+    private_pem, _ = keypair
+    session = {"cookie": _session_cookie(accounts_on, client, private_pem)}
+    assert client.get("/api/me", headers=session).json()["look"] == "chick/ink"
+
+
+def test_a_signed_in_socket_gives_and_shows_the_first_look(accounts_on, keypair, client):
+    store = accounts_on.STORE
+    uid = store.upsert_user(_claims())["id"]
+    token = store.create_session(uid)
+    assert store.user(uid)["look_companion"] is None
+    with client.websocket_connect("/ws", headers={"cookie": f"sj_session={token}"}) as ws:
+        ws.send_json({"type": "create_room"})
+        assert _drain(ws, "room")["players"][0]["look"] == accounts_on.first_look(uid)
+    assert store.user(uid)["look_companion"] is not None
+
+
+def _web_guest_vectors() -> dict[str, str]:
+    import re
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[2] / "web" / "src" / "companion" / "look.test.ts").read_text()
+    return dict(re.findall(r'^  \["([A-Za-z0-9_-]{22})", "([a-z]+/[a-z]+)"\],$', text, re.M))
+
+
+def test_a_guest_seat_shows_the_look_its_device_key_draws(accounts_on, client):
+    vectors = _web_guest_vectors()
+    assert len(vectors) >= 4
+    for device, look in vectors.items():           # the web client draws the same look
+        assert accounts_on.guest_look(device) == look
+    device = next(iter(vectors))
+    for _ in range(2):                              # the device key keeps it visit to visit
+        with client.websocket_connect(f"/ws?device={device}") as g:
+            g.send_json({"type": "create_room", "name": "Guest"})
+            assert _drain(g, "room")["players"][0]["look"] == vectors[device]
+    assert {accounts_on.guest_look(d) for d in (f"{n:022d}" for n in range(400))} == _free_from_the_start(accounts_on)
+
+
+def test_recent_looks_put_the_latest_use_first(accounts_on, keypair, client, monkeypatch):
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "1")
+    private_pem, _ = keypair
+    session = {"cookie": _session_cookie(accounts_on, client, private_pem)}
+    first = accounts_on.first_look(1)
+    for look in ("sparrow/java", "bun/taro", "sparrow/snow"):
+        assert client.put("/api/me/look", json={"look": look}, headers=session).status_code == 200
+    me = client.get("/api/me", headers=session).json()
+    assert me["look"] == "sparrow/snow"
+    assert me["recent_looks"][:3] == ["sparrow/snow", "bun/taro", "sparrow/java"]
+    assert me["recent_looks"][3:] == ([first] if first not in me["recent_looks"][:3] else [])
+    # using one again moves it up; a refused look records nothing
+    client.put("/api/me/look", json={"look": "bun/taro"}, headers=session)
+    assert client.put("/api/me/look", json={"look": "tractor/ink"}, headers=session).status_code == 403
+    assert client.get("/api/me", headers=session).json()["recent_looks"][:3] == [
+        "bun/taro", "sparrow/snow", "sparrow/java"]
+    # deleting the account deletes its uses
+    assert accounts_on.STORE.delete_user(1)
+    with accounts_sqlite(accounts_on.STORE.path) as db:
+        assert db.execute("SELECT COUNT(*) FROM look_uses").fetchone() == (0,)
+
+
+def test_a_v12_database_gains_look_uses_and_keeps_every_look(accounts_on, tmp_path):
+    path = tmp_path / "v12" / "accounts.sqlite3"
+    path.parent.mkdir()
+    with accounts_sqlite(path) as db:
+        db.executescript(V1_SCHEMA)
+    store = accounts_on.Store(path)
+    store.schema_version()
+    store.set_look(1, "tractor", "green")
+    with accounts_sqlite(path) as db:
+        db.execute("DROP TABLE look_uses")
+        db.execute("UPDATE schema_version SET version = 12")
+        db.commit()
+    for p in path.parent.glob("*.bak"):
+        p.unlink()
+    store = accounts_on.Store(path)
+    assert store.schema_version() == len(accounts_on.SCHEMA) == 13
+    assert store.backup_path(12).exists()
+    assert (store.user(1)["look_companion"], store.user(1)["look_colour"]) == ("tractor", "green")
+    assert store.recent_looks(1) == []              # no use recorded before the table
+    assert store.ensure_look(1)["look_colour"] == "green"
+    store.set_look(1, "bun", "peach", now=5.0)
+    assert store.recent_looks(1) == ["bun/peach"]
+
+
+def test_a_merged_device_account_brings_its_looks_last_uses(accounts_on):
+    store = accounts_on.STORE
+    device = store.upsert_user(_claims(sub="dev", email="dev@example.com"))["id"]
+    target = store.upsert_user(_claims(sub="tgt", email="tgt@example.com"))["id"]
+    store.set_look(target, "bun", "taro", now=10.0)
+    store.set_look(target, "chick", "ink", now=20.0)
+    store.set_look(device, "sparrow", "java", now=15.0)
+    store.set_look(device, "bun", "taro", now=30.0)
+    with accounts_on.closing(store._open()) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        accounts_on.Store._merge_device(conn, device, target)
+        conn.execute("COMMIT")
+    assert store.recent_looks(target) == ["bun/taro", "chick/ink", "sparrow/java"]
+    assert store.recent_looks(device) == []
+    assert store.user(target)["look_companion"] == "chick"        # the target keeps the look it wears

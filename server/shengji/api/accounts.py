@@ -129,8 +129,9 @@ _NAME_RNG = random.SystemRandom()
 # The ``users`` column holding each provider's subject.
 PROVIDER_COLUMNS = {"google": "google_sub", "apple": "apple_sub"}
 # Companions a player may equip, each with its colours in the order the
-# Collection lists them. A look travels as ``"<companion>/<colour>"``; a
-# guest, and an account that chose nothing, shows ``DEFAULT_LOOK``. The
+# Collection lists them. A look travels as ``"<companion>/<colour>"``; an
+# account that chose nothing is given a free one (``first_look``), and a
+# guest shows one drawn from its device key (``guest_look``). The
 # client's ``web/src/companion/palette.ts`` (the Tractor) and
 # ``storePalette.ts`` (every other companion) draw each colour.
 LOOKS: dict[str, tuple[str, ...]] = {
@@ -171,6 +172,48 @@ LOOK_UNLOCKS: dict[str, tuple[str, int]] = {
     "tractor/porcelain": ("ranked_wins", 100),
     "tractor/ink": ("ranked_wins", 1000),
 }
+
+
+def _look_hash(text: str) -> int:
+    """A 32-bit hash of ``text`` (FNV-1a over its UTF-8 bytes, then the
+    murmur3 finaliser so every bit mixes). The client's ``guestLook``
+    computes the same one, so a guest's own screen draws the look the
+    server shows the table."""
+    h = 0x811C9DC5
+    for byte in text.encode("utf-8"):
+        h = ((h ^ byte) * 0x01000193) & 0xFFFFFFFF
+    h ^= h >> 16
+    h = (h * 0x85EBCA6B) & 0xFFFFFFFF
+    h ^= h >> 13
+    h = (h * 0xC2B2AE35) & 0xFFFFFFFF
+    return h ^ (h >> 16)
+
+
+def free_look(seed: str, progress: Mapping[str, int] | None = None) -> str:
+    """A free look picked by ``seed``: first a companion, uniformly among the
+    unsold ones, then one of its colours ``progress`` has unlocked (none
+    given: only the colours free from the start). Picking the companion
+    first keeps each one's share the same whatever colours an account has
+    won, so a table of new players varies by character, not only by colour."""
+    h = _look_hash(seed)
+    kinds = [c for c in LOOKS if c not in COMPANION_PRODUCTS]
+    companion = kinds[h % len(kinds)]
+    counts = progress or {}
+    colours = [c for c in LOOKS[companion]
+               if (rule := LOOK_UNLOCKS.get(f"{companion}/{c}")) is None
+               or int(counts.get(rule[0], 0)) >= rule[1]]
+    return f"{companion}/{colours[(h // len(kinds)) % len(colours)]}"
+
+
+def first_look(user_id: int, progress: Mapping[str, int] | None = None) -> str:
+    """The look an account that chose none is given (``Store.ensure_look``)."""
+    return free_look(f"account:{user_id}", progress)
+
+
+def guest_look(device: str) -> str:
+    """The look a guest's seat shows: a free one drawn from its device key,
+    which the device keeps, so it stays the same visit to visit."""
+    return free_look(f"guest:{device}")
 # The Collection and companion portraits are shown to nobody unless
 # ``COLLECTION_ENABLED=1`` (everyone) or the signed-in account's id is in
 # ``COLLECTION_ACCOUNTS`` (comma-separated ids, a deploy secret). The look
@@ -897,6 +940,19 @@ def _migrate_v12(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE TRIGGER" + statements[1])
 
 
+# When an account last put each look in use (``Store.set_look``,
+# ``Store.ensure_look``), which orders its Collection's Yours. A look never
+# used has no row.
+_LOOK_USES_V13 = """
+    CREATE TABLE IF NOT EXISTS look_uses (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        look TEXT NOT NULL,
+        used_at REAL NOT NULL,
+        PRIMARY KEY (user_id, look)
+    )
+"""
+
+
 # Each entry is one version: SQL statements separated by ';', or a callable
 # taking the connection. Entry i brings the database to version i + 1.
 SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
@@ -944,6 +1000,8 @@ SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
     _migrate_v11,
     # version 12: App Store purchases.
     _migrate_v12,
+    # version 13: when each look was last put in use.
+    _LOOK_USES_V13,
 ]
 
 # Saved games: kept for twelve months; the history list shows the latest
@@ -1198,14 +1256,62 @@ class Store:
             row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
             return dict(row) if row else None
 
-    def set_look(self, user_id: int, companion: str, colour: str) -> dict | None:
+    def set_look(self, user_id: int, companion: str, colour: str,
+                 now: float | None = None) -> dict | None:
         """Equip ``companion`` in ``colour`` (both already checked against
-        ``LOOKS``); the updated row, or None for an unknown account."""
+        ``LOOKS``) and record it as used at ``now``; the updated row, or None
+        for an unknown account."""
         with closing(self._open()) as conn:
-            conn.execute("UPDATE users SET look_companion = ?, look_colour = ? WHERE id = ?",
-                         (companion, colour, user_id))
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                changed = conn.execute("UPDATE users SET look_companion = ?, look_colour = ? WHERE id = ?",
+                                       (companion, colour, user_id)).rowcount
+                if changed:
+                    self._record_use(conn, user_id, f"{companion}/{colour}", now)
+                conn.execute("COMMIT")
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
             row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
             return dict(row) if row else None
+
+    def ensure_look(self, user_id: int, now: float | None = None) -> dict | None:
+        """The account's row, given its first look (``first_look``, over the
+        colours its ranked rounds won have unlocked) when it has chosen none.
+        A stored look is never replaced, so the first read anywhere fixes it
+        for every device. None for an unknown account."""
+        row = self.user(user_id)
+        if row is None or row.get("look_companion") is not None:
+            return row
+        companion, colour = first_look(user_id, {"ranked_wins": self.ranked_wins(user_id)}).split("/")
+        with closing(self._open()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                changed = conn.execute(
+                    """UPDATE users SET look_companion = ?, look_colour = ?
+                       WHERE id = ? AND look_companion IS NULL""", (companion, colour, user_id)).rowcount
+                if changed:
+                    self._record_use(conn, user_id, f"{companion}/{colour}", now)
+                conn.execute("COMMIT")
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
+            fresh = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            return dict(fresh) if fresh else None
+
+    @staticmethod
+    def _record_use(conn: sqlite3.Connection, user_id: int, look: str, now: float | None) -> None:
+        conn.execute(
+            """INSERT INTO look_uses(user_id, look, used_at) VALUES (?, ?, ?)
+               ON CONFLICT(user_id, look) DO UPDATE SET used_at = excluded.used_at""",
+            (user_id, look, float(now if now is not None else time.time())))
+
+    def recent_looks(self, user_id: int) -> list[str]:
+        """The looks the account has put in use, the latest first."""
+        with closing(self._open()) as conn:
+            rows = conn.execute("SELECT look FROM look_uses WHERE user_id = ? ORDER BY used_at DESC, look",
+                                (user_id,)).fetchall()
+        return [str(r["look"]) for r in rows]
 
     def set_companions(self, user_id: int, mode: str) -> dict | None:
         """Store ``mode`` (already checked against ``COMPANION_MODES``)."""
@@ -1582,7 +1688,8 @@ class Store:
 
     @staticmethod
     def _merge_device(conn: sqlite3.Connection, device_id: int, target_id: int) -> None:
-        """Move a device account's game links, its purchases and its blocks, both the ones
+        """Move a device account's game links, its purchases, its looks' last
+        uses (the later of the two where both used one) and its blocks, both the ones
         it made and the ones others placed on it, to ``target_id``, then
         delete it (caller holds the transaction). A link the target already
         has at the same game, seat and first round is kept as the target's;
@@ -1607,6 +1714,11 @@ class Store:
         # target's, and every token issued for it (or merged into it) now
         # resolves to the target.
         conn.execute("UPDATE entitlements SET user_id = ? WHERE user_id = ?", (target_id, device_id))
+        conn.execute(
+            """INSERT INTO look_uses(user_id, look, used_at)
+               SELECT ?, look, used_at FROM look_uses WHERE user_id = ?
+               ON CONFLICT(user_id, look) DO UPDATE SET used_at = MAX(used_at, excluded.used_at)""",
+            (target_id, device_id))
         conn.execute("UPDATE store_tokens SET user_id = ?, status = 'merged' WHERE user_id = ? AND status != 'deleted'",
                      (target_id, device_id))
         conn.execute("DELETE FROM users WHERE id = ?", (device_id,))
@@ -2464,9 +2576,13 @@ def companions_mode(row: Mapping[str, Any]) -> str:
 
 def look_id(row: Mapping[str, Any] | None) -> str:
     """The look an account row shows: its stored companion and colour when
-    both are still offered, else ``DEFAULT_LOOK``."""
+    both are still offered; for a row that chose none yet, the free look it
+    will be given (``first_look`` over the colours free from the start);
+    else ``DEFAULT_LOOK``."""
     if row is None:
         return DEFAULT_LOOK
+    if row.get("look_companion") is None and row.get("id") is not None:
+        return first_look(int(row["id"]))
     stored = f"{row.get('look_companion')}/{row.get('look_colour')}"
     return stored if parse_look(stored) is not None else DEFAULT_LOOK
 
@@ -2491,10 +2607,13 @@ def remember_look(row: Mapping[str, Any], owned: Collection[str] = frozenset()) 
     return look
 
 
-def account_look(user_id: int | None) -> str:
-    """The look a person's seat shows: their account's, or ``DEFAULT_LOOK``
-    for a guest (``None``) and an account not seen yet."""
-    return DEFAULT_LOOK if user_id is None else STORE.seen_looks.get(user_id, DEFAULT_LOOK)
+def account_look(user_id: int | None, device: str | None = None) -> str:
+    """The look a person's seat shows: their account's; for a guest
+    (``None``), the one its device key draws (``guest_look``); else, for an
+    account not seen yet or a guest with no device key, ``DEFAULT_LOOK``."""
+    if user_id is None:
+        return guest_look(device) if device else DEFAULT_LOOK
+    return STORE.seen_looks.get(user_id, DEFAULT_LOOK)
 
 
 def card_look(user_id: int | None) -> str:
@@ -2506,7 +2625,7 @@ def card_look(user_id: int | None) -> str:
 
 def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int = 0,
                 owned: Collection[str] = frozenset(), store_token: str | None = None,
-                ranked_games: int = 0) -> dict:
+                ranked_games: int = 0, recent: Collection[str] = ()) -> dict:
     """The ``/api/me`` payload: the Google profile, the chosen display name
     (null when none), ``name_shown``, the effective name, and
     ``rounds_played`` (``Store.rounds_played``), which tells the client
@@ -2516,6 +2635,8 @@ def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int
     ``owned_look``), ``ranked_wins`` (rated rounds won), ``ranked_games``
     (ranked games won) and ``looks``, every look with whether those counts
     or ``owned`` unlocked it (``look_catalogue``),
+    ``recent_looks``, the looks put in use, the latest first
+    (``Store.recent_looks``), which orders the Collection's Yours,
     ``companions`` (``companions_mode``), ``products``, the App Store
     products the account owns (``Store.owned_products``), and
     ``features.collection`` (``collection_for``) and ``features.store``
@@ -2534,6 +2655,7 @@ def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int
             "linked": not is_device_account(row), "look": look,
             "ranked_wins": int(ranked_wins), "ranked_games": int(ranked_games),
             "looks": look_catalogue(progress, look, owned, shop),
+            "recent_looks": [r for r in recent if parse_look(r) is not None],
             "companions": companions_mode(row),
             "products": sorted(owned),
             **({"store_token": store_token} if shop and store_token else {}),
@@ -2542,14 +2664,19 @@ def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int
 
 
 async def account_payload(store: "Store", row: Mapping[str, Any]) -> dict:
-    """``public_user`` with the account's counts and purchases read off the loop."""
+    """``public_user`` with the account's counts and purchases read off the
+    loop, after giving an account that chose no look its first one
+    (``Store.ensure_look``)."""
+    if row.get("look_companion") is None:
+        row = await store.run(store.ensure_look, int(row["id"])) or row
     progress = await store.run(store.look_progress, int(row["id"]))
     owned = await store.run(store.owned_products, int(row["id"]))
     # a purchase needs an Apple or Google sign-in: a device account gets no token
     token = (await store.run(store.store_token, int(row["id"]))
              if store_for(int(row["id"])) and not is_device_account(row) else None)
+    recent = await store.run(store.recent_looks, int(row["id"]))
     return public_user(row, progress["rounds"], progress["ranked_wins"], owned, token,
-                       ranked_games=progress["ranked_games"])
+                       ranked_games=progress["ranked_games"], recent=recent)
 
 
 def _cookie_secure(request: Request) -> bool:
@@ -3014,6 +3141,11 @@ async def websocket_user(ws: WebSocket) -> dict | None:
             pass
         return None
     if row is not None:
+        if row.get("look_companion") is None:
+            try:
+                row = await STORE.run(STORE.ensure_look, int(row["id"])) or row
+            except Exception as exc:    # noqa: BLE001 - gameplay over a portrait
+                log.warning("first look failed on websocket (%s)", type(exc).__name__)
         owned: frozenset[str] = frozenset()
         if sold_look(row):
             try:

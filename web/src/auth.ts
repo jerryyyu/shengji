@@ -38,6 +38,8 @@ export interface AuthUser {
   ranked_games?: number;
   /** Every look and whether this account has unlocked it. */
   looks?: LookEntry[];
+  /** The looks this account has put in use, the latest first. */
+  recent_looks?: string[];
   /** Where this account's own screen draws companions. */
   companions?: CompanionMode;
   /** The App Store products this account owns (verified by the server). */
@@ -64,6 +66,8 @@ function toUser(body: Partial<AuthUser> & { name: string; email: string }): Auth
     ...(typeof body.ranked_wins === "number" ? { ranked_wins: body.ranked_wins } : {}),
     ...(typeof body.ranked_games === "number" ? { ranked_games: body.ranked_games } : {}),
     ...(Array.isArray(body.looks) ? { looks: body.looks } : {}),
+    ...(Array.isArray(body.recent_looks)
+      ? { recent_looks: body.recent_looks.filter((l) => typeof l === "string") } : {}),
     ...(COMPANION_MODES.includes(body.companions as CompanionMode) ? { companions: body.companions } : {}),
     ...(Array.isArray(body.products) ? { products: body.products.filter((p) => typeof p === "string") } : {}),
     ...(typeof body.store_token === "string" && body.store_token ? { store_token: body.store_token } : {}),

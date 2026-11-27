@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { effectiveName, useAuth } from "../auth";
 import { Portrait } from "../companion/Companion";
+import { ownLook } from "../companion/own";
 import { useCollection } from "../companion/feature";
 import { useGuestName } from "../guestName";
 import { ChatBody } from "../components/ChatPanel";
@@ -31,13 +32,13 @@ import "./tablePanel.css";
 export type { SeatItem } from "./tableModel";
 
 /** Your own initial (of the account's name, or a guest's) and look (the
- *  account's, or the default for a guest). */
+ *  account's, or for a guest the one its device draws). */
 function useMine(): { initial: string; look: string | null } {
   const account = useAuth();
   const guest = useGuestName();
   const user = account.status === "in" ? account.user : null;
   const name = user ? effectiveName(user) : guest.name.trim();
-  return { initial: name.slice(0, 1).toUpperCase(), look: user?.look ?? null };
+  return { initial: name.slice(0, 1).toUpperCase(), look: ownLook(user) };
 }
 
 /** A seat's avatar and words; an open seat with no name is its "+" alone,

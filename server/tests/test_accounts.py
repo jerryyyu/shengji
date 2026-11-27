@@ -312,8 +312,9 @@ def test_login_creates_a_user_sets_the_cookie_and_me_reads_it_back(accounts_on, 
     assert resp.json() == {"name": "Jerry Yu", "email": "jerry@example.com",
                            "picture": "https://img.example/jy.png",
                            "display_name": None, "name_shown": "Jerry", "rounds_played": 0, "linked": True,
-                           "look": "tractor/red", "ranked_wins": 0, "ranked_games": 0,
-                           "looks": accounts_on.look_catalogue({}), "companions": "individual",
+                           "look": accounts_on.first_look(1), "ranked_wins": 0, "ranked_games": 0,
+                           "looks": accounts_on.look_catalogue({}, accounts_on.first_look(1)),
+                           "recent_looks": [accounts_on.first_look(1)], "companions": "individual",
                            "products": [], "features": {"collection": False, "store": False}}
     cookie = resp.headers["set-cookie"]
     assert cookie.startswith("sj_session=")
@@ -756,8 +757,9 @@ def test_patch_me_sets_clears_and_refuses_display_names(accounts_on, keypair, cl
     assert client.get("/api/me", headers=session).json() == {
         "name": "Jerome Yu", "email": "jerry@example.com", "picture": "https://img.example/jy.png",
         "display_name": "Cap", "name_shown": "Cap", "rounds_played": 0,
-        "linked": True, "look": "tractor/red", "ranked_wins": 0, "ranked_games": 0,
-        "looks": accounts_on.look_catalogue({}), "companions": "individual",
+        "linked": True, "look": accounts_on.first_look(1), "ranked_wins": 0, "ranked_games": 0,
+        "looks": accounts_on.look_catalogue({}, accounts_on.first_look(1)),
+        "recent_looks": [accounts_on.first_look(1)], "companions": "individual",
                            "products": [], "features": {"collection": False, "store": False}}
 
 

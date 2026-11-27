@@ -38,9 +38,15 @@ def _b64(n: int) -> str:
 def _without_look(body: dict) -> dict:
     """``/api/me`` without the companion and store fields
     (``tests/test_look.py`` and ``tests/test_purchases.py`` hold those),
-    which an account with no look and no purchase shows as the defaults."""
-    look = {k: body.pop(k) for k in ("look", "ranked_wins", "ranked_games", "looks", "companions", "features", "products")}
-    assert look["look"] == "tractor/red" and look["companions"] == "individual"
+    which an account with no purchase shows as the defaults, its look the
+    free one it was given."""
+    from shengji.api import accounts
+
+    look = {k: body.pop(k) for k in ("look", "ranked_wins", "ranked_games", "looks", "recent_looks",
+                                     "companions", "features", "products")}
+    assert look["look"].partition("/")[0] not in accounts.COMPANION_PRODUCTS
+    assert look["look"] not in accounts.LOOK_UNLOCKS and look["recent_looks"] == [look["look"]]
+    assert look["companions"] == "individual"
     assert look["features"] == {"collection": False, "store": False} and look["products"] == []
     assert "store_token" not in body
     return body

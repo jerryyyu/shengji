@@ -608,8 +608,10 @@ watcher's card does this; a player's round end still waits for Next or Leave.
 - **The companions** (Jerry 2026-11-26: "we can start with tractor, bun, chick, sparrow"), all free from the start:
   the Tractor, now with its rider (a farm kid in a straw hat at the cab window), the Bun 包子, the Chick 小鸡 and the
   Sparrow 麻雀, four colours each beside the Tractor's eight. Hop and cheer are two different moves: hop one small
-  bounce, cheer a two-beat jump through confetti. Each has a signature reaction (the Tractor's hat tip, the Bun's
-  steam puff, the Chick's flutter, the Sparrow's peck). Under Reduce Motion every pose is drawn still at its peak.
+  bounce, cheer a two-beat jump through confetti. Each has a signature reaction, drawn to read at table size (Jerry
+  2026-11-27: "For the tractor special, it's a bit hard to see"; he picked the wheelie): the Tractor's wheelie in
+  exhaust and dust, the Bun's pop out of its steamer, the Chick's high flutter in feathers, the Sparrow's loop. Each
+  paints inside the box the table keeps for a special and moves at most five pieces besides the figure. Under Reduce Motion every pose is drawn still at its peak.
 - **At the table** (Jerry 2026-11-26, finding 1: "yes, have it stand by the nameplate and randomly walk around")
   each person's companion stands by their nameplate: under a side seat's, to the right of your partner's, and
   yours over the left end of your hand on a phone (Jerry 2026-11-26: it had stood by the left seat's card; beside

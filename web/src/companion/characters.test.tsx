@@ -1288,8 +1288,8 @@ describe("the table", () => {
       expect(host.querySelector('.tc-seat[data-seat="0"] .tc-move')!.getAttribute("data-move")).toBe("react");
       expect(specialOn("0")).toBe(true);
       expect(walks("0")).toHaveLength(0);
-      // it plays for its own length (the Bun's steam puff), then stands still again
-      await advance(1600);
+      // it plays for its own length (the Bun's pop), then stands still again
+      await advance(1650);
       expect(specialOn("0")).toBe(false);
       tap(mine(), 0, 0);
       expect(specialOn("0")).toBe(false);
@@ -1301,7 +1301,7 @@ describe("the table", () => {
       expect(specialOn("2")).toBe(false);
     });
 
-    it.each([["lamb/newyear", 2600], ["panda/classic", 1900], ["bun/plain", 1540]] as const)(
+    it.each([["lamb/newyear", 2600], ["panda/classic", 1900], ["bun/plain", 1600]] as const)(
       "a tap on yours as %s holds its special for the drawing's whole length (%i ms), from the one timing table", async (look, ms) => {
         await render(state({ players: [player(0, { look }), player(1), player(2), player(3)] } as Partial<GameState>));
         expect(DRAWINGS[look.split("/")[0] as keyof typeof DRAWINGS].reactMs).toBe(ms);

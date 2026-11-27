@@ -1,11 +1,11 @@
 // The Sparrow (麻雀), a free companion, drawn in its 400-unit box on the
 // characters' rig (`rig.ts`): gradients only, no SVG filters. One string builder
 // draws every pose; the portrait is the same drawing as an image. The colour
-// is a palette swap (`storePalette.ts`). Its signature reaction is the peck:
-// two quick pecks at the felt, tail in the air.
+// is a palette swap (`storePalette.ts`). Its signature reaction is the loop:
+// it takes off, flies one loop with a streak behind it, and lands in feathers.
 import { SPARROW_COLOURS } from "./storePalette";
 import type { SparrowColour, SparrowColourId } from "./storePalette";
-import { ball, confetti, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, ramp, sharedDefs } from "./rig";
+import { ball, confetti, dataUrl, eye, glow, groundShadow, kerchief, n, part, portraitSvg, ramp, sharedDefs } from "./rig";
 import type { CharOpts, CharPose, EyeMode } from "./rig";
 
 /** A colour by id, or a palette given whole (the CSS-variable master passes one). */
@@ -14,14 +14,14 @@ const colourOf = (c: SparrowColourId | SparrowColour): SparrowColour => (typeof 
 /** Where the sleeping z rises from. */
 export const SPARROW_Z: readonly [number, number] = [330, 70];
 
-const FACE: Record<CharPose, EyeMode> = { idle: "open", hop: "open", cheer: "happy", react: "open", sleep: "sleep" };
+const FACE: Record<CharPose, EyeMode> = { idle: "open", hop: "open", cheer: "happy", react: "happy", sleep: "sleep" };
 
 /** Each part's place in a pose drawn still: the peak of its animation. Sleep
  *  is always drawn this way; it has no moving limbs. */
 const STILL: Partial<Record<CharPose, Record<string, string>>> = {
   hop: { body: "translate(0 -12)", wing: "rotate(-34 178 162)", tail: "rotate(14 100 270)" },
   cheer: { body: "translate(0 -34)", wing: "rotate(-40 178 162)", head: "rotate(-8 228 226)", tail: "rotate(16 100 270)" },
-  react: { body: "rotate(16 220 352)", head: "translate(8 14) rotate(22 228 226)", tail: "rotate(-14 100 270)" },
+  react: { body: "translate(0 -40) rotate(-14 196 215)", wing: "rotate(-52 178 162)", tail: "rotate(14 100 270)" },
   sleep: { torso: "translate(196 352) scale(1.04 .97) translate(-196 -352)", head: "translate(-10 22) rotate(-10 228 226)" },
 };
 
@@ -51,8 +51,19 @@ export function sparrowMarkup(colour: SparrowColourId | SparrowColour, id: strin
     + `<ellipse cx="226" cy="190" rx="21" ry="13.5" fill="${u("blush")}"/>`
     + eye(258, 150, eyes, id, { k: 0.9, detail }) + eye(301, 148, eyes, id, { k: 0.82, detail });
 
-  const body = part("cmp-body", part("cmp-torso", torso, at.torso) + (team ? kerchief(team, 166, 300, 214, 9, 200) : "") + part("cmp-head", head, at.head), at.body);
-  return defs + (shadow ? groundShadow(id, 196, 112) : "") + body + (pose === "cheer" ? confetti(222, 160) : "");
+  // the streak: arcs round the loop's centre (196, 125), behind the tail
+  const streak = (r: number, from: number, to: number) => {
+    const on = (deg: number) => `${n(196 + r * Math.cos((deg * Math.PI) / 180))} ${n(125 + r * Math.sin((deg * Math.PI) / 180))}`;
+    return `M${on(from)}A${r} ${r} 0 0 1 ${on(to)}`;
+  };
+  const trail = pose === "react" ? `<g class="cmp-trail" fill="none" stroke-linecap="round">`
+    + `<path d="${streak(72, 150, 225)}" stroke="#fff6d6" stroke-width="12"/><path d="${streak(100, 145, 215)}" stroke="#ffd76a" stroke-width="14"/>`
+    + `<path d="${streak(128, 142, 205)}" stroke="#fff6d6" stroke-width="12"/></g>` : "";
+  const feather = (a: number, i: number) => `<g transform="translate(196 340) rotate(${a})">`
+    + `<path class="cmp-feather" d="M100 0C116 -20 148 -20 166 0C148 20 116 20 100 0Z" fill="${i % 2 ? "#ffd76a" : p.belly[0]}" stroke="${p.wing[2]}" stroke-width="3"/></g>`;
+  const feathers = pose === "react" && !still ? [-168, -142, -38, -12].map(feather).join("") : "";
+  const body = part("cmp-body", part("cmp-loop", trail + part("cmp-fly", part("cmp-torso", torso, at.torso) + (team ? kerchief(team, 166, 300, 214, 9, 200) : "") + part("cmp-head", head, at.head))), at.body);
+  return defs + (shadow ? groundShadow(id, 196, 112) : "") + body + feathers + (pose === "cheer" ? confetti(222, 160) : "");
 }
 
 const portraits = new Map<string, string>();

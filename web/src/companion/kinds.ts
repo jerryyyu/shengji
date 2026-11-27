@@ -65,17 +65,16 @@ const TRACTOR: Drawing = {
     { ...o, eyes: o.pose === "sleep" ? "sleep" : "open", rider: true }),
   portraitUrl: (colour, small) => tractorPortraitUrl(colour as TractorColourId, small),
   z: [300, 80],
-  reactMs: 1300,
+  reactMs: 1600,
   colourName: (colour) => (TRACTOR_COLOURS[colour as TractorColourId] ?? TRACTOR_COLOURS.red).name,
   char: false,
 };
 
 export const DRAWINGS: Record<DrawnKind, Drawing> = {
   tractor: TRACTOR,
-  // its third puff starts 0.24 s in and runs 1.3 s
-  bun: drawn(BUN_COLOURS, BUN_Z, 1540, bunMarkup, bunPortraitUrl),
-  chick: drawn(CHICK_COLOURS, CHICK_Z, 1300, chickMarkup, chickPortraitUrl),
-  sparrow: drawn(SPARROW_COLOURS, SPARROW_Z, 1200, sparrowMarkup, sparrowPortraitUrl),
+  bun: drawn(BUN_COLOURS, BUN_Z, 1600, bunMarkup, bunPortraitUrl),
+  chick: drawn(CHICK_COLOURS, CHICK_Z, 1500, chickMarkup, chickPortraitUrl),
+  sparrow: drawn(SPARROW_COLOURS, SPARROW_Z, 1800, sparrowMarkup, sparrowPortraitUrl),
   lamb: drawn(LAMB_COLOURS, LAMB_Z, 2600, lambMarkup, lambPortraitUrl),
   panda: drawn(PANDA_COLOURS, PANDA_Z, 1900, pandaMarkup, pandaPortraitUrl),
   rabbit: drawn(RABBIT_COLOURS, RABBIT_Z, 2400, rabbitMarkup, rabbitPortraitUrl),

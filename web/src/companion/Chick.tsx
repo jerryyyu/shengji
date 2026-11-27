@@ -2,7 +2,7 @@
 // its 400-unit box on the characters' rig (`rig.ts`): gradients only, no SVG
 // filters. One round ball of down with a tuft, a beak and two small wings.
 // The colour is a palette swap (`storePalette.ts`). Its signature reaction
-// is the flutter: both wings beat and it lifts off the felt.
+// is the flutter: a high hop on beating wings and a burst of feathers at the top.
 import { CHICK_COLOURS } from "./storePalette";
 import type { ChickColour, ChickColourId } from "./storePalette";
 import { ball, confetti, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, sharedDefs } from "./rig";
@@ -27,7 +27,7 @@ const FACE: Record<CharPose, { eyes: EyeMode; open: boolean }> = {
 const STILL: Partial<Record<CharPose, Record<string, string>>> = {
   hop: { body: "translate(0 -12)" },
   cheer: { body: "translate(0 -34)", armL: "rotate(118 98 226)", armR: "rotate(-118 282 226)" },
-  react: { body: "translate(0 -44)", armL: "rotate(96 98 226)", armR: "rotate(-96 282 226)" },
+  react: { body: "translate(0 -80)", armL: "rotate(104 98 226) translate(98 226) scale(1.45) translate(-98 -226)", armR: "rotate(-104 282 226) translate(282 226) scale(1.45) translate(-282 -226)" },
   sleep: { head: "translate(190 352) scale(1.04 .95) translate(-190 -352)" },
 };
 
@@ -53,9 +53,13 @@ export function chickMarkup(colour: ChickColourId | ChickColour, id: string, { p
     + eye(150, 212, face.eyes, id, big) + eye(230, 212, face.eyes, id, big) + beak;
   const wing = (cx: number, s: number) => `<ellipse cx="${cx}" cy="256" rx="22" ry="40" fill="${p.wing}" transform="rotate(${16 * s} ${cx} 256)"/>`;
 
+  // a feather on a spoke round the top of the hop; its keyframes slide it out along the spoke
+  const feather = (a: number, i: number) => `<g transform="translate(190 150) rotate(${a})">`
+    + `<path class="cmp-feather${i % 2 ? " cmp-feather-b" : ""}" d="M122 0C138 -19 164 -19 178 0C164 19 138 19 122 0Z" fill="${i % 2 ? p.down[0] : p.wing}" stroke="${p.down[3]}" stroke-width="3"/></g>`;
+  const feathers = pose === "react" ? [-165, -128, -90, -52, -15].map(feather).join("") : "";
   const body = part("cmp-body", part("cmp-torso", feet) + part("cmp-head", head, at.head) + (team ? kerchief(team, 100, 280, 274, 9, 150) : "")
     + part("cmp-arm-l", wing(86, 1), at.armL) + part("cmp-arm-r", wing(294, -1), at.armR), at.body);
-  return defs + (shadow ? groundShadow(id, 190, 112) : "") + body + (pose === "cheer" ? confetti(190, 190) : "");
+  return defs + (shadow ? groundShadow(id, 190, 112) : "") + body + feathers + (pose === "cheer" ? confetti(190, 190) : "");
 }
 
 const portraits = new Map<string, string>();

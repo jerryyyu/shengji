@@ -103,12 +103,49 @@
 .cmp-tractor.cmp-hop .cmp-rider { animation: rider-bounce 0.6s ease-out 1; }
 .cmp-tractor.cmp-cheer .cmp-rider { animation: rider-bounce 0.6s ease-out 2; }
 .cmp-tractor.cmp-cheer .cmp-wave { animation: rider-wave 0.4s ease-in-out 3; }
-/* the hat tip: a rev, a wave, the hat lifted off and set back */
-.cmp-tractor.cmp-react .cmp-body { animation: tractor-rev 1.3s ease-in-out 1; }
-.cmp-tractor.cmp-react .cmp-hat { animation: rider-tip 1.3s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
-.cmp-tractor.cmp-react .cmp-wave { animation: rider-wave 0.65s ease-in-out 2; }
-.cmp-tractor.cmp-react .cmp-puff { animation: cmp-puff 1.3s ease-out 1; animation-delay: -0.9s; }
+/* a special's own pieces (smoke, steam, feathers, the streak) scale and turn about their own middles */
+.cmp .cmp-smoke, .cmp .cmp-jet, .cmp .cmp-feather, .cmp .cmp-trail { transform-box: fill-box; transform-origin: 50% 50%; }
+/* the wheelie: it rears up on its big wheel in three clouds of exhaust, the rider waving, and slams back down in dust */
+.cmp-tractor.cmp-react .cmp-body { transform-box: view-box; transform-origin: 140px 354px; animation: tractor-wheelie 1.6s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
+.cmp-tractor.cmp-react .cmp-shadow { animation: tractor-wheelie-shadow 1.6s ease-in-out 1; }
+.cmp-tractor.cmp-react .cmp-hat { animation: rider-tip 1.6s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
+.cmp-tractor.cmp-react .cmp-wave { animation: rider-wave 0.4s ease-in-out 4; }
 .cmp-tractor.cmp-react .cmp-eye { animation: cmp-blink 1.3s ease-in-out 1; }
+.cmp-tractor.cmp-react .cmp-smoke { animation: tractor-smoke 0.9s ease-out 1 both; animation-delay: 0.2s; }
+.cmp-tractor.cmp-react .cmp-smoke2 { animation-delay: 0.38s; }
+.cmp-tractor.cmp-react .cmp-smoke3 { animation-delay: 0.56s; }
+.cmp-tractor.cmp-react .cmp-dust-l { animation: tractor-dust-l 0.42s ease-out 1 both; animation-delay: 1.18s; }
+.cmp-tractor.cmp-react .cmp-dust-r { animation: tractor-dust-r 0.42s ease-out 1 both; animation-delay: 1.18s; }
+@keyframes tractor-wheelie {
+  0%, 100% { transform: translate(0, 0) rotate(0) scale(1, 1); }
+  9% { transform: translate(0, 0) rotate(3deg) scale(1.04, 0.94); }
+  24% { transform: translate(14px, 0) rotate(-24deg) scale(1, 1); }
+  35% { transform: translate(14px, 0) rotate(-19deg) scale(1, 1); }
+  46% { transform: translate(14px, 0) rotate(-24deg) scale(1, 1); }
+  57% { transform: translate(14px, 0) rotate(-20deg) scale(1, 1); }
+  66% { transform: translate(14px, 0) rotate(-23deg) scale(1, 1); }
+  77% { transform: translate(0, 0) rotate(2deg) scale(1.05, 0.93); }
+  87% { transform: translate(0, 0) rotate(-4deg) scale(0.99, 1.02); }
+}
+@keyframes tractor-wheelie-shadow {
+  0%, 9%, 77%, 100% { transform: scale(1); opacity: 1; }
+  24%, 66% { transform: scale(0.8); opacity: 0.6; }
+}
+@keyframes tractor-smoke {
+  0% { opacity: 0; transform: translate(16px, 18px) scale(0.2); }
+  25% { opacity: 1; transform: translate(0, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50px, -16px) scale(1.3); }
+}
+@keyframes tractor-dust-l {
+  0% { opacity: 0; transform: translate(24px, 6px) scale(0.3); }
+  30% { opacity: 0.95; transform: translate(0, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-30px, -14px) scale(1.3); }
+}
+@keyframes tractor-dust-r {
+  0% { opacity: 0; transform: translate(-24px, 6px) scale(0.3); }
+  30% { opacity: 0.95; transform: translate(0, 0) scale(1); }
+  100% { opacity: 0; transform: translate(30px, -14px) scale(1.3); }
+}
 @keyframes rider-sway {
   0%, 100% { transform: translate(0, 0) rotate(-2deg); }
   50% { transform: translate(0, 1.5px) rotate(2deg); }
@@ -125,12 +162,6 @@
 @keyframes rider-tip {
   0%, 100% { transform: translate(0, 0) rotate(0); }
   30%, 70% { transform: translate(2px, -12px) rotate(-14deg); }
-}
-@keyframes tractor-rev {
-  0%, 100% { transform: translate(0, 0) scale(1, 1); }
-  12%, 36% { transform: translate(-0.6%, 0) scale(1.01, 0.985); }
-  24%, 48% { transform: translate(0.6%, 0) scale(0.995, 1.01); }
-  70% { transform: translate(0, -2%) scale(1, 1); }
 }
 
 /* a head that nods back and forth through a cheer */
@@ -941,21 +972,50 @@
   0%, 100% { transform: rotate(0); }
   50% { transform: rotate(-40deg); }
 }
-/* the peck: two quick pecks at the felt, tail in the air */
-.cmp-sparrow.cmp-react .cmp-body { animation: sparrow-peck 1.2s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
-.cmp-sparrow.cmp-react .cmp-head { animation: sparrow-peck-head 1.2s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
-.cmp-sparrow.cmp-react .cmp-tail { animation: sparrow-peck-tail 1.2s ease-in-out 1; }
-@keyframes sparrow-peck {
-  0%, 36%, 74%, 100% { transform: rotate(0); }
-  20%, 56% { transform: rotate(16deg); }
+/* the loop: a crouch, a takeoff on beating wings, one loop in the air with a gold streak behind it, and a landing that kicks up feathers.
+   It flies the loop drawn smaller, so the whole loop stays inside the box the table keeps for a special. */
+.cmp-sparrow .cmp-loop { transform-box: view-box; transform-origin: 196px 125px; }
+.cmp-sparrow .cmp-fly { transform-box: view-box; transform-origin: 196px 215px; }
+.cmp-sparrow.cmp-react .cmp-body { transform-box: view-box; transform-origin: 196px 354px; animation: sparrow-fly 1.8s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
+.cmp-sparrow.cmp-react .cmp-shadow { animation: sparrow-fly-shadow 1.8s ease-in-out 1; }
+.cmp-sparrow.cmp-react .cmp-loop { animation: sparrow-loop 1.8s cubic-bezier(0.45, 0, 0.55, 1) 1; }
+.cmp-sparrow.cmp-react .cmp-fly { animation: sparrow-shrink 1.8s ease-in-out 1; }
+.cmp-sparrow.cmp-react .cmp-arm-l { animation: sparrow-beat 0.15s ease-in-out 9; animation-delay: 0.14s; }
+.cmp-sparrow.cmp-react .cmp-tail { animation: sparrow-flick 0.6s ease-in-out 2; animation-delay: 0.6s; }
+.cmp-sparrow.cmp-react .cmp-trail { animation: sparrow-trail 1.8s linear 1 both; }
+.cmp-sparrow.cmp-react .cmp-feather { animation: sparrow-feather 0.4s ease-out 1 both; animation-delay: 1.39s; }
+@keyframes sparrow-fly {
+  0%, 20%, 62%, 100% { transform: translateY(0) scale(1, 1); }
+  8% { transform: translateY(0) scale(1.09, 0.87); }
+  78% { transform: translateY(0) scale(1.09, 0.88); }
+  88% { transform: translateY(-14px) scale(0.98, 1.03); }
+  95% { transform: translateY(0) scale(1.02, 0.98); }
 }
-@keyframes sparrow-peck-head {
-  0%, 36%, 74%, 100% { transform: translate(0, 0) rotate(0); }
-  20%, 56% { transform: translate(8px, 14px) rotate(22deg); }
+@keyframes sparrow-fly-shadow {
+  0%, 8%, 76%, 100% { transform: scale(1); opacity: 1; }
+  20%, 62% { transform: scale(0.6); opacity: 0.45; }
 }
-@keyframes sparrow-peck-tail {
-  0%, 36%, 74%, 100% { transform: rotate(0); }
-  20%, 56% { transform: rotate(-14deg); }
+@keyframes sparrow-loop {
+  0%, 20% { transform: rotate(0); }
+  62%, 100% { transform: rotate(-360deg); }
+}
+@keyframes sparrow-shrink {
+  0%, 8%, 76%, 100% { transform: scale(1); }
+  20%, 62% { transform: scale(0.6); }
+}
+@keyframes sparrow-beat {
+  0%, 100% { transform: rotate(0); }
+  50% { transform: rotate(-58deg); }
+}
+@keyframes sparrow-trail {
+  0%, 24% { opacity: 0; }
+  32%, 54% { opacity: 0.95; }
+  62%, 100% { opacity: 0; }
+}
+@keyframes sparrow-feather {
+  0% { opacity: 0; transform: translateX(-70px) scale(0.3) rotate(0); }
+  30% { opacity: 1; transform: translateX(0) scale(1) rotate(40deg); }
+  100% { opacity: 0; transform: translateX(26px) scale(0.9) rotate(120deg); }
 }
 
 /* The Chick */
@@ -991,25 +1051,54 @@
   20%, 70% { transform: rotate(-118deg); }
   44% { transform: rotate(-84deg); }
 }
-/* the flutter: both wings beat and it lifts off the felt */
-.cmp-chick.cmp-react .cmp-body { animation: chick-lift 1.3s ease-in-out 1; }
-.cmp-chick.cmp-react .cmp-shadow { animation: char-cheer-shadow 1.3s ease-in-out 1; }
-.cmp-chick.cmp-react .cmp-arm-l { animation: chick-beat-l 0.16s linear 7; animation-delay: 0.1s; }
-.cmp-chick.cmp-react .cmp-arm-r { animation: chick-beat-r 0.16s linear 7; animation-delay: 0.1s; }
-@keyframes chick-lift {
+/* the flutter: a crouch, a high hop on beating wings, a burst of feathers at the top, a bouncy landing */
+.cmp-chick.cmp-react .cmp-body { transform-box: view-box; transform-origin: 190px 354px; animation: chick-leap 1.5s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
+.cmp-chick.cmp-react .cmp-shadow { animation: chick-leap-shadow 1.5s ease-in-out 1; }
+.cmp-chick.cmp-react .cmp-arm-l { animation: chick-beat-l 1.5s linear 1; }
+.cmp-chick.cmp-react .cmp-arm-r { animation: chick-beat-r 1.5s linear 1; }
+.cmp-chick.cmp-react .cmp-feather { animation: chick-feather 0.8s ease-out 1 both; animation-delay: 0.52s; }
+.cmp-chick.cmp-react .cmp-feather-b { animation-name: chick-feather-b; animation-delay: 0.58s; }
+@keyframes chick-leap {
   0%, 100% { transform: translateY(0) scale(1, 1); }
-  10% { transform: translateY(0) scale(1.06, 0.92); }
-  35%, 70% { transform: translateY(-18%) scale(0.98, 1.03); }
-  52% { transform: translateY(-14%) scale(1, 1); }
-  90% { transform: translateY(0) scale(1.05, 0.94); }
+  10%, 15% { transform: translateY(0) scale(1.12, 0.84); }
+  33% { transform: translateY(-92px) scale(0.93, 1.1); }
+  46% { transform: translateY(-110px) scale(1, 1); }
+  59% { transform: translateY(-90px) scale(0.98, 1.03); }
+  74% { transform: translateY(0) scale(1.12, 0.85); }
+  84% { transform: translateY(-18px) scale(0.97, 1.04); }
+  93% { transform: translateY(0) scale(1.03, 0.97); }
+}
+@keyframes chick-leap-shadow {
+  0%, 15%, 74%, 100% { transform: scale(1); opacity: 1; }
+  46% { transform: scale(0.55); opacity: 0.4; }
 }
 @keyframes chick-beat-l {
-  0%, 100% { transform: rotate(40deg); }
-  50% { transform: rotate(104deg); }
+  0%, 100% { transform: rotate(0) scale(1); }
+  10% { transform: rotate(12deg) scale(1.25); }
+  16%, 24%, 32%, 40%, 48%, 56%, 64% { transform: rotate(118deg) scale(1.45); }
+  20%, 28%, 36%, 44%, 52%, 60% { transform: rotate(44deg) scale(1.45); }
+  70% { transform: rotate(60deg) scale(1.2); }
+  82% { transform: rotate(24deg) scale(1.1); }
 }
 @keyframes chick-beat-r {
-  0%, 100% { transform: rotate(-40deg); }
-  50% { transform: rotate(-104deg); }
+  0%, 100% { transform: rotate(0) scale(1); }
+  10% { transform: rotate(-12deg) scale(1.25); }
+  16%, 24%, 32%, 40%, 48%, 56%, 64% { transform: rotate(-118deg) scale(1.45); }
+  20%, 28%, 36%, 44%, 52%, 60% { transform: rotate(-44deg) scale(1.45); }
+  70% { transform: rotate(-60deg) scale(1.2); }
+  82% { transform: rotate(-24deg) scale(1.1); }
+}
+@keyframes chick-feather {
+  0% { opacity: 0; transform: translateX(-110px) scale(0.3) rotate(0); }
+  28% { opacity: 1; transform: translateX(0) scale(1) rotate(50deg); }
+  70% { opacity: 1; transform: translateX(16px) scale(1) rotate(120deg); }
+  100% { opacity: 0; transform: translateX(24px) scale(0.9) rotate(170deg); }
+}
+@keyframes chick-feather-b {
+  0% { opacity: 0; transform: translateX(-110px) scale(0.3) rotate(0); }
+  28% { opacity: 1; transform: translateX(-16px) scale(0.9) rotate(-60deg); }
+  70% { opacity: 1; transform: translateX(0) scale(0.9) rotate(-130deg); }
+  100% { opacity: 0; transform: translateX(8px) scale(0.8) rotate(-180deg); }
 }
 
 /* The Bun */
@@ -1038,26 +1127,42 @@
   26% { transform: translate(0, -30px); }
   62% { transform: translate(0, -22px); }
 }
-/* the steam puff: the bun swells and three puffs of steam rise */
-.cmp-bun.cmp-react .cmp-body { animation: bun-pop-body 1.3s ease-in-out 1; }
-.cmp-bun.cmp-react .cmp-head { animation: bun-swell 1.3s ease-in-out 1; }
-.cmp-bun.cmp-react .cmp-puff { animation: bun-steam 1.3s ease-out 1 both; }
-.cmp-bun.cmp-react .cmp-puff2 { animation-delay: 0.12s; }
-.cmp-bun.cmp-react .cmp-puff3 { animation-delay: 0.24s; }
+/* the pop: the bun squashes down, shoots out of the steamer on a burst of steam, turns once in the air and drops back in */
+.cmp-bun .cmp-spin { transform-box: view-box; transform-origin: 190px 192px; }
+.cmp-bun.cmp-react .cmp-body { transform-box: view-box; transform-origin: 190px 354px; animation: bun-pop-body 1.6s ease-in-out 1; }
+.cmp-bun.cmp-react .cmp-head { animation: bun-launch 1.6s cubic-bezier(0.3, 0.7, 0.3, 1) 1; }
+.cmp-bun.cmp-react .cmp-spin { animation: bun-spin 1.6s ease-in-out 1; }
+.cmp-bun.cmp-react .cmp-arm-l { animation: chick-up-l 1.6s ease-in-out 1; }
+.cmp-bun.cmp-react .cmp-arm-r { animation: chick-up-r 1.6s ease-in-out 1; }
+.cmp-bun.cmp-react .cmp-jet { animation: bun-jet 0.95s ease-out 1 both; animation-delay: 0.26s; }
+.cmp-bun.cmp-react .cmp-jet-b { animation-delay: 0.36s; }
+.cmp-bun.cmp-react .cmp-pop { animation: cmp-pop-once 0.5s ease-out 1 both; animation-delay: 0.55s; }
 @keyframes bun-pop-body {
-  0%, 100% { transform: scale(1, 1); }
-  20% { transform: scale(1.03, 0.97); }
-  34% { transform: scale(0.99, 1.02); }
+  0%, 32%, 100% { transform: scale(1, 1); }
+  13% { transform: scale(1.05, 0.94); }
+  22% { transform: scale(0.97, 1.05); }
+  71% { transform: scale(1.07, 0.92); }
+  83% { transform: scale(0.99, 1.02); }
 }
-@keyframes bun-swell {
-  0%, 100% { transform: scale(1, 1); }
-  22%, 60% { transform: scale(1.05, 0.95); }
-  34% { transform: scale(1.02, 1.05); }
+@keyframes bun-launch {
+  0%, 100% { transform: translate(0, 0) scale(1, 1); }
+  12%, 17% { transform: translate(0, 0) scale(1.17, 0.76); }
+  31% { transform: translate(0, -90px) scale(0.9, 1.13); }
+  45% { transform: translate(0, -110px) scale(1, 1); }
+  58% { transform: translate(0, -90px) scale(0.96, 1.05); }
+  70% { transform: translate(0, 0) scale(1.16, 0.8); }
+  81% { transform: translate(0, -12px) scale(0.97, 1.04); }
+  91% { transform: translate(0, 0) scale(1.04, 0.97); }
 }
-@keyframes bun-steam {
-  0%, 22% { opacity: 0; transform: translate(0, 10%) scale(0.4); }
-  40% { opacity: 0.95; transform: translate(0, -40%) scale(1.2); }
-  100% { opacity: 0; transform: translate(8%, -220%) scale(1.9); }
+@keyframes bun-spin {
+  0%, 24% { transform: rotate(0); }
+  62%, 100% { transform: rotate(360deg); }
+}
+@keyframes bun-jet {
+  0% { opacity: 0; transform: translateY(70px) scale(0.25); }
+  22% { opacity: 0.95; transform: translateY(0) scale(1); }
+  60% { opacity: 0.8; transform: translateY(-30px) scale(1.25); }
+  100% { opacity: 0; transform: translateY(-50px) scale(1.4); }
 }
 
 /* a pose's own rule outranks a plain part selector, so the still is forced */

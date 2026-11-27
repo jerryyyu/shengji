@@ -1042,24 +1042,6 @@ def test_a_late_claimant_who_leaves_mid_round_is_not_rated(env, monkeypatch):
     assert [e["user_id"] for e in _events(store)] == [host]
 
 
-def test_a_carried_leave_caps_the_next_rated_round_once(env, monkeypatch):
-    from shengji.api import ratings
-
-    srv, store, _ = env
-    host, _ = _user(store, "host")
-    _force_outcome(monkeypatch, 30)            # the host's team wins by 2 levels
-    ratings.CARRIED_CAPS.clear()
-    ratings.carry_leaver_cap(host)
-    table = Table(srv, [host, "bot", "bot", "bot"])
-    table.play_round(banker=0)
-    table.play_round(banker=0)
-    first, second = _events(store)
-    assert first["actual"] == ratings.LEAVER_SCORE_CAP and first["abandoned"] == 0
-    assert first["won"] == 1
-    assert second["actual"] > ratings.LEAVER_SCORE_CAP
-    assert ratings.CARRIED_CAPS == set()
-
-
 def test_overlapping_rounds_take_k_from_the_round_start(env, monkeypatch):
     """One account in two rooms at once, one round short of established: the
     round that ends second still uses the provisional K it started with."""
@@ -1156,13 +1138,12 @@ def test_leave_room_over_the_socket_marks_the_round_abandoned(queue_env, keypair
 def test_a_deliberate_leave_keeps_every_rating_and_penalty_rule(queue_env, keypair, monkeypatch):
     """Leave hands the seat to the bot at once, but what a leave costs is
     unchanged: the round is recorded as left, the leaver is rated as an
-    abandon whether or not the seat is marked as left, and no carried cap or
-    queue cooldown is added for an ordinary seat."""
+    abandon whether or not the seat is marked as left, and no queue cooldown
+    is added for an ordinary seat."""
     from shengji.api import ratings
 
     srv, store, client = queue_env
     private_pem, _ = keypair
-    ratings.CARRIED_CAPS.clear()
     cooldowns = []
     monkeypatch.setattr(srv.MATCHMAKER, "left_open_table", lambda *a: cooldowns.append(a))
     cookie = _session_cookie(srv.accounts, client, private_pem)
@@ -1180,7 +1161,7 @@ def test_a_deliberate_leave_keeps_every_rating_and_penalty_rule(queue_env, keypa
         unmarked = ratings.participants(room, room.ratings)
         assert marked == unmarked
         assert [(p.user_id, p.abandoned) for p in marked] == [(1, True)]
-    assert ratings.CARRIED_CAPS == set() and cooldowns == []
+    assert cooldowns == []
 
 
 def _wait_until(pred, timeout=60.0):

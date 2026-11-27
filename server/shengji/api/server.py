@@ -3560,15 +3560,15 @@ async def _ws_session(ws: WebSocket, ip: str) -> None:
                     if me in room.seats:
                         ratings.seat_left(room, room.seats.index(me))
                     # a newcomer leaving the round it joined mid-way: the
-                    # seat is a bot's again, and the leave costs (rule in
-                    # _joined_leave_penalty). At the round end that round is
+                    # seat is a bot's again, and the queue bars the table (rule
+                    # in _joined_leave_penalty). At the round end that round is
                     # over, so leaving then is an ordinary between-rounds leave.
                     joined_leave = (room.game is not None and not room.game.game_over
                                     and me in room.seats and not me.is_bot
                                     and me.joined_round == room.game.round_no
                                     and room.round is not None
                                     and room.round.phase != "round_end")
-                    leaver = (me.user_id, me.queue_id)
+                    leaver_qid = me.queue_id
                     if me in room.seats:
                         # a player who leaves is not counted as confirming
                         room.ready.discard(room.seats.index(me))
@@ -3585,7 +3585,7 @@ async def _ws_session(ws: WebSocket, ip: str) -> None:
                         _revert_to_bot(room, gone)
                         # a newcomer holding the opener's controls hands them on
                         _pass_opener_mid_game(room, gone)
-                        _joined_leave_penalty(room, *leaver)
+                        _joined_leave_penalty(room, leaver_qid)
                         kick_bots(room)
                     # the seat stays (reclaimable); bots cover it.
                     # The last human leaving closes the room.
@@ -4334,15 +4334,12 @@ def _revert_to_bot(room: Room, seat: int) -> None:
     spectate.claimed(room, room.log_event("seat_claimed", seat=seat, name=sd.name, bot=True), None)
 
 
-def _joined_leave_penalty(room: Room, uid: int | None, qid: int | None) -> None:
+def _joined_leave_penalty(room: Room, qid: int | None) -> None:
     """Leaving (or abandoning) the round one joined mid-way: this table is
-    never offered again to the account or guest (queue id ``qid``). At a
-    ranked table the leaver cap also moves to the account's (``uid``) next
-    rated round and a queue cooldown starts; a casual table's leave is
-    otherwise free."""
+    never offered again to the account or guest (queue id ``qid``), and at a
+    ranked table a queue cooldown starts. No rating cost follows: that round
+    was never rated for them, and their next rated round is scored in full."""
     ranked = ratings.ranked(room)
-    if uid is not None and ranked:
-        ratings.carry_leaver_cap(uid)
     if qid is not None:
         MATCHMAKER.left_open_table(qid, room.code, cooldown=ranked)
 
@@ -4356,7 +4353,7 @@ def _joined_round_ended(room: Room) -> None:
     for sd in room.seats:
         if (sd is not None and not sd.is_bot and sd.joined_round == game.round_no
                 and (sd.away or (not sd.connected and sd.bot_announced))):
-            _joined_leave_penalty(room, sd.user_id, sd.queue_id)
+            _joined_leave_penalty(room, sd.queue_id)
 
 
 def room_back(code: str, user_id: int | None, device: str | None) -> int | None:

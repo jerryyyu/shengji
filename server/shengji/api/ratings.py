@@ -51,9 +51,8 @@ One rated round, for each rated account on team ``t``:
   positive and costs at most ``MAX_LEAVE_LOSS``.
 
 Partners share ``R_t``, ``E``, ``S`` and ``K``, so they move by the same
-amount, except when one of them is capped: a partner who abandons the round,
-or who carries the leaver cap into it, scores at most ``LEAVER_SCORE_CAP``
-(below) and never gains rating, so after a win that partner gains less than
+amount, except when one of them is capped: a partner who abandons the round
+scores at most ``LEAVER_SCORE_CAP`` (below) and never gains rating, so after a win that partner gains less than
 the other, or nothing.
 
 Abandoning: a signed-in player who leaves a round in play (``leave_room``),
@@ -65,10 +64,12 @@ change is never positive. Leaving can then never earn more than playing on,
 never earns rating at all, and costs no more than the real result.
 Later rounds they are absent from are not rated at all.
 
-A newcomer who takes a seat at an open table mid-round and leaves (or
-abandons) that round, in which they were not rated, carries the cap instead:
-their next rated round, anywhere, scores at most ``LEAVER_SCORE_CAP``
-(``carry_leaver_cap``; kept in memory, so a restart forgets it).
+A newcomer who takes a seat mid-round and leaves (or abandons) that same
+round, in which they were not rated, carries nothing from it: they took the
+hand as it was dealt to someone else, so their next rated round, anywhere,
+is scored in full. Leaving costs them only the queue's bar on that table and,
+at a ranked table, its queue cooldown (``server._joined_leave_penalty``).
+From their first rated round on, the rules above apply to them as to anyone.
 
 Writes run on one worker thread in a single transaction per round; a
 storage failure is logged and never reaches the game. Once a round's update
@@ -156,9 +157,6 @@ HISTORY_POINTS = 200
 RECENT_GAMES = 10
 BOT_ANCHOR_NAME = "Sheng Ji bot"
 
-# Accounts whose next rated round is capped as a leave (``carry_leaver_cap``).
-CARRIED_CAPS: set[int] = set()
-
 _EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ratings")
 # Broadcast tasks are kept until done; the loop holds only weak references.
 _TASKS: set[asyncio.Task] = set()
@@ -220,9 +218,6 @@ class Participant:
     user_id: int
     seat: int
     abandoned: bool = False
-    # Scored at most LEAVER_SCORE_CAP for a leave carried from a round in
-    # which they were not rated; recorded as a played round.
-    capped: bool = False
 
 
 @dataclass
@@ -337,11 +332,11 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
                 won = rec.winner_team == team
                 exp = expected_score(strengths[team], strengths[1 - team])
                 actual = round_score(won, rec.level_change)
-                if p.abandoned or p.capped:
+                if p.abandoned:
                     actual = min(actual, LEAVER_SCORE_CAP)
                 k = k_factor(at_start[p.user_id][1], bool(provisional - {p.user_id}))
                 before = float(row["rating"])
-                delta = bounded_delta(k * (actual - exp), won, p.abandoned or p.capped)
+                delta = bounded_delta(k * (actual - exp), won, p.abandoned)
                 after = before + delta
                 partner = (p.seat + 2) % 4
                 opponents = ((p.seat + 1) % 4, (p.seat + 3) % 4)
@@ -798,10 +793,6 @@ def build_record(room: Any, tracker: RoomRatings, result: Any) -> RoundRecord | 
     parts = participants(room, tracker)
     if not parts:
         return None
-    for p in parts:
-        if p.user_id in CARRIED_CAPS:
-            CARRIED_CAPS.discard(p.user_id)
-            p.capped = not p.abandoned
     rated = {p.user_id for p in parts}
     return RoundRecord(
         game_id=f"{tracker.game_id}/{tracker.game_no}",
@@ -869,12 +860,6 @@ def round_ended(room: Any, result: Any) -> None:
         task.add_done_callback(_TASKS.discard)
 
     loop.run_in_executor(_EXECUTOR, apply_round, store, rec).add_done_callback(done)
-
-
-def carry_leaver_cap(user_id: int) -> None:
-    """Cap ``user_id``'s next rated round as a leave: they left (or
-    abandoned) a round they joined mid-way and so were not rated in."""
-    CARRIED_CAPS.add(user_id)
 
 
 def flush(timeout: float = 10.0) -> None:

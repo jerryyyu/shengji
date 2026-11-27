@@ -1,11 +1,11 @@
 // The Bun (包子), a free companion, drawn in its 400-unit box on the
 // characters' rig (`rig.ts`): gradients only, no SVG filters. A round pleated bun
 // in a bamboo steamer. The colour is a palette swap (`storePalette.ts`).
-// Its signature reaction is the steam puff: the bun swells and three puffs
-// of steam rise.
+// Its signature reaction is the pop: the bun squashes down, shoots out of
+// the steamer on a burst of steam, turns once in the air and drops back in.
 import { BUN_COLOURS } from "./storePalette";
 import type { BunColour, BunColourId } from "./storePalette";
-import { ball, confetti, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, ramp, sharedDefs } from "./rig";
+import { ball, bits, confetti, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, puff, ramp, sharedDefs } from "./rig";
 import type { CharOpts, CharPose, EyeMode } from "./rig";
 
 /** A colour by id, or a palette given whole (the CSS-variable master passes one). */
@@ -27,7 +27,7 @@ const FACE: Record<CharPose, { eyes: EyeMode; mouth: "smile" | "open" | "rest" }
 const STILL: Partial<Record<CharPose, Record<string, string>>> = {
   hop: { head: "translate(0 -12)" },
   cheer: { head: "translate(0 -30)", armL: "rotate(120 100 236)", armR: "rotate(-120 280 236)" },
-  react: { head: "translate(190 282) scale(1.05 .95) translate(-190 -282)" },
+  react: { head: "translate(0 -90)", armL: "rotate(120 100 236)", armR: "rotate(-120 280 236)" },
   sleep: { head: "translate(190 282) scale(1.04 .95) translate(-190 -282)" },
 };
 
@@ -42,7 +42,13 @@ export function bunMarkup(colour: BunColourId | BunColour, id: string, { pose = 
   const defs = `<defs>${sharedDefs(id)}${ball("dough", id, p.dough, [0.38, 0.26, 0.82])}`
     + ramp("bamboo", id, p.steamer, [0, 0, 1, 0]) + glow("blush", id, p.blush, 0.8, 0.25) + `</defs>`;
 
-  const steam = pose === "react" || pose === "idle"
+  // a steam cloud on a spoke of the steamer's rim; its keyframes slide it along the spoke
+  const jet = (a: number, r: number, late = false) => `<g transform="rotate(${a} 190 276)">`
+    + `<path class="cmp-jet${late ? " cmp-jet-b" : ""}" d="${puff(190, 176, r, r * 0.84, 6, 0.3, 0.62)}" fill="#fff" opacity=".92"/></g>`;
+  const burst = pose === "react"
+    ? jet(-72, 34) + jet(-40, 28, true) + jet(40, 28, true) + jet(72, 34)
+      + bits("cmp-pop", 190, 130, 140, 5, ["#ffd76a", "#fff6e6", p.blush], -150, -30, 1.5) : "";
+  const steam = pose === "idle"
     ? `<g fill="#fff" opacity=".85"><circle class="cmp-puff cmp-puff1" cx="150" cy="78" r="14"/><circle class="cmp-puff cmp-puff2" cx="190" cy="58" r="11"/><circle class="cmp-puff cmp-puff3" cx="228" cy="76" r="8"/></g>` : "";
   const mouth = face.mouth === "open"
     ? `<path d="M178 218q12 5 24 0q-2 16-12 16q-10 0-12-16z" fill="#8a3038"/><path d="M183 228q7-4 14 0q-3 6-7 6q-4 0-7-6z" fill="#f08a8a"/>`
@@ -63,9 +69,9 @@ export function bunMarkup(colour: BunColourId | BunColour, id: string, { pose = 
     + (detail ? `<path d="M110 300v30M150 304v32M190 305v33M230 304v32M270 300v30" stroke="${p.band}" stroke-width="2.4" opacity=".4"/>` : "");
 
   const body = part("cmp-body", basket
-    + part("cmp-head", bun + (team ? kerchief(team, 96, 284, 246, 8, 150) : "") + part("cmp-arm-l", arm(98), at.armL) + part("cmp-arm-r", arm(282), at.armR), at.head)
+    + part("cmp-head", part("cmp-spin", bun + (team ? kerchief(team, 96, 284, 246, 8, 150) : "") + part("cmp-arm-l", arm(98), at.armL) + part("cmp-arm-r", arm(282), at.armR)), at.head)
     + front + steam);
-  return defs + (shadow ? groundShadow(id, 190, 128) : "") + body + (pose === "cheer" ? confetti(190, 180) : "");
+  return defs + (shadow ? groundShadow(id, 190, 128) : "") + body + burst + (pose === "cheer" ? confetti(190, 180) : "");
 }
 
 const portraits = new Map<string, string>();

@@ -9,7 +9,7 @@ import type { ReactNode } from "react";
 import { TRACTOR_COLOURS } from "./palette";
 import type { TractorColour, TractorColourId } from "./palette";
 import { riderMarkup } from "./TractorRider";
-import { TEAM, confetti } from "./rig";
+import { TEAM, confetti, puff } from "./rig";
 import type { CharPose, Team } from "./rig";
 
 export type Eyes = "open" | "sleep";
@@ -49,7 +49,9 @@ function wheel(cx: number, cy: number, r: number, id: string, detail: boolean): 
  *  gradient ids apart from another drawing's on the same page; `detail` adds
  *  the treads and scrollwork, which are noise under 40 px; `puffs` draws the
  *  exhaust smoke; `rider` seats the farm kid at the window (`TractorRider.tsx`);
- *  `team` paints the waist band and the pad under it at the table. */
+ *  `team` paints the waist band at the table. Its signature reaction is the
+ *  wheelie: it rears up on its big wheel in three clouds of exhaust and
+ *  slams back down in dust; drawn still, it holds the wheelie. */
 export function tractorMarkup(colour: TractorColourId, id: string, { eyes = "open", detail = true, puffs = true, shadow = true, rider = false, pose = "idle", still = false, team }: {
   eyes?: Eyes; detail?: boolean; puffs?: boolean; shadow?: boolean; rider?: boolean; pose?: CharPose; still?: boolean; team?: Team;
 } = {}): string {
@@ -65,8 +67,15 @@ export function tractorMarkup(colour: TractorColourId, id: string, { eyes = "ope
     ? `<g fill="none" stroke="#2a4fb0" stroke-width="3" stroke-linecap="round" opacity=".9">${CURLS.map(([x, y, r, s]) =>
       `<path transform="translate(${x} ${y}) rotate(${r}) scale(${s})" d="${CURL}"/>`).join("")}<path d="M96 250q12-8 24 0M236 268q10-7 20 0"/></g>`
     : "";
+  const react = pose === "react";
+  const cloud = (cls: string, cx: number, cy: number, r: number, fill: string) =>
+    `<path class="${cls}" d="${puff(cx, cy, r, r * 0.82, 6, 0.4, 0.62)}" fill="${fill}"/>`;
+  const smoke = react ? cloud("cmp-smoke cmp-smoke1", 178, 34, 32, "#fff8ea") + cloud("cmp-smoke cmp-smoke2", 150, 24, 36, "#fff8ea")
+    + cloud("cmp-smoke cmp-smoke3", 198, 50, 26, "#fff8ea") : "";
+  const dust = react && !still ? cloud("cmp-dust cmp-dust-l", 84, 336, 24, "#efe3cd") + cloud("cmp-dust cmp-dust-r", 350, 338, 22, "#efe3cd") : "";
+  const reared = still && react;
   return defs + (shadow ? `<ellipse class="cmp-shadow" cx="200" cy="356" rx="140" ry="17" fill="url(#shadow-${id})"/>` : "")
-    + `<g class="cmp-body">`
+    + (reared ? `<g transform="translate(14 0) rotate(-24 140 354)">` : "") + `<g class="cmp-body">`
     + `<rect x="286" y="96" width="20" height="96" rx="8" fill="#3a3038"/>`
     + (puffs ? `<g fill="#fff8ea"><circle class="cmp-puff cmp-puff1" cx="300" cy="72" r="13"/><circle class="cmp-puff cmp-puff2" cx="318" cy="52" r="10"/><circle class="cmp-puff cmp-puff3" cx="328" cy="34" r="6.5"/></g>` : "")
     + `<path d="M92 118Q92 96 116 96H206Q228 96 228 118V258H92Z" fill="url(#body-${id})"/>`
@@ -82,7 +91,7 @@ export function tractorMarkup(colour: TractorColourId, id: string, { eyes = "ope
     + `<path d="M274 248q10 8 20 0" fill="none" stroke="#2b1713" stroke-opacity=".7" stroke-width="3.4" stroke-linecap="round"/>`
     + `<ellipse cx="244" cy="244" rx="11" ry="7" fill="#ffb0a0" opacity=".45"/><ellipse cx="324" cy="244" rx="9" ry="6" fill="#ffb0a0" opacity=".35"/>`
     + wheel(140, 282, 72, id, detail) + wheel(306, 308, 46, id, detail) + (r ? r.outside : "")
-    + `</g>` + (pose === "cheer" ? confetti(200, 170) : "");
+    + `</g>` + (reared ? `</g>` : "") + smoke + dust + (pose === "cheer" ? confetti(200, 170) : "");
 }
 
 /** An element of the drawing: its tag, its attributes, its children. */

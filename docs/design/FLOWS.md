@@ -563,14 +563,19 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   swatches (56 px, four in a row on a phone), one status line naming what is shown ("Bun · Taro") and the one
   button. Then the one switch; then **Yours**, the free companions and the ones bought, as tiles idling on felt
   with their names and a tick on the one in use; then, where the store can sell, **More companions**, the store's
-  characters with StoreKit's own price or Soon for one not launched, and Restore purchases as the last, text, row.
-  Two tiles across on a phone, three or four on a wide layout. A tap on a tile selects it into the stage in place:
+  characters with StoreKit's own price or Soon for one not launched, and Restore purchases as the last, text, row;
+  where it cannot, **Coming soon** (即将推出 / 即將推出; Jerry 2026-11-27: "show coming soon section? even if we dont
+  say shop or have a price"), the store's characters not owned as muted tiles with no price, no Buy and no store
+  wording, a selected one live on the stage (its moves cycle, a tap plays its special) with the one status line
+  Coming soon and no button, no colours and no Try on your table. Two tiles across on a phone, three or four on a wide layout. A tap on a tile selects it into the stage in place:
   the stage crossfades to it (no motion under Reduce Motion), a gold ring marks the selected tile while the tick
   stays on the one in use, and on a phone the page scrolls back up to the stage. There is no character page, no
   back and no edge swipe. A link to `#/collection/<kind>` selects that character and puts the plain address in
   its place (no history entry); while the account loads or the store's check is out for a store character it
-  waits, and one the viewer may not see leaves the one in use on the stage. A selected character that goes away
-  (a refund, another account, the store turned off) gives the stage back to the one in use. Each character
+  waits, and one the viewer may not see leaves the one in use on the stage; a store character the viewer cannot buy
+  opens as Coming soon. A selected character that goes away gives the stage back to the one in use; a store
+  character the viewer can no longer buy (a refund, another account, the store turned off) stays on the stage as
+  Coming soon. Each character
   appears once: buying one sends its tile up into Yours. No Shop segment, button or page, no leaderboard row, no
   state chips.
 - **One rule for taps:** a tap on a companion or a colour only shows it (the gold ring is "looking at"); the one
@@ -582,8 +587,8 @@ watcher's card does this; a player's round end still waits for Next or Leave.
 - **The store** (store plumbing, behind `features.store`: the Collection allowlist plus `STORE_ENABLED=1`, or
   for testing purchases before launch, the accounts listed in the `STORE_ACCOUNTS` secret):
   More companions and Restore purchases show only in an app build with the StoreKit plugin, to an account the
-  store is on for, off the China mainland storefront; elsewhere the grid is Yours alone, and a guest on the website
-  gets one Get the app row (the App Store link) in their place. Buying and restoring need an Apple or Google
+  store is on for, off the China mainland storefront; elsewhere the grid is Yours then Coming soon, and a guest on
+  the website also gets one Get the app row (the App Store link) under it. Buying and restoring need an Apple or Google
   sign-in (Jerry 2026-11-26): for the app's own device account a selected store character shows the price and a
   gold Sign in to buy in the button's place, and Restore purchases opens the same identity sheet; signing in links
   the device account (its rounds and looks carry over) and leaves the player on the same page, the same character selected, where Buy now buys.

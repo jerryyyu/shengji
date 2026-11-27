@@ -5,7 +5,7 @@
 // #/collection/<kind> selects that character and leaves the plain address;
 // the phone's sideways tab swipe still works on the page. Real touch input
 // (CDP Input.dispatchTouchEvent) lets the browser's own hit testing pick
-// targets.
+// targets. A guest, who cannot buy, sees the store characters as Coming soon.
 //   node e2e/collection.mjs [device-regex]
 import { Report, launch, open, scenario, sleep, until } from "./lib.mjs";
 import { fakeSocketScript } from "./fake.mjs";
@@ -110,6 +110,27 @@ try {
       await rep.check(`${device} a fresh load of #/collection/sparrow selects the Sparrow`,
         loaded.stage === "cmp-sparrow" && loaded.hash === "#/collection" ? null : JSON.stringify(loaded), fresh);
       await fresh.context().close();
+    });
+
+    // a guest cannot buy: the store's characters show as Coming soon, no price and no button
+    await scenario(rep, `${device} coming soon`, page, async () => {
+      await until(page, () => document.querySelector(".coll-soon .coll-tile") !== null, { timeout: 5000 });
+      await page.locator(".coll-soon .coll-tile", { hasText: "Jade Rabbit" }).tap();
+      await sleep(900);
+      const got = await page.evaluate(() => {
+        const s = document.querySelector(".char-stage").getBoundingClientRect();
+        return {
+          tiles: document.querySelectorAll(".coll-soon .coll-tile").length,
+          rabbit: document.querySelector(".char-stage svg.cmp-rabbit") !== null,
+          status: document.querySelector(".char-page .coll-status")?.textContent,
+          button: document.querySelector(".char-page .coll-use") !== null,
+          price: /\$|Buy|Shop/.test(document.querySelector(".coll-page").textContent),
+          inView: s.top >= 0 && s.bottom <= innerHeight,
+        };
+      });
+      await rep.check(`${device} a Coming soon tile selects its character with the status Coming soon and no button`,
+        got.tiles === 7 && got.rabbit && got.status === "Coming soon" && !got.button && !got.price && got.inView
+          ? null : JSON.stringify(got), page);
     });
 
     if (phone) {

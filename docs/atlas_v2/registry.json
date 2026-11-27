@@ -5339,7 +5339,7 @@
    "comparator": "release 55 as served (W64/K8, 3 s/3 s), same weights and packages; head to head",
    "vs": 55,
    "vs_group": "release 55 as served: a 600-deal seat-swapped teacher certification (expert-then-distill gate), not a common-control screen",
-   "instrument": "600 fresh seat-swapped deal pairs [2709000000, 2709000600) (1,200 rounds), deal-key cleared against both lineages (#1960); one look; 8 workers; predeclared bar mean >= +0.15 AND one-sided 95% lower bound > 0; preceded by an outcome-blind 48-deal timing run (gate passed, projection 1,526 s)",
+   "instrument": "600 fresh seat-swapped deal pairs [2709000000, 2709000600) (1,200 rounds), deal-key cleared against both lineages (#1960); one look; 8 workers; predeclared bar mean >= +0.15 AND the lower endpoint of the paired 95% interval > 0 (PARK below a mean of +0.05); preceded by an outcome-blind 48-deal timing run (gate passed, projection 1,526 s)",
    "seeds": "2709000000 (ultra)",
    "point": 0.0425,
    "lo": 0.01,

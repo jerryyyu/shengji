@@ -1455,8 +1455,8 @@ dialog.conn-lost::backdrop { background: var(--chrome); }
   display: none;
 }
 
-/* no box of its own: the name and controls stay items of the you-area; the
-   phone layout makes it a centred row */
+/* no box of its own here: a layout places your name and controls (the
+   phone's block, and the wide table's row under "Your area") */
 .you-row {
   display: contents;
 }
@@ -1599,6 +1599,111 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   min-height: 38px;
   align-items: center;
   max-width: 900px;
+}
+
+/* Off the phone your row is the phone's, at the wide table's sizes: three
+   columns, the middle one centred under the trick. The action (Play, Bury,
+   the declare row) stands in it; Clear just right of Play, and your name
+   and the move timer just left of the action, both outside the middle
+   column, so neither moves the action. The hint stands above the row. */
+:root:not(.phone-landscape) .you-row {
+  --you-gap: 8px;
+  /* the room right of your name: a gap, and the timer with its own gap */
+  --name-room: var(--you-gap);
+  /* the least your name pill keeps: its crown and tags and a few letters of
+     your name; the middle column gives way first, its controls wrapping */
+  --pill-min: 160px;
+  display: grid;
+  grid-template-columns: minmax(calc(var(--pill-min) + var(--name-room)), 1fr) minmax(0, max-content)
+    minmax(calc(var(--pill-min) + var(--name-room)), 1fr);
+  align-items: center;
+  align-self: stretch;
+  min-height: 38px;
+  /* the same either side, so the middle column stays on the table's centre */
+  padding-inline: calc(16px + max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px)));
+}
+
+/* a long name ends in an ellipsis rather than leave the screen */
+:root:not(.phone-landscape) .you-row > .you-tagline {
+  grid-area: 1 / 1;
+  justify-self: end;
+  min-width: 0;
+  max-width: calc(100% - var(--name-room));
+  margin: 0 var(--name-room) 0 0;
+}
+
+:root:not(.phone-landscape) .you-row > .you-tagline .you-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root:not(.phone-landscape) .you-row > .you-tagline > :not(.you-name) {
+  flex: none;
+}
+
+:root:not(.phone-landscape) .you-row > .action-bar {
+  grid-area: 1 / 2;
+  margin: 0;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* Three or more declarations read "♠2", "♠2 pair", "NT" after one "Declare"
+   label, as on the phone, so the row stays short; a row still too wide for
+   the middle column wraps. */
+:root:not(.phone-landscape) .you-row > .action-bar:has(> .btn.gold ~ .btn.gold ~ .btn.gold) {
+  .declare-full {
+    display: none;
+  }
+
+  .declare-short {
+    display: inline;
+  }
+
+  &::before {
+    content: attr(data-declare-label);
+    align-self: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(8, 20, 14, 0.78);
+    color: var(--gold);
+    font-size: var(--fs-12);
+    font-weight: 700;
+  }
+
+  .btn.gold {
+    min-width: 52px;
+    padding-inline: 12px;
+  }
+}
+
+:root:not(.phone-landscape) :is(.phase-play, .phase-bury) .you-row > .action-bar {
+  display: contents;
+}
+
+:root:not(.phone-landscape) :is(.phase-play, .phase-bury) .you-row :is(.play-wrap, .bury-btn) {
+  grid-area: 1 / 2;
+  justify-self: center;
+}
+
+/* Clear, or burying the coach's count of points, just right of the action */
+:root:not(.phone-landscape) :is(.phase-play, .phase-bury) .you-row .action-bar > :is(.btn.subtle, .bury-points) {
+  grid-area: 1 / 3;
+  justify-self: start;
+  margin-left: var(--you-gap);
+}
+
+/* the move timer stands just left of the action, your name left of the timer */
+:root:not(.phone-landscape) :is(.phase-play, .phase-bury) .you-row .action-bar > .timer-ring {
+  grid-area: 1 / 1;
+  justify-self: end;
+  margin-right: calc(var(--you-gap) * 1.5);
+}
+
+:root:not(.phone-landscape) :is(.phase-play, .phase-bury) .you-row:has(.action-bar > .timer-ring) {
+  --name-room: calc(var(--you-gap) * 2.5 + 44px);
 }
 
 /* ---------- Hand ---------- */
@@ -3746,8 +3851,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
        - the trick cross's card is as large as the height between the top
          seat and your row allows, the side seats level with its centre; the
          hand gives up to a fifth of its card where that lets it grow;
-       - your name, the hint and your controls share one row above the hand,
-         and the cross stretches down into the height that row frees.
+       - your name and your controls share one row above the hand, the
+         action centred as on the phone, and the cross stretches down into
+         the height that row frees.
      phoneLayout.ts sets the class only on a screen at least 810x740
      (TABLET_SCREEN), touch or mouse: from there the cross keeps a six-card
      trick's cards at the wide table's 52px or more. A smaller window never
@@ -3804,7 +3910,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   .hand {
-    grid-area: 2 / 1 / 3 / -1;
+    align-self: stretch;
     --cw: var(--hcw);
     --pitch: min(calc(var(--hcw) * 0.5),
       calc((var(--hand-w) - var(--hcw)) / max(1, calc(var(--n, 25) - 1))));
@@ -3976,38 +4082,30 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-size: calc(90 * var(--u));
   }
 
-  /* One row above the hand: your name at its start, your controls at its
-     end and the hint between them, so the hint showing never moves a
-     control. The row spans the hand, its ends level with the hand's outer
-     cards, and is never narrower than a set width, so a short hand late in
-     the round keeps the controls where they were. */
+  /* One row above the hand, laid out as the phone's (the row under "Your
+     area"): the action centred under the trick, your name and timer left
+     of it, Clear right of it. The hint stands above the row, out of the
+     flow, so showing it never moves a control. */
   .you-area {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr) max-content;
-    align-items: center;
-    column-gap: calc(12 * var(--u));
-    row-gap: calc(8 * var(--u));
-    width: fit-content;
-    min-width: min(100vw, calc(640 * var(--u)));
-    margin-inline: auto;
+    gap: calc(8 * var(--u));
+  }
+
+  .you-row {
+    --you-gap: calc(8 * var(--u));
+    --pill-min: calc(160 * var(--u));
+    min-height: var(--row-h);
   }
 
   .hand-line,
   .hand-line.help {
-    grid-area: 1 / 2;
-    justify-self: start;
-    position: static;
-    transform: none;
-    min-width: 0;
-    max-width: 100%;
+    max-width: min(calc(640 * var(--u)), calc(100vw - 48px));
     white-space: normal;
+    width: max-content;
     text-wrap: balance;
+    text-align: center;
   }
 
   .you-tagline {
-    grid-area: 1 / 1;
-    justify-self: start;
-    margin-left: calc(24px + env(safe-area-inset-left, 0px));
     padding: calc(5 * var(--u)) calc(16 * var(--u));
     font-size: max(var(--fs-14), calc(14 * var(--u)));
   }
@@ -4017,9 +4115,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   .action-bar {
-    grid-area: 1 / 3;
-    justify-self: end;
-    margin-right: calc(24px + env(safe-area-inset-right, 0px));
     gap: calc(8 * var(--u));
     min-height: var(--row-h);
   }

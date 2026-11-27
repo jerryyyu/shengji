@@ -44,7 +44,7 @@ const draw = async (node: React.ReactNode) => {
   await act(async () => { root.render(node); });
   await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 };
-// the Collection opens on its grid; a tap on the ticked tile (the one in use) opens its page
+// the stage already shows the one in use; the ticked tile selects it (a no-op then)
 const drawOpen = async () => {
   await draw(<CollectionPage />);
   const worn = [...host.querySelectorAll<HTMLButtonElement>(".coll-yours .coll-tile")].find((b) => b.querySelector(".coll-tick"));
@@ -171,7 +171,7 @@ describe("the Collection tab", () => {
   it("shows the Tractor on the felt, the companions, its colours, the one status line, the button and the switch", async () => {
     authState.current = { status: "in", clientId: "cid", user };
     await drawOpen();
-    expect(host.querySelector(".large-title")?.textContent).toBe("Tractor");
+    expect(host.querySelector(".large-title")?.textContent).toBe("Collection");
     expect(host.querySelector(".coll-felt svg.cmp.cmp-idle")).not.toBeNull();
     const swatches = [...host.querySelectorAll<HTMLButtonElement>(".coll-swatch")];
     expect(swatches).toHaveLength(COMPANIONS.tractor.length);
@@ -184,16 +184,16 @@ describe("the Collection tab", () => {
     expect(host.querySelector(".coll-use")?.textContent).toBe("In use");
     // no visible words on the swatches
     expect(host.querySelector(".coll-swatches")?.textContent).toBe("");
-    // the switch is on the grid
-    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-back")!.click(); });
+    // the switch is on the same page, under the stage
     expect(host.querySelector(".coll-at-table")?.textContent).toBe("Show at the table");
   });
 
-  it("a locked colour's button names what unlocks it; an unlocked one is put in use by Use", async () => {
+  it("a locked colour's status line names what unlocks it; an unlocked one is put in use by Use", async () => {
     authState.current = { status: "in", clientId: "cid", user };
     await drawOpen();
     await act(async () => { swatch("Lantern orange").click(); });
-    expect(host.querySelector(".coll-use")?.textContent).toBe("Win 25 ranked rounds to unlock · 14 of 25");
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("Win 25 ranked rounds to unlock · 14 of 25");
+    expect(host.querySelector(".coll-use")?.textContent).toBe("Use");
     expect(fetches.some((f) => f.url === "/api/me/look")).toBe(false);
     await act(async () => { swatch("Imperial yellow").click(); });
     expect(fetches.some((f) => f.url === "/api/me/look")).toBe(false);
@@ -212,7 +212,8 @@ describe("the Collection tab", () => {
     expect(swatch("Imperial yellow").classList.contains("locked")).toBe(false);
     expect(swatch("Lantern orange").classList.contains("locked")).toBe(false);
     await act(async () => { swatch("Jade").click(); });
-    expect(host.querySelector(".coll-use")?.textContent).toBe("Win 50 ranked rounds to unlock · 45 of 50");
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("Win 50 ranked rounds to unlock · 45 of 50");
+    expect(host.querySelector(".coll-use")?.textContent).toBe("Use");
   });
 
   it("a guest's Show at the table stays on the device", async () => {

@@ -552,29 +552,30 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   is the move clock. The portrait replaces the Google picture too, so every player looks the same way to everyone.
 - **The Collection tab** (伙伴 in Chinese; Jerry 2026-11-26 took the red team's call: 收藏 reads as Favourites,
   and the gamer words 装备 and 待机 are gone, the button reading 使用 / 使用中) is the third of four, its icon four
-  small tiles with one filled when selected. It is one grid (Jerry 2026-11-26, the unified grid, design B, which
-  replaced the one page with its companions strip): at the top the one in use, small, on felt, idle with a
-  hop now and then, a tap playing its special once (Jerry 2026-11-26: "show the active character on top so
-  clicking it triggers an animation"), and the one switch; then **Yours**, the free companions and the ones bought, as tiles idling on felt with
-  their names and a tick on the one in use; then, where the store can sell, **More companions**, the store's
+  small tiles with one filled when selected. It is one page (Jerry 2026-11-27: "clicking a character should just
+  change the top character above the tiles instead of a new page"; before, design B's grid opened a separate
+  character page). At the top, the **stage**: the selected character (the one in use until a tile is tapped) on
+  a corner of felt, cycling through its moves by itself while on screen (idle, hop, cheer, its special, a short
+  sleep, each move for its own animation's length; Jerry 2026-11-26: "all the animations there like the mock"), a
+  tap playing its special from its start, still under Reduce Motion (a tap shows the special drawn still). Under
+  it, the selected character's Try on your table (it stands beside a partner on your team's pads), its colour
+  swatches (56 px, four in a row on a phone), one status line naming what is shown ("Bun · Taro") and the one
+  button. Then the one switch; then **Yours**, the free companions and the ones bought, as tiles idling on felt
+  with their names and a tick on the one in use; then, where the store can sell, **More companions**, the store's
   characters with StoreKit's own price or Soon for one not launched, and Restore purchases as the last, text, row.
-  Two tiles across on a phone, three or four on a wide layout. Each character appears once: buying one sends its
-  tile up into Yours. No Shop segment, button or page, no leaderboard row, no state chips.
-- **The character page**, opened by any tile, is the same for every character: the look on a corner of felt,
-  cycling through its moves by itself while on screen (idle, hop, cheer, its special, a short sleep, each move
-  for its own animation's length; Jerry 2026-11-26: "all the animations there like the mock"), a tap playing its
-  special at once, still under Reduce Motion (a tap shows the special drawn still); Try on your table, which stands it beside a partner on your
-  team's pads; its colour swatches (56 px, four in a row on a phone); one status line naming what is shown ("Bun ·
-  Taro"); and one button. Back (Collection, in the title row) returns to the grid. The page is its own history
-  entry, `#/collection/<kind>` (Jerry 2026-11-26: "Collection grid swipe back doesn't work"), so the browser's back,
-  Android's and the iOS app's own edge swipe return to the grid too, and a swipe from the screen's left edge (a
-  start left of 24 px, past 60 px, the page following the finger except under Reduce Motion) does the same where
-  the shell's swipe is off. The page does not page the tabs sideways; the edge swipe is its one horizontal gesture.
-  A page asked for by its address waits for the account and the store's check before it opens or gives way to
-  the grid.
+  Two tiles across on a phone, three or four on a wide layout. A tap on a tile selects it into the stage in place:
+  the stage crossfades to it (no motion under Reduce Motion), a gold ring marks the selected tile while the tick
+  stays on the one in use, and on a phone the page scrolls back up to the stage. There is no character page, no
+  back and no edge swipe. A link to `#/collection/<kind>` selects that character and puts the plain address in
+  its place (no history entry); while the account loads or the store's check is out for a store character it
+  waits, and one the viewer may not see leaves the one in use on the stage. A selected character that goes away
+  (a refund, another account, the store turned off) gives the stage back to the one in use. Each character
+  appears once: buying one sends its tile up into Yours. No Shop segment, button or page, no leaderboard row, no
+  state chips.
 - **One rule for taps:** a tap on a companion or a colour only shows it (the gold ring is "looking at"); the one
-  button puts it in use: Use, In use (inert), for a locked Tractor colour what unlocks it ("Win 25 ranked rounds
-  to unlock · 3 of 25", "Win a ranked round to unlock", inert), for a guest Sign in to use, which opens the
+  button puts it in use: Use, In use (inert), for a locked Tractor colour Use (inert, one size) with what unlocks
+  it on the stage's status line ("Win 25 ranked rounds to unlock · 3 of 25", "Win a ranked round to unlock"), for
+  a guest Sign in to use, which opens the
   identity sheet, and for a store character not owned Buy with StoreKit's price (Soon, inert, for one not
   launched). A tick marks the companion and the colour in use. A guest sees no counts.
 - **The store** (store plumbing, behind `features.store`: the Collection allowlist plus `STORE_ENABLED=1`, or
@@ -582,21 +583,21 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   More companions and Restore purchases show only in an app build with the StoreKit plugin, to an account the
   store is on for, off the China mainland storefront; elsewhere the grid is Yours alone, and a guest on the website
   gets one Get the app row (the App Store link) in their place. Buying and restoring need an Apple or Google
-  sign-in (Jerry 2026-11-26): for the app's own device account a store character's page shows the price and a
+  sign-in (Jerry 2026-11-26): for the app's own device account a selected store character shows the price and a
   gold Sign in to buy in the button's place, and Restore purchases opens the same identity sheet; signing in links
-  the device account (its rounds and looks carry over) and leaves the player on the same page, where Buy now buys.
+  the device account (its rounds and looks carry over) and leaves the player on the same page, the same character selected, where Buy now buys.
   A purchase is Apple's sheet, then the server verifies Apple's signed transaction, bound before the sheet opens
   to the account that pays; success is the character's cheer and the success haptic, nothing written, and Use
-  takes Buy's place. Waiting for approval (Ask to Buy) and a refused purchase use the page's one status line, a
+  takes Buy's place. Waiting for approval (Ask to Buy) and a refused purchase use the stage's one status line, a
   failed restore the grid's. A transaction the server has not settled stays with the App Store and is delivered
   again when the Collection opens or the account signs in.
 - **The store's characters**, each in its own art with four colours and its own signature reaction: on sale, the
   Spring Lamb 小羊 (the horn butt, through a burst of stars and spring petals) and the Baby Panda 熊猫宝宝 / 熊貓寶寶
-  (the bamboo bite); coming, shown as Soon tiles and pages in their idle art with no look id, so they cannot be put
+  (the bamboo bite); coming, shown as Soon tiles and, selected, on the stage in their idle art with no look id, so they cannot be put
   in use or bought, the Jade Rabbit 玉兔 (breaks a mooncake and holds half out), the Lucky Cat 招财猫 / 招財貓 (beckons
   and turns up a card, a new suit each time and the joker about one time in twelve), the Fortune Fox 福狐 (spills
   coins from its red envelope), the Dancing Lion 醒狮 / 醒獅 (its dance costume appears only for the dance) and the
-  Little Dragon 小龙 / 小龍 (flies a loop and breathes fire). A character page plays each reaction to its end. At the
+  Little Dragon 小龙 / 小龍 (flies a loop and breathes fire). The stage plays each reaction to its end. At the
   table they are drawn as the free companions are: still drawings on their team's pads that walk, hop, cheer and
   grow.
 - **Show at the table** (Jerry 2026-11-26, finding 2: one labelled switch, on by default) replaces Team ·
@@ -661,9 +662,10 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   round your team won; games won count for nothing here). The server
   refuses a locked colour; a colour already in use stays in use though its count falls short, but once changed
   it is locked again until earned. A colour newly unlocked (Jerry 2026-11-26, red team finding 9) puts a small gold "New" 新 on its
-  character's tile in the grid and on its swatch's top edge; opening that character's page shows it. It is seen once
-  that page is opened or the colour is put in use; the swatch keeps the mark for that visit until it is tapped, and an
-  unlock a refresh brings while the page is open is shown unless a colour there was tapped. Looks that came with a
+  character's tile in the grid and on its swatch's top edge; selecting that character shows it on the stage. It is
+  seen once its character is on the stage or the colour is put in use; the swatch keeps the mark for that visit
+  until it is tapped, and an unlock a refresh brings while its character is on the stage is shown unless a colour
+  there was tapped. Looks that came with a
   purchase are not marked (their tile arrives in Yours). The gold dot on the tab stays while any new colour is unseen. Seen colours are kept per account on this device;
   an account's first reading records what it has, so nothing it starts with is new.
 - Offline and Nearby tables know no account, so they show the initials until the Collection is on for

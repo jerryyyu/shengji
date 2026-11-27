@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth";
 import { appStoreUrl } from "../appStore";
 import { COMPANIONS, COMPANION_KINDS, COMPANION_PRODUCTS, FREE_KINDS, lookCatalogue, lookId, parseLook } from "../companion/look";
@@ -6,40 +6,41 @@ import type { Colour, CompanionKind, LookEntry } from "../companion/look";
 import type { DrawnColour, DrawnKind } from "../companion/kinds";
 import { Companion } from "../companion/Companion";
 import { SOON, soonColour } from "../companion/characters";
-import { TOP_CYCLE, useLivePose } from "../companion/livePose";
 import type { SoonKind } from "../companion/characters";
 import { lookAccount, markLooksSeen, markSeen, newLooks } from "../companion/seen";
 import { setCompanionMode, shownAtTable, useCompanionMode } from "../companion/mode";
 import { equip, intend, refreshAccount } from "../companion/writes";
 import LargeTitlePage from "../home/LargeTitlePage";
-import { WIDE, leaveCollectionItem, pushCollectionItem, useCollectionItem } from "../home/route";
+import { WIDE, settleCollectionItem, useCollectionItem } from "../home/route";
 import { useTabScroll } from "../home/session";
 import { useT } from "../i18n";
 import { isNative } from "../native";
+import { prefersReducedMotion } from "../motion";
 import { useMediaQuery } from "../phoneLayout";
 import { useShop } from "../store/shop";
 import { showToast } from "../toast";
-import CharacterPage, { Stage, Tick, kindName, lookName } from "./CharacterPage";
+import CharacterPage, { SHORT_SCREEN, Stage, Tick, kindName, stageSize } from "./CharacterPage";
 import { BuyFoot, RestoreRow } from "./StoreFoot";
-import { useEdgeSwipeBack } from "../home/useEdgeSwipeBack";
 import "../companion/collection.css";
 
-type Opened = CompanionKind | SoonKind | null;
-const isSoon = (k: Opened): k is SoonKind => (SOON as readonly string[]).includes(k ?? "");
-const isPage = (k: string | null): k is CompanionKind | SoonKind =>
+type Selected = CompanionKind | SoonKind;
+const isSoon = (k: Selected | null): k is SoonKind => (SOON as readonly string[]).includes(k ?? "");
+const isSelectable = (k: string | null): k is Selected =>
   k !== null && (Object.prototype.hasOwnProperty.call(COMPANIONS, k) || (SOON as readonly string[]).includes(k));
 
 /** One character's tile in the grid: its figure idling on felt, its name,
- *  and in More companions its price or Soon. The tick marks the one in use,
+ *  and in More companions its price or Soon. A ring marks the one selected
+ *  into the stage, the tick the one in use,
  *  and "New" one with a colour newly unlocked and not yet seen; a tile just
  *  bought rises into Yours (`arrive`). */
-function Tile({ kind, colour, label, sub, gold, dim, worn, isNew, arrive, onOpen, onArrived }: {
+function Tile({ kind, colour, label, sub, gold, dim, worn, isNew, selected, arrive, onOpen, onArrived }: {
   kind: DrawnKind; colour: DrawnColour; label: string; sub?: string; gold?: boolean; dim?: boolean;
-  worn?: boolean; isNew?: boolean; arrive?: boolean; onOpen: () => void; onArrived?: () => void;
+  worn?: boolean; isNew?: boolean; selected?: boolean; arrive?: boolean; onOpen: () => void; onArrived?: () => void;
 }) {
   const t = useT();
   return (
-    <button type="button" className={`coll-tile${dim ? " dim" : ""}${arrive ? " arrive" : ""}`} onClick={onOpen}
+    <button type="button" className={`coll-tile${dim ? " dim" : ""}${arrive ? " arrive" : ""}${selected ? " selected" : ""}`}
+            aria-pressed={selected ? "true" : "false"} onClick={onOpen}
             onAnimationEnd={(e) => { if (e.currentTarget === e.target) onArrived?.(); }}>
       <span className="coll-tile-stage">
         <Companion kind={kind} colour={colour} size={88} state="idle" />
@@ -52,69 +53,82 @@ function Tile({ kind, colour, label, sub, gold, dim, worn, isNew, arrive, onOpen
   );
 }
 
-/** The companion in use, small on felt at the top of the grid: idle, with a
- *  hop now and then while on screen; a tap plays its special (once, then a
- *  short rest before another tap counts). */
-function WornFelt({ kind, colour, label }: { kind: CompanionKind; colour: Colour; label: string }) {
-  const felt = useRef<HTMLDivElement>(null);
-  const live = useLivePose(kind, TOP_CYCLE, felt, { cooldown: true });
-  return (
-    <div ref={felt} className={`coll-felt coll-worn${live.paused ? " live-paused" : ""}`}>
-      <button type="button" className="coll-figure coll-press" aria-label={label} onClick={live.tap}>
-        <Companion key={live.key} kind={kind} colour={colour} size={96} state={live.pose} onPoseEnd={live.onPoseEnd} />
-      </button>
-    </div>
-  );
-}
-
-/** The Collection tab: one grid. At the top, the one in use, small (a tap
- *  plays its special: `WornFelt`), and Show
- *  at the table. Yours: the free companions and the ones bought, a tick on
- *  the one in use. Where the store can sell (`useShop`), More companions:
- *  the store's characters with StoreKit's price, or Soon, and Restore
- *  purchases as the last row; a guest on the website gets one Get the app
- *  row instead, and the China mainland storefront neither. Any tile opens
- *  the one character page (Use, In use, Buy, Sign in to buy or the unlock
- *  line); a purchase there sends its tile up into Yours. A colour newly
- *  unlocked marks its character's tile and its own swatch "New"; opening
- *  that character's page, or putting the colour in use, records it as seen
- *  (which clears the tab's dot), and its swatch keeps the mark for this
- *  visit until tapped. */
+/** The Collection tab: one page. At the top, the selected character (the
+ *  one in use until a tile is tapped) live on felt: its moves cycle by
+ *  themselves and a tap plays its special. Under it, its colours, Try on your
+ *  table, the one status line and the one button (Use, In use, the unlock
+ *  line, Buy, Sign in to buy, or Soon); then Show at the table, then the
+ *  grid. Yours: the free companions and the ones bought, a tick on the one in
+ *  use. Where the store can sell (`useShop`), More companions: the store's
+ *  characters with StoreKit's price, or Soon, and Restore purchases as the
+ *  last row; a guest on the website gets one Get the app row instead, and
+ *  the China mainland storefront neither. A tap on a tile selects it into the
+ *  stage, in place (a ring marks the selected tile; on a phone the page
+ *  scrolls back up to the stage); a purchase sends its tile up into Yours. A
+ *  link to `#/collection/<kind>` selects that character and leaves the plain
+ *  address. A colour newly unlocked marks its character's tile and its own
+ *  swatch "New"; selecting that character, or putting the colour in use,
+ *  records it as seen (which clears the tab's dot), and its swatch keeps the
+ *  mark for this visit until tapped. */
 export default function CollectionPage() {
   const t = useT();
   const account = useAuth();
   const user = account.status === "in" ? account.user : null;
   const phone = !useMediaQuery(WIDE);
+  const short = useMediaQuery(SHORT_SCREEN);
   const scroller = useTabScroll("collection", true);
   const inUse = lookId(parseLook(user?.look));
   const looks = lookCatalogue({ rounds: user?.rounds_played ?? 0, ranked_wins: user?.ranked_wins ?? 0, ranked_games: user?.ranked_games ?? 0 },
                               inUse, user?.looks);
   const shop = useShop();
-  const [opened, setOpened] = useState<Opened>(null);
+  const worn = parseLook(inUse);
+  // the character the player picked; null follows the one in use
+  const [picked, setPicked] = useState<Selected | null>(null);
   const [shown, setShown] = useState<string>(inUse);
   const [arrived, setArrived] = useState<CompanionKind | null>(null);
-  const [status, setStatus] = useState("");
+  // Buy's answer belongs to the product it was for, Restore's to its row:
+  // each is said on its own line, and a late answer never reaches another stage
+  const [bought, setBought] = useState<{ product: string; text: string } | null>(null);
+  const [restored, setRestored] = useState("");
   const [cheer, setCheer] = useState(0);
+  // a selection the player made swaps the stage with a short crossfade
+  const [swaps, setSwaps] = useState(0);
   const who = lookAccount(user);
   // the looks new on this visit for this viewer, marked until tapped; another
   // viewer signed in on the open page starts a visit of its own
   const [visit, setVisit] = useState<{ who: string | null; ids: string[] }>(
     () => ({ who, ids: who === null ? [] : newLooks(who, user?.looks) }));
   const fresh = visit.who === who ? visit.ids : [];
-  // The colour shown on a character's page. Opening a page shows its first
-  // new colour, else the one in use or its first. Until the player taps a
-  // colour there it follows the look in use (of that character) and moves to
-  // a colour of it a refresh brings as new; a tap holds it through any
-  // refresh, and Use hands it back to the look in use (so a failed Use shows
-  // the look put back). A new viewer (another account, or a device account
-  // linked) starts the open page again from their own looks.
+  const entriesOf = (k: CompanionKind) => looks.filter((l) => parseLook(l.id).kind === k);
+  const owns = (k: CompanionKind) => !COMPANION_PRODUCTS[k] || entriesOf(k).some((e) => e.unlocked);
+  const colourOf = (k: CompanionKind): Colour => (worn.kind === k ? worn.colour : COMPANIONS[k][0]);
+
+  // A pick must still be one this viewer may see: its character still listed
+  // (a refund, a revocation or another account takes an owned one away), and
+  // a store character only while the store is shown. One that is not gives
+  // the stage back to the one in use.
+  const available = (k: Selected): boolean => {
+    if (isSoon(k)) return shop.shown;
+    if (entriesOf(k).length === 0) return false;
+    return !COMPANION_PRODUCTS[k] || owns(k) || shop.shown;
+  };
+  const selected: Selected = picked !== null && available(picked) ? picked : worn.kind;
+  const kindShown = isSoon(selected) ? null : selected;
+
+  // The colour shown on the stage. Selecting a character shows its first new
+  // colour, else the one in use or its first. Until the player taps a colour
+  // it follows the look in use (of that character) and moves to a colour of
+  // it a refresh brings as new; a tap holds it through any refresh, and Use
+  // hands it back to the look in use (so a failed Use shows the look put
+  // back). A new viewer (another account, or a device account linked)
+  // starts the stage again from their own looks.
   const manual = useRef(false);
   const viewer = useRef(who);
   const wore = useRef(inUse);
   useEffect(() => {
     const changed = viewer.current !== who;
     viewer.current = who;
-    const kind = typeof opened === "string" && !isSoon(opened) ? opened : null;
+    const kind = kindShown;
     let next: string | null = null;
     if (changed) {
       manual.current = false;
@@ -165,138 +179,92 @@ export default function CollectionPage() {
       showToast(err instanceof Error ? err.message : String(err));
     });
   };
-  const worn = parseLook(inUse);
-  const entriesOf = (k: CompanionKind) => looks.filter((l) => parseLook(l.id).kind === k);
-  const owns = (k: CompanionKind) => !COMPANION_PRODUCTS[k] || entriesOf(k).some((e) => e.unlocked);
-  const colourOf = (k: CompanionKind): Colour => (worn.kind === k ? worn.colour : COMPANIONS[k][0]);
-  // a character's page is its own history entry (`#/collection/<kind>`), so
-  // back, forward and the edge swipe move between it and the grid
-  const view = (k: CompanionKind | SoonKind) => {
-    setStatus("");
-    setOpened(k);
+
+  // Select a character into the stage, in place.
+  const choose = (k: Selected) => {
+    setBought(null);
+    setPicked(k);
     if (!isSoon(k)) {
       const list = entriesOf(k);
       const id = fresh.find((f) => parseLook(f).kind === k && list.some((e) => e.id === f && e.unlocked))
         ?? (worn.kind === k ? inUse : `${k}/${COMPANIONS[k][0]}`);
       const entry = list.find((e) => e.id === id) ?? list[0];
-      // a character this viewer has no looks of falls back to the grid (`available`)
-      if (!entry) return;
-      manual.current = false;
-      setShown(entry.id);
-      // a tap on the look in use is the latest choice, so an older tap's unlock read gives way
-      if (user && entry.id === inUse) intend("look");
-    }
-  };
-  const open = (k: CompanionKind | SoonKind) => {
-    view(k);
-    pushCollectionItem(k);
-  };
-  const leave = () => {
-    leaveCollectionItem();
-    setOpened(null);
-    setStatus("");
-  };
-  const item = useCollectionItem();
-  useEffect(() => {
-    if (item === null) {
-      if (opened !== null) {
-        setOpened(null);
-        setStatus("");
+      if (entry) {
+        manual.current = false;
+        setShown(entry.id);
+        // a tap on the look in use is the latest choice, so an older tap's unlock read gives way
+        if (user && entry.id === inUse) intend("look");
       }
-    } else if (isPage(item) && item !== opened) {
-      view(item);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item]);
-
-  // The page open must still be one this viewer may see: its character still
-  // listed (a refund, a revocation or another account takes an owned one
-  // away), and a store character's page only while the store is shown. One
-  // that is not falls back to the grid at once, on this render.
-  const available = (k: Opened): boolean => {
-    if (k === null) return true;
-    if (isSoon(k)) return shop.shown;
-    if (entriesOf(k).length === 0) return false;
-    return !COMPANION_PRODUCTS[k] || owns(k) || shop.shown;
   };
-  const showing = available(opened) ? opened : null;
-  // Whether the page asked for (a deep link, a reload) cannot be judged yet:
-  // the account is still loading, or the store's check is out for a store
-  // character's page. Until then the grid shows and the address stays.
-  const pending = opened !== null && showing === null
-    && (account.status === "loading" || (!shop.settled && (isSoon(opened) || !!COMPANION_PRODUCTS[opened])));
-  // opening a character's page sees its new colours; their marks stay for this visit
-  const openKind = showing !== null && !isSoon(showing) ? showing : null;
-  useEffect(() => {
-    if (who !== null && openKind !== null) markSeen(who, fresh.filter((id) => parseLook(id).kind === openKind), looks);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [who, visit, openKind, user?.looks]);
-  const unseen = who === null ? [] : newLooks(who, user?.looks);
-  const hasNew = (k: CompanionKind) => unseen.some((id) => parseLook(id).kind === k);
-  useEffect(() => {
-    if (opened !== null && showing === null && !pending) {
-      setOpened(null);
-      setStatus("");
-      try {
-        if (item !== null) {
-          window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#/collection`);
-          window.dispatchEvent(new HashChangeEvent("hashchange"));
-        }
-      } catch { /* a sandboxed location */ }
-    }
-  }, [opened, showing, item, pending]);
-
-  // a swipe from the screen's left edge, read on the full-width page, goes back too
-  const pageBody = useRef<HTMLDivElement>(null);
-  useEdgeSwipeBack(scroller, pageBody, leave, showing !== null);
-  // A character page does not page the tabs sideways, over its title and
-  // padding too: the opt-out sits on the full-width scroller while a page is
-  // open, and comes off on the grid, which keeps its tab swipe.
-  const detail = showing !== null;
-  useLayoutEffect(() => {
+  // a link this viewer may not follow puts the one in use back on the stage
+  const backToWorn = () => {
+    setBought(null);
+    setPicked(null);
+    manual.current = false;
+    setShown(inUse);
+  };
+  const select = (k: Selected) => {
+    if (k !== selected) setSwaps((n) => n + 1);
+    choose(k);
+    // on a phone the stage is above the fold: bring it back into view
     const el = scroller.current;
-    if (!el) return;
-    el.toggleAttribute("data-no-tab-swipe", detail);
-    return () => el.removeAttribute("data-no-tab-swipe");
-  }, [scroller, detail]);
-
-  const back = (
-    <button type="button" className="coll-back" onClick={leave}>
-      {t("home.tabCollection")}
-    </button>
-  );
-
-  if (showing !== null) {
-    if (isSoon(showing)) {
-      return (
-        <LargeTitlePage className="coll-page" scroller={scroller} title={kindName(t, showing)} phone={phone}
-                       onRefresh={() => refreshAccount()} action={back}>
-          <div ref={pageBody} className="edge-swipe">
-            <div className="char-page">
-              <Stage kind={showing} colour={soonColour(showing)} size={phone ? 176 : 208} label={kindName(t, showing)} />
-              <div className="coll-use-row">
-                <button type="button" className="btn big coll-use done" disabled>{t("home.soon")}</button>
-              </div>
-            </div>
-          </div>
-        </LargeTitlePage>
-      );
+    if (phone && el && el.scrollTop > 0) {
+      try {
+        el.scrollTo({ top: 0, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+      } catch {
+        el.scrollTop = 0;
+      }
     }
-    const kind = showing;
-    const entries = entriesOf(kind);
+  };
+
+  // A link to a character (`#/collection/<kind>`) selects it and leaves the
+  // plain address. While the account loads, or the store's check is out for a
+  // store character, the address waits; one this viewer may not see puts
+  // the one in use back on the stage.
+  const item = useCollectionItem();
+  const linked = isSelectable(item) ? item : null;
+  const waiting = linked !== null
+    && (account.status === "loading" || (!shop.settled && (isSoon(linked) || !!COMPANION_PRODUCTS[linked])));
+  useEffect(() => {
+    if (item === null || waiting) return;
+    if (linked !== null && available(linked)) choose(linked);
+    else backToWorn();
+    settleCollectionItem();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item, waiting]);
+
+  // selecting a character sees its new colours; their marks stay for this visit
+  useEffect(() => {
+    if (who !== null && kindShown !== null) markSeen(who, fresh.filter((id) => parseLook(id).kind === kindShown), looks);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [who, visit, kindShown, user?.looks]);
+  const unseen = who === null ? [] : newLooks(who, user?.looks);
+  // the character on the stage has been seen: its tile drops "New" at once
+  const hasNew = (k: CompanionKind) => k !== kindShown && unseen.some((id) => parseLook(id).kind === k);
+
+  let stage;
+  if (isSoon(selected)) {
+    stage = (
+      <div className="char-page">
+        <Stage key={selected} kind={selected} colour={soonColour(selected)} size={stageSize(phone, short)} label={kindName(t, selected)} />
+        <p className="coll-status" role="status">{kindName(t, selected)}</p>
+        <div className="coll-use-row">
+          <button type="button" className="btn big coll-use done" disabled>{t("home.soon")}</button>
+        </div>
+      </div>
+    );
+  } else {
+    const kind = selected;
     const product = COMPANION_PRODUCTS[kind];
     const price = product && !owns(kind) ? (
-      <BuyFoot product={product} shop={shop} onStatus={setStatus}
+      <BuyFoot product={product} shop={shop} onStatus={(text) => setBought({ product, text })}
                onOwned={() => { setArrived(kind); setCheer((n) => n + 1); }} />
     ) : undefined;
-    return (
-      <LargeTitlePage className="coll-page" scroller={scroller} title={kindName(t, kind)} phone={phone}
-                     onRefresh={() => refreshAccount()} action={back}>
-        <div ref={pageBody} className="edge-swipe">
-          <CharacterPage kind={kind} shown={shown} entries={entries} inUse={inUse} user={user} phone={phone}
-                         fresh={fresh} onShow={show} onUse={use} price={price} status={status} cheer={cheer} />
-        </div>
-      </LargeTitlePage>
+    stage = (
+      <CharacterPage key={kind} kind={kind} shown={shown} entries={entriesOf(kind)} inUse={inUse} user={user} phone={phone} short={short}
+                     fresh={fresh} onShow={show} onUse={use} price={price}
+                     status={bought && bought.product === product ? bought.text : ""} cheer={cheer} />
     );
   }
 
@@ -307,7 +275,7 @@ export default function CollectionPage() {
   return (
     <LargeTitlePage className="coll-page" scroller={scroller} title={t("home.tabCollection")} phone={phone}
                    onRefresh={() => refreshAccount()}>
-      <WornFelt kind={worn.kind} colour={worn.colour} label={lookName(t, inUse)} />
+      <div key={selected} className={swaps > 0 ? "coll-swap" : undefined}>{stage}</div>
       <ul className="grp coll-mode">
         <li>
           <button type="button" className="grp-row coll-at-table" role="switch" aria-checked={atTable}
@@ -325,7 +293,7 @@ export default function CollectionPage() {
       <div className="coll-grid coll-yours">
         {yours.map((k) => (
           <Tile key={k} kind={k} colour={colourOf(k)} label={kindName(t, k)} worn={worn.kind === k} isNew={hasNew(k)}
-                arrive={arrived === k} onArrived={() => setArrived(null)} onOpen={() => open(k)} />
+                selected={selected === k} arrive={arrived === k} onArrived={() => setArrived(null)} onOpen={() => select(k)} />
         ))}
       </div>
       {shop.shown ? (
@@ -333,18 +301,18 @@ export default function CollectionPage() {
           <h2 className="coll-section">{t("home.moreCompanions")}</h2>
           <div className="coll-grid coll-more">
             {forSale.map((k) => (
-              <Tile key={k} kind={k} colour={COMPANIONS[k][0]} label={kindName(t, k)}
-                    sub={shop.prices[COMPANION_PRODUCTS[k]!] ?? ""} gold onOpen={() => open(k)} />
+              <Tile key={k} kind={k} colour={COMPANIONS[k][0]} label={kindName(t, k)} selected={selected === k}
+                    sub={shop.prices[COMPANION_PRODUCTS[k]!] ?? ""} gold onOpen={() => select(k)} />
             ))}
             {SOON.map((k) => (
               <Tile key={k} kind={k} colour={soonColour(k)} label={kindName(t, k)} sub={t("home.soon")} dim
-                    onOpen={() => open(k)} />
+                    selected={selected === k} onOpen={() => select(k)} />
             ))}
           </div>
           <ul className="grp coll-restore-row">
-            <li><RestoreRow onStatus={setStatus} /></li>
+            <li><RestoreRow onStatus={setRestored} /></li>
           </ul>
-          <p className="coll-status coll-grid-status" role="status">{status}</p>
+          <p className="coll-status coll-grid-status" role="status">{restored}</p>
         </>
       ) : getApp ? (
         <ul className="grp coll-restore-row">

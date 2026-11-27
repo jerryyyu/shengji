@@ -179,7 +179,7 @@ describe("Yours", () => {
 
 describe("a guest", () => {
   it("wears the free look its device key draws, the same on every visit", async () => {
-    window.localStorage.setItem("shengji.device", "AAAAAAAAAAAAAAAAAAAAAA");    // draws bun/taro
+    window.localStorage.setItem("shengji.device", "AAAAAAAAAAAAAAAAAAAAAA");    // draws bun/plain
     await draw();
     expect(stageKind()).toBe("cmp-bun");
     expect(tile("Bun").querySelector(".coll-tick")).not.toBeNull();

@@ -454,9 +454,9 @@ def test_a_sockets_heartbeat_ready_says_whether_its_account_is_shown_the_collect
 
 
 # ------------------------------------------------- the first look and recent looks
-def _free_from_the_start(a) -> set[str]:
-    return {f"{c}/{k}" for c, ks in a.LOOKS.items() if c not in a.COMPANION_PRODUCTS
-            for k in ks if f"{c}/{k}" not in a.LOOK_UNLOCKS}
+def _free_defaults(a) -> set[str]:
+    """Each free companion in its default colour (its first)."""
+    return {f"{c}/{ks[0]}" for c, ks in a.LOOKS.items() if c not in a.COMPANION_PRODUCTS}
 
 
 def test_a_new_account_is_given_a_free_look_that_stays_across_reads(accounts_on, keypair, client, monkeypatch):
@@ -464,7 +464,7 @@ def test_a_new_account_is_given_a_free_look_that_stays_across_reads(accounts_on,
     private_pem, _ = keypair
     session = {"cookie": _session_cookie(accounts_on, client, private_pem)}
     first = accounts_on.first_look(1)
-    assert first in _free_from_the_start(accounts_on)
+    assert first in _free_defaults(accounts_on)
     reads = [client.get("/api/me", headers=session).json() for _ in range(3)]
     assert {r["look"] for r in reads} == {first}
     assert reads[0]["recent_looks"] == [first]
@@ -476,31 +476,24 @@ def test_a_new_account_is_given_a_free_look_that_stays_across_reads(accounts_on,
     assert accounts_on.look_id(again.user(1)) == first
 
 
-def test_first_looks_are_free_available_and_spread(accounts_on):
+def test_first_looks_are_free_companions_in_their_default_colour(accounts_on):
     a = accounts_on
-    free = _free_from_the_start(a)
     ids = range(1, 4001)
     picks = [a.first_look(i) for i in ids]
-    assert set(picks) == free                       # never locked or sold, and every free one occurs
+    assert set(picks) == _free_defaults(a)          # never sold, never another colour; each one occurs
     shares = {c: sum(p.startswith(c + "/") for p in picks) / len(picks)
               for c in a.LOOKS if c not in a.COMPANION_PRODUCTS}
     assert all(0.21 < s < 0.29 for s in shares.values()), shares      # a quarter each
     assert [a.first_look(i) for i in ids] == picks  # seeded by the id: the same every time
-    # unlocked Tractor colours may be given, and never a colour still locked
-    for wins in (10, 60, 5000):
-        given = {a.first_look(i, {"ranked_wins": wins}) for i in ids}
-        unlocked = {k for k, (_, need) in a.LOOK_UNLOCKS.items() if wins >= need}
-        assert given == free | unlocked
-        assert not any(p.partition("/")[0] in a.COMPANION_PRODUCTS for p in given)
 
 
-def test_the_first_look_counts_the_colours_an_account_has_won(accounts_on):
+def test_the_first_look_ignores_the_colours_an_account_has_won(accounts_on):
     store = accounts_on.STORE
     uid = store.upsert_user(_claims(sub="sub-vet", email="vet@example.com"))["id"]
-    _rounds_won(store, uid, 120)
+    _rounds_won(store, uid, 1200)
     row = store.ensure_look(uid, now=50.0)
     look = f"{row['look_companion']}/{row['look_colour']}"
-    assert look == accounts_on.first_look(uid, {"ranked_wins": 120})
+    assert look == accounts_on.first_look(uid) and look in _free_defaults(accounts_on)
     assert store.recent_looks(uid) == [look]
 
 
@@ -546,7 +539,7 @@ def test_a_guest_seat_shows_the_look_its_device_key_draws(accounts_on, client):
         with client.websocket_connect(f"/ws?device={device}") as g:
             g.send_json({"type": "create_room", "name": "Guest"})
             assert _drain(g, "room")["players"][0]["look"] == vectors[device]
-    assert {accounts_on.guest_look(d) for d in (f"{n:022d}" for n in range(400))} == _free_from_the_start(accounts_on)
+    assert {accounts_on.guest_look(d) for d in (f"{n:022d}" for n in range(400))} == _free_defaults(accounts_on)
 
 
 def test_recent_looks_put_the_latest_use_first(accounts_on, keypair, client, monkeypatch):

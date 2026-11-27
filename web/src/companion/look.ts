@@ -123,13 +123,11 @@ function lookHash(text: string): number {
   return (h ^ (h >>> 16)) >>> 0;
 }
 
-/** A free look picked by `seed` among the colours free from the start: a
- *  companion first, then one of its colours (the server's `free_look`). */
+/** A free companion picked by `seed`, in its default colour (its first):
+ *  the server's `free_look`. */
 export function freeLook(seed: string): string {
-  const h = lookHash(seed);
-  const kind = FREE_KINDS[h % FREE_KINDS.length];
-  const colours = COMPANIONS[kind].filter((c) => !(`${kind}/${c}` in LOOK_UNLOCKS));
-  return `${kind}/${colours[Math.floor(h / FREE_KINDS.length) % colours.length]}`;
+  const kind = FREE_KINDS[lookHash(seed) % FREE_KINDS.length];
+  return `${kind}/${COMPANIONS[kind][0]}`;
 }
 
 /** The look a guest's seat shows: the one its device key draws (the

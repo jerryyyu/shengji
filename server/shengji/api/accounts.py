@@ -189,25 +189,17 @@ def _look_hash(text: str) -> int:
     return h ^ (h >> 16)
 
 
-def free_look(seed: str, progress: Mapping[str, int] | None = None) -> str:
-    """A free look picked by ``seed``: first a companion, uniformly among the
-    unsold ones, then one of its colours ``progress`` has unlocked (none
-    given: only the colours free from the start). Picking the companion
-    first keeps each one's share the same whatever colours an account has
-    won, so a table of new players varies by character, not only by colour."""
-    h = _look_hash(seed)
+def free_look(seed: str) -> str:
+    """A free companion picked by ``seed``, uniformly among the unsold ones,
+    in its default colour (its first in ``LOOKS``)."""
     kinds = [c for c in LOOKS if c not in COMPANION_PRODUCTS]
-    companion = kinds[h % len(kinds)]
-    counts = progress or {}
-    colours = [c for c in LOOKS[companion]
-               if (rule := LOOK_UNLOCKS.get(f"{companion}/{c}")) is None
-               or int(counts.get(rule[0], 0)) >= rule[1]]
-    return f"{companion}/{colours[(h // len(kinds)) % len(colours)]}"
+    companion = kinds[_look_hash(seed) % len(kinds)]
+    return f"{companion}/{LOOKS[companion][0]}"
 
 
-def first_look(user_id: int, progress: Mapping[str, int] | None = None) -> str:
+def first_look(user_id: int) -> str:
     """The look an account that chose none is given (``Store.ensure_look``)."""
-    return free_look(f"account:{user_id}", progress)
+    return free_look(f"account:{user_id}")
 
 
 def guest_look(device: str) -> str:
@@ -1276,14 +1268,14 @@ class Store:
             return dict(row) if row else None
 
     def ensure_look(self, user_id: int, now: float | None = None) -> dict | None:
-        """The account's row, given its first look (``first_look``, over the
-        colours its ranked rounds won have unlocked) when it has chosen none.
+        """The account's row, given its first look (``first_look``) when it
+        has chosen none.
         A stored look is never replaced, so the first read anywhere fixes it
         for every device. None for an unknown account."""
         row = self.user(user_id)
         if row is None or row.get("look_companion") is not None:
             return row
-        companion, colour = first_look(user_id, {"ranked_wins": self.ranked_wins(user_id)}).split("/")
+        companion, colour = first_look(user_id).split("/")
         with closing(self._open()) as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
@@ -2577,7 +2569,7 @@ def companions_mode(row: Mapping[str, Any]) -> str:
 def look_id(row: Mapping[str, Any] | None) -> str:
     """The look an account row shows: its stored companion and colour when
     both are still offered; for a row that chose none yet, the free look it
-    will be given (``first_look`` over the colours free from the start);
+    will be given (``first_look``);
     else ``DEFAULT_LOOK``."""
     if row is None:
         return DEFAULT_LOOK

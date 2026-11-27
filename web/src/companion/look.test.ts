@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { COMPANIONS, FREE_KINDS, LOOK_UNLOCKS, freeLook, guestLookFor, yoursOrder } from "./look";
+import { COMPANIONS, FREE_KINDS, freeLook, guestLookFor, yoursOrder } from "./look";
 
 // Device keys and the look the server's `accounts.guest_look` draws for each;
 // server/tests/test_look.py reads this table and checks it against the server.
 const GUEST_VECTORS: [string, string][] = [
-  ["AAAAAAAAAAAAAAAAAAAAAA", "bun/taro"],
-  ["abcdefghijklmnopqrstuv", "tractor/blue"],
-  ["q1w2e3r4t5y6u7i8o9p0aa", "bun/custard"],
-  ["0123456789abcdefghijKL", "sparrow/snow"],
-  ["________________------", "sparrow/java"],
+  ["AAAAAAAAAAAAAAAAAAAAAA", "bun/plain"],
+  ["abcdefghijklmnopqrstuv", "tractor/red"],
+  ["chickchickchickchick02", "chick/yellow"],
+  ["0123456789abcdefghijKL", "sparrow/tree"],
+  ["________________------", "sparrow/tree"],
 ];
 
 describe("a guest's look", () => {
@@ -16,11 +16,10 @@ describe("a guest's look", () => {
     for (const [device, look] of GUEST_VECTORS) expect(guestLookFor(device)).toBe(look);
   });
 
-  it("is always free from the start, and every free look occurs", () => {
-    const free = new Set(FREE_KINDS.flatMap((k) => COMPANIONS[k].map((c) => `${k}/${c}`))
-      .filter((id) => !(id in LOOK_UNLOCKS)));
+  it("is a free companion in its default colour, and every free companion occurs", () => {
+    const defaults = new Set(FREE_KINDS.map((k) => `${k}/${COMPANIONS[k][0]}`));
     const drawn = new Set(Array.from({ length: 400 }, (_, n) => freeLook(`guest:${String(n).padStart(22, "0")}`)));
-    expect(drawn).toEqual(free);
+    expect(drawn).toEqual(defaults);
   });
 });
 

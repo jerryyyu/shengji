@@ -626,10 +626,10 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   Individual · Off. It is stored where the mode was (the account's `companions`, a guest's device), so an older
   client keeps working: off is off, and an older Team or Individual reads as on. It is a row of Me's settings
   (Jerry 2026-11-27, see Section 6), shown wherever the Collection is; the Collection page has no switch.
-- **A first look** (Jerry 2026-11-27: "can we initialize users to a random free companion based on available
-  colors?"): an account that has chosen none is given one on its first `/api/me` or socket, stored, so every device
-  and its invite card show the same one: a free companion picked uniformly, then one of its colours the account has
-  (the free ones and any Tractor colour already won), never a locked or sold look, seeded by the account id. A stored
+- **A first look** (Jerry 2026-11-27: "can we initialize users to a random free companion", then "How about users
+  use random companion at default color"): an account that has chosen none is given one on its first `/api/me` or
+  socket, stored, so every device and its invite card show the same one: a free companion (Tractor, Bun, Chick or
+  Sparrow) picked uniformly and seeded by the account id, always in its default colour, its first. A stored
   look is never replaced; a refunded companion's account is given a free one again. A guest's look is drawn the same
   way from its device key, so it stays the same on that device and the table shows it too; a guest still cannot
   change it (Sign in to use).

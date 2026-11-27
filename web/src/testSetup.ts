@@ -15,4 +15,8 @@ afterEach(async () => {
 
 beforeEach(async () => {
   await vi.dynamicImportSettled();
+  // A guest wears the look its device key draws (`companion/own.ts`): one fixed
+  // key, which draws the Tractor in red, keeps a guest's screens the same in
+  // every test that does not set its own.
+  try { window.localStorage.setItem("shengji.device", "abcdefghijklmnopqrstuv"); } catch { /* no DOM */ }
 });

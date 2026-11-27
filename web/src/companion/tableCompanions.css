@@ -62,3 +62,5 @@
 @media (prefers-reduced-motion: reduce) {
   .tc-level { animation: none; }
 }
+/* your own companion takes a tap (its special); every other figure lets taps through to the felt */
+.tc-walk.tc-mine { pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; }

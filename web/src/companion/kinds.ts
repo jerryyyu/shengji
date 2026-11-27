@@ -82,3 +82,16 @@ export const DRAWINGS: Record<DrawnKind, Drawing> = {
   lion: drawn(LION_COLOURS, LION_Z, 3300, lionMarkup, lionPortraitUrl),
   dragon: drawn(DRAGON_COLOURS, DRAGON_Z, 2400, dragonMarkup, dragonPortraitUrl),
 };
+
+/** How long each companion's signature (its `react` pose) plays, in ms:
+ *  its longest part animation, delays included (companion.css and
+ *  companion.store.css). */
+export const REACT_MS: Record<CompanionKind, number> = {
+  tractor: 1300,
+  bun: 1540,
+  chick: 1300,
+  sparrow: 1200,
+  // drawn as their stand-in until their own art lands
+  lamb: 1300,
+  panda: 1300,
+};

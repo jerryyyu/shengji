@@ -26,8 +26,8 @@ import { parseArt } from "./Tractor";
 import TableCompanions, { LEVEL_UP_MS, SEAT_SIZE, levelIndex } from "./TableCompanions";
 import { hasNewLook } from "./seen";
 import type { LookEntry } from "./look";
-import { clear, zoneFor } from "./seatZones";
-import type { Layout, Rect } from "./seatZones";
+import { HAND_LIFT, clear, zonesFor } from "./seatZones";
+import type { Layout, Rect, SeatPos } from "./seatZones";
 import { TABLES } from "./seatZones.fixtures";
 import CollectionPage from "../components/CollectionPage";
 import { forgetHomeSession } from "../home/session";
@@ -131,14 +131,14 @@ describe("the free companions", () => {
 });
 
 describe("level growth", () => {
-  it("grows a step a level that shows (2 px on a phone, 3 on a tablet) from 2 to the seat cap at 6", () => {
+  it("grows a step a level that shows (3 px on a phone, 4 on a tablet) from 2 to the seat cap at 6", () => {
     expect(levelIndex("2")).toBe(0);
     expect(levelIndex("A")).toBe(12);
     expect(levelIndex(undefined)).toBe(0);
     const { phone, tablet } = SEAT_SIZE;
     const at = (s: { base: number; max: number }, ranks: string[]) => ranks.map((r) => companionSize(s.base, levelIndex(r), s.max));
-    expect(at(phone, ["2", "3", "4", "5", "6", "9", "A"])).toEqual([32, 34, 36, 38, 40, 40, 40]);
-    expect(at(tablet, ["2", "3", "4", "5", "6", "9", "A"])).toEqual([44, 47, 50, 53, 56, 56, 56]);
+    expect(at(phone, ["2", "3", "4", "5", "6", "9", "A"])).toEqual([44, 47, 50, 53, 56, 56, 56]);
+    expect(at(tablet, ["2", "3", "4", "5", "6", "9", "A"])).toEqual([60, 64, 68, 72, 76, 76, 76]);
     expect(companionSize(80, 3, Number.POSITIVE_INFINITY)).toBe(80);
   });
 
@@ -533,7 +533,7 @@ describe("the table", () => {
   beforeEach(() => {
     authState.current = { status: "out", clientId: "cid", user: null, collection: true } as AuthState;
     rects = { felt: { x: 0, y: 0, ...m.felt }, "pos-left": m.plates.left, "pos-top": m.plates.top, "pos-right": m.plates.right,
-              "you-row": m.row!, hand: m.hand, "trick-play": { x: 0, y: 0, w: 0, h: 0 } };
+              "you-row": m.row!, hand: m.hand, "hand-slot": m.firstCard, "trick-play": { x: 0, y: 0, w: 0, h: 0 } };
     spy = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
       const cls = [...this.classList];
       const k = Object.keys(rects).find((c) => cls.includes(c));
@@ -546,7 +546,7 @@ describe("the table", () => {
     <div className="felt">
       <div className="opponent pos-left" /><div className="opponent pos-top" /><div className="opponent pos-right" />
       <div className="trick-area"><div className="trick-play" /></div>
-      <div className="you-row" /><div className="hand" />
+      <div className="you-row" /><div className="hand"><div className="hand-slot" /></div>
       <TableCompanions state={s} />
     </div>
   );
@@ -555,8 +555,12 @@ describe("the table", () => {
     const [x, y] = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(w.style.transform)!.slice(1).map(Number);
     return { x, y };
   };
-  const layout = (): Layout => ({ felt: m.felt, plates: m.plates, tagline: null, row: m.row,
-    obstacles: [rects["trick-play"], m.hand, ...Object.values(m.plates)].filter((r) => r.w > 0) });
+  const layout = (): Layout => ({ felt: m.felt, plates: m.plates, tagline: null, row: m.row, hand: m.firstCard,
+    obstacles: [rects["trick-play"], { ...m.hand, y: m.firstCard.y - HAND_LIFT, h: m.hand.y + m.hand.h - m.firstCard.y + HAND_LIFT },
+                ...Object.values(m.plates)].filter((r) => r.w > 0) });
+  // each seat's zone as the table works it out: yours first, every seat at its team's level
+  const homeOf = (pos: SeatPos) => zonesFor([{ pos: "bottom", size: 44, tag: true }, { pos: "left", size: 56, tag: false },
+    { pos: "top", size: 44, tag: false }, { pos: "right", size: 56, tag: false }], layout())[pos].home!;
 
   it("draws nothing unless the Collection is shown and Show at the table is on", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
@@ -627,7 +631,7 @@ describe("the table", () => {
       expect(pops.filter((p) => p.seat !== null && p.move !== "idle")).toEqual([]);
       expect(badges()).toEqual([]);
       // the figures still stand at the level the round was played at
-      expect([width(0), width(2)]).toEqual(["32", "32"]);
+      expect([width(0), width(2)]).toEqual(["44", "44"]);
     });
 
     it("pops each of the team's companions once when the sheet closes, to its new size, with the new level", async () => {
@@ -635,10 +639,10 @@ describe("the table", () => {
       await render(roundEnd);
       await render(nextRound);
       expect(ups()).toEqual(["0", "2"]);
-      expect([width(0), width(2)]).toEqual(["36", "36"]);
+      expect([width(0), width(2)]).toEqual(["50", "50"]);
       // the pop starts at the old size over the new and overshoots it
       const frames = pops.find((p) => p.move === "levelup")!.frames;
-      expect(frames[0].transform).toContain(`scale(${(32 / 36).toFixed(3)})`);
+      expect(frames[0].transform).toContain(`scale(${(44 / 50).toFixed(3)})`);
       expect(frames.some((f) => /scale\(1\.2/.test(String(f.transform)))).toBe(true);
       expect(badges()).toEqual([["0", "4"], ["2", "4"]]);
       // later states of the same level move nothing again
@@ -663,7 +667,7 @@ describe("the table", () => {
       act(() => { vi.advanceTimersByTime(LEVEL_UP_MS + 10); });
       await render(state({ phase: "deal", levels: ["2", "2"] } as unknown as Partial<GameState>));
       expect(ups()).toEqual(["0", "2"]);
-      expect(width(1)).toBe("32");
+      expect(width(1)).toBe("44");
     });
 
     it("waits for a hidden page to be shown again", async () => {
@@ -685,7 +689,7 @@ describe("the table", () => {
     });
   });
 
-  it("is the default: each person's companion stands by their nameplate, small, clear of the table, yours tagged You", async () => {
+  it("is the default: each person's companion stands by their nameplate, clear of the table, yours tagged You by your hand", async () => {
     await draw(table(state()));
     const seats = [...host.querySelectorAll(".tc-seat")];
     expect(seats.map((s) => [s.getAttribute("data-seat"), s.getAttribute("data-pos")])).toEqual([
@@ -693,18 +697,21 @@ describe("the table", () => {
     expect([...host.querySelectorAll(".tc-you")].map((t) => t.closest(".tc-seat")!.getAttribute("data-seat"))).toEqual(["0"]);
     for (const s of [0, 1, 2, 3]) {
       const svg = host.querySelector(`.tc-seat[data-seat="${s}"] svg`)!;
-      expect(Number(svg.getAttribute("width"))).toBeLessThanOrEqual(40);
+      expect(Number(svg.getAttribute("width"))).toBeLessThanOrEqual(56);
       expect(clear(spotOf(s), Number(svg.getAttribute("width")), s === 0, layout())).toBe(true);
     }
     // each stands under or beside its own nameplate
     const near = (s: number, plate: Rect) => Math.hypot(spotOf(s).x - plate.x, spotOf(s).y - plate.y) < 120;
     expect(near(1, m.plates.left) && near(2, m.plates.top) && near(3, m.plates.right)).toBe(true);
+    // yours stands over the left end of your hand, not under the left seat
+    expect(Math.abs(spotOf(0).x - m.firstCard.x)).toBeLessThan(3 * 44);
+    expect(spotOf(0).y + 44).toBeLessThanOrEqual(m.firstCard.y - HAND_LIFT);
   });
 
   it("grows by level within the seat cap", async () => {
     await draw(table(state()));
-    expect(host.querySelector('.tc-seat[data-seat="0"] svg')!.getAttribute("width")).toBe("32");
-    expect(host.querySelector('.tc-seat[data-seat="1"] svg')!.getAttribute("width")).toBe("40");
+    expect(host.querySelector('.tc-seat[data-seat="0"] svg')!.getAttribute("width")).toBe("44");
+    expect(host.querySelector('.tc-seat[data-seat="1"] svg')!.getAttribute("width")).toBe("56");
   });
 
   it("walks now and then within its zone, facing the way it goes, and never while hidden", async () => {
@@ -731,7 +738,7 @@ describe("the table", () => {
         .toEqual(new Set(["0", "1", "2", "3"]));
       const end = spotOf(1);
       expect(Math.hypot(end.x - start.x, end.y - start.y)).toBeGreaterThan(0);
-      expect(clear(end, 40, false, layout())).toBe(true);
+      expect(clear(end, 56, false, layout())).toBe(true);
       const facing = host.querySelector<HTMLElement>('.tc-seat[data-seat="1"] .tc-face')!.style.transform;
       expect(facing).toBe(end.x < start.x ? "scaleX(-1)" : "scaleX(1)");
       hidden = true;
@@ -753,7 +760,7 @@ describe("the table", () => {
     await draw(table(state({ trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>)));
     const now = spotOf(1);
     expect(now).not.toEqual(was);
-    expect(clear(now, 40, false, layout())).toBe(true);
+    expect(clear(now, 56, false, layout())).toBe(true);
   });
 
   it("a figure hidden while cards cover its whole zone is placed afresh when they clear", async () => {
@@ -761,10 +768,10 @@ describe("the table", () => {
     window.matchMedia = ((q: string) => ({ matches: q.includes("reduce"), addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
     try {
       await draw(table(state()));
-      const home = zoneFor("left", 40, layout(), false).home!;
+      const home = homeOf("left");
       expect(spotOf(1)).toEqual(home);
       // cards over the whole of seat 1's corner: it has nowhere clear to stand
-      rects["trick-play"] = { x: 0, y: m.plates.left.y + m.plates.left.h, w: 260, h: 140 };
+      rects["trick-play"] = { x: 0, y: 40, w: 340, h: 225 };
       await draw(table(state({ trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>)));
       expect(host.querySelector('.tc-seat[data-seat="1"]')).toBeNull();
       rects["trick-play"] = { x: 0, y: 0, w: 0, h: 0 };
@@ -798,12 +805,149 @@ describe("the table", () => {
       rects["trick-play"] = { x: to.x - 4, y: to.y - 4, w: 50, h: 50 };
       await act(async () => { root.render(table(state({ trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>))); });
       expect(flight.every((a) => a.cancel.mock.calls.length >= 1)).toBe(true);
-      expect(clear(spotOf(1), 40, false, layout())).toBe(true);
+      expect(clear(spotOf(1), 56, false, layout())).toBe(true);
     } finally {
       rnd.mockRestore();
       proto.animate = had;
       vi.useRealTimers();
     }
+  });
+
+  describe("taps and moves", () => {
+    // every Web Animation started on a figure: its seat, which box, its frames;
+    // each ends after its own duration on the fake clock
+    let anims: { seat: string | null; box: string; move: string | null; frames: Keyframe[]; cancel: ReturnType<typeof vi.fn> }[];
+    let had: unknown;
+    let rnd: ReturnType<typeof vi.spyOn>;
+    const proto = Element.prototype as unknown as { animate?: unknown };
+    beforeEach(() => {
+      vi.useFakeTimers();
+      rnd = vi.spyOn(Math, "random").mockReturnValue(0.5);
+      anims = [];
+      had = proto.animate;
+      proto.animate = function (this: Element, frames: Keyframe[], opts: KeyframeAnimationOptions) {
+        let timer = 0;
+        const finished = new Promise<void>((r) => { timer = window.setTimeout(r, Number(opts?.duration ?? 0) * Number(opts?.iterations ?? 1)); });
+        const cancel = vi.fn(() => window.clearTimeout(timer));
+        anims.push({ seat: this.closest(".tc-seat")?.getAttribute("data-seat") ?? null, box: this.className.toString(),
+                     move: this.getAttribute("data-move"), frames, cancel });
+        return { finished, cancel };
+      };
+    });
+    afterEach(() => { proto.animate = had; rnd.mockRestore(); vi.useRealTimers(); });
+    const render = async (s: GameState) => { await act(async () => { root.render(table(s)); }); };
+    const tap = (el: Element, x: number, y: number) => act(() => {
+      el.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: x, clientY: y }));
+    });
+    // the fake clock moves, and the moves it ends settle
+    const advance = async (ms: number) => {
+      await act(async () => { vi.advanceTimersByTime(ms); for (let i = 0; i < 6; i++) await Promise.resolve(); });
+      await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
+    };
+    const walks = (seat: string) => anims.filter((a) => a.seat === seat && a.box.split(" ").includes("tc-walk"));
+    const moves = (seat: string) => anims.filter((a) => a.seat === seat && a.box === "tc-move");
+    const felt = () => host.querySelector(".felt")!;
+
+    it("a tap on empty felt walks your companion to the clear spot nearest the tap, and nothing else moves", async () => {
+      await render(state({ players: [player(0), player(1, { is_bot: true, look: null }), player(2, { is_bot: true, look: null }), player(3, { is_bot: true, look: null })] } as Partial<GameState>));
+      const target = { x: 420, y: 220 };
+      tap(felt(), target.x, target.y);
+      expect(walks("0")).toHaveLength(1);
+      const end = spotOf(0);
+      expect(clear(end, 44, true, layout())).toBe(true);
+      // its feet near the tap
+      expect(Math.hypot(end.x + 22 - target.x, end.y + 44 - target.y)).toBeLessThan(80);
+      // it stays there until its next walk
+      act(() => { vi.advanceTimersByTime(5000); });
+      expect(spotOf(0)).toEqual(end);
+    });
+
+    it("a tap on a card, a button or another control is not a tap on the felt", async () => {
+      await render(state());
+      for (const sel of [".hand-slot", ".trick-play", ".opponent"]) tap(host.querySelector(sel)!, 300, 300);
+      const b = document.createElement("button");
+      felt().appendChild(b);
+      tap(b, 400, 200);
+      expect(walks("0")).toHaveLength(0);
+    });
+
+    it("taps on the felt are throttled", async () => {
+      await render(state());
+      tap(felt(), 420, 220);
+      act(() => { vi.advanceTimersByTime(100); });
+      tap(felt(), 300, 230);
+      expect(walks("0")).toHaveLength(1);
+      act(() => { vi.advanceTimersByTime(600); });
+      tap(felt(), 300, 230);
+      expect(walks("0")).toHaveLength(2);
+    });
+
+    // the special is the drawing's own signature, animated (not the still peak)
+    const specialOn = (seat: string) => {
+      const svg = host.querySelector(`.tc-seat[data-seat="${seat}"] svg`)!;
+      return svg.classList.contains("cmp-react") && !svg.classList.contains("cmp-rest");
+    };
+
+    it("a tap on your own companion plays its special, at most once every 3 s, and does not walk it", async () => {
+      await render(state());
+      const mine = () => host.querySelector('.tc-seat[data-seat="0"] .tc-walk')!;
+      tap(mine(), 0, 0);
+      expect(host.querySelector('.tc-seat[data-seat="0"] .tc-move')!.getAttribute("data-move")).toBe("react");
+      expect(specialOn("0")).toBe(true);
+      expect(walks("0")).toHaveLength(0);
+      // it plays for its own length (the Bun's steam puff), then stands still again
+      await advance(1600);
+      expect(specialOn("0")).toBe(false);
+      tap(mine(), 0, 0);
+      expect(specialOn("0")).toBe(false);
+      await advance(1500);
+      tap(mine(), 0, 0);
+      expect(specialOn("0")).toBe(true);
+      // another seat's companion takes no tap
+      tap(host.querySelector('.tc-seat[data-seat="2"] .tc-walk')!, 0, 0);
+      expect(specialOn("2")).toBe(false);
+    });
+
+    it("your team's round win plays each of its companions' special once the round-end sheet closes", async () => {
+      await render(state());
+      const won = { winner_team: 0, level_change: 0, new_levels: ["2", "A"] };
+      await render(state({ phase: "round_end", round_result: won } as unknown as Partial<GameState>));
+      act(() => { vi.advanceTimersByTime(3000); });
+      expect([...moves("0"), ...moves("2")]).toHaveLength(0);
+      await render(state({ phase: "deal" } as unknown as Partial<GameState>));
+      expect(["0", "1", "2", "3"].map((s) => host.querySelector(`.tc-seat[data-seat="${s}"] .tc-move`)!.getAttribute("data-move")))
+        .toEqual(["react", "idle", "react", "idle"]);
+    });
+
+    it("a round won with a level gained pops the level first, then the special", async () => {
+      await render(state());
+      const won = { winner_team: 0, level_change: 2, new_levels: ["4", "A"] };
+      await render(state({ phase: "round_end", levels: ["4", "A"], round_result: won } as unknown as Partial<GameState>));
+      await render(state({ phase: "deal", levels: ["4", "A"] } as unknown as Partial<GameState>));
+      expect(moves("0").map((a) => a.move)).toEqual(["levelup"]);
+      expect(specialOn("0")).toBe(false);
+      await advance(LEVEL_UP_MS + 20);
+      expect(moves("0").map((a) => a.move)).toEqual(["levelup"]);
+      expect(specialOn("0")).toBe(true);
+    });
+
+    it("at rest each companion fidgets in turn: a sway, a blink, a small hop", async () => {
+      await render(state());
+      const seen: string[] = [];
+      let blinking = false;
+      for (let t = 0; t < 40000 && seen.length < 3; t += 50) {
+        act(() => { vi.advanceTimersByTime(50); });
+        const fid = moves("1").filter((a) => a.move === "idle");
+        const shut = host.querySelector('.tc-seat[data-seat="1"] svg')!.classList.contains("cmp-blink");
+        if (shut && !blinking) seen.push("blink");
+        blinking = shut;
+        while (fid.length > seen.filter((k) => k !== "blink").length) {
+          const f = fid[seen.filter((k) => k !== "blink").length];
+          seen.push(/rotate/.test(String(f.frames[1]?.transform)) ? "sway" : /translateY/.test(String(f.frames[1]?.transform)) ? "hop" : "?");
+        }
+      }
+      expect(seen).toEqual(["sway", "blink", "hop"]);
+    });
   });
 
   it("under Reduce Motion it stands on its home and never walks", async () => {

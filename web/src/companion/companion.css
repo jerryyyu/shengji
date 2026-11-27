@@ -9,6 +9,8 @@
 .cmp .cmp-z { transform-box: fill-box; }
 .cmp .cmp-body { transform-origin: 50% 100%; }
 .cmp .cmp-eye { transform-origin: 50% 50%; }
+/* a blink at rest: the eyes shut for a moment, a still drawing, not an animation */
+.cmp-blink .cmp-eye { transform: scaleY(0.1); }
 .cmp .cmp-shadow { transform-origin: 50% 50%; }
 .cmp .cmp-puff { transform-origin: 50% 100%; opacity: 0; }
 

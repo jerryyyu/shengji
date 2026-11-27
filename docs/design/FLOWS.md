@@ -609,21 +609,32 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   steam puff, the Chick's flutter, the Sparrow's peck). Under Reduce Motion every pose is drawn still at its peak.
 - **At the table** (Jerry 2026-11-26, finding 1: "yes, have it stand by the nameplate and randomly walk around")
   each person's companion stands by their nameplate: under a side seat's, to the right of your partner's, and
-  yours above your hand (beside your name line on a tablet), tagged You 你. Every 8 to 15 s, on its own clock, it
-  walks a few hopping steps, facing the way it goes, to another spot in a small zone by the nameplate that keeps
-  clear of the cards played, the hand, the buttons, the HUD and the nameplates; the zone is worked out again as
-  cards land, and a companion they land on steps aside. It stands on its team's pad (a disc for Us, a diamond for
-  Them) in its team's scarf. A team's companions grow an equal step a level from 2 to the seat cap at 6 (32 to 40 px
-  on a phone, 2 px a level; 44 to 56 px on a tablet, 3 px a level; the same size from 6 to A). A level gained
+  yours over the left end of your hand on a phone (Jerry 2026-11-26: it had stood by the left seat's card; beside
+  your name line on a tablet), tagged You 你. Every 8 to 15 s, on its own clock, it walks a few hopping steps,
+  facing the way it goes, to another spot in a small zone by the nameplate that keeps clear of the cards played
+  and their LEAD / WINS labels, the hand (and a chosen card's lift), the buttons, the HUD, the nameplates and the
+  other companions; the zone is worked out again as cards land, and a companion they land on steps aside. Where
+  a corner is too cramped, its companion stands on another side of its nameplate, and failing that a step smaller. It stands on its team's pad (a disc for Us, a diamond for
+  Them) in its team's scarf. A team's companions grow an equal step a level from 2 to the seat cap at 6 (44 to 56 px
+  on a phone, 3 px a level; 60 to 76 px on a tablet, 4 px a level; the same size from 6 to A; Jerry 2026-11-26: "a
+  bit small"). A level gained
   (Jerry 2026-11-26, red team finding 7) shows only once the round-end sheet has closed and the page is in view,
   never behind the sheet: each of the climbing team's companions pops from its old size past its new one (0.5 s),
   cheers, and flashes the new level's rank in a gold badge by its head (the rank alone, no words); once per level
   gained, none for a team whose level held, and a new game's levels starting over shrink the figures with no move.
   A table opened onto a result draws the settled size. A team's companions hop
   when it takes a trick, and cheer when the trick is worth 10 points or more (Jerry may tune
-  this); a companion sleeps while its person is away, and between moves sways once every 6 to 10 s. Nothing moves
-  while the page is hidden or under Reduce Motion (each stands on its home). A bot, and a seat its owner left, has
-  none. They sit under the cards and controls and take no taps.
+  this); when your team wins the round, each of its companions plays its signature special once the round-end
+  sheet has closed (after the level-up, when there is one). A companion sleeps while its person is away, and
+  between moves fidgets once every 6 to 10 s: a sway, a blink, a small hop, in turn. Nothing moves while the page
+  is hidden or under Reduce Motion (each stands on its home). A bot, and a seat its owner left, has none. They
+  sit under the cards and controls.
+- **Taps** (Jerry 2026-11-26: "If you tap on the board (outside of cards), the character walks there"): a tap on
+  empty felt (not a card, a played trick, a seat, a button or any panel) walks your companion, facing its way, to
+  the clear spot nearest the tap inside the safe area; it passes under the cards if they are in the way, and
+  stays there until its next walk takes it home. Taps are half a second apart at least. A tap on your own
+  companion plays its special, at most once every 3 s. Nothing else at the table changes with these taps, and
+  no other companion takes one.
 - **Colours** are a palette swap of the one Tractor: Icon red (the default), Paddy green and Enamel blue from the
   start; the rest are won by ranked games (Jerry 2026-11-26: "win 10/25/50/100", and Ink black the top): Imperial
   yellow at 10, Lantern orange at 25, Jade at 50, Blue and white at 100, Ink black at 1,000, the swatches in that

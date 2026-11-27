@@ -41,7 +41,9 @@ export function colourName(kind: CompanionKind, colour: Colour): string {
 /** A look's one status line: its companion and its colour. */
 export const lookName = (t: ReturnType<typeof useT>, id: string): string => {
   const { kind, colour } = parseLook(id);
-  return t("home.lookShown", { kind: kindName(t, kind), colour: colourName(kind, colour) });
+  const name = kindName(t, kind), shade = colourName(kind, colour);
+  // a colour named as its companion (the Sparrow's 麻雀) is said once
+  return shade === name ? name : t("home.lookShown", { kind: name, colour: shade });
 };
 
 /** A count's value for `user`. */
@@ -127,10 +129,11 @@ export function Swatches({ entries, shown, inUse, user, size, className = "", fr
   );
 }
 
-/** The one button: Use, In use (inert), the locked look's unlock line
- *  (inert), or for a guest Sign in to use. */
-export function UseButton({ entry, ownership, user, onUse, price }: {
-  entry: LookEntry; ownership: Ownership; user: AuthUser | null; onUse: () => void; price?: ReactNode;
+/** The one button, one size whatever it says: Use, In use (inert), Use
+ *  inert for a locked look (what unlocks it is the status line's), or for a
+ *  guest Sign in to use. */
+export function UseButton({ ownership, onUse, price }: {
+  ownership: Ownership; onUse: () => void; price?: ReactNode;
 }) {
   const t = useT();
   if (ownership === "store") return price ? <>{price}</> : null;
@@ -140,7 +143,8 @@ export function UseButton({ entry, ownership, user, onUse, price }: {
     label = t("home.signInToUse");
     act = () => guestName.open("collection");
   } else if (ownership === "locked") {
-    label = unlockLine(t, entry, user);
+    // what unlocks it is the status line's; the button keeps its one label and size
+    label = t("home.use");
   } else if (ownership === "equipped") {
     label = t("home.inUse");
   } else {
@@ -161,8 +165,11 @@ export function UseButton({ entry, ownership, user, onUse, price }: {
  *  its own animation's length, while it is on screen; off screen its figure
  *  is paused. Every tap plays its special from the start. Under Reduce
  *  Motion it stands still, and a tap shows the special drawn still. */
-export function Stage({ kind, colour, size, label, partner, cheer = 0 }: {
+export function Stage({ kind, colour, size, box = size, label, partner, cheer = 0 }: {
   kind: DrawnKind; colour: DrawnColour; size: number; label: string;
+  /** The figures' area, in px tall: the full figure's size, kept while a
+   *  try-on stands two smaller figures in it, so nothing below moves. */
+  box?: number;
   partner?: { kind: CompanionKind; colour: Colour; size: number } | null;
   /** Each new value plays the cheer at once (a purchase). */
   cheer?: number;
@@ -175,17 +182,29 @@ export function Stage({ kind, colour, size, label, partner, cheer = 0 }: {
   }, [cheer, play]);
   return (
     <div ref={felt} className={`coll-felt char-stage${partner ? " char-try" : ""}${live.paused ? " live-paused" : ""}`}>
-      <button type="button" className="coll-figure" aria-label={label} onClick={live.tap}>
-        <Companion key={live.key} kind={kind} colour={colour} size={size} state={live.pose} team={partner ? "us" : undefined}
-                   onPoseEnd={live.onPoseEnd} />
-      </button>
-      {partner ? (
-        <span className="char-partner" aria-hidden="true">
-          <Companion kind={partner.kind} colour={partner.colour} size={partner.size} team="us" />
-        </span>
-      ) : null}
+      <div className="char-figures" style={{ height: box }}>
+        <button type="button" className="coll-figure" aria-label={label} onClick={live.tap}>
+          <Companion key={live.key} kind={kind} colour={colour} size={size} state={live.pose} team={partner ? "us" : undefined}
+                     onPoseEnd={live.onPoseEnd} />
+        </button>
+        {partner ? (
+          <span className="char-partner" aria-hidden="true">
+            <Companion kind={partner.kind} colour={partner.colour} size={partner.size} team="us" />
+          </span>
+        ) : null}
+      </div>
     </div>
   );
+}
+
+/** A screen this short or shorter draws a smaller stage, so the stage, its
+ *  colours and its one button fit above a phone's tab bar on the first view
+ *  (375x667, an iPhone SE, is the smallest supported). */
+export const SHORT_SCREEN = "(max-height: 700px)";
+
+/** The stage's figure size: a phone's, a short phone's, or a wide layout's. */
+export function stageSize(phone: boolean, short: boolean): number {
+  return phone ? (short ? 132 : 176) : 208;
 }
 
 /** The partner a try-on stands the character beside: the Tractor, or for
@@ -201,9 +220,11 @@ const TRY_PARTNER: Record<CompanionKind, { kind: CompanionKind; colour: Colour }
  *  colours, the one status line (the look shown) and the one button, or for a
  *  store character not owned `price` (Buy, Sign in to buy). A tap on a colour
  *  only shows it; the button puts it in use. "New" marks the colours in `fresh`. */
-export default function CharacterPage({ kind, shown, entries, inUse, user, phone, strip, fresh, onShow, onUse, price,
+export default function CharacterPage({ kind, shown, entries, inUse, user, phone, short = false, strip, fresh, onShow, onUse, price,
   status = "", cheer = 0 }: {
   kind: CompanionKind; shown: string; entries: readonly LookEntry[]; inUse: string; user: AuthUser | null; phone: boolean;
+  /** A short screen (`SHORT_SCREEN`): a smaller stage, so its colours and button fit above the tab bar. */
+  short?: boolean;
   strip?: ReactNode; fresh?: readonly string[]; onShow: (entry: LookEntry) => void; onUse: (entry: LookEntry) => void; price?: ReactNode;
   /** Replaces the status line while set (a purchase waiting or refused). */
   status?: string;
@@ -215,9 +236,10 @@ export default function CharacterPage({ kind, shown, entries, inUse, user, phone
   const entry = entries.find((e) => e.id === shown) ?? entries[0];
   const { colour } = parseLook(entry.id);
   const partner = tryOn ? { ...TRY_PARTNER[kind], size: phone ? 100 : 118 } : null;
+  const full = stageSize(phone, short);
   return (
     <div className="char-page">
-      <Stage kind={kind} colour={colour} size={tryOn ? (phone ? 112 : 132) : phone ? 176 : 208} label={lookName(t, entry.id)}
+      <Stage kind={kind} colour={colour} size={tryOn ? (phone ? 112 : 132) : full} box={full} label={lookName(t, entry.id)}
              partner={partner} cheer={cheer} />
       <div className="char-poses">
         <button type="button" className={`char-chip${tryOn ? " on" : ""}`} aria-pressed={tryOn}
@@ -227,8 +249,10 @@ export default function CharacterPage({ kind, shown, entries, inUse, user, phone
       </div>
       {strip}
       <Swatches entries={entries} shown={entry.id} inUse={inUse} user={user} size={56} className="char-swatches" fresh={fresh} onPick={onShow} />
-      <p className="coll-status" role="status">{status || lookName(t, entry.id)}</p>
-      <UseButton entry={entry} ownership={ownershipOf(entry, inUse, user)} user={user} onUse={() => onUse(entry)} price={price} />
+      <p className="coll-status" role="status">
+        {status || (ownershipOf(entry, inUse, user) === "locked" ? unlockLine(t, entry, user) : lookName(t, entry.id))}
+      </p>
+      <UseButton ownership={ownershipOf(entry, inUse, user)} onUse={() => onUse(entry)} price={price} />
     </div>
   );
 }

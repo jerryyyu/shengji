@@ -124,7 +124,9 @@
   -webkit-tap-highlight-color: transparent;
 }
 .char-chip.on { background: #e8ede8; border-color: #e8ede8; color: #14171e; }
-.char-try { flex-direction: row; justify-content: center; align-items: flex-end; gap: 0; }
+/* the figures' area keeps one height (Stage's box), with a try-on's two
+   smaller figures side by side at its foot, so nothing below it moves */
+.char-figures { display: flex; justify-content: center; align-items: flex-end; }
 .char-partner { display: block; line-height: 0; transform: scaleX(-1); }
 /* the colours: four in a row on a phone, each a 56 px portrait */
 .char-swatches {
@@ -200,7 +202,7 @@
 }
 .coll-restore-row { margin: 24px 16px 0; }
 .coll-grid-status { margin: 8px 16px 0; padding-bottom: 104px; }
-.store-price { margin: 0 0 8px; text-align: center; color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.store-price { margin: 8px 16px 0; text-align: center; color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 /* on a grid tile, "New" sits inside the felt's top-left corner, across from the tick */
 .coll-tile-stage .coll-new { top: 8px; left: 8px; transform: none; }
 

@@ -19,7 +19,7 @@ import { prefersReducedMotion } from "../motion";
 import { useMediaQuery } from "../phoneLayout";
 import { useShop } from "../store/shop";
 import { showToast } from "../toast";
-import CharacterPage, { Stage, Tick, kindName } from "./CharacterPage";
+import CharacterPage, { SHORT_SCREEN, Stage, Tick, kindName, stageSize } from "./CharacterPage";
 import { BuyFoot, RestoreRow } from "./StoreFoot";
 import "../companion/collection.css";
 
@@ -75,6 +75,7 @@ export default function CollectionPage() {
   const account = useAuth();
   const user = account.status === "in" ? account.user : null;
   const phone = !useMediaQuery(WIDE);
+  const short = useMediaQuery(SHORT_SCREEN);
   const scroller = useTabScroll("collection", true);
   const inUse = lookId(parseLook(user?.look));
   const looks = lookCatalogue({ rounds: user?.rounds_played ?? 0, ranked_wins: user?.ranked_wins ?? 0, ranked_games: user?.ranked_games ?? 0 },
@@ -235,7 +236,7 @@ export default function CollectionPage() {
   if (isSoon(selected)) {
     stage = (
       <div className="char-page">
-        <Stage key={selected} kind={selected} colour={soonColour(selected)} size={phone ? 176 : 208} label={kindName(t, selected)} />
+        <Stage key={selected} kind={selected} colour={soonColour(selected)} size={stageSize(phone, short)} label={kindName(t, selected)} />
         <p className="coll-status" role="status">{kindName(t, selected)}</p>
         <div className="coll-use-row">
           <button type="button" className="btn big coll-use done" disabled>{t("home.soon")}</button>
@@ -250,7 +251,7 @@ export default function CollectionPage() {
                onOwned={() => { setArrived(kind); setCheer((n) => n + 1); }} />
     ) : undefined;
     stage = (
-      <CharacterPage key={kind} kind={kind} shown={shown} entries={entriesOf(kind)} inUse={inUse} user={user} phone={phone}
+      <CharacterPage key={kind} kind={kind} shown={shown} entries={entriesOf(kind)} inUse={inUse} user={user} phone={phone} short={short}
                      fresh={fresh} onShow={show} onUse={use} price={price} status={status} cheer={cheer} />
     );
   }

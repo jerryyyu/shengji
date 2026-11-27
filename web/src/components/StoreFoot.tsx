@@ -51,13 +51,16 @@ export function BuyFoot({ product, shop, onOwned, onStatus }: {
   useEffect(() => { if (tokenMissing) void refreshAccount(); }, [tokenMissing]);
 
   if (signInFirst) {
+    // the price stands above the button, never beside it in the button's row
     return (
-      <div className="coll-use-row">
+      <>
         {price ? <p className="store-price">{price}</p> : null}
-        <button type="button" className="btn big coll-use gold" onClick={() => guestName.open("shop")}>
-          {t("home.signInToBuy")}
-        </button>
-      </div>
+        <div className="coll-use-row">
+          <button type="button" className="btn big coll-use gold" onClick={() => guestName.open("shop")}>
+            {t("home.signInToBuy")}
+          </button>
+        </div>
+      </>
     );
   }
   const purchase = () => {

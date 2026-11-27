@@ -110,3 +110,32 @@ describe("one page", () => {
     expect(to).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
   });
 });
+
+describe("the stage's line and button", () => {
+  it("a locked colour says what unlocks it on the status line; the button stays Use, inert, at its size", async () => {
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    const swatch = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".char-swatches .coll-swatch")]
+      .find((s) => s.getAttribute("aria-label")!.startsWith(name))!;
+    await act(async () => { swatch("Imperial yellow").click(); });
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("Win 10 ranked rounds to unlock · 0 of 10");
+    const use = host.querySelector<HTMLButtonElement>(".coll-use")!;
+    expect(use.textContent).toBe("Use");
+    expect(use.disabled).toBe(true);
+  });
+
+  it("a colour named as its companion is named once (麻雀, not 麻雀 · 麻雀)", async () => {
+    const { setLanguageChoice } = await import("../i18n/locale");
+    setLanguageChoice("zh-Hans");
+    try {
+      authState.current = { status: "in", clientId: "cid", user: { ...user, look: "sparrow/tree" } };
+      await draw();
+      expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("麻雀");
+      const swatch = [...host.querySelectorAll<HTMLButtonElement>(".char-swatches .coll-swatch")][1];
+      await act(async () => { swatch.click(); });
+      expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("麻雀 · 文鸟灰");
+    } finally {
+      setLanguageChoice("system");
+    }
+  });
+});

@@ -499,6 +499,10 @@ describe("buying needs an Apple or Google sign-in", () => {
     expect(button.textContent).toBe("Sign in to buy");
     expect(button.disabled).toBe(false);
     expect(host.querySelector(".store-price")?.textContent).toBe("$3.99");
+    // the price stands above the button, not beside it in the button's row
+    const priceEl = host.querySelector(".store-price")!;
+    expect(priceEl.closest(".coll-use-row")).toBeNull();
+    expect(priceEl.nextElementSibling?.classList.contains("coll-use-row")).toBe(true);
     await act(async () => { button.click(); });
     expect(open).toHaveBeenCalledWith("shop");
     expect(plugin.purchase).not.toHaveBeenCalled();

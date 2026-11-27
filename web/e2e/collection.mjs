@@ -12,7 +12,7 @@ import { fakeSocketScript } from "./fake.mjs";
 
 const only = process.argv[2] ? new RegExp(process.argv[2]) : null;
 const rep = new Report("collection", { partial: !!only });
-const DEVICES = ["phone-port", "ipad11-land"].filter((d) => !only || only.test(d));
+const DEVICES = ["phone-port", "phone-port-se", "ipad11-land"].filter((d) => !only || only.test(d));
 
 /** A guest the server shows the Collection to: the four free companions. */
 async function setup(page) {
@@ -54,6 +54,30 @@ try {
       await rep.check(`${device} no page, no history entry`, got.hash === "#/collection" && got.entries === entries && got.title === "Collection"
         ? null : JSON.stringify(got), page);
       await rep.check(`${device} the selected tile is ringed`, got.ring === "Bun" ? null : `ring on ${got.ring}`, page);
+    });
+
+    // the stage, its colours and its button fit above the tab bar on the first view,
+    // and Try on your table does not move the controls under the stage
+    await scenario(rep, `${device} fit and try-on`, page, async () => {
+      await page.evaluate(() => { document.querySelector(".coll-page").scrollTop = 0; });
+      await page.locator(".coll-yours .coll-tile", { hasText: "Tractor" }).tap();
+      await sleep(400);
+      const fit = await page.evaluate(() => {
+        const use = document.querySelector(".char-page .coll-use").getBoundingClientRect();
+        const bar = document.querySelector(".tabbar")?.getBoundingClientRect();
+        return { useBottom: Math.round(use.bottom), limit: Math.round(bar ? bar.top : innerHeight) };
+      });
+      await rep.check(`${device} the one button sits above the tab bar`, fit.useBottom <= fit.limit ? null
+        : `the button's foot is ${fit.useBottom - fit.limit}px under it`, page);
+      const where = () => page.evaluate(() => Math.round(document.querySelector(".char-swatches").getBoundingClientRect().top));
+      const before = await where();
+      await page.locator(".char-chip").tap();
+      await sleep(300);
+      const after = await where();
+      await page.locator(".char-chip").tap();
+      await sleep(300);
+      await rep.check(`${device} Try on your table keeps the controls in place`, Math.abs(after - before) <= 1 ? null
+        : `the swatches moved ${after - before}px`, page);
     });
 
     if (phone) {

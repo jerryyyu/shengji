@@ -8,7 +8,7 @@
 // and tosses its head.
 import { LAMB_COLOURS } from "./storePalette";
 import type { LambColour, LambColourId } from "./storePalette";
-import { ball, bits, confetti, curl, dataUrl, eye, glow, groundShadow, part, portraitSvg, puff, ramp, sharedDefs, spark, teamPaint } from "./rig";
+import { ball, confetti, curl, dataUrl, eye, glow, groundShadow, part, portraitSvg, puff, ramp, sharedDefs, spark, teamPaint } from "./rig";
 import type { CharOpts, CharPose, EyeMode } from "./rig";
 
 /** A colour by id, or a palette given whole (the CSS-variable master passes one). */
@@ -35,7 +35,7 @@ const FACE: Record<CharPose, { eyes: EyeMode; mouth: "smile" | "open" | "flat" |
 const STILL: Partial<Record<CharPose, Record<string, string>>> = {
   hop: { body: "translate(0 -12)", head: "rotate(-4 236 232)", earL: "rotate(16 160 160)", earR: "rotate(-16 312 160)" },
   cheer: { body: "translate(0 -34)", head: "translate(0 -4) rotate(-7 236 232)", earL: "rotate(18 160 160)", earR: "rotate(-18 312 160)", bell: "rotate(-16 236 266)" },
-  react: { body: "translate(36 0)", head: "translate(12 16) rotate(15 236 232)", earL: "rotate(-12 160 160)", earR: "rotate(12 312 160)", tail: "rotate(-18 104 262)" },
+  react: { body: "translate(8 0)", head: "translate(4 14) rotate(12 236 232)", earL: "rotate(-12 160 160)", earR: "rotate(12 312 160)", tail: "rotate(-18 104 262)" },
   sleep: { head: "translate(-2 14) rotate(7 236 232)", earL: "rotate(-16 160 160)", earR: "rotate(16 312 160)" },
 };
 
@@ -113,7 +113,7 @@ export function lambMarkup(colour: LambColourId | LambColour, id: string, { pose
 
   const body = part("cmp-body", part("cmp-torso", torso) + part("cmp-head", head, at.head), at.body);
   return defs + (shadow ? groundShadow(id, 186, 128) : "") + (special ? `<g class="cmp-dust" fill="#e9dcc6"><circle cx="104" cy="346" r="13"/><circle cx="84" cy="338" r="9"/><circle cx="120" cy="334" r="7"/></g>` : "")
-    + body + (pose === "react" ? bits("cmp-impact", 372, 190, 48, 5, ["#fff6d6", "#f2c14e", "#fff6d6"], -80, 80, 1.15) + petals("cmp-petals", 366, 186, 58, 7) : "")
+    + body + (pose === "react" ? `<g class="cmp-impact">${spark(356, 176, 5.4, "#fff3c0")}<g transform="rotate(45 356 176)">${spark(356, 176, 3.6, "#f2c14e")}</g></g>` + petals("cmp-petals", 346, 186, 52, 7) : "")
     + (special ? petals("cmp-petals2", 180, 236, 92, 8) : "") + (pose === "cheer" ? confetti(236, 150) : "");
 }
 

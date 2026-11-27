@@ -28,12 +28,13 @@ const FACE: Record<CharPose, { eyes: EyeMode; mouth: "smile" | "open" | "rest" }
 const STILL: Partial<Record<CharPose, Record<string, string>>> = {
   hop: { body: "translate(0 -12)", tail: "rotate(-10 244 322)", earL: "rotate(-8 140 112)", earR: "rotate(8 232 112)" },
   cheer: { body: "translate(0 -34)", head: "rotate(-6 186 238)", tail: "rotate(-14 244 322)", prop: "translate(0 -10) rotate(-5 186 296)" },
-  react: { head: "translate(0 10) rotate(5 186 238)", tail: "rotate(-16 244 322)", flap: "translate(0 516) scale(1 -1)", earL: "rotate(-8 140 112)", earR: "rotate(8 232 112)" },
+  react: { head: "translate(0 -8) rotate(-6 186 238)", tail: "rotate(-16 244 322)", flap: "translate(0 516) scale(1 -1)", toss: "translate(0 -240) translate(186 297) scale(1.2) translate(-186 -297)",
+           earL: "rotate(-8 140 112)", earR: "rotate(8 232 112)" },
   sleep: { head: "translate(0 12) rotate(6 186 238)", earL: "rotate(-14 140 112)", earR: "rotate(14 232 112)", tail: "rotate(8 244 322)" },
 };
 
-/** Where each spilled coin lies in the still: the end of its arc. */
-const COINS = ["translate(-92 26)", "translate(-58 70)", "translate(94 22)", "translate(62 68)"];
+/** Where each coin is in the still: two landed either side, one at the top of its arc. */
+const COINS = ["translate(-112 264)", "translate(104 264)", "translate(8 -52)"];
 
 /** The Fox's shapes in its 400 box, as SVG markup. `id` keeps its gradient
  *  ids apart from another drawing's on the same page. */
@@ -77,13 +78,16 @@ export function foxMarkup(colour: FoxColourId | FoxColour, id: string, { pose = 
     + (detail ? `<rect x="150" y="256" width="72" height="82" rx="6" fill="none" stroke="${p.seal[1]}" stroke-width="1.8" opacity=".7"/>` : "")
     + (pose === "react" ? `<rect class="cmp-inside" x="160" y="232" width="52" height="30" rx="4" fill="${p.seal[0]}"/>` : "")
     + part("cmp-flap", flap, at.flap)
-    + `<circle cx="186" cy="304" r="13.5" fill="${u("seal")}"/>`
-    + `<ellipse cx="138" cy="304" rx="17" ry="23" fill="${u("fur")}" transform="rotate(16 138 304)"/><ellipse cx="234" cy="304" rx="17" ry="23" fill="${u("fur")}" transform="rotate(-16 234 304)"/>`;
+    + `<circle cx="186" cy="304" r="13.5" fill="${u("seal")}"/>`;
+  const paws = `<ellipse cx="138" cy="304" rx="17" ry="23" fill="${u("fur")}" transform="rotate(16 138 304)"/><ellipse cx="234" cy="304" rx="17" ry="23" fill="${u("fur")}" transform="rotate(-16 234 304)"/>`;
 
-  const coin = (i: number) => part(`cmp-coin cmp-coin${i}`, `<circle cx="186" cy="246" r="15" fill="${u("seal")}"/><rect x="180.5" y="240.5" width="11" height="11" rx="2" fill="${p.seal[3]}" opacity=".85"/>`
-    + `<ellipse cx="180" cy="239" rx="4.6" ry="2.6" fill="#fff" opacity=".8" transform="rotate(-30 180 239)"/>`, still ? COINS[i - 1] : "");
-  const coins = pose === "react" ? coin(1) + coin(2) + coin(3) + coin(4) + `<g class="cmp-glint">${spark(96, 232, 1.5, "#fff6d6")}${spark(280, 226, 1.3, "#fff6d6")}</g>` : "";
-  const body = part("cmp-body", part("cmp-torso", torso) + (team ? kerchief(team, 124, 248, 226, 10, 240) : "") + part("cmp-prop", envelope, at.prop) + part("cmp-head", head, at.head) + coins, at.body);
+  // The coins are drawn where the tossed envelope opens, over the head; their keyframes carry them from there.
+  const coin = (i: number) => part(`cmp-coin cmp-coin${i}`, `<circle cx="186" cy="60" r="30" fill="${u("seal")}"/><rect x="175" y="49" width="22" height="22" rx="4" fill="${p.seal[3]}" opacity=".85"/>`
+    + `<ellipse cx="174" cy="46" rx="9" ry="5" fill="#fff" opacity=".8" transform="rotate(-30 174 46)"/>`, still ? COINS[i - 1] : "");
+  const coins = pose === "react" ? coin(1) + coin(2) + coin(3) + `<g class="cmp-glint">${spark(60, 300, 2.4, "#fff6d6")}${spark(312, 296, 2.2, "#fff6d6")}</g>` : "";
+  // In the special the envelope is thrown up in front of the face, so it is drawn over the head; at rest it sits under the chin either way.
+  const prop = part("cmp-prop", part("cmp-toss", envelope, at.toss) + paws, at.prop), face2 = part("cmp-head", head, at.head);
+  const body = part("cmp-body", part("cmp-torso", torso) + (team ? kerchief(team, 124, 248, 226, 10, 240) : "") + (pose === "react" ? face2 + prop : prop + face2) + coins, at.body);
   return defs + (shadow ? groundShadow(id, 200, 126) : "") + body + (pose === "cheer" ? confetti(186, 150) : "");
 }
 

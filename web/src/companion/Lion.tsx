@@ -73,11 +73,11 @@ export function lionMarkup(colour: LionColourId | LionColour, id: string, { pose
   const leg = (x: number) => `<rect x="${x - 11}" y="298" width="22" height="46" rx="9" fill="${p.body[2]}"/><ellipse cx="${x + 4}" cy="346" rx="18" ry="9.5" fill="${p.shoe}"/>`
     + (detail ? `<path d="M${x - 8} 344h24" stroke="${p.mane[1]}" stroke-width="3" stroke-linecap="round" opacity=".9"/>` : "");
   const dancing = pose === "react";
-  const costume = dancing ? part("cmp-costume", `<g transform="translate(-46 0)">`
+  const costume = dancing ? part("cmp-costume", `<g transform="translate(-20 0)">`
     + part("cmp-legs-b", leg(82) + leg(118), at.legsB) + part("cmp-legs-f", leg(206) + leg(246), at.legsF)
     + part("cmp-ctail", `<path d="M58 284C40 280 34 264 40 250" fill="none" stroke="${p.body[2]}" stroke-width="11" stroke-linecap="round"/><path d="${puff(40, 240, 18, 16, 6, 0.3)}" fill="${u("mane")}"/>`, at.ctail)
     + seg(3, 92, at.seg3) + seg(2, 140, at.seg2) + seg(1, 188, at.seg1) + `</g>`)
-    + (still ? "" : bits("cmp-poof", 96, 270, 84, 7, ["#fff6e6", p.accent[1], "#fff6e6"], -210, 30, 1.1)) : "";
+    + (still ? "" : bits("cmp-poof", 122, 270, 76, 7, ["#fff6e6", p.accent[1], "#fff6e6"], -210, 30, 1.1)) : "";
 
   const brow = (cx: number) => `<path d="${puff(cx, 116, 27, 10.5, 5, 0.35, 0.62)}" fill="${u("mane")}"/>`;
   const mouth = face.mouth === "open"

@@ -86,7 +86,9 @@ export function catMarkup(colour: CatColourId | CatColour, id: string, { pose = 
     + `<ellipse cx="148" cy="320" rx="21" ry="18" fill="${u("fur")}"/>`;
 
   const pip = (suit: string, on: boolean, art: string) => `<g class="cmp-suit cmp-suit-${suit}" opacity="${on ? 1 : 0}">${art}</g>`;
-  const trick = pose === "react" ? part("cmp-card", `<g class="cmp-card-back"${still ? ` opacity="0"` : ""}><rect x="286" y="52" width="60" height="84" rx="8" fill="${u("back")}" stroke="#fbf9f4" stroke-width="5"/>`
+  // The card is the small one's drawing, 1.5 times its size, held up over the head; a flash stands behind it as it turns.
+  const flash = pose === "react" && !still ? `<g class="cmp-glint">${spark(186, 6, 6, "#fff3c0")}<g transform="rotate(45 186 6)">${spark(186, 6, 4.2, "#f2c14e")}</g></g>` : "";
+  const trick = pose === "react" ? flash + part("cmp-card", `<g transform="translate(186 6) scale(1.5) translate(-316 -94)"><g class="cmp-card-back"${still ? ` opacity="0"` : ""}><rect x="286" y="52" width="60" height="84" rx="8" fill="${u("back")}" stroke="#fbf9f4" stroke-width="5"/>`
     + `<path d="M316 78l11 16l-11 16l-11-16z" fill="#f2d27c" opacity=".9"/></g>`
     + `<g class="cmp-card-face" opacity="${still ? 1 : 0}"><rect x="286" y="52" width="60" height="84" rx="8" fill="${u("card")}" stroke="#d9d3c6" stroke-width="2"/>`
     + pip("h", true, `<path d="M316 114C294 99 295 80 306 78C312 77 315 81 316 85C317 81 320 77 326 78C337 80 338 99 316 114Z" fill="#c9283a"/>`)
@@ -94,7 +96,7 @@ export function catMarkup(colour: CatColourId | CatColour, id: string, { pose = 
     + pip("s", false, `<path transform="translate(193 -198)" d="M123 274c-13 13-15 26-3 24c-1 6-3 9-5 12h16c-2-3-4-6-5-12c12 2 10-11-3-24z" fill="#1d1f26"/>`)
     + pip("c", false, `<g fill="#1d1f26"><circle cx="316" cy="84" r="8.5"/><circle cx="306.5" cy="97" r="8.5"/><circle cx="325.5" cy="97" r="8.5"/><path d="M316 94l-6 20h12z"/></g>`)
     + pip("j", false, spark(316, 94, 2.3, "#c9283a") + `<circle cx="316" cy="94" r="6" fill="#f2c14e"/>`)
-    + `</g>`) : "";
+    + `</g></g>`) : "";
   const body = part("cmp-body", part("cmp-arm-r", arm, at.arm) + part("cmp-torso", torso)
     + part("cmp-head", head + `<ellipse cx="186" cy="232" rx="78" ry="16" fill="${u("under")}"/>`, at.head) + collar + part("cmp-prop", card), at.body);
   return defs + (shadow ? groundShadow(id, 186, 124) : "") + body + trick + (pose === "cheer" ? confetti(186, 150) : "");

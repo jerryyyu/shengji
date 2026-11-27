@@ -251,10 +251,10 @@ export const TAP_THROTTLE_MS = 500;
  *  played as a special once any level-up has ended. Every move is a Web
  *  Animation of a transform. Under Reduce Motion it stands on its home;
  *  while the page is hidden it rests. */
-function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal, wins, onEnd, onUpEnd }: {
+function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal, wins, onEnd, onUpEnd, onGoal }: {
   player: StatePlayer; team: Team; px: number; pos: SeatPos;
   zone: Zone; layout: Layout; roam: Layout; pose: Pose; up: LevelUp | null; you: boolean; goal: { spot: Spot; n: number } | null;
-  wins: number; onEnd: () => void; onUpEnd: () => void;
+  wins: number; onEnd: () => void; onUpEnd: () => void; onGoal?: (n: number) => void;
 }) {
   const t = useT();
   const { kind, colour } = parseLook(player.look);
@@ -363,13 +363,21 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     if (off || !clear(now, px, you, layout)) goTo(off ? zone.home : near, quick);
   }, [zone, layout, roam, px, you]);
 
-  // a tap on the felt sends yours there
+  // a tap on the felt sends yours there, once: each tap is taken (or
+  // dropped) the first time it is seen, and one whose spot is no longer
+  // clear of the table and the other companions is dropped
   const goalN = goal?.n;
+  const tookGoal = useRef(0);
+  const goalDone = useRef(onGoal);
+  goalDone.current = onGoal;
   useEffect(() => {
-    if (!goal || !placed) return;
+    if (!goal || goal.n <= tookGoal.current) return;
+    tookGoal.current = goal.n;
+    goalDone.current?.(goal.n);
+    if (!placed || !clear(goal.spot, px, you, roam)) return;
     roaming.current = true;
     goTo(goal.spot, { under: true });
-  }, [goalN, placed]);
+  }, [goalN]);
 
   // a walk now and then, on its own clock, while the page is shown; one a
   // tap sent away walks home
@@ -651,6 +659,8 @@ export default function TableCompanions({ state }: { state: GameState }) {
 
   if (!on) return null;
   const end = (seat: number) => () => setPoses((p) => ({ ...p, [seat]: "idle" }));
+  // a tap's goal is cleared once yours has taken it, so no later render replays it
+  const takeGoal = (n: number) => setGoal((g) => (g && g.n === n ? null : g));
   return (
     <div className="table-companions" ref={root} aria-hidden="true">
       {layout && zones ? people.map((p) => {
@@ -662,7 +672,7 @@ export default function TableCompanions({ state }: { state: GameState }) {
                   px={zone.size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max)}
                   pos={pos} zone={zone} layout={layout} roam={you && roam ? roam : layout} pose={poses[p.seat] ?? "idle"}
                   up={ups[p.seat] ?? null} you={you} goal={you ? goal : null} wins={p.team === ours ? wins : 0}
-                  onEnd={end(p.seat)} onUpEnd={done(p.seat)} />
+                  onEnd={end(p.seat)} onUpEnd={done(p.seat)} onGoal={you ? takeGoal : undefined} />
         );
       }) : null}
     </div>

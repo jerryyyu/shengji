@@ -933,6 +933,28 @@ describe("the table", () => {
       expect(specialOn("0")).toBe(true);
     });
 
+    it("a tap is taken once: hidden and drawn again, yours never replays an old tap over a companion that has arrived", async () => {
+      const bots = [player(0), player(1, { is_bot: true, look: null }), player(2, { is_bot: true, look: null }), player(3, { is_bot: true, look: null })];
+      await render(state({ players: bots } as Partial<GameState>));
+      // a tap where the left seat's companion will stand once a person sits there
+      tap(felt(), 124 + 22, 118 + 44);
+      expect(walks("0")).toHaveLength(1);
+      // cards cover your corner: yours is not drawn
+      rects["trick-play"] = { x: 0, y: 40, w: 340, h: 225 };
+      await render(state({ players: bots, trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as Partial<GameState>));
+      expect(host.querySelector('.tc-seat[data-seat="0"]')).toBeNull();
+      // the cards clear and a person takes the left seat
+      rects["trick-play"] = { x: 0, y: 0, w: 0, h: 0 };
+      const people = [player(0), player(1), player(2, { is_bot: true, look: null }), player(3, { is_bot: true, look: null })];
+      await render(state({ players: people, trick: { leader: 2, plays: [] } } as Partial<GameState>));
+      await advance(50);
+      const mine = spotOf(0);
+      const theirs = spotOf(1);
+      const w1 = Number(host.querySelector('.tc-seat[data-seat="1"] svg')!.getAttribute("width"));
+      expect(meets(figureBox(mine, 44, true), figureBox(theirs, w1, false))).toBe(false);
+      expect(walks("0")).toHaveLength(1);
+    });
+
     it("under Reduce Motion a tap on the felt leaves your companion at home", async () => {
       const mm = window.matchMedia;
       window.matchMedia = ((q: string) => ({ matches: q.includes("reduce"), addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;

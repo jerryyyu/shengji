@@ -206,29 +206,31 @@ try {
         await deep(9999);
         await tile(".coll-soon", 1).tap();
         await settle("a Coming soon tile");
-        // a tap while a fling is still moving the page; a tap the moving page carries off every tile
-        // selects nothing and is tried again
+        // a tap while a fling is still moving the page: a browser may spend that tap on stopping the
+        // fling (Chrome and iOS deliver no click for it), so the player taps again on the page
+        // where it stopped; the tap that reaches the tile must bring the stage back
         for (const n of [2, 3]) {
-          let delivered = false;
-          for (let attempt = 0; attempt < 4; attempt++) {
-            await deep(0);
-            await page.evaluate(() => { window.__tileTaps = 0; document.addEventListener("click", (e) => {
-              if (e.target.closest?.(".coll-tile")) window.__tileTaps += 1; }, { capture: true, once: true }); });
-            const y = Math.round(page.qa.d.h * 0.8);
-            await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 60, y }] });
-            for (let i = 1; i <= 4; i++) {
-              await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: 60, y: y - i * 90 }] });
-              await sleep(8);
-            }
-            await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-            await sleep(60);
-            await tile(".coll-yours", n).tap({ force: true });
-            if (!(await page.evaluate(() => window.__tileTaps > 0))) continue;
-            delivered = true;
-            await settle(`a tap on tile ${n} during a fling`);
-            break;
+          await deep(0);
+          await page.evaluate(() => { window.__tileTaps = 0; document.addEventListener("click", (e) => {
+            if (e.target.closest?.(".coll-tile")) window.__tileTaps += 1; }, { capture: true }); });
+          const y = Math.round(page.qa.d.h * 0.8);
+          await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 60, y }] });
+          for (let i = 1; i <= 4; i++) {
+            await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: 60, y: y - i * 90 }] });
+            await sleep(8);
           }
-          if (!delivered) misses.push(`no tap on tile ${n} during a fling reached a tile in 4 tries`);
+          await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+          await sleep(60);
+          await tile(".coll-yours", n).tap({ force: true });
+          if (!(await page.evaluate(() => window.__tileTaps > 0))) {
+            await sleep(150);
+            await tile(".coll-yours", n).tap();
+          }
+          if (!(await page.evaluate(() => window.__tileTaps > 0))) {
+            misses.push(`no tap on tile ${n} reached it after a fling`);
+            continue;
+          }
+          await settle(`a tap on tile ${n} during or just after a fling`);
         }
         await rep.check(`${device} every lower tap leaves the stage in view at the top`, misses.length ? misses.join("; ") : null, page);
       });

@@ -452,6 +452,9 @@ class Seat:
     # name the seat goes back to if they leave during it.
     joined_round: int | None = None
     bot_name: str | None = None
+    # Who held the seat before that newcomer, as (name, is_bot): the
+    # newcomer's state names it while ``joined_round`` is the round in play.
+    took_from: tuple[str, bool] | None = None
     # The owner pressed Leave mid-game: the bot covers the seat at once
     # instead of after TAKEOVER_AFTER, and the table names it as left. The
     # reservation window and every rating and penalty rule stay as for a
@@ -1165,6 +1168,12 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
         # client that missed the round end (reconnect) clears its warning.
         "joined_round": (me.joined_round == game.round_no and rnd.phase != "round_end"
                          and ratings.ranked(room)),
+        # the seat's holder before this newcomer, at any table, sent only
+        # during the round joined: the newcomer's table names whose hand
+        # they took; an older client ignores it
+        **({"took_seat": {"name": me.took_from[0], "is_bot": me.took_from[1]}}
+           if (me.took_from is not None and me.joined_round == game.round_no
+               and rnd.phase != "round_end") else {}),
     }
 
 
@@ -4299,6 +4308,7 @@ def _seat_newcomer(room: Room, seat: int, pj: PendingJoin) -> None:
     me.timeouts_in_row = me.timeouts_in_round = 0
     me.turn_started = None
     me.joined_round = None if at_round_end else room.game.round_no
+    me.took_from = None if at_round_end else (took, took_bot)
     if at_round_end:
         room.round_end_joins[seat] = pj.name
     del room.pending_joins[seat]
@@ -4324,6 +4334,7 @@ def _revert_to_bot(room: Room, seat: int) -> None:
     sd.queue_id = sd.device = None
     sd.token = secrets.token_urlsafe(12)
     sd.joined_round = None
+    sd.took_from = None
     sd.away, sd.away_since = False, None
     sd.bot_announced = False
     sd.timeouts_in_row = sd.timeouts_in_round = 0

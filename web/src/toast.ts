@@ -15,18 +15,25 @@ export interface ToastMsg {
   info?: boolean;
   /** A team's dot before the text, for a line about a seat. */
   dot?: 0 | 1;
+  /** Up until `releaseToast`, with no timer of its own. */
+  held?: boolean;
+  /** Released: the ms left before it goes, which its fade reads. */
+  leaving?: number;
 }
 
 export interface ToastOpts {
   sub?: string;
   info?: boolean;
   dot?: 0 | 1;
+  /** Stay up until `releaseToast` (then at least TOAST_MS in all), not TOAST_MS. */
+  hold?: boolean;
 }
 
 // The app's one toast: a new one replaces the one showing, so at most one is
 // ever on screen, and the newest wins.
 let current: ToastMsg | null = null;
 let timer: number | null = null;
+let shownAt = 0;
 let nextId = 0;
 const listeners = new Set<() => void>();
 
@@ -41,15 +48,33 @@ export function showToast(text: string, opts: ToastOpts = {}): ToastMsg {
   if (opts.sub) t.sub = opts.sub;
   if (opts.info) t.info = true;
   if (opts.dot !== undefined) t.dot = opts.dot;
+  if (opts.hold) t.held = true;
   current = t;
+  shownAt = Date.now();
   if (timer !== null) window.clearTimeout(timer);
+  timer = null;
+  if (!t.held) takeDownIn(TOAST_MS);
+  emit();
+  return t;
+}
+
+function takeDownIn(ms: number): void {
   timer = window.setTimeout(() => {
     timer = null;
     current = null;
     emit();
-  }, TOAST_MS);
+  }, ms);
+}
+
+/** Let a held toast go: it fades out once it has been up TOAST_MS in all.
+ *  A toast that has since been replaced is left alone. */
+export function releaseToast(id: number): void {
+  if (current === null || current.id !== id || !current.held) return;
+  // the fade needs its own 0.4 s even when the toast has been up long enough
+  const left = Math.max(400, TOAST_MS - (Date.now() - shownAt));
+  current = { ...current, held: false, leaving: left };
+  takeDownIn(left);
   emit();
-  return t;
 }
 
 /** Take the toast down now. */

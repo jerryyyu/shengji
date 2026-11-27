@@ -25,6 +25,13 @@ describe("the error toast", () => {
     expect(css).toContain(".toast { animation: toast-out 0.01ms linear calc(var(--toast-ms, 4000ms) - 0.01ms) forwards; }");
     expect(css).not.toMatch(/toast-out[^;]*3\.6s/);
   });
+
+  it("a held toast only fades in; released, it fades over the time it has left, still under Reduce Motion", () => {
+    expect(decls(".toast.held").trim()).toBe("animation: toast-in 0.2s ease-out;");
+    expect(decls(".toast.leaving")).toContain("toast-out 0.4s ease-in calc(var(--toast-ms) - 0.4s) forwards");
+    expect(css).toContain(".toast.leaving { animation: toast-out 0.01ms linear calc(var(--toast-ms) - 0.01ms) forwards; }");
+    expect(css).toContain(".toast.held { animation: none; }");
+  });
 });
 
 describe("Reduce Motion", () => {

@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Toast from "./Toast";
-import { TOAST_MS, clearToast, currentToast, showToast } from "../toast";
+import { TOAST_MS, clearToast, currentToast, releaseToast, showToast } from "../toast";
 
 let host: HTMLDivElement;
 let root: Root;
@@ -73,5 +73,35 @@ describe("the one toast", () => {
     expect(shown()[0].classList.contains("at-table")).toBe(true);
     act(() => { showToast("Mei joins next trick", { info: true, dot: 1 }); });
     expect(shown()[0].querySelector(".toast-dot.team1")).not.toBeNull();
+  });
+});
+
+describe("a held toast", () => {
+  it("has no timer until released, then fades over the time it has left", () => {
+    act(() => root.render(<Toast place="table" />));
+    let id = 0;
+    act(() => { id = showToast("You took Bot 2's seat", { info: true, hold: true }).id; });
+    expect(shown()[0].classList.contains("held")).toBe(true);
+    act(() => { vi.advanceTimersByTime(TOAST_MS * 3); });
+    expect(shown()).toHaveLength(1);
+    act(() => releaseToast(id));
+    const el = shown()[0];
+    expect(el.classList.contains("leaving")).toBe(true);
+    // up long enough already: only the fade's own 0.4 s is left
+    expect(el.style.getPropertyValue("--toast-ms")).toBe("400ms");
+    act(() => { vi.advanceTimersByTime(400); });
+    expect(shown()).toHaveLength(0);
+  });
+
+  it("is replaced by a newer toast, and a stale release leaves the newer one alone", () => {
+    act(() => root.render(<Toast />));
+    let id = 0;
+    act(() => { id = showToast("held", { hold: true }).id; });
+    act(() => { showToast("newer", { info: true }); });
+    act(() => releaseToast(id));
+    expect(currentToast()?.text).toBe("newer");
+    expect(currentToast()?.leaving).toBeUndefined();
+    act(() => { vi.advanceTimersByTime(TOAST_MS); });
+    expect(shown()).toHaveLength(0);
   });
 });

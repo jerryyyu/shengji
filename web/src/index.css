@@ -419,6 +419,10 @@ textarea:focus-visible {
   pointer-events: none;
 }
 
+/* held until released, then faded over the time it has left */
+.toast.held { animation: toast-in 0.2s ease-out; }
+.toast.leaving { animation: toast-out 0.4s ease-in calc(var(--toast-ms) - 0.4s) forwards; }
+
 .toast small {
   display: block;
   font-size: var(--fs-13);
@@ -4620,6 +4624,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .btn:active:not(:disabled) { transform: none; }
   /* Preserve the toast's dismissal timing, without its slide-in movement. */
   .toast { animation: toast-out 0.01ms linear calc(var(--toast-ms, 4000ms) - 0.01ms) forwards; }
+  .toast.leaving { animation: toast-out 0.01ms linear calc(var(--toast-ms) - 0.01ms) forwards; }
+  .toast.held { animation: none; }
 }
 
 /* A phone's controls need finger-sized targets, not desktop icon bounds. */

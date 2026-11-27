@@ -10,7 +10,8 @@ import { formatTableMessage, isDeclareMessage } from "../messageCopy";
 import { OFFLINE, useNearbySession } from "../offlineMode";
 import { useAuth } from "../auth";
 import { attackingTeam, myTeam } from "../tableCopy";
-import { clearToast, currentToast, showToast } from "../toast";
+import { clearToast, currentToast, releaseToast, showToast } from "../toast";
+import { tookSeatText } from "../queue/tableText";
 import { useNearbyUi } from "../nearbyGate";
 import { displayName, t, useT } from "../i18n";
 
@@ -64,6 +65,54 @@ function anotherLead(state: GameState, notice: Notice): boolean {
   const lead = state.trick?.plays[0] ?? state.last_trick?.plays[0];
   if (!lead) return false;
   return lead.seat !== notice.seat || !sameCards(lead.cards, notice.forced);
+}
+
+/** Where play stood when a newcomer's line was told: tricks done, and
+ *  whether this seat's card was already in the trick (the bot may have
+ *  played it before the handover). */
+interface PlayMark { done: number; mine: boolean }
+
+function playMark(state: GameState): PlayMark {
+  return { done: state.tricks_done ?? 0, mine: state.trick?.plays.some((p) => p.seat === state.you) ?? false };
+}
+
+/** Whether this seat has played a card of its own since `base`. */
+function playedSince(base: PlayMark, state: GameState): boolean {
+  const now = playMark(state);
+  if (now.done === base.done) return now.mine && !base.mine;
+  return now.done > base.done + 1 || !base.mine || now.mine;
+}
+
+/** The newcomer's line, once per seat taken, kept across a remount of the
+ *  table (How to play and back tells it no second time). */
+let toldSeat: ({ key: string; id: number } & PlayMark) | null = null;
+
+/** A seat taken mid-round is told once, as the one toast, held until this
+ *  seat plays its first card: whose seat it was and, at a ranked table, that
+ *  the round is unranked for them. A seat held from the round's start, or a
+ *  seat taken at a round end, has no `took_seat` and hears nothing. */
+function useTookSeatToast(state: GameState, guest: boolean) {
+  const took = state.phase !== "round_end" ? state.took_seat : undefined;
+  const key = took ? `${state.room}:${took.name}` : "";
+  useEffect(() => {
+    if (!took) {
+      if (toldSeat !== null) releaseToast(toldSeat.id);
+      toldSeat = null;
+      return;
+    }
+    if (toldSeat?.key === key) return;
+    const ranked = state.joined_round === true && !guest;
+    const id = showToast(tookSeatText(took, ranked), { info: true, hold: true, dot: myTeam(state) }).id;
+    toldSeat = { key, id, ...playMark(state) };
+    // told on a new seat only; the rest is read with it
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  const played = toldSeat !== null && toldSeat.key === key && playedSince(toldSeat, state);
+  useEffect(() => {
+    if (played && toldSeat !== null) releaseToast(toldSeat.id);
+  }, [played]);
+  // off the table the line has no hand to wait on
+  useEffect(() => () => { if (toldSeat !== null) releaseToast(toldSeat.id); }, []);
 }
 
 /** A failed throw and the engine's table messages are told once, as the one
@@ -236,11 +285,12 @@ export function gameMode(state: GameState, practice: boolean): Mode {
   return state.matched ? "ranked" : "casual";
 }
 
-/** The mode's word for the top of the ⋯ menu: "Ranked" or "Casual". The
+/** The mode's word for the top of the ⋯ menu: "Ranked" or "Casual", and
+ *  "Unranked" for the round a newcomer joined at a ranked table. The
  *  header carries no mode; offline play is plain from the screen, and a
  *  guest at a ranked table is not rated, so neither gets a word. */
-function modeWord(mode: Mode, guest: boolean): "Ranked" | "Casual" | undefined {
-  if (mode === "ranked") return guest ? undefined : "Ranked";
+function modeWord(mode: Mode, guest: boolean, joined: boolean): "Ranked" | "Unranked" | "Casual" | undefined {
+  if (mode === "ranked") return guest ? undefined : joined ? "Unranked" : "Ranked";
   if (mode === "casual") return "Casual";
   return undefined;
 }
@@ -257,6 +307,7 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
   // a guest is never ranked: the seat's own flag, or no account on this device
   const account = useAuth().status;
   const guest = state.guest === true || account === "out" || account === "off";
+  useTookSeatToast(state, guest);
   const shownPoints = Math.round(useCountUp(state.attacker_points, { snapDown: true }));
   const us = myTeam(state);
   const them = (1 - us) as 0 | 1;
@@ -290,7 +341,7 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
           </span>
           {/* a guest is never rated, so its leave sheet speaks of no ranking even at a ranked table;
               Allow joiners is at every table that takes joiners (the frame carries it), ranked or casual */}
-          <HudMenu room={state.room} mode={modeWord(mode, guest)} ranked={mode === "ranked"} guest={guest} offline={practice} nearby={nearby}
+          <HudMenu room={state.room} mode={modeWord(mode, guest, state.joined_round === true)} ranked={mode === "ranked"} guest={guest} offline={practice} nearby={nearby}
                    allowJoiners={!state.joining_you ? state.allow_joiners : undefined}
                    opener={state.opener === state.you} />
         </div>

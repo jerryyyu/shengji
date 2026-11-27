@@ -253,6 +253,13 @@ export interface GameState {
   /** Sent only to a newcomer waiting for its handover: `you` is the seat it
    *  takes, which the bot plays until the trick ends. */
   joining_you?: boolean;
+  /** This seat was taken mid-round from a ranked open table and that round
+   *  is in play: it is not ranked for this viewer, and leaving it costs the
+   *  join wait. Always sent by the server; absent offline. */
+  joined_round?: boolean;
+  /** Who held this seat before this viewer took it mid-round, at any table;
+   *  sent only while that round is in play. */
+  took_seat?: { name: string; is_bot: boolean };
   phase: Phase;
   ready?: number[];   // seats that confirmed the round end
   players: StatePlayer[];

@@ -1,10 +1,11 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { DUR } from "../motion";
 import type { GameState, Notice, StatePlayer } from "../protocol";
 import Hud from "./Hud";
-import { clearToast, currentToast, showToast } from "../toast";
+import { TOAST_MS, clearToast, currentToast, showToast } from "../toast";
+import { setLanguageChoice } from "../i18n";
 import { applyPlay, newRound } from "../offline/engine/round";
 import { newGame } from "../offline/engine/game";
 import { DeckRng } from "../offline/server/rng";
@@ -234,6 +235,119 @@ describe("failed-throw notice and table messages: told once, as the one toast", 
   it("tells no declaration: its tag under the declared cards does", () => {
     const view = render(at({ message: "Seat 1 declared H2" }));
     expect(toast()).toBeNull();
+    view.unmount();
+  });
+});
+
+describe("a seat taken mid-round: one held toast and the menu's word", () => {
+  let n = 0;
+  const bot2 = { name: "Bot 2", is_bot: true };
+  // seat 2, taken from its bot after the bot played to this trick
+  const joined = (over: Partial<GameState> = {}) => makeState({
+    room: `J${n}`, you: 2, matched: true, joined_round: true, took_seat: bot2, tricks_done: 3,
+    trick: { leader: 1, plays: [{ seat: 1, cards: ["AD"] }, { seat: 2, cards: ["KD"] }] }, ...over,
+  });
+  const nextTrick = (plays: { seat: number; cards: string[] }[]) =>
+    joined({ tricks_done: 4, trick: { leader: 3, plays } });
+  beforeEach(() => { n += 1; clearToast(); vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); setLanguageChoice("system"); });
+  const toast = () => currentToast();
+  const modeWord = (host: HTMLElement) => {
+    act(() => host.querySelector<HTMLButtonElement>(".hud-more-btn")!.click());
+    return host.querySelector(".hud-menu-mode")!;
+  };
+
+  it("names the seat taken, once, and holds until this seat's first card", () => {
+    const view = render(joined());
+    expect(toast()?.text).toBe("You took Bot 2's seat · unranked this round");
+    expect(toast()?.info).toBe(true);
+    expect(toast()?.held).toBe(true);
+    const id = toast()!.id;
+    // the bot's card in this trick is not yours; time alone does not take it down
+    act(() => { vi.advanceTimersByTime(TOAST_MS * 5); });
+    view.rerender(joined({ trick: { leader: 1, plays: [{ seat: 1, cards: ["AD"] }, { seat: 2, cards: ["KD"] }, { seat: 3, cards: ["5D"] }] } }));
+    view.rerender(nextTrick([{ seat: 3, cards: ["9C"] }]));
+    expect(toast()?.id).toBe(id);
+    expect(toast()?.held).toBe(true);
+    // your first card: it fades out, and is not told again
+    view.rerender(nextTrick([{ seat: 3, cards: ["9C"] }, { seat: 0, cards: ["JC"] }, { seat: 1, cards: ["QC"] }, { seat: 2, cards: ["AC"] }]));
+    expect(toast()?.held).toBe(false);
+    act(() => { vi.advanceTimersByTime(400); });
+    expect(toast()).toBeNull();
+    view.rerender(nextTrick([]));
+    expect(toast()).toBeNull();
+    view.unmount();
+  });
+
+  it("stays up at least the usual time when the first card comes at once", () => {
+    const view = render(joined({ tricks_done: 0, trick: { leader: 1, plays: [{ seat: 1, cards: ["AD"] }] } }));
+    act(() => { vi.advanceTimersByTime(1000); });
+    view.rerender(joined({ tricks_done: 0, trick: { leader: 1, plays: [{ seat: 1, cards: ["AD"] }, { seat: 2, cards: ["KD"] }] } }));
+    expect(toast()?.leaving).toBe(TOAST_MS - 1000);
+    act(() => { vi.advanceTimersByTime(TOAST_MS - 1001); });
+    expect(toast()).not.toBeNull();
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(toast()).toBeNull();
+    view.unmount();
+  });
+
+  it("a remount while it stands tells it no second time", () => {
+    const view = render(joined());
+    const id = toast()!.id;
+    view.unmount();
+    const again = render(joined());
+    expect(toast()?.id).toBe(id);
+    again.unmount();
+  });
+
+  it("names a person's seat as typed, and a casual table says nothing of ranking", () => {
+    const view = render(joined({ matched: false, joined_round: false, took_seat: { name: "Mei", is_bot: false } }));
+    expect(toast()?.text).toBe("You took Mei's seat");
+    view.unmount();
+  });
+
+  it("keeps the copy rule: one line with no sub-line, and the menu's word a label only", () => {
+    const view = render(joined());
+    expect(toast()?.sub).toBeUndefined();
+    const word = modeWord(view.host);
+    expect(word.children).toHaveLength(0);
+    expect(word.getAttribute("role")).toBe("none");
+    expect(view.host.querySelectorAll(".hud-menu small, .hud-menu [class*='-sub']")).toHaveLength(0);
+    view.unmount();
+  });
+
+  it("a seat held from the round's start hears nothing new", () => {
+    const view = render(makeState({ room: `J${n}`, matched: true, joined_round: false }));
+    expect(toast()).toBeNull();
+    expect(modeWord(view.host).textContent).toBe("Ranked");
+    view.unmount();
+  });
+
+  it("the ⋯ menu reads Unranked this round for that round only", () => {
+    const view = render(joined());
+    const word = modeWord(view.host);
+    expect(word.textContent).toBe("Unranked this round");
+    expect(word.className).toBe("hud-menu-mode unranked");
+    // the round ends: the frame stops saying so, and the next round is ranked
+    view.rerender(joined({ phase: "round_end", joined_round: false, took_seat: undefined }));
+    expect(view.host.querySelector(".hud-menu-mode")!.textContent).toBe("Ranked");
+    view.rerender(makeState({ room: `J${n}`, you: 2, matched: true, joined_round: false }));
+    expect(view.host.querySelector(".hud-menu-mode")!.textContent).toBe("Ranked");
+    // the round end let the line go: it fades and is not told again
+    expect(toast()?.held).toBe(false);
+    act(() => { vi.advanceTimersByTime(TOAST_MS); });
+    expect(toast()).toBeNull();
+    view.unmount();
+  });
+
+  it.each([
+    ["zh-Hans", "你坐了 机器人 2 的位置 · 本局不计排位", "本局不计排位"],
+    ["zh-Hant", "你坐了 機器人 2 的位置 · 本局不計排位", "本局不計排位"],
+  ] as const)("reads in %s", (lang, line, word) => {
+    setLanguageChoice(lang);
+    const view = render(joined());
+    expect(toast()?.text).toBe(line);
+    expect(modeWord(view.host).textContent).toBe(word);
     view.unmount();
   });
 });

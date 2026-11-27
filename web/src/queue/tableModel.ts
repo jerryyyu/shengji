@@ -150,6 +150,10 @@ export interface TableModel {
    *  picker's, which stays put while a tap moves `you`, so the tapped seat
    *  glows where it was tapped. */
   layout?: number;
+  /** The table these seats are at, whatever controls show (a shared
+   *  table's id, else its code): the columns stay drawn around the seat
+   *  you first had there while you move. */
+  table?: string;
   rows: TableRows | null;
   /** The leader's Wait for people on your own table. */
   waitSwitch: { on: boolean; disabled: boolean } | null;
@@ -348,11 +352,12 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
   if (kind === "shared" && f) {
     const seats = frameSeats(f, now, { move: canMove(q, f), busy: q.pending !== null,
                                        opener: opener && q.stillHereUntil === null, picked });
+    const table = f.chat_log ?? f.code;
     if (q.stillHereUntil !== null) {
       // a table with no timer asks before it drops a seat nobody is at; the
       // same I’m back as a game's held seat, and any tap counts
       return {
-        ...base, kind,
+        ...base, kind, table,
         title: sharedTitle(f), status: { text: stillHereLine(q.stillHereUntil, now), warn: true },
         seats, you: f.you,
         primary: { label: t("queue.btn.back"), disabled: false, act: { type: "here" } },
@@ -364,7 +369,7 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
     // joiner's Ready is a signal (its tick and the owner's count)
     const owns = opener && q.leader;
     return {
-      ...base, kind, rows, chat: { messages: q.tableChat, you: f.you },
+      ...base, kind, table, rows, chat: { messages: q.tableChat, you: f.you },
       title: sharedTitle(f), status: { text: owns ? sharedStatusLine(f) : waitingLine(ownerName(f)) },
       seats, you: f.you, led,
       primary: owns

@@ -2362,6 +2362,35 @@ describe("the unified table on the client", () => {
     }
   });
 
+  it("the columns stay put through a move, still here? and its answer at one table; a new table draws around you again", async () => {
+    const cells = () => [...panel()!.querySelectorAll(".tp-col")]
+      .map((col) => [...col.children].map((el) => (el.getAttribute("aria-label") ?? "").split(/[,.]/)[0]));
+    const at = (you: number, code: string, over: Record<string, unknown> = {}) => {
+      const seats: Seat[] = [null, null, null, null];
+      seats[you] = seat("Jerry", { you: true });
+      seats[3] = seat("Alice");
+      return atTable(seats, { id: code, you, opener: 3 }, { code, mode: "casual", ...over });
+    };
+    await renderApp();
+    say(at(0, "QQPF"));
+    expect(cells()).toEqual([["Open seat", "You"], ["Open seat", "Alice"]]);
+    // the top-right open seat is seat 1
+    click(panel()!.querySelectorAll<HTMLElement>(".tp-col")[1].children[0] as HTMLElement);
+    expect(lastSent()).toEqual({ type: "table_move", seat: 1 });
+    say(at(1, "QQPF"));
+    const moved = [["Open seat", "Open seat"], ["You", "Alice"]];
+    expect(cells()).toEqual(moved);
+    // the prompt's panel has no settings rows: the seats still stay put
+    say(at(1, "QQPF", { still_here_until: nowSecs() + 30 }));
+    expect(lines()[0]).toMatch(/^You leave the table in/);
+    expect(cells()).toEqual(moved);
+    say(at(1, "QQPF", { still_here_until: null }));
+    expect(cells()).toEqual(moved);
+    // another table is drawn around your seat there
+    say(at(1, "ZZ9K"));
+    expect(cells()).toEqual([["Alice", "You"], ["Open seat", "Open seat"]]);
+  });
+
   it("a Duo's seats never move", async () => {
     await renderApp();
     say(atTable([seat("Jerry", { you: true, pair: true }), seat("Li"), seat("Kai", { pair: true }), null],

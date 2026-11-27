@@ -145,11 +145,12 @@ function WaitSwitch({ on, disabled, act }: { on: boolean; disabled: boolean; act
 }
 
 /** The seat the columns are drawn around: the model's `layout` when it
- *  names one; at a shared table, the seat you sat at when that table first
- *  showed, kept while you move, so the seat you tap is where you are drawn
- *  next; else yours. Another table or panel kind draws around you again. */
+ *  names one; at a shared table, the seat you sat at when that table
+ *  (`m.table`) first showed, kept while you move and whatever controls the
+ *  panel shows, so the seat you tap is where you are drawn next; else
+ *  yours. Another table or panel kind draws around you again. */
 function useHeldLayout(m: TableModel): number | undefined {
-  const key = m.kind === "shared" ? `shared|${m.rows?.code ?? ""}` : null;
+  const key = m.kind === "shared" && m.table !== undefined ? m.table : null;
   const held = useRef<{ key: string; at: number } | null>(null);
   if (key === null) held.current = null;
   else if (held.current?.key !== key) held.current = { key, at: m.you };

@@ -43,7 +43,10 @@ def verify(archive, members):
                     if not entry.isfile() or entry.name not in members or entry.name in seen:
                         raise ValueError(f"unexpected archive member: {entry.name}")
                     with tar.extractfile(entry) as restored:
-                        if hashlib.file_digest(restored, "sha256").hexdigest() != members[entry.name]:
+                        digest = hashlib.sha256()
+                        while chunk := restored.read(1024 * 1024):
+                            digest.update(chunk)
+                        if digest.hexdigest() != members[entry.name]:
                             raise ValueError(f"restored member differs: {entry.name}")
                     seen.add(entry.name)
                     member_bytes += entry.size

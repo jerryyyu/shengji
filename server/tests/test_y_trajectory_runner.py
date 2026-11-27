@@ -211,7 +211,9 @@ def test_launcher_hold_then_guarded_resume_preserves_completed_shard(release50_p
         launcher.seal_leg(dict(spec, seed=spec['seed']+1), out)
     terminal = Path(str(out)+'.terminal.1.json')
     archive = tmp_path/'leg.tar.zst'
-    archive_cmd = [sys.executable, str(source/'tools/y_datagen/archive_leg.py'),
+    # macOS fleet operators invoke the archive consumer with the system interpreter.
+    archive_python = '/usr/bin/python3' if sys.platform == 'darwin' else sys.executable
+    archive_cmd = [archive_python, str(source/'tools/y_datagen/archive_leg.py'),
                    str(out), str(terminal), launcher.sha256(terminal)]
     receipt = json.loads(subprocess.check_output([*archive_cmd, str(archive)]))
     assert receipt['verified_members'] == 7

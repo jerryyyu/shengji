@@ -26,6 +26,7 @@ Two decks are used, so each code appears twice. Every physical card instance has
 | `play` | `card_ids: number[]` | your play turn |
 | `next_round` | — | phase `round_end`; EVERY connected human must send it before the round advances |
 | `table_leave` | — | anytime after joining; server replies `{type:"left"}` |
+| `companion` | `act: "special"`, or `act: "home"` with `x`, `y` (numbers from 0 to 1: the point across the felt's safe area, left to right, and down the felt, top to bottom) | seated in a game, a person whose seat draws a companion: shares a tap on your companion (its special) or the spot a tap on the felt parked it with everyone else at the table. Best effort: one sooner than 5 s (a special) or 1 s (a home) after the seat's last of its kind, from a bot's or a stale socket, a seat its person left, or with a bad point is dropped, and nothing is answered. The device's own tables (offline, Nearby) do not relay it |
 
 Invalid actions get an `error` message; state is unchanged.
 
@@ -156,6 +157,17 @@ double the log.
 `seat: -1` marks a SYSTEM line (joins, leaves, seat claims, bot takeover and
 handback). `id` is monotonic **per room**, so a client drops any id already in
 its snapshot. Ids restart per room; always key the log by `room`.
+
+### `{type: "companion", seat, act: "special" | "home", x?, y?}`
+
+Another seat's person shared its companion's move (`companion` above): to every
+other connected person at the table and to a Join waiting for its handover,
+never to its sender. `seat` plays its special, or walks to the point (`x`, `y`)
+of the receiver's own felt and stays there for the table. A parked spot is also
+carried in every `state` frame as that seat's `players[].home: [x, y]`, so a
+rejoin or a late arrival draws it there; a new holder of the seat starts with
+none. Watchers (finished-round replays over HTTP) receive neither. A viewer
+not shown companions at the table draws nothing.
 
 ### `{type: "resume", token, gen}`
 

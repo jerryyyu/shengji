@@ -55,6 +55,11 @@ export type ClientMsg =
    *  this viewer none of their chat from then on, in any game, and answers
    *  with a chat_history and a state marking the seat `blocked`. */
   | { type: "block_player"; seat: number; on: boolean }
+  /** Your companion's move, shared with everyone else at the table: its
+   *  special, or the spot you parked it (`x`, `y` from 0 to 1 across the
+   *  felt's safe area). Best effort: the server drops one too soon after the
+   *  last of its kind and answers nothing. */
+  | CompanionShare
   /* The table family (PROTOCOL.md "Table messages"): the same names at a
    * queue table and in a room, which the server rewrites into the message
    * that place handles. A room takes them only once its game is in play;
@@ -128,6 +133,8 @@ export interface StatePlayer {
   is_bot: boolean;
   /** A person's companion, `"<companion>/<colour>"`; null for a bot, absent from older servers. */
   look?: string | null;
+  /** Where its person parked the companion (a `companion` home), from 0 to 1 across the felt's safe area; absent when never parked. */
+  home?: [number, number];
   connected: boolean;
   team: 0 | 1; // seat % 2
   cards_left: number;
@@ -355,7 +362,15 @@ export type ServerMsg =
   | ChatHistory
   | ResumeMsg
   | ReportReceivedMsg
+  | CompanionMsg
   | QueueServerMsg;
+
+/** What a companion move a person shares carries (`ClientMsg`). */
+export type CompanionShare = { type: "companion"; act: "special" } | { type: "companion"; act: "home"; x: number; y: number };
+
+/** Another seat's person shared its companion's move: `seat` plays its
+ *  special, or walks to and stays at (`x`, `y`) of the felt's safe area. */
+export type CompanionMsg = { type: "companion"; seat: number; act: "special" } | { type: "companion"; seat: number; act: "home"; x: number; y: number };
 
 /** The server stored this viewer's report; ``message`` is shown as a toast. */
 export interface ReportReceivedMsg {

@@ -193,6 +193,7 @@ jobs:
           tests/test_health_activity.py
           tests/test_accounts.py
           tests/test_look.py
+          tests/test_companion_share.py
           tests/test_purchases.py
           tests/test_apple_signin.py
           tests/test_device_accounts.py

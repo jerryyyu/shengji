@@ -591,6 +591,12 @@ class Room:
     # from the next round). Server-only apart from the notices in a frame.
     allow_joiners: bool = True
     pending_joins: dict = field(default_factory=dict, repr=False)
+    # Where each seat's person parked its companion (``companion_message``),
+    # as a point of the felt's safe area from 0 to 1, sent in every frame so a
+    # rejoin sees it; a new holder of the seat starts with none. And when
+    # each seat last shared a move, for the rate limits. Server-only.
+    companion_homes: dict = field(default_factory=dict, repr=False)
+    companion_sent: dict = field(default_factory=dict, repr=False)
     # The seat a Duo table still held for its opener's friend when it
     # started (a bot plays it): a join by the room's code that names no
     # seat takes it first. Server-only.
@@ -1085,6 +1091,8 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
         "players": [{
             "seat": s, "name": room.seats[s].name, "is_bot": room.seats[s].is_bot,
             "look": seat_look(room.seats[s]),
+            **({"home": list(room.companion_homes[s])} if s in room.companion_homes
+               and seat_look(room.seats[s]) is not None else {}),
             "connected": room.seats[s].connected or room.seats[s].is_bot,
             "team": s % 2, "cards_left": len(rnd.hands[s]),
             "is_banker": banker == s,
@@ -3293,6 +3301,7 @@ async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | Non
             # offer never brings them back to this seat
             me.queue_id = qid
             saved_games.seat_changed(target, pick)
+            target.companion_homes.pop(pick, None)
             ranked_bots.seat_changed(target, pick, held_by,
                                      lambda: kick_bots(target))
             spectate.claimed(target, target.log_event("seat_claimed", seat=pick,
@@ -3611,6 +3620,9 @@ async def _ws_session(ws: WebSocket, ip: str) -> None:
                 continue
             if t in matchmaking.QUEUE_MESSAGES and canonical is None:
                 await MATCHMAKER.handle(conn, msg, queue_id())
+                continue
+            if t == "companion":
+                companion_message(room, me, msg)
                 continue
             if t == "report_player":
                 await _report_player(room, me, account_id(), msg)
@@ -4312,6 +4324,7 @@ def _seat_newcomer(room: Room, seat: int, pj: PendingJoin) -> None:
     del room.pending_joins[seat]
     pj.conn.joining = None
     saved_games.seat_changed(room, seat)
+    room.companion_homes.pop(seat, None)
     ranked_bots.seat_changed(room, seat, before, lambda: kick_bots(room))
     spectate.claimed(room, room.log_event("seat_claimed", seat=seat, name=pj.name, bot=False),
                      me.user_id)
@@ -4322,10 +4335,50 @@ def _seat_newcomer(room: Room, seat: int, pj: PendingJoin) -> None:
                 system_event("took_seat", pj.name, took, took_bot))
 
 
+# The least time between two moves one seat shares with the table, by move.
+COMPANION_GAPS = {"special": 5.0, "home": 1.0}
+
+
+def companion_message(room: Room, me: Seat, msg: dict, now: float | None = None) -> bool:
+    """A seated person's companion move, shared with everyone else at the
+    table: its special (``{"act": "special"}``) or the spot they parked it
+    (``{"act": "home", "x", "y"}``, a point of the felt's safe area from 0 to
+    1). Only the seat's own live socket, a person with a companion drawn,
+    sends one; a move sooner than ``COMPANION_GAPS`` after the seat's last of
+    its kind, a bad point or anything else is dropped without a word. A home
+    is kept for the frames a rejoin reads (``companion_homes``). True when
+    it was relayed."""
+    act = msg.get("act")
+    if act not in COMPANION_GAPS or me not in room.seats or me.is_bot or not me.connected:
+        return False
+    seat = room.seats.index(me)
+    if seat_look(me) is None or room.game is None:
+        return False
+    out: dict[str, Any] = {"type": "companion", "seat": seat, "act": act}
+    if act == "home":
+        x, y = msg.get("x"), msg.get("y")
+        if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 1 for v in (x, y)):
+            return False
+        out["x"], out["y"] = round(float(x), 4), round(float(y), 4)
+    t = time.monotonic() if now is None else now
+    if t - room.companion_sent.get((seat, act), -1e9) < COMPANION_GAPS[act]:
+        return False
+    room.companion_sent[(seat, act)] = t
+    if act == "home":
+        room.companion_homes[seat] = (out["x"], out["y"])
+    for i, sd in enumerate(room.seats):
+        if i != seat and sd is not None and sd.connected and not sd.is_bot:
+            enqueue(sd, out)
+    for i, pj in list(room.pending_joins.items()):
+        pj.conn.push(out)
+    return True
+
+
 def _revert_to_bot(room: Room, seat: int) -> None:
     """A newcomer left during the round they joined: the seat is a bot's
     again (caller holds the lock and has detached the socket)."""
     sd = room.seats[seat]
+    room.companion_homes.pop(seat, None)
     sd.is_bot = True
     sd.name = sd.bot_name or f"Bot {seat}"
     sd.user_id = None
@@ -4340,6 +4393,7 @@ def _revert_to_bot(room: Room, seat: int) -> None:
     sd.left_at = None
     sd.left_by_choice = False
     saved_games.seat_changed(room, seat)
+    room.companion_homes.pop(seat, None)
     spectate.claimed(room, room.log_event("seat_claimed", seat=seat, name=sd.name, bot=True), None)
 
 

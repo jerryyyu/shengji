@@ -25,7 +25,7 @@
 // drawing's parts. A bot, and a seat its owner left, has none.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, RefObject } from "react";
-import type { GameState, StatePlayer } from "../protocol";
+import type { CompanionShare, GameState, StatePlayer } from "../protocol";
 import { useAuth } from "../auth";
 import { prefersReducedMotion } from "../motion";
 import { useMediaQuery, TABLET_SCREEN } from "../phoneLayout";
@@ -442,12 +442,16 @@ export const TAP_THROTTLE_MS = 500;
  *  played as a special once any level-up has ended. Every move is a Web
  *  Animation of a transform. Under Reduce Motion it stands on its home;
  *  while the page is hidden it rests. */
-function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal, tapped, wins, dealing, ready, watch, onEnd, onUpEnd, onGoal, onTapped, onStray }: {
+function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal, tapped, wins, poke = 0, dealing, ready, watch, onEnd, onUpEnd, onGoal, onTapped, onStray, onSpecial }: {
   player: StatePlayer; team: Team; px: number; pos: SeatPos; dealing: boolean;
   ready: boolean; watch: { pos: SeatPos; key: string } | null;
   zone: Zone; layout: Layout; roam: Layout; pose: TableMove; up: LevelUp | null; you: boolean; goal: { spot: Spot; n: number } | null;
   tapped: Spot | null; wins: number; onEnd: () => void; onUpEnd: () => void; onGoal?: (n: number) => void;
   onTapped?: (s: Spot | null) => void; onStray?: (s: Spot | null) => void;
+  /** Another seat's person played its special for the table: each new value plays it here. */
+  poke?: number;
+  /** Yours played its special on a tap, for the table to see. */
+  onSpecial?: () => void;
 }) {
   const t = useT();
   const { kind, colour } = parseLook(player.look);
@@ -843,6 +847,15 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     played.current = wins;
     setSpecial((n) => n + 1);
   }, [wins, up, placed, away]);
+  // another seat's special, shared by its person: played as theirs plays it
+  const poked2 = useRef(poke);
+  useEffect(() => {
+    if (poke <= poked2.current) return;
+    poked2.current = poke;
+    if (up || !placed || away || playing) return;
+    setSpecial((n) => n + 1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [poke]);
   // the special: the drawing plays its signature for that move's length
   // (the one time a figure's parts move at the table), then stands still
   // again; under Reduce Motion it shows the signature's peak for a moment
@@ -877,6 +890,7 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     }
     countPoke(true);
     setSpecial((n) => n + 1);
+    onSpecial?.();
   };
 
   const drawn: Pose = away ? "sleep" : up ? "cheer" : playing ? "react" : move === "big" ? "cheer" : move === "droop" || move === "chug" ? "idle" : move;
@@ -1100,7 +1114,17 @@ const NOT_FELT = "button, a, input, textarea, select, label, [role='button'], [r
  *  whose tab is selected, not you: nobody is tagged "You", a tap walks
  *  nobody, a seat whose look the feed left out draws none, and `quiet`
  *  (fast play, a step back, a turn to another seat) skips the hops. */
-export default function TableCompanions({ state, watch = null }: { state: GameState; watch?: { quiet: boolean } | null }) {
+/** The companion moves the other seats' people shared (`companion`), the
+ *  latest of each seat, with a count that tells one from the next. */
+export type SharedMoves = Partial<Record<number, { act: "special" } & { n: number } | { act: "home"; x: number; y: number; n: number }>>;
+
+export default function TableCompanions({ state, watch = null, shared, onShare }: {
+  state: GameState; watch?: { quiet: boolean } | null;
+  /** The other seats' shared moves (`Table.tsx` reads them off the socket). */
+  shared?: SharedMoves;
+  /** Send one of yours to the table: its special on a tap, the spot a tap parked it. */
+  onShare?: (m: CompanionShare) => void;
+}) {
   const shown = useCollection();
   const account = useAuth();
   const mode = useCompanionMode(account.status === "in" ? account.user : null);
@@ -1115,6 +1139,11 @@ export default function TableCompanions({ state, watch = null }: { state: GameSt
   const [goal, setGoal] = useState<{ spot: Spot; n: number } | null>(null);
   // the spot your last tap chose: yours stays round it for the rest of this table
   const [tapped, setTapped] = useState<{ room: string; spot: Spot } | null>(null);
+  // the other seats' shared moves as each figure takes them: a walk to the
+  // spot its person parked it (then its home), and a count of its specials
+  const [remoteGoals, setRemoteGoals] = useState<Record<number, { spot: Spot; n: number }>>({});
+  const [remoteHomes, setRemoteHomes] = useState<{ room: string; at: Record<number, Spot> }>({ room: state.room, at: {} });
+  const [pokes, setPokes] = useState<Record<number, number>>({});
   // where a figure whose whole zone is covered stepped out to, by seat
   const [strays, setStrays] = useState<Partial<Record<SeatPos, { spot: Spot; px: number }>>>({});
   const prev = useRef<GameState | null>(null);
@@ -1193,6 +1222,48 @@ export default function TableCompanions({ state, watch = null }: { state: GameSt
   }, [layout, zones, size.base, strays, taken]);
   const roam = rooms?.bottom ?? null;
 
+  // A shared spot is a point of the felt's safe area from 0 to 1, so it
+  // lands on every screen in the same place of the table.
+  const toShared = (l: Layout, p: Spot): { x: number; y: number } => {
+    const x0 = l.safe?.x0 ?? 0, x1 = l.safe?.x1 ?? l.felt.w;
+    const r = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 10000) / 10000;
+    return { x: r((p.x - x0) / Math.max(1, x1 - x0)), y: r(p.y / Math.max(1, l.felt.h)) };
+  };
+  const fromShared = (l: Layout, x: number, y: number): Spot => {
+    const x0 = l.safe?.x0 ?? 0, x1 = l.safe?.x1 ?? l.felt.w;
+    return { x: x0 + x * (x1 - x0), y: y * l.felt.h };
+  };
+  const seatPx = (p: StatePlayer) => zones?.[SIDES[(p.seat - state.you + 4) % 4]].size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max);
+  // where another seat's person parked its companion, on this screen: the
+  // clear spot nearest their point, round the other companions
+  const parkAt = (p: StatePlayer, x: number, y: number): Spot | null => {
+    const room = rooms?.[SIDES[(p.seat - state.you + 4) % 4]];
+    return room ? nearestClear(fromShared(room, x, y), seatPx(p), false, room) : null;
+  };
+  const parkNow = useRef(parkAt);
+  parkNow.current = parkAt;
+  // each seat's shared moves as they arrive; a viewer not shown the
+  // companions (or a watcher) takes none
+  const seenShared = useRef<Record<number, number>>({});
+  useEffect(() => {
+    if (!shared) return;
+    for (const [k, m] of Object.entries(shared)) {
+      const seat = Number(k);
+      if (!m || m.n <= (seenShared.current[seat] ?? 0)) continue;
+      seenShared.current[seat] = m.n;
+      const p = state.players.find((q) => q.seat === seat);
+      if (!on || watching || seat === state.you || !p || p.is_bot || p.left) continue;
+      if (m.act === "special") setPokes((c) => ({ ...c, [seat]: (c[seat] ?? 0) + 1 }));
+      else {
+        const spot = parkNow.current(p, m.x, m.y);
+        if (spot) setRemoteGoals((g) => ({ ...g, [seat]: { spot, n: m.n } }));
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shared]);
+  const share = useRef(onShare);
+  share.current = onShare;
+
   // a tap on empty felt walks yours to the clear spot nearest the tap: yours
   // drawn anywhere (by your hand, on a tapped home, stepped out) takes it
   const out = strays.bottom?.spot ?? null;
@@ -1223,6 +1294,7 @@ export default function TableCompanions({ state, watch = null }: { state: GameSt
       at.last = now;
       countWalk();
       setGoal({ spot, n: ++at.n });
+      share.current?.({ type: "companion", act: "home", ...toShared(at.layout, { x: p.x - f.x, y: p.y - f.y }) });
     };
     // whether a panel was open as the tap began, before the tap closes it
     let panelAtDown = false;
@@ -1237,6 +1309,24 @@ export default function TableCompanions({ state, watch = null }: { state: GameSt
   // a tap's goal is cleared once yours has taken it, so no later render replays it
   const takeGoal = (n: number) => setGoal((g) => (g && g.n === n ? null : g));
   const takeHome = (s: Spot | null) => setTapped(s ? { room: state.room, spot: s } : null);
+  // another seat's: its walk taken, the spot is its home for this table
+  const takeRemoteGoal = (seat: number) => (n: number) => setRemoteGoals((g) => {
+    if (g[seat]?.n !== n) return g;
+    const next = { ...g };
+    delete next[seat];
+    return next;
+  });
+  const takeRemoteHome = (seat: number) => (s: Spot | null) => setRemoteHomes((h) => {
+    const at = h.room === state.room ? { ...h.at } : {};
+    if (s) at[seat] = s; else delete at[seat];
+    return { room: state.room, at };
+  });
+  // a parked spot the frame carries (a rejoin, a late arrival) until one is shared here
+  const remoteHome = (p: StatePlayer): Spot | null => {
+    const kept = remoteHomes.room === state.room ? remoteHomes.at[p.seat] : undefined;
+    if (kept) return kept;
+    return p.home ? parkAt(p, p.home[0], p.home[1]) : null;
+  };
   const stepped = (pos: SeatPos, px: number) => (s: Spot | null) => setStrays((m) => {
     const was = m[pos];
     if (s ? was && was.spot.x === s.x && was.spot.y === s.y && was.px === px : !was) return m;
@@ -1254,10 +1344,12 @@ export default function TableCompanions({ state, watch = null }: { state: GameSt
           <Walker key={p.seat} player={p} team={p.team === ours ? "us" : "them"}
                   px={you && home ? myPx : zone.size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max)}
                   pos={pos} zone={zone} layout={layout} roam={rooms ? rooms[pos] : layout} pose={poses[p.seat] ?? "idle"}
-                  up={ups[p.seat] ?? null} you={you} goal={you ? goal : null} tapped={you ? home : null}
+                  up={ups[p.seat] ?? null} you={you} goal={you ? goal : watching ? null : remoteGoals[p.seat] ?? null}
+                  tapped={you ? home : watching ? null : remoteHome(p)} poke={pokes[p.seat] ?? 0}
+                  onSpecial={you ? () => share.current?.({ type: "companion", act: "special" }) : undefined}
                   wins={watching ? 0 : specials[p.team]} dealing={state.phase === "deal"} ready={you && ready}
                   watch={played ? { pos: SIDES[(played.seat - state.you + 4) % 4], key: played.key } : null} onEnd={end(p.seat)} onUpEnd={done(p.seat)}
-                  onGoal={you ? takeGoal : undefined} onTapped={you ? takeHome : undefined}
+                  onGoal={you ? takeGoal : takeRemoteGoal(p.seat)} onTapped={you ? takeHome : takeRemoteHome(p.seat)}
                   onStray={stepped(pos, you && home ? myPx : zone.size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max))} />
         );
       }) : null}

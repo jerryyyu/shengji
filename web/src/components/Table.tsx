@@ -40,6 +40,7 @@ import { useFirstGameHint } from "./useFirstGameHint";
 import { Portrait } from "../companion/Companion";
 import { useCollection } from "../companion/feature";
 import TableCompanions from "../companion/TableCompanions";
+import type { SharedMoves } from "../companion/TableCompanions";
 
 // the debug overlay loads on its first open, so a player's page never carries it
 const XrayPanel = lazy(() => import("./XrayPanel"));
@@ -338,6 +339,17 @@ export default function Table({ state }: { state: GameState }) {
   // Seed from the connection's buffer: scrollback for a joiner arrives before
   // this component exists, so subscribing alone loses it.
   const [chat, setChat] = useState<ChatMsg[]>(() => conn.chatHistory() as ChatMsg[]);
+  // the companion moves the other seats' people share, the latest of each seat
+  const [shared, setShared] = useState<SharedMoves>({});
+  useEffect(() => {
+    let n = 0;
+    return conn.subscribe((msg: ServerMsg) => {
+      if (msg.type !== "companion" || typeof msg.seat !== "number") return;
+      n += 1;
+      const m = msg.act === "home" ? { act: "home" as const, x: msg.x, y: msg.y, n } : { act: "special" as const, n };
+      setShared((s) => ({ ...s, [msg.seat]: m }));
+    });
+  }, []);
   useEffect(() => conn.subscribe((msg: ServerMsg) => {
     // chat and chat_history both mutate the log; read it back from the
     // connection rather than reconstructing it here.
@@ -733,7 +745,7 @@ export default function Table({ state }: { state: GameState }) {
     <div className={`table-screen phase-${state.phase}${showingLast ? " showing-last" : ""}${isYourTurnCue(state) ? " my-turn" : ""}`}>
       <Hud state={state} />
       <div className="felt">
-        <TableCompanions state={state} />
+        <TableCompanions state={state} shared={shared} onShare={(m) => conn.send(m)} />
         {opponents.map((p) => (
           <OpponentPanel key={p.seat} player={p} state={state} />
         ))}

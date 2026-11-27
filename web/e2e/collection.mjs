@@ -211,8 +211,12 @@ try {
         // where it stopped; the tap that reaches the tile must bring the stage back
         for (const n of [2, 3]) {
           await deep(0);
-          await page.evaluate(() => { window.__tileTaps = 0; document.addEventListener("click", (e) => {
-            if (e.target.closest?.(".coll-tile")) window.__tileTaps += 1; }, { capture: true }); });
+          // the tile aimed at, by its name: a click the moving page hands a neighbour does not count
+          const want = (await tile(".coll-yours", n).locator(".coll-tile-name").textContent()).trim();
+          await page.evaluate(() => { window.__tileTaps = []; document.addEventListener("click", (e) => {
+            const t = e.target.closest?.(".coll-tile");
+            if (t) window.__tileTaps.push(t.querySelector(".coll-tile-name")?.textContent?.trim() ?? ""); }, { capture: true }); });
+          const reached = () => page.evaluate((w) => window.__tileTaps.includes(w), want);
           const y = Math.round(page.qa.d.h * 0.8);
           await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 60, y }] });
           for (let i = 1; i <= 4; i++) {
@@ -222,15 +226,18 @@ try {
           await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
           await sleep(60);
           await tile(".coll-yours", n).tap({ force: true });
-          if (!(await page.evaluate(() => window.__tileTaps > 0))) {
-            await sleep(150);
-            await tile(".coll-yours", n).tap();
+          if (!(await reached())) {
+            // the tap went to stopping the fling, or to a neighbour: tap the tile again where it stopped
+            await sleep(400);
+            await page.locator(".coll-yours .coll-tile", { hasText: want }).tap();
           }
-          if (!(await page.evaluate(() => window.__tileTaps > 0))) {
-            misses.push(`no tap on tile ${n} reached it after a fling`);
+          if (!(await reached())) {
+            misses.push(`no tap on ${want} reached it after a fling (clicks: ${JSON.stringify(await page.evaluate(() => window.__tileTaps))})`);
             continue;
           }
-          await settle(`a tap on tile ${n} during or just after a fling`);
+          await settle(`a tap on ${want} during or just after a fling`);
+          const shows = await onStage(page);
+          if (shows !== `cmp-${want.toLowerCase()}`) misses.push(`after the tap on ${want} the stage shows ${shows}`);
         }
         await rep.check(`${device} every lower tap leaves the stage in view at the top`, misses.length ? misses.join("; ") : null, page);
       });

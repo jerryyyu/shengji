@@ -2226,6 +2226,15 @@ async def pump_bots(room: Room) -> None:
             room, seat, turn_started=turn_started, mode=mode,
             minimum_turn_seconds=0.0 if room.closing else None)
         if prepared is None:
+            # the turn was no longer eligible at the snapshot: another actor
+            # may have moved between the pick above and the snapshot, and a
+            # kick it sent then started no second pump. Go on only when the
+            # live actor or its mode changed, so an unchanged state exits.
+            async with room.lock:
+                live = current_actor(room)
+                live_mode = None if live is None else _auto_mode(room, live)
+            if live_mode is not None and (live, live_mode) != (seat, mode):
+                continue
             return
         async with room.lock:
             acted = _commit_bot_turn(room, prepared)

@@ -2,7 +2,6 @@ import { defineMessages } from "../define";
 import type { Params } from "../define";
 
 const rounds = (p: Params) => `${p.n} round${Number(p.n) === 1 ? "" : "s"}`;
-const places = (p: Params) => `${p.n} place${Number(p.n) === 1 ? "" : "s"}`;
 
 export const me = defineMessages({
   "me.title": { en: "Me", zh: "我", hant: "我" },
@@ -54,10 +53,6 @@ export const me = defineMessages({
     zh: (p) => `最近 ${p.n} 局的积分，从 ${p.from} 到 ${p.to}`,
     hant: (p) => `最近 ${p.n} 局的積分，從 ${p.from} 到 ${p.to}`,
   },
-  "me.board.moveUp": { en: (p: Params) => `up ${places(p)} this week`, zh: "本周上升 {n} 名", hant: "本週上升 {n} 名" },
-  "me.board.moveDown": { en: (p: Params) => `down ${places(p)} this week`, zh: "本周下降 {n} 名", hant: "本週下降 {n} 名" },
-  "me.board.moveFlat": { en: "no change this week", zh: "本周没变", hant: "本週沒變" },
-  "me.board.moveSpoken": { en: ", {move}", zh: "，{move}", hant: "，{move}" },
   "me.board.signIn": { en: "Sign in to be ranked", zh: "登录后上榜", hant: "登入後上榜" },
   "me.board.failed": { en: "Could not load the leaderboard ({status}).", zh: "排行榜加载失败（{status}）。", hant: "排行榜載入失敗（{status}）。" },
   "me.board.emptyWeek": { en: "Nobody has played a ranked round this week yet.", zh: "本周还没有人打排位。", hant: "本週還沒有人打排位。" },

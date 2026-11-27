@@ -10,7 +10,7 @@ import { useMediaQuery } from "../phoneLayout";
 import { guestName } from "../guestName";
 import { SkeletonRows } from "./GamesList";
 import { useScreen } from "../telemetry";
-import { t, useT } from "../i18n";
+import { useT } from "../i18n";
 import { Portrait } from "../companion/Companion";
 import { useCollection } from "../companion/feature";
 
@@ -19,22 +19,10 @@ export function ratingText(rating: number): string {
   return rating.toLocaleString("en-US");
 }
 
-/** Places moved this week as drawn: ▲3, ▼1, or a dash for none; nothing for
- *  a player new this week. */
-function weekMove(places: number | null): { text: string; spoken: string; dir: "up" | "down" | "flat" } | null {
-  if (places === null) return null;
-  const n = Math.round(places);
-  if (n > 0) return { text: `\u25B2${n}`, spoken: t("me.board.moveUp", { n }), dir: "up" };
-  if (n < 0) return { text: `\u25BC${-n}`, spoken: t("me.board.moveDown", { n: -n }), dir: "down" };
-  return { text: "\u2013", spoken: t("me.board.moveFlat"), dir: "flat" };
-}
-
-/** One player. The top three's ranks sit on gold, silver and bronze discs;
- *  on This week (`week`) the row ends in the places it moved this week. */
-export function Row({ row, week = false }: { row: LeaderRow; week?: boolean }) {
+/** One player. The top three's ranks sit on gold, silver and bronze discs. */
+export function Row({ row }: { row: LeaderRow }) {
   const t = useT();
   const top = row.rank !== null && row.rank <= 3;
-  const move = week ? weekMove(row.week_rank_move) : null;
   const companions = useCollection();
   return (
     <li className={`lb-row${row.you ? " me" : ""}`}>
@@ -49,12 +37,6 @@ export function Row({ row, week = false }: { row: LeaderRow; week?: boolean }) {
         {row.provisional ? <span className="lb-new" title={t("me.board.newTitle")}>{t("me.board.new")}</span> : null}
       </span>
       <span className="lb-rating">{ratingText(row.rating)}</span>
-      {move ? (
-        <span className={`lb-move ${move.dir}`}>
-          <span aria-hidden="true">{move.text}</span>
-          <span className="sr-only">{t("me.board.moveSpoken", { move: move.spoken })}</span>
-        </span>
-      ) : null}
     </li>
   );
 }
@@ -63,7 +45,7 @@ export function Row({ row, week = false }: { row: LeaderRow; week?: boolean }) {
 function Rows({ board }: { board: Board }) {
   return (
     <ul className="grp lb-list">
-      {board.players.map((p, i) => <Row key={i} row={p} week={board.period === "week"} />)}
+      {board.players.map((p, i) => <Row key={i} row={p} />)}
     </ul>
   );
 }
@@ -134,7 +116,7 @@ export default function Leaderboard() {
       </>
     );
     if (me !== null && !players.some((p) => p.you)) {
-      pinned = <ul className="grp lb-list"><Row row={me} week={res.data.period === "week"} /></ul>;
+      pinned = <ul className="grp lb-list"><Row row={me} /></ul>;
     }
   }
   // a guest's row follows the board, where it is seen at once, rather than

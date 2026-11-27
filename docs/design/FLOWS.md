@@ -88,10 +88,9 @@ The wide layout (700px and up) has no top bar strip: the tabs float as the glass
 and the account chip at the top right, over the page background, and no tab shows a corner wordmark (Play's page
 carries the 升级 SHENG JI title). Jerry 2026-11-26: "can we just remove the top bar entirely? and we can keep the pills".
 It opens on This week, or on All time when nobody has played a ranked round this week yet, until the viewer
-picks a period (Jerry 2026-11-24: "default to global when it's empty"; no extra Play button). On This week each
-row ends in the places it moved on the week's list (▲3 green, ▼1 red, a dash for none, nothing for a player new
-this week; figures only, read as "up 3 places this week"), not its rating points (Jerry 2026-11-24: "we can show
-ranking moved"), and the top three's ranks sit on gold, silver and bronze discs on both periods (Jerry 2026-11-24).
+picks a period (Jerry 2026-11-24: "default to global when it's empty"; no extra Play button). Each row ends in
+its rating on both periods, with no places moved this week (Jerry 2026-11-27: "The up down is not that
+meaningful"), and the top three's ranks sit on gold, silver and bronze discs on both periods (Jerry 2026-11-24).
 A page is one layer on the page background at every width: no raised card behind How to play (which keeps its
 two columns from 900px, a sideways phone excepted), Support, Privacy or Terms of use. Real surfaces keep theirs: the table panel, sheets and dialogs,
 grouped list rows, Me's stat tiles and How to play's diagrams (Jerry 11-15).

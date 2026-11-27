@@ -2,7 +2,6 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Leaderboard from "./Leaderboard";
-import { tIn } from "../i18n";
 import { IdentitySheet } from "./GuestChip";
 import { guestName } from "../guestName";
 import { auth } from "../auth";
@@ -11,8 +10,10 @@ import type { Leaderboard as Board, LeaderRow } from "../ratings/api";
 
 vi.mock("../ws", () => ({ conn: { send: () => {}, reconnect: () => {} } }));
 
-function row(over: Partial<LeaderRow>): LeaderRow {
-  return { rank: 1, name: "Ann", rating: 1700, rounds: 120, levels_per_round: 0.31, week_rank_move: 2,
+/** A row as the server sends it: This week's rows still carry
+ *  `week_rank_move`, which the board does not draw. */
+function row(over: Partial<LeaderRow> & { week_rank_move?: number | null }): LeaderRow {
+  return { rank: 1, name: "Ann", rating: 1700, rounds: 120, levels_per_round: 0.31,
            provisional: false, you: false, ...over };
 }
 
@@ -338,25 +339,14 @@ describe("viewer changes", () => {
   });
 });
 
-describe("this week's movement and the top three", () => {
-  it("ends each This week row in the places it moved: up, down, a dash, or nothing when new", async () => {
+describe("rows and the top three", () => {
+  it("ends each row in its rating, with no places moved this week", async () => {
     await render();
     const listed = [...host.querySelectorAll(".lb-list")[0].querySelectorAll(".lb-row")];
-    expect(listed.map((r) => r.querySelector(".lb-move [aria-hidden]")?.textContent ?? null))
-      .toEqual(["▲2", "–", null, "▼3"]);
-    expect(listed.map((r) => r.querySelector(".lb-move")?.className ?? null)).toEqual(
-      ["lb-move up", "lb-move flat", null, "lb-move down"]);
-    expect(listed[0].querySelector(".lb-move .sr-only")?.textContent).toBe(", up 2 places this week");
-    expect(listed[3].querySelector(".lb-move .sr-only")?.textContent).toBe(", down 3 places this week");
-    // no rating-points movement: each row's figures are its rank, rating and places moved only
-    expect(listed[0].textContent).toBe("1SShrewd1,712▲2, up 2 places this week");
-    // the pinned own row too
-    expect(host.querySelector(".lb-pin .lb-move [aria-hidden]")?.textContent).toBe("▼1");
-    // one place is singular when read aloud; Chinese has no plural
-    expect(host.querySelector(".lb-pin .lb-move .sr-only")?.textContent).toBe(", down 1 place this week");
-    expect(tIn("en", "me.board.moveUp", { n: 1 })).toBe("up 1 place this week");
-    expect(tIn("zh-Hans", "me.board.moveDown", { n: 1 })).toBe("本周下降 1 名");
-    expect(tIn("zh-Hans", "me.board.moveUp", { n: 3 })).toBe("本周上升 3 名");
+    expect(listed.map((r) => r.lastElementChild?.className)).toEqual(["lb-rating", "lb-rating", "lb-rating", "lb-rating"]);
+    expect(listed[0].textContent).toBe("1SShrewd1,712");
+    expect(host.querySelector(".lb-pin .lb-row")?.lastElementChild?.className).toBe("lb-rating");
+    expect(host.textContent).not.toMatch(/[\u25B2\u25BC]|places? this week/);
   });
 
   it("puts the top three's ranks on gold, silver and bronze discs", async () => {
@@ -364,13 +354,6 @@ describe("this week's movement and the top three", () => {
     const ranks = [...host.querySelectorAll(".lb-list")[0].querySelectorAll(".lb-rank")];
     expect(ranks.map((r) => r.className)).toEqual(
       ["lb-rank top medal-1", "lb-rank top medal-2", "lb-rank top medal-3", "lb-rank"]);
-  });
-
-  it("All time shows no movement", async () => {
-    await render();
-    const all = [...host.querySelectorAll<HTMLButtonElement>(".segmented-btn")].find((b) => b.textContent === "All time")!;
-    await act(async () => { all.click(); await new Promise((r) => setTimeout(r, 0)); });
-    expect(host.querySelector(".lb-move")).toBeNull();
   });
 });
 

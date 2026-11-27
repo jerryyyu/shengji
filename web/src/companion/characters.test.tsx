@@ -645,6 +645,8 @@ describe("the table", () => {
       expect(frames[0].transform).toContain(`scale(${(44 / 50).toFixed(3)})`);
       expect(frames.some((f) => /scale\(1\.2/.test(String(f.transform)))).toBe(true);
       expect(badges()).toEqual([["0", "4"], ["2", "4"]]);
+      // the wrapper plays the pop: the drawing itself never grows on top of it
+      expect([0, 2].map((seat) => host.querySelector(`.tc-seat[data-seat="${seat}"] svg`)!.classList.contains("cmp-grow"))).toEqual([false, false]);
       // later states of the same level move nothing again
       await render(state({ phase: "play", levels: ["4", "A"] } as unknown as Partial<GameState>));
       act(() => { vi.advanceTimersByTime(LEVEL_UP_MS + 10); });
@@ -929,6 +931,22 @@ describe("the table", () => {
       await advance(LEVEL_UP_MS + 20);
       expect(moves("0").map((a) => a.move)).toEqual(["levelup"]);
       expect(specialOn("0")).toBe(true);
+    });
+
+    it("under Reduce Motion a tap on the felt leaves your companion at home", async () => {
+      const mm = window.matchMedia;
+      window.matchMedia = ((q: string) => ({ matches: q.includes("reduce"), addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
+      try {
+        await render(state());
+        const home = spotOf(0);
+        tap(felt(), 420, 220);
+        expect(walks("0")).toHaveLength(0);
+        expect(spotOf(0)).toEqual(home);
+        await advance(20000);
+        expect(spotOf(0)).toEqual(home);
+      } finally {
+        window.matchMedia = mm;
+      }
     });
 
     it("a tap on another companion's spot sends yours beside it, never over it", async () => {

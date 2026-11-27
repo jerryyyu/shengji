@@ -455,7 +455,7 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
         {up && !away ? <span className="tc-level" key={up.n}>{up.glyph}</span> : null}
         <span className="tc-face" ref={face}>
           <span className="tc-move" ref={box} data-move={up && !away ? "levelup" : playing && !away ? "react" : move}>
-            <Companion kind={kind} colour={colour} size={px} team={team}
+            <Companion kind={kind} colour={colour} size={px} team={team} grow={false}
                        blink={blink && drawn === "idle"} still={drawn === "react" && playing ? undefined : true} idle="rest"
                        state={drawn === "cheer" ? "cheer" : drawn === "sleep" ? "sleep" : drawn === "react" ? "react" : "idle"} />
           </span>
@@ -632,7 +632,8 @@ export default function TableCompanions({ state }: { state: GameState }) {
     const tap = (e: Event) => {
       const at = tapState.current;
       const target = e.target as Element | null;
-      if (!at.layout || !at.mine?.home || !target || target.closest(NOT_FELT)) return;
+      // under Reduce Motion nothing walks: yours stays at home
+      if (!at.layout || !at.mine?.home || !target || target.closest(NOT_FELT) || prefersReducedMotion()) return;
       const now = Date.now();
       if (now - at.last < TAP_THROTTLE_MS) return;
       const f = framed(felt, felt.getBoundingClientRect());

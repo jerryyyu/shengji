@@ -697,7 +697,7 @@ def extract(stores: Sequence[str], out: str, *, cluster_stride: int, cluster_off
             max_clusters_per_store: int | None, calib: float, test: float,
             sampler_worlds: int, sampler_splits: Sequence[str], sampler_stride: int,
             workers: int, task_clusters: int, log=print, resume: bool = False,
-            verify_cached_sources: bool = False) -> dict:
+            verify_cached_sources: bool = False, verify_inventory=None) -> dict:
     out_dir = Path(out)
     if resume:
         if not out_dir.is_dir():
@@ -719,8 +719,9 @@ def extract(stores: Sequence[str], out: str, *, cluster_stride: int, cluster_off
             group = chosen[start:start + task_clusters]
             chunk_name = f"s{si:02d}-{start // task_clusters:05d}"
             has_receipt = (out_dir / f".task-{chunk_name}.receipt.json").exists()
-            source_identity = [_source_identity(p, manifest_cache,
-                                                verify_manifest_bytes=verify_cached_sources or not resume or not has_receipt)
+            # The sealed inventory verifier streams and hashes the selected shard bytes itself.
+            hash_sources = verify_inventory is None and (verify_cached_sources or not resume or not has_receipt)
+            source_identity = [_source_identity(p, manifest_cache, verify_manifest_bytes=hash_sources)
                                for _, p in group]
             source_inventory.extend({"store_index": si, "cluster_index": ci, "source": identity}
                                     for (ci, _), identity in zip(group, source_identity))
@@ -728,6 +729,8 @@ def extract(stores: Sequence[str], out: str, *, cluster_stride: int, cluster_off
                           str(out_dir), chunk_name, calib, test,
                           windows, sampler_worlds, tuple(sampler_splits), sampler_stride,
                           source_identity))
+    if verify_inventory is not None:
+        verify_inventory(source_inventory)
     if not resume:
         out_dir.mkdir(parents=True, exist_ok=False)
     run_recipe = {

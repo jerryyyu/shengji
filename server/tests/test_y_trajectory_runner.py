@@ -221,13 +221,44 @@ def test_launcher_hold_then_guarded_resume_preserves_completed_shard(release50_p
     mode = shard.stat().st_mode
     shard.chmod(0o600)
     try:
-        shard.write_bytes(b'X' + original[1:])
+        shard.write_bytes(original[:-1] + b' ')
         refused = subprocess.run([*prepare, launcher.sha256(terminal)], capture_output=True, text=True)
-        assert refused.returncode and 'sha256 drift' in refused.stderr and not extract_dir.exists()
+        assert refused.returncode and 'trajectory differs from seal' in refused.stderr and not extract_dir.exists()
     finally:
         shard.write_bytes(original)
         shard.chmod(mode)
+    # A correctly sealed leg can still contain a fallback in a later search stage.
+    sidecar = out / manifest['shards'][0]['sidecar']
+    manifest_path = out / 'manifest.json'
+    sources = (shard, sidecar, manifest_path)
+    saved_sources = [(p.read_bytes(), p.stat().st_mode) for p in sources]
+    try:
+        for p in sources:
+            p.chmod(0o600)
+        records = [json.loads(line) for line in original.splitlines()]
+        decision = next(r['allocation']['serving_decision'] for r in records if r['decision_kind'] == 'play')
+        assert all(decision[k] == 0 for k in ('belief_fallback', 'belief_fallback_any', 'belief_fallback_all_draws'))
+        for stage in ('adaptive_worlds', 'lead_confirm'):
+            decision['belief_fallback_by_stage'][stage] = 1
+            shard.write_bytes(b''.join(json.dumps(r).encode() + b'\n' for r in records))
+            updated = dict(bytes=shard.stat().st_size, sha256=launcher.sha256(shard))
+            sidecar.write_text(json.dumps(dict(json.loads(saved_sources[1][0]), **updated)))
+            revised = json.loads(saved_sources[2][0])
+            revised['shards'][0].update(**updated, sidecar_sha256=launcher.sha256(sidecar))
+            manifest_path.write_text(json.dumps(revised))
+            bad = tmp_path / 'fallback-terminal.json'
+            terminal_data = json.loads(terminal.read_bytes())
+            terminal_data['leg_seal'] = launcher.seal_leg(spec, out)
+            bad.write_text(json.dumps(terminal_data))
+            result = subprocess.run([*prepare[:-1], str(bad), launcher.sha256(bad)], capture_output=True, text=True)
+            assert result.returncode and 'play belief fallback' in result.stderr and not extract_dir.exists()
+            decision['belief_fallback_by_stage'][stage] = 0
+    finally:
+        for p, (raw, mode) in zip(sources, saved_sources):
+            p.write_bytes(raw)
+            p.chmod(mode)
     prepared = json.loads(subprocess.check_output([*prepare, launcher.sha256(terminal)]))
+    assert prepared['trajectory_quality']['play_rows'] == prepared['consumer_rows']
     assert prepared['consumer_rows'] == manifest['counts']['decisions'] > 0
     assert json.loads((extract_dir/'manifest.json').read_bytes())['split']['test'] == 0.04
     side = out/manifest['shards'][0]['sidecar']
@@ -237,7 +268,7 @@ def test_launcher_hold_then_guarded_resume_preserves_completed_shard(release50_p
     try:
         side.write_bytes(saved + b' ')
         refused = subprocess.run([*prepare, launcher.sha256(terminal), '--resume'], capture_output=True, text=True)
-        assert refused.returncode and 'sidecar sha256 differs' in refused.stderr
+        assert refused.returncode and 'sidecar differs from seal' in refused.stderr
     finally:
         side.write_bytes(saved)
         side.chmod(mode)

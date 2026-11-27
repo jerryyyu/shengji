@@ -117,7 +117,7 @@ export interface QueueStateMsg {
   /** Not queued: a queue cooldown runs until then (Play counts it down). */
   cooldown_until?: number;
   /** Not queued: the Duo seat you left that the server still keeps for you
-   *  (Play reads "Back to Duo"). */
+   *  (the Play tab shows Rejoin Duo). */
   back?: QueueBackMsg;
   /** Another socket of yours (another device or window) holds the search:
    *  no table, offer or timer is sent here; any queue action takes it over. */

@@ -110,7 +110,7 @@ export interface QueueView {
   botsPaused: boolean;
   /** Local ms a queue cooldown ends (Play counts it down); null when none runs. */
   cooldownUntil: number | null;
-  /** Not queued: the Duo seat Play's "Back to Duo" returns you to. */
+  /** Not queued: the Duo seat Rejoin Duo returns you to. */
   back: QueueBack | null;
   /** The cooldown came as the answer to a Play, whose message the lobby
    *  already shows; Play need not say why again. */

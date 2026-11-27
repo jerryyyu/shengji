@@ -1074,7 +1074,9 @@ describe("the tablet table's trick cross", () => {
     const W = ":root:not(.phone-landscape)";
     const row = rule(css, `${W} .you-row`);
     expect(row.display).toBe("grid");
-    expect(row["grid-template-columns"]).toBe("minmax(0, 1fr) auto minmax(0, 1fr)");
+    // both sides keep the name pill's least room, so the middle stays centred and gives way first
+    const side = "minmax(calc(var(--pill-min) + var(--name-room)), 1fr)";
+    expect(row["grid-template-columns"]).toBe(`${side} minmax(0, max-content) ${side}`);
     expect(rule(css, `${W} .you-row > .action-bar`)["grid-area"]).toBe("1 / 2");
     expect(rule(css, `${W} :is(.phase-play, .phase-bury) .you-row :is(.play-wrap, .bury-btn)`)["grid-area"]).toBe("1 / 2");
     expect(rule(css, `${W} :is(.phase-play, .phase-bury) .you-row .action-bar > :is(.btn.subtle, .bury-points)`)["grid-area"]).toBe("1 / 3");

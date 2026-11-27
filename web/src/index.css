@@ -1610,8 +1610,12 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   --you-gap: 8px;
   /* the room right of your name: a gap, and the timer with its own gap */
   --name-room: var(--you-gap);
+  /* the least your name pill keeps: its crown and tags and a few letters of
+     your name; the middle column gives way first, its controls wrapping */
+  --pill-min: 160px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(calc(var(--pill-min) + var(--name-room)), 1fr) minmax(0, max-content)
+    minmax(calc(var(--pill-min) + var(--name-room)), 1fr);
   align-items: center;
   align-self: stretch;
   min-height: 38px;
@@ -1642,6 +1646,37 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 :root:not(.phone-landscape) .you-row > .action-bar {
   grid-area: 1 / 2;
   margin: 0;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* Three or more declarations read "♠2", "♠2 pair", "NT" after one "Declare"
+   label, as on the phone, so the row stays short; a row still too wide for
+   the middle column wraps. */
+:root:not(.phone-landscape) .you-row > .action-bar:has(> .btn.gold ~ .btn.gold ~ .btn.gold) {
+  .declare-full {
+    display: none;
+  }
+
+  .declare-short {
+    display: inline;
+  }
+
+  &::before {
+    content: attr(data-declare-label);
+    align-self: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(8, 20, 14, 0.78);
+    color: var(--gold);
+    font-size: var(--fs-12);
+    font-weight: 700;
+  }
+
+  .btn.gold {
+    min-width: 52px;
+    padding-inline: 12px;
+  }
 }
 
 :root:not(.phone-landscape) :is(.phase-play, .phase-bury) .you-row > .action-bar {
@@ -4057,6 +4092,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .you-row {
     --you-gap: calc(8 * var(--u));
+    --pill-min: calc(160 * var(--u));
     min-height: var(--row-h);
   }
 

@@ -391,7 +391,9 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
 - **One row above the hand, laid out as the phone's (L2; Jerry 2026-11-26, "Desktop / tablet — L2 looks good", decision mocks section 1;
   centred 2026-11-27, "why isnt play button centered on desktop like it is on mobile?").** The action (Play, Bury, or Declare's options
   and Pass) stands centred under the trick; Clear just right of Play, and your name pill (crown, name, YOUR TURN) and the move timer
-  just left of the action, outside its column, so neither moves it. The hint (an error, the coach, the phase's help) stands centred
+  just left of the action, outside its column, so neither moves it; the pill keeps room for a few letters of your name (a long
+  one ends in an ellipsis), and three or more declarations read "♠2", "♠2 pair", "NT" after one "Declare" label, wrapping to a
+  second line in the middle column when they still do not fit. The hint (an error, the coach, the phase's help) stands centred
   just above the row, out of the flow, so showing it never moves a control. A desktop window too small for the tablet table keeps the
   same row at the wide table's fixed sizes. The card sizes are unchanged
   (sized as if your name still had a row of its own); the height the one row frees goes to the cross, which stretches down into it

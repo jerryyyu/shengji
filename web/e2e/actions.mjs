@@ -12,6 +12,12 @@ const SHOTS = process.env.SHOTS ? new RegExp(process.env.SHOTS) : null;
 
 const dealt = { phase: "declare", banker: null, trump: null, turn: null, trick: null, attacker_points: 0, declare_deadline: 12 };
 const ranked = (over, opts) => { const s = base({ matched: true, ranked: true, ...over }, opts); s.players[0].turn_deadline = 8; return s; };
+// the most declarations one hand can offer at once: every suit's 2 alone and as a pair,
+// and both jokers as pairs (no trump); and the five of a hand holding H2 H2 C2 C2 D2
+const TWOS = ["H2", "H2", "C2", "C2", "D2", "D2", "S2", "S2", "LJ", "LJ", "BJ", "BJ"];
+const REST = HAND25.filter((c) => !/2$|J$/.test(c));
+const OPTS10 = [[1], [1, 2], [3], [3, 4], [5], [5, 6], [7], [7, 8], [9, 10], [11, 12]];
+const OPTS5 = [[1], [1, 2], [3], [3, 4], [5]];
 /** [id, frame, act]: `act(page)` runs after the frame (a card chosen, a refused Play tapped). */
 const STATES = [
   ["play_lead", base({ banker: 0, turn: 0, trick: { leader: 0, plays: [] } }, { banker: 0 })],
@@ -29,6 +35,9 @@ const STATES = [
   ["play_wide", base({ turn: 0, trick: { leader: 1, plays: plays(1, 3, 6) } }, { banker: 1 })],
   ["deal_open", base({ ...dealt, phase: "deal", hand: hand(HAND25.slice(0, 14)), declare_options: [[12], [13]] }, { banker: null })],
   ["declare_open", base({ ...dealt, declare_options: [[18], [24]] }, { banker: null })],
+  ["declare_five", base({ ...dealt, hand: hand(["H2", "H2", "C2", "C2", "D2", ...REST]), declare_options: OPTS5 }, { banker: null })],
+  ["declare_ten", base({ ...dealt, hand: hand([...TWOS, ...REST]), declare_options: OPTS10 }, { banker: null })],
+  ["deal_ten", base({ ...dealt, phase: "deal", hand: hand([...TWOS, ...REST.slice(0, 6)]), declare_options: OPTS10 }, { banker: null })],
   ["declare_by1", base({ ...dealt, declare_options: [[18]], current_declaration: { seat: 1, cards: ["H2"] }, passed: [1] }, { banker: null })],
   ["declare_passed", base({ ...dealt, passed: [0, 1, 3] }, { banker: null })],
   ["bury_me", base({ phase: "bury", banker: 0, turn: 0, trick: null, attacker_points: 0, hand: hand([...HAND25, "S7", "S10", "H5", "H9", "D3", "DK", "C6", "LJ"]) }, { banker: 0 })],
@@ -70,7 +79,22 @@ function rowChecks(page) {
       const dx = anchor.left + anchor.width / 2 - mid;
       if (Math.abs(dx) > 8) out.push(`the action's centre is ${Math.round(dx)}px off the table's centre (${Math.round(anchor.left)}..${Math.round(anchor.right)} vs ${Math.round(mid)})`);
     }
+    // every control in the row takes a tap at its centre, whole on the screen
+    for (const p of parts) {
+      if (!p.matches(".btn")) continue;
+      const r = p.getBoundingClientRect();
+      if (r.left < 0 || r.right > innerWidth || r.top < 0 || r.bottom > innerHeight) { out.push(`"${p.textContent.trim()}" leaves the screen (${Math.round(r.left)}..${Math.round(r.right)})`); continue; }
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      const takes = hit && (p.contains(hit) || hit.contains(p));
+      if (!takes) out.push(`"${p.textContent.trim()}" is covered at its centre by ${hit ? hit.className || hit.tagName : "nothing"}`);
+    }
     const tag = document.querySelector(".you-row .you-tagline");
+    // off the phone your name pill shows, whole, with some of your name in it
+    if (!document.documentElement.classList.contains("phone-landscape") && tag) {
+      const t = tag.getBoundingClientRect(), n = tag.querySelector(".you-name")?.getBoundingClientRect();
+      if (!n || n.width < 1) out.push(`your name is ${n ? n.width.toFixed(1) : "not"} px wide`);
+      if (t.left < 0 || t.right > innerWidth) out.push(`your name pill leaves the screen (${Math.round(t.left)}..${Math.round(t.right)})`);
+    }
     const rowParts = [...parts, ...(shown(tag) ? [tag] : [])];
     const others = [
       ...[...document.querySelectorAll(".hand .hand-slot .card")].map((el) => ["hand card", el]),
@@ -127,6 +151,8 @@ async function runDevice(device) {
       setup: pass === "companions" ? companions : null });
     await page.waitForSelector(".table-screen", { timeout: 10000 });
     for (const [id, frame, act] of STATES) {
+      // the phone's declare row scrolls sideways when it is wider than the screen
+      if (id === "declare_ten" && /^phone-/.test(device)) continue;
       // a clean slate: the last state's choice and hint go with a frame from another phase
       await push(page, base({ ...dealt }, { banker: null }));
       await sleep(60);

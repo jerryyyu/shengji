@@ -342,7 +342,7 @@ lane_require_registered_seeds() {
   [ -z "$out" ] || { LANE_MSG="seeds: the registry in $tree differs from its HEAD: $(echo "$out" | head -3 | tr '\n' ' ')"; return 6; }
   git -C "$tree" merge-base --is-ancestor HEAD "$ref" 2>/dev/null \
     || { LANE_MSG="seeds: $tree HEAD is not on $ref"; return 6; }
-  out=$(cd "$tree/server" && env -u SHENGJI_SEED_WINDOWS "${LANE_PY:-python3}" -P -B scripts/seed_windows.py \
+  out=$(cd "$tree/server" && env -u SHENGJI_FAST -u SHENGJI_SEED_WINDOWS "${LANE_PY:-python3}" -P -B scripts/seed_windows.py \
         --registry runs/seed_windows.json check "$s0" "$n" --purpose other 2>&1); rc=$?
   hi=$((s0 + n))
   [ "$rc" = 0 ] && { LANE_MSG="seeds: [$s0, $hi) is in no registered window"; return 6; }

@@ -651,7 +651,7 @@ def seed_tree(tmp_path):
     (t / "server" / "runs" / "seed_windows.d").mkdir(parents=True)
     shutil.copy(SERVER / "scripts" / "seed_windows.py", t / "server" / "scripts")
     shutil.copy(SERVER / "shengji" / "seeds.py", t / "server" / "shengji")
-    (t / "server" / "shengji" / "__init__.py").write_text("")
+    shutil.copy(SERVER / "shengji" / "__init__.py", t / "server" / "shengji")
     (t / "server" / "runs" / "seed_windows.json").write_text('{"schema": "shengji-seed-windows-v1", "windows": []}\n')
     d = t / "server" / "runs" / "seed_windows.d"
     (d / "corpus-a.json").write_text(_window("corpus-a", "trajectory", 1000, 500))
@@ -680,7 +680,7 @@ def seeds(tree, seed0, clusters, **env):
 def test_seed_block_inside_one_reservation_passes(seed_tree):
     rc, msg = seeds(seed_tree, 1100, 200)
     assert rc == 0 and "corpus-a" in msg, msg
-    rc, msg = seeds(seed_tree, 1000, 500, LANE_SEED_PURPOSE="trajectory")
+    rc, msg = seeds(seed_tree, 1000, 500, LANE_SEED_PURPOSE="trajectory", SHENGJI_FAST="1")
     assert rc == 0, msg
 
 

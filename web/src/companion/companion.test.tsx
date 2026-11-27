@@ -25,6 +25,8 @@ import { forgetHomeSession, forgetPrivateSession } from "../home/session";
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
+  // a character page opened by an earlier test is its own address: start on the grid
+  window.history.replaceState(null, "", "/");
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);

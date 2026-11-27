@@ -11,7 +11,7 @@ import { lookAccount, markLooksSeen, markSeen, newLooks } from "../companion/see
 import { setCompanionMode, shownAtTable, useCompanionMode } from "../companion/mode";
 import { equip, intend, refreshAccount } from "../companion/writes";
 import LargeTitlePage from "../home/LargeTitlePage";
-import { WIDE } from "../home/route";
+import { WIDE, leaveCollectionItem, pushCollectionItem, useCollectionItem } from "../home/route";
 import { useTabScroll } from "../home/session";
 import { useT } from "../i18n";
 import { isNative } from "../native";
@@ -20,10 +20,13 @@ import { useShop } from "../store/shop";
 import { showToast } from "../toast";
 import CharacterPage, { Stage, Tick, kindName, lookName } from "./CharacterPage";
 import { BuyFoot, RestoreRow } from "./StoreFoot";
+import EdgeSwipeBack from "./EdgeSwipeBack";
 import "../companion/collection.css";
 
 type Opened = CompanionKind | SoonKind | null;
 const isSoon = (k: Opened): k is SoonKind => (SOON as readonly string[]).includes(k ?? "");
+const isPage = (k: string | null): k is CompanionKind | SoonKind =>
+  k !== null && (Object.prototype.hasOwnProperty.call(COMPANIONS, k) || (SOON as readonly string[]).includes(k));
 
 /** One character's tile in the grid: its figure idling on felt, its name,
  *  and in More companions its price or Soon. The tick marks the one in use,
@@ -149,7 +152,9 @@ export default function CollectionPage() {
   const entriesOf = (k: CompanionKind) => looks.filter((l) => parseLook(l.id).kind === k);
   const owns = (k: CompanionKind) => !COMPANION_PRODUCTS[k] || entriesOf(k).some((e) => e.unlocked);
   const colourOf = (k: CompanionKind): Colour => (worn.kind === k ? worn.colour : COMPANIONS[k][0]);
-  const open = (k: CompanionKind | SoonKind) => {
+  // a character's page is its own history entry (`#/collection/<kind>`), so
+  // back, forward and the edge swipe move between it and the grid
+  const view = (k: CompanionKind | SoonKind) => {
     setStatus("");
     setOpened(k);
     if (!isSoon(k)) {
@@ -157,12 +162,35 @@ export default function CollectionPage() {
       const id = fresh.find((f) => parseLook(f).kind === k && list.some((e) => e.id === f && e.unlocked))
         ?? (worn.kind === k ? inUse : `${k}/${COMPANIONS[k][0]}`);
       const entry = list.find((e) => e.id === id) ?? list[0];
+      // a character this viewer has no looks of falls back to the grid (`available`)
+      if (!entry) return;
       manual.current = false;
       setShown(entry.id);
       // a tap on the look in use is the latest choice, so an older tap's unlock read gives way
       if (user && entry.id === inUse) intend("look");
     }
   };
+  const open = (k: CompanionKind | SoonKind) => {
+    view(k);
+    pushCollectionItem(k);
+  };
+  const leave = () => {
+    leaveCollectionItem();
+    setOpened(null);
+    setStatus("");
+  };
+  const item = useCollectionItem();
+  useEffect(() => {
+    if (item === null) {
+      if (opened !== null) {
+        setOpened(null);
+        setStatus("");
+      }
+    } else if (isPage(item) && item !== opened) {
+      view(item);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item]);
 
   // The page open must still be one this viewer may see: its character still
   // listed (a refund, a revocation or another account takes an owned one
@@ -187,11 +215,17 @@ export default function CollectionPage() {
     if (opened !== null && showing === null) {
       setOpened(null);
       setStatus("");
+      try {
+        if (item !== null) {
+          window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#/collection`);
+          window.dispatchEvent(new HashChangeEvent("hashchange"));
+        }
+      } catch { /* a sandboxed location */ }
     }
-  }, [opened, showing]);
+  }, [opened, showing, item]);
 
   const back = (
-    <button type="button" className="coll-back" onClick={() => { setOpened(null); setStatus(""); }}>
+    <button type="button" className="coll-back" onClick={leave}>
       {t("home.tabCollection")}
     </button>
   );
@@ -201,12 +235,14 @@ export default function CollectionPage() {
       return (
         <LargeTitlePage className="coll-page" scroller={scroller} title={kindName(t, showing)} phone={phone}
                        onRefresh={() => refreshAccount()} action={back}>
-          <div className="char-page">
-            <Stage kind={showing} colour={soonColour(showing)} size={phone ? 176 : 208} label={kindName(t, showing)} />
-            <div className="coll-use-row">
-              <button type="button" className="btn big coll-use done" disabled>{t("home.soon")}</button>
+          <EdgeSwipeBack onBack={leave}>
+            <div className="char-page">
+              <Stage kind={showing} colour={soonColour(showing)} size={phone ? 176 : 208} label={kindName(t, showing)} />
+              <div className="coll-use-row">
+                <button type="button" className="btn big coll-use done" disabled>{t("home.soon")}</button>
+              </div>
             </div>
-          </div>
+          </EdgeSwipeBack>
         </LargeTitlePage>
       );
     }
@@ -220,8 +256,10 @@ export default function CollectionPage() {
     return (
       <LargeTitlePage className="coll-page" scroller={scroller} title={kindName(t, kind)} phone={phone}
                      onRefresh={() => refreshAccount()} action={back}>
-        <CharacterPage kind={kind} shown={shown} entries={entries} inUse={inUse} user={user} phone={phone}
-                       fresh={fresh} onShow={show} onUse={use} price={price} status={status} cheer={cheer} />
+        <EdgeSwipeBack onBack={leave}>
+          <CharacterPage kind={kind} shown={shown} entries={entries} inUse={inUse} user={user} phone={phone}
+                         fresh={fresh} onShow={show} onUse={use} price={price} status={status} cheer={cheer} />
+        </EdgeSwipeBack>
       </LargeTitlePage>
     );
   }

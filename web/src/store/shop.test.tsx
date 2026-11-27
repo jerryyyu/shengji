@@ -68,6 +68,8 @@ const ownedUser: AuthUser = { ...user, products: [LAMB], looks: [...tractorLooks
 const server = { granted: false };
 
 beforeEach(() => {
+  // a character page opened by an earlier test is its own address: start on the grid
+  window.history.replaceState(null, "", "/");
   server.granted = false;
   host = document.createElement("div");
   document.body.appendChild(host);

@@ -913,6 +913,29 @@ describe("the table", () => {
       expect(clear(second, 44, true, layout())).toBe(true);
     });
 
+    it("with nothing clear near the tapped home, yours drops it and stands in its zone by your hand at the zone's size", async () => {
+      const bots = state({ players: [player(0), player(1, { is_bot: true, look: null }), player(2, { is_bot: true, look: null }), player(3, { is_bot: true, look: null })] } as Partial<GameState>);
+      await render(bots);
+      tap(felt(), 420, 220);
+      await advance(2000);
+      expect(spotOf(0)).toEqual({ x: 397, y: 175 });
+      rects["trick-play"] = { x: 0, y: 0, w: 844, h: 200 };
+      await render({ ...bots, trick: { leader: 1, plays: [{ seat: 1, cards: ["HA"] }] } } as GameState);
+      await advance(2000);
+      const zone = zonesFor([{ pos: "bottom", size: 44, tag: true }], layout()).bottom;
+      expect(zone.home).not.toBeNull();
+      expect(zone.size).toBeLessThan(44);
+      // drawn at the zone's size, the whole figure and its You tag clear at that size
+      const w = Number(host.querySelector('.tc-seat[data-seat="0"] svg')!.getAttribute("width"));
+      expect(w).toBe(zone.size);
+      const at = spotOf(0);
+      expect(clear(at, w, true, layout())).toBe(true);
+      expect(zone.spots).toContainEqual(at);
+      // and no tapped home is left: later walks stay in the zone
+      for (let t = 0; t < 30000; t += 1000) await advance(1000);
+      expect(zone.spots).toContainEqual(spotOf(0));
+    });
+
     it("a new table forgets the tapped spot: yours goes back by your hand", async () => {
       await render(state({ room: "A" } as Partial<GameState>));
       const home = spotOf(0);

@@ -350,8 +350,11 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     const drawn = now !== null && !!walk.current?.style.transform;
     const quick = { under: true, quick: true };
     if (tapped && !clear(tapped, px, you, roam)) {
-      const to = nearestClear({ x: tapped.x + px / 2, y: tapped.y + px }, px, you, roam) ?? zone.home;
-      tappedDone.current?.(to);
+      // with no clear spot near it the tapped home is dropped: yours goes back
+      // to its zone, at the zone's own spot and size
+      const near = nearestClear({ x: tapped.x + px / 2, y: tapped.y + px }, px, you, roam);
+      tappedDone.current?.(near);
+      const to = near ?? zone.home;
       if (!to) { stop(); cur.current = null; }
       else if (drawn) goTo(to, quick);
       else place(to);

@@ -33,112 +33,83 @@ async function swipe(cdp, x, y, dx) {
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
 }
 
-/** The table's moves on the stage, sampled from the browser's own computed style: Ready keeps its larger
- *  size between its bobs, a tap on the figure ends a beat at once, and Big play's apex stays inside the
- *  stage. `press` is "tap" on a touch device, "click" with a mouse. */
+/** The stage's move chips, sampled from the browser's own layout and computed style: one row of four,
+ *  Big play's apex inside the stage with the figure cheering throughout, a tap on the figure ending it at
+ *  once, and under Reduce Motion each chip's still pose inside the stage. `press` is "tap" on a touch
+ *  device, "click" with a mouse. */
 async function stageBeats(page, device, press = page.qa.d.touch === false ? "click" : "tap") {
-  await scenario(rep, `${device} stage beats`, page, async () => {
-      await page.evaluate(() => { document.querySelector(".coll-page").scrollTop = 0; });
-      await page.locator(".coll-yours .coll-tile", { hasText: "Bun" })[press]();
-      await sleep(500);
-      const chip = (name) => page.locator(".char-poses .char-move", { hasText: name });
-      const scaleAt = (times) => page.evaluate(async (ts) => {
-        const box = document.querySelector(".char-stage .char-box");
-        const t0 = performance.now();
-        const out = [];
-        for (const t of ts) {
-          while (performance.now() - t0 < t) await new Promise((r) => requestAnimationFrame(r));
-          const m = getComputedStyle(box).transform;
-          out.push(m === "none" ? 1 : new DOMMatrix(m).a);
-        }
-        return out;
-      }, times);
-      const topDuring = (ms) => page.evaluate(async (ms) => {
-        const stage = document.querySelector(".char-stage").getBoundingClientRect();
-        let worst = Infinity;
-        const t0 = performance.now();
-        while (performance.now() - t0 < ms) {
-          await new Promise((r) => requestAnimationFrame(r));
-          worst = Math.min(worst, document.querySelector(".char-stage .char-box svg.cmp").getBoundingClientRect().top - stage.top);
-        }
-        return Math.round(worst * 100) / 100;
-      }, ms);
-      await chip("Ready")[press]();
-      const readyTop = await topDuring(4300);
-      await rep.check(`${device} Ready's jump and larger size stay inside the stage`, readyTop >= -1 ? null : `${-readyTop}px over its top`, page);
-      await sleep(300);
-      await chip("Ready")[press]();
-      // in the gaps between the jump and the bobs, and between the bobs (bobs start at 520, 1620, 2720 ms)
-      const gaps = await scaleAt([1150, 2250, 3350]);
-      await rep.check(`${device} Ready holds its larger size between its bobs`,
-        // the larger size held, the same in every gap (a short stage holds a smaller growth, never none)
-      gaps.every((a) => a > 1.01) && Math.max(...gaps) - Math.min(...gaps) < 0.01 ? null
-        : `scale in the gaps ${gaps.map((a) => a.toFixed(2)).join(", ")}`, page);
-      await sleep(1200);
-      const after = await scaleAt([0]);
-      await rep.check(`${device} Ready ends at the figure's own size`, Math.abs(after[0] - 1) < 0.01 ? null : `scale ${after[0]}`, page);
+  await scenario(rep, `${device} stage chips`, page, async () => {
+    await page.evaluate(() => { document.querySelector(".coll-page").scrollTop = 0; });
+    await page.locator(".coll-yours .coll-tile", { hasText: "Bun" })[press]();
+    await sleep(500);
+    const chip = (name) => page.locator(".char-poses .char-move", { hasText: name });
+    const row = await page.evaluate(() => [...document.querySelectorAll(".char-poses > *")].map((c) => ({
+      text: c.textContent, top: Math.round(c.getBoundingClientRect().top) })));
+    await rep.check(`${device} the stage has one row of four chips: Hop, Cheer, Big play, the special`,
+      JSON.stringify(row.map((c) => c.text)) === JSON.stringify(["Hop", "Cheer", "Big play", "Steamer pop"])
+        && new Set(row.map((c) => c.top)).size === 1 ? null : JSON.stringify(row), page);
 
-      await chip("Ready")[press]();
-      await sleep(600);
-      await page.locator(".char-stage .coll-figure")[press]();
-      const cut = await page.evaluate(async () => {
-        const box = document.querySelector(".char-stage .char-box");
-        const seen = [];
-        const t0 = performance.now();
-        while (performance.now() - t0 < 3500) {
-          await new Promise((r) => requestAnimationFrame(r));
-          seen.push(box.getAnimations().length + (getComputedStyle(box).transform === "none" ? 0 : 10));
-        }
-        return { worst: Math.max(...seen), pose: document.querySelector(".char-stage svg.cmp")?.getAttribute("data-pose") };
-      });
-      await rep.check(`${device} a tap on the figure ends Ready at once`, cut.worst === 0 ? null : JSON.stringify(cut), page);
-
-      await sleep(1500);
-      await chip("Big play")[press]();
-      const apex = await page.evaluate(async () => {
-        const stage = document.querySelector(".char-stage").getBoundingClientRect();
-        const fig = () => document.querySelector(".char-stage .char-box svg.cmp").getBoundingClientRect();
-        let worst = Infinity;
-        let rose = 0;
-        let cheer = true;
-        const start = fig().top;
-        const t0 = performance.now();
-        while (performance.now() - t0 < 1450) {
-          await new Promise((r) => requestAnimationFrame(r));
-          const top = fig().top;
-          worst = Math.min(worst, top - stage.top);
-          rose = Math.max(rose, start - top);
-          cheer &&= document.querySelector(".char-stage svg.cmp")?.getAttribute("data-pose") === "cheer";
-        }
-        return { worst: Math.round(worst), rose: Math.round(rose), cheer };
-      });
-      await rep.check(`${device} Big play's apex stays inside the stage`, apex.worst >= -1 ? null : `${-apex.worst}px over its top`, page);
-      await rep.check(`${device} Big play still jumps`, apex.rose >= 8 ? null : `rose ${apex.rose}px`, page);
-      await rep.check(`${device} Big play holds the cheer through the jump`, apex.cheer ? null : "the pose left cheer before 1.45 s", page);
+    await chip("Big play")[press]();
+    const apex = await page.evaluate(async () => {
+      const stage = document.querySelector(".char-stage").getBoundingClientRect();
+      const fig = () => document.querySelector(".char-stage .char-box svg.cmp").getBoundingClientRect();
+      let worst = Infinity;
+      let rose = 0;
+      let cheer = true;
+      const start = fig().top;
+      const t0 = performance.now();
+      while (performance.now() - t0 < 1450) {
+        await new Promise((r) => requestAnimationFrame(r));
+        const top = fig().top;
+        worst = Math.min(worst, top - stage.top);
+        rose = Math.max(rose, start - top);
+        cheer &&= document.querySelector(".char-stage svg.cmp")?.getAttribute("data-pose") === "cheer";
+      }
+      return { worst: Math.round(worst), rose: Math.round(rose), cheer };
     });
+    await rep.check(`${device} Big play's apex stays inside the stage`, apex.worst >= -1 ? null : `${-apex.worst}px over its top`, page);
+    await rep.check(`${device} Big play still jumps`, apex.rose >= 8 ? null : `rose ${apex.rose}px`, page);
+    await rep.check(`${device} Big play holds the cheer through the jump`, apex.cheer ? null : "the pose left cheer before 1.45 s", page);
 
-  // under Reduce Motion each beat is one still pose for a second: one that rises stays inside the stage too
-  await scenario(rep, `${device} stage beats, Reduce Motion`, page, async () => {
+    await sleep(600);
+    await chip("Big play")[press]();
+    await sleep(300);
+    await page.locator(".char-stage .coll-figure")[press]();
+    const cut = await page.evaluate(async () => {
+      const box = document.querySelector(".char-stage .char-box");
+      const seen = [];
+      const t0 = performance.now();
+      while (performance.now() - t0 < 1700) {
+        await new Promise((r) => requestAnimationFrame(r));
+        seen.push(box.getAnimations().length + (getComputedStyle(box).transform === "none" ? 0 : 10));
+      }
+      return { worst: Math.max(...seen) };
+    });
+    await rep.check(`${device} a tap on the figure ends Big play at once`, cut.worst === 0 ? null : JSON.stringify(cut), page);
+  });
+
+  // under Reduce Motion each chip shows one still pose for a second, inside the stage
+  await scenario(rep, `${device} stage chips, Reduce Motion`, page, async () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     try {
-      for (const name of ["Ready", "Watch", "Big play"]) {
+      for (const name of ["Hop", "Cheer", "Big play", "Steamer pop"]) {
         await sleep(1300);
         await page.locator(".char-poses .char-move", { hasText: name })[press]();
         const still = await page.evaluate(async () => {
           const stage = document.querySelector(".char-stage").getBoundingClientRect();
           const box = document.querySelector(".char-stage .char-box");
           let worst = Infinity;
-          let held = false;
+          let moving = 0;
           const t0 = performance.now();
           while (performance.now() - t0 < 900) {
             await new Promise((r) => requestAnimationFrame(r));
             worst = Math.min(worst, document.querySelector(".char-stage .char-box svg.cmp").getBoundingClientRect().top - stage.top);
-            held ||= box.style.transform !== "";
+            moving = Math.max(moving, box.getAnimations().length);
           }
-          return { worst: Math.round(worst * 100) / 100, held, running: box.getAnimations().length };
+          return { worst: Math.round(worst * 100) / 100, moving };
         });
         await rep.check(`${device} Reduce Motion: ${name}'s still pose stays inside the stage`,
-          still.worst >= -1 && still.held && still.running === 0 ? null : JSON.stringify(still), page);
+          still.worst >= -1 && still.moving === 0 ? null : JSON.stringify(still), page);
       }
     } finally {
       await page.emulateMedia({ reducedMotion: "no-preference" });
@@ -169,9 +140,8 @@ try {
       await rep.check(`${device} the selected tile is ringed`, got.ring === "Bun" ? null : `ring on ${got.ring}`, page);
     });
 
-    // the stage, its colours and its button fit above the tab bar on the first view,
-    // and Try on your table does not move the controls under the stage
-    await scenario(rep, `${device} fit and try-on`, page, async () => {
+    // the stage, its chips, its colours and its button fit above the tab bar on the first view
+    await scenario(rep, `${device} fit`, page, async () => {
       await page.evaluate(() => { document.querySelector(".coll-page").scrollTop = 0; });
       await page.locator(".coll-yours .coll-tile", { hasText: "Tractor" }).tap();
       await sleep(400);
@@ -182,15 +152,6 @@ try {
       });
       await rep.check(`${device} the one button sits above the tab bar`, fit.useBottom <= fit.limit ? null
         : `the button's foot is ${fit.useBottom - fit.limit}px under it`, page);
-      const where = () => page.evaluate(() => Math.round(document.querySelector(".char-swatches").getBoundingClientRect().top));
-      const before = await where();
-      await page.locator(".char-chip").tap();
-      await sleep(300);
-      const after = await where();
-      await page.locator(".char-chip").tap();
-      await sleep(300);
-      await rep.check(`${device} Try on your table keeps the controls in place`, Math.abs(after - before) <= 1 ? null
-        : `the swatches moved ${after - before}px`, page);
     });
 
     await stageBeats(page, device);

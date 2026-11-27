@@ -20,13 +20,9 @@ export const home = defineMessages({
   "home.kindChick": { en: "Chick", zh: "小鸡", hant: "小雞" },
   "home.kindSparrow": { en: "Sparrow", zh: "麻雀", hant: "麻雀" },
   "home.lookShown": { en: "{kind} · {colour}", zh: "{kind} · {colour}", hant: "{kind} · {colour}" },
-  "home.tryOnTable": { en: "Try on your table", zh: "在牌桌上试试", hant: "在牌桌上試試" },
-  // the stage's move chips: three shared moves, then each character's special
+  // the stage's move chips: two shared moves, the table's big play, then each character's special
   "home.moveHop": { en: "Hop", zh: "跳一跳", hant: "跳一跳" },
   "home.moveCheer": { en: "Cheer", zh: "欢呼", hant: "歡呼" },
-  "home.moveSleep": { en: "Sleep", zh: "睡觉", hant: "睡覺" },
-  "home.moveReady": { en: "Ready", zh: "准备", hant: "準備" },
-  "home.moveWatch": { en: "Watch", zh: "看牌", hant: "看牌" },
   "home.moveBigPlay": { en: "Big play", zh: "大牌", hant: "大牌" },
   "home.specialTractor": { en: "Wheelie", zh: "翘头", hant: "翹頭" },
   "home.specialBun": { en: "Steamer pop", zh: "出笼", hant: "出籠" },

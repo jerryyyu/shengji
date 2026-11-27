@@ -20,8 +20,6 @@ export const PAGE_CYCLE: readonly CycleStep[] = [["idle", 3000], ["hop"], ["idle
 /** A once-move whose animation end never comes (a figure off screen) ends
  *  after its length and this much more. */
 const END_SLACK_MS = 250;
-/** How long a resting move asked for (`play("sleep")`) rests before the cycle resumes. */
-export const PLAYED_REST_MS = 2400;
 
 /** How long `pose` plays for `kind`, in ms (the once-moves' animation lengths). */
 export function poseMs(kind: DrawnKind, pose: Pose): number {
@@ -37,9 +35,8 @@ const once = (p: Pose) => p === "hop" || p === "cheer" || p === "react";
 /** The pose of a live figure of `kind` cycling through `cycle` while the
  *  element `on` is on screen. `tap()` plays the special now, from its start
  *  even during one: the figure's `key` changes so its animation restarts
- *  from the top. `play(pose)` plays any move now, once (a
- *  purchase's cheer, a move chip): a resting one rests `ms` (`PLAYED_REST_MS`
- *  by default), and a once-move given `ms` holds its pose that long. While the figure is off screen or the page hidden,
+ *  from the top. `play(pose)` plays a once-move now (a purchase's cheer, a
+ *  move chip); given `ms`, it holds its pose that long. While the figure is off screen or the page hidden,
  *  `paused` is true (the owner pauses its animations) and a move that ends
  *  then is counted only once it is back in view. `onPoseEnd` goes to the
  *  figure. */
@@ -47,7 +44,6 @@ export function useLivePose(kind: DrawnKind, cycle: readonly CycleStep[], on: Re
   const still = prefersReducedMotion();
   const [step, setStep] = useState(0);
   const [extra, setExtra] = useState<Pose | null>(null);
-  const restMs = useRef(PLAYED_REST_MS);
   // a once-move played for a set length holds its pose until then, past its own animation's end
   const holdMs = useRef(0);
   const heldUntil = useRef(0);
@@ -94,7 +90,7 @@ export function useLivePose(kind: DrawnKind, cycle: readonly CycleStep[], on: Re
       return;
     }
     finish();
-  }, [finish]);
+  }, [finish, extra]);
   useEffect(() => {
     if (shown && owed.current) {
       owed.current = false;
@@ -109,7 +105,7 @@ export function useLivePose(kind: DrawnKind, cycle: readonly CycleStep[], on: Re
     if (extra !== null) {
       if (still && once(extra) && !holdMs.current) return;   // the still frame ends itself (Companion's own timer)
       const t = window.setTimeout(end, once(extra)
-        ? Math.max(holdMs.current, still ? 0 : poseMs(kind, extra) + END_SLACK_MS) : restMs.current);
+        ? Math.max(holdMs.current, still ? 0 : poseMs(kind, extra) + END_SLACK_MS) : 0);
       return () => window.clearTimeout(t);
     }
     if (still) return;
@@ -119,7 +115,6 @@ export function useLivePose(kind: DrawnKind, cycle: readonly CycleStep[], on: Re
   }, [shown, still, extra, nonce, stepPose, rest, step, kind, end]);
 
   const play = useCallback((p: Pose, ms?: number) => {
-    restMs.current = ms ?? PLAYED_REST_MS;
     holdMs.current = once(p) && ms !== undefined ? ms : 0;
     heldUntil.current = holdMs.current ? Date.now() + holdMs.current : 0;
     setExtra(p);

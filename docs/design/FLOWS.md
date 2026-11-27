@@ -615,18 +615,15 @@ keeps the table on screen.
   a corner of felt, cycling through its moves by itself while on screen (idle, hop, cheer, its special, a short
   sleep, each move for its own animation's length; Jerry 2026-11-26: "all the animations there like the mock"), a
   tap playing its special from its start, still under Reduce Motion (a tap shows the special drawn still). Under
-  it, one row of chips (Jerry 2026-11-27: "yea lets add them", reversing the cut of state chips): **Hop · Cheer ·
-  Sleep · the special by name** (Wheelie, Steamer pop, Flutter, Loop; Horn butt and Bamboo bite for the store's),
-  then the table's own moves (see At the table below): **Ready · Watch · Big play** (准备 · 看牌 · 大牌: the jump and
-  bobs of your turn, held at its larger size between them, the lean toward a card played, the two-bounce jump with
-  the figure cheering throughout, each jump, and on a stage shorter still its growth, lowered only as far as the stage's own height needs,
-  Reduce Motion's still poses included), each playing its
-  move once before the
-  cycle resumes, the special's chip the same as a tap on the figure (either ends a move still playing), each drawn
-  still under Reduce Motion; then, in
-  the same row, the selected character's Try on your table (it stands
-  beside a partner on your team's pads). The row wraps to two lines on a narrow phone; its chips are labels only.
-  Then its colour
+  it, one row of four chips (Jerry 2026-11-27: "yea lets add them", reversing the cut of state chips; then "I don't
+  think we need Try on table. And we can have 1-2 rows of actions- we don't need all"): **Hop · Cheer · Big play ·
+  the special by name** (跳一跳 · 欢呼 · 大牌; Wheelie, Steamer pop, Flutter, Loop; Horn butt and Bamboo bite for
+  the store's). Big play is the table's two-bounce jump (see At the table below) with the figure cheering
+  throughout, its jump, and on a stage shorter still its growth, lowered only as far as the stage's own height
+  needs, Reduce Motion's still pose included. Each chip plays its move once before the cycle resumes, the special's
+  chip the same as a tap on the figure (either ends a move still playing), each drawn still under Reduce Motion.
+  The row is one line on every phone, the iPhone SE included; its chips are labels only. Sleep, Ready, Watch and
+  Try on your table are cut from the stage (the table keeps its own Ready and Watch). Then its colour
   swatches (56 px, four in a row on a phone), one status line and the one button. The status line says how an
   owned look was got (Jerry 2026-11-27: "It should say how we got the skin like 'achieved through x ranked wins' or
   'purchased on x date'"): a Tractor colour won, the count that unlocked it ("Unlocked with 25 ranked rounds won",
@@ -641,7 +638,7 @@ keeps the table on screen.
   where it cannot, **Coming soon** (即将推出 / 即將推出; Jerry 2026-11-27: "show coming soon section? even if we dont
   say shop or have a price"), the store's characters not owned as muted tiles with no price, no Buy and no store
   wording, a selected one live on the stage (its moves cycle, a tap plays its special) with the one status line
-  Coming soon and no button, no colours, no move chips and no Try on your table. Two tiles across on a phone, three or four on a wide layout. A tap on a tile selects it into the stage in place:
+  Coming soon and no button, no colours and no move chips. Two tiles across on a phone, three or four on a wide layout. A tap on a tile selects it into the stage in place:
   the stage crossfades to it (no motion under Reduce Motion), a gold ring marks the selected tile while the tick
   stays on the one in use, and on a phone the page scrolls back up to the stage. There is no character page, no
   back and no edge swipe. A link to `#/collection/<kind>` selects that character and puts the plain address in

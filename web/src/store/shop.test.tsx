@@ -838,7 +838,7 @@ describe("Coming soon, where the store cannot sell", () => {
     expect(stageKind()).toBe("cmp-lamb");
     expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("Coming soon");
     expect(host.querySelectorAll(".char-page [role=status]")).toHaveLength(1);
-    expect(host.querySelector(".char-page .coll-use, .char-chip, .char-swatches")).toBeNull();
+    expect(host.querySelector(".char-page .coll-use, .char-move, .char-swatches")).toBeNull();
     expect(host.querySelectorAll(".coll-soon .coll-tile")[0].classList.contains("selected")).toBe(true);
     await openTile(".coll-soon", 4);
     expect(stageKind()).toBe("cmp-fox");

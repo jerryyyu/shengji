@@ -1543,6 +1543,11 @@ def test_reserved_deck_cli_scores_both_mirrors_and_publishes_once(
     assert all(row["deal_key"] == deck["key"] for row in result["rows"])
     expected_eligible = [True] * 4 if substitution else [True, False, True, False]
     assert [row["eligible"] for row in result["rows"]] == expected_eligible
+    from shengji.train.belief_tree_bank_analysis import checked_deck
+    gains, _ = checked_deck(result, deck, source=source, bank_sha256=pin,
+                            settings=dict(seed=29, depth_worlds=2, reply_cap=4,
+                                          batch_size=32, reply_value_weight=1.))
+    assert gains == [(r["sf_gain"], r["vt_gain"]) for r in result["rows"] if r["eligible"]]
     with pytest.raises(FileExistsError):
         bank.main(argv)
     argv[argv.index(str(output))] = str(tmp_path / "incomplete.json")
@@ -1550,6 +1555,83 @@ def test_reserved_deck_cli_scores_both_mirrors_and_publishes_once(
     with pytest.raises(ValueError, match="digest mismatch"):
         bank.main(argv)
     assert not (tmp_path / "incomplete.json").exists()
+
+
+def test_bank_analysis_requires_complete_paired_cohort_and_clusters_by_deck(tmp_path, monkeypatch, capsys):
+    import io
+    import sys
+    import hashlib
+    import json
+    import math
+    from shengji.train.belief_tree_bank_analysis import analyze_bank, main
+
+    source = dict(policy="fixture", run_id="fixture")
+    settings = dict(seed=29, depth_worlds=2, reply_cap=4, batch_size=32, reply_value_weight=1.)
+    reservations, decks = [], []
+    for i in range(188):
+        key = f"deck:{i:064x}"
+        targets, rows = [], []
+        for j in range(4):
+            turn = dict(mirror=j // 2, ply=20 + 4 * (j % 2), seat=1, decision_index=20 + 4 * j)
+            targets.append(dict(turn, completed_tricks=turn["ply"] // 4))
+            identity = dict(turn, policy="fixture", deal_key=key)
+            if i < 50 and j == 0:
+                rows.append(dict(identity, eligible=False, ineligible_reason="single_legal_action",
+                                 ballot=[["C4"]]))
+                continue
+            sf = .5 if i < 50 else 0.
+            rows.append(dict(identity, eligible=True, ineligible_reason=None, ballot=[["C4"], ["D4"]],
+                             flat_means=[0., 0.], tree_means=[0., 1.],
+                             flat_all_tied=True, flat_action=["C4"], flat_final_action=["C4"],
+                             flat_final_accepted=["C4"], tree_action=["D4"],
+                             yardsticks=[dict(action=["D4"], accepted=["D4"], sf=sf, vt=0.),
+                                         dict(action=["C4"], accepted=["C4"], sf=0., vt=0.)],
+                             sf_gain=sf, vt_gain=0., sf_regret_change=-sf))
+        sha = f"{i+200:064x}"
+        reservations.append(dict(key=key, seed=i, shard=f"shards/cluster-{i:06d}.jsonl",
+                                 sha256=sha, targets=targets))
+        decks.append(dict(schema="belief-tree-paired-deck-v2", shard_sha256=sha, deal_key=key,
+                          round_seed=i, rows=rows, settings=settings.copy(), **source))
+    data = json.dumps(dict(source=source, deals=reservations)).encode()
+    pin = hashlib.sha256(data).hexdigest()
+    for deck in decks:
+        deck["bank_sha256"] = pin
+
+    def read(outputs):
+        return analyze_bank(data, outputs, bank_sha256=pin, settings=settings)
+
+    result = read(reversed(decks))
+    path = tmp_path / "reserved.json"
+    path.write_bytes(data)
+    monkeypatch.setattr(sys, "stdin", io.StringIO("\n".join(json.dumps(d) for d in decks)))
+    main(["--bank", str(path), "--bank-sha256", pin, "--settings", json.dumps(settings)])
+    assert json.loads(capsys.readouterr().out) == result
+    assert (result["eligible_turns"], result["represented_decks"], result["verdict"]) == (702, 188, "PASS")
+    mean = 75 / 702
+    se = math.sqrt((50 * (1.5 - 3 * mean)**2 + 138 * (4 * mean)**2) * 188 / 187) / 702
+    assert result["served_finish_gain"] == pytest.approx(dict(mean=mean, se=se, lo=mean-1.96*se, hi=mean+1.96*se))
+    assert result["served_regret_change"]["hi"] == -result["served_finish_gain"]["lo"]
+    assert result["counts"]["flat_all_tied"] == 702
+    with pytest.raises(ValueError, match="missing scored deck"):
+        read(decks[:-1])
+    with pytest.raises(ValueError, match="duplicate scored deck"):
+        read([*decks[:-1], decks[0]])
+    wrong = dict(decks[0], settings=dict(settings, depth_worlds=3))
+    with pytest.raises(ValueError, match="settings"):
+        read([wrong, *decks[1:]])
+    wrong = dict(decks[0], rows=decks[0]["rows"][:3] + [decks[0]["rows"][0]])
+    with pytest.raises(ValueError, match="turn"):
+        read([wrong, *decks[1:]])
+    # Even a tiny negative heuristic contrast vetoes a positive served-finish interval.
+    row = decks[-1]["rows"][0]
+    row["yardsticks"][0]["vt"] = row["vt_gain"] = -.125
+    assert read(decks)["verdict"] == "FAIL"
+    for j in range(1, 4):
+        r = decks[0]["rows"][j]
+        decks[0]["rows"][j] = dict(decks[0]["rows"][0], **{k: r[k] for k in ("mirror", "ply", "seat", "decision_index")})
+    short = read(decks)
+    assert short["verdict"] == "INSUFFICIENT" and short["eligible_turns"] == 699
+    assert "served_finish_gain" not in short
 
 
 def test_trajectory_test_roots_bind_the_split_pin_mirror_and_ledger(tmp_path):
@@ -1948,6 +2030,74 @@ def test_score_bank_root_records_a_reduced_final_lead(paired_flat_probe, monkeyp
                                 depth_worlds=2, reply_cap=4, batch_size=32, reply_value_weight=1.)
     assert row["flat_final_action"] == ["BJ", "H10"]
     assert row["flat_final_accepted"] == ["H10"]
+
+
+def test_checked_bank_gains_reconstructs_produced_picks_and_signed_gains(monkeypatch):
+    from types import SimpleNamespace
+    from shengji.train import belief_tree_bank_score as scorer
+    from shengji.train.belief_labels import deal_key
+    from shengji.train.belief_tree_bank_row import checked_gains
+    from shengji.train.belief_tree_compare import PairedLeadValues
+    from shengji.train.belief_tree_replay import RootTarget, TrancheRoot
+
+    rnd = walk(deal(14), 20)
+    root = TrancheRoot(RootTarget(20, 0, 20, rnd.turn), deal_key(rnd.deck), rnd, ())
+    a, b, c, final = [(card,) for card in sorted(set(root.round.hands[root.target.seat]))[:4]]
+    yards = {a: (.125, .25), b: (.625, -.5), c: (0., 0.)}
+    monkeypatch.setattr(scorer, "true_deal_yardsticks", lambda *a, **kw: yards)
+    options = dict(make_bot=lambda seed: SimpleNamespace(policy_name="served", unified_value_model=None),
+                   policy="served", seed=29, depth_worlds=2, reply_cap=4,
+                   batch_size=32, reply_value_weight=1.)
+
+    def score(flat, tree):
+        paired = PairedLeadValues((a, b, c), np.array(flat), np.tile(tree, (64, 1)), final)
+        monkeypatch.setattr(scorer, "compare_replayed_lead", lambda *a, **kw: paired)
+        return json.loads(json.dumps(scorer.score_bank_root(root, **options), allow_nan=False))
+
+    row = score([2., 2., 1.], [0., 1., 1.])
+    assert row["flat_action"] == list(a) and row["tree_action"] == list(b)
+    assert row["flat_final_action"] == list(final)
+    assert checked_gains(row) == (.5, -.75)
+    assert checked_gains({**row, "yardsticks": row["yardsticks"][::-1]}) == (.5, -.75)
+    assert checked_gains(score([2., 2., 2.], [0., 1., 1.])) == (.5, -.75)
+    assert checked_gains(score([2., 2., 2.], [1., 1., 1.])) == (0., 0.)
+
+    for corrupt in (
+        {**row, "mirror": True}, {**row, "decision_index": 21}, {**row, "seat": -1},
+        {**row, "deal_key": "f" * 64}, {**row, "policy": ""},
+        {**row, "flat_action": list(b)}, {**row, "tree_action": list(c)},
+        {**row, "flat_all_tied": 0}, {**row, "flat_means": [2., 2., float("nan")]},
+        {**row, "tree_means": [0., 1.]}, {**row, "flat_final_accepted": list(a)},
+        {**row, "ballot": [list(a), list(b), list(a)]},
+        {**row, "sf_gain": -.5}, {**row, "vt_gain": .75}, {**row, "sf_regret_change": .5},
+        {**row, "yardsticks": [row["yardsticks"][1], *row["yardsticks"][1:]]},
+        {**row, "yardsticks": [{**row["yardsticks"][0], "action": list(final),
+                                "accepted": list(final)}, *row["yardsticks"][1:]]},
+        {**row, "yardsticks": [{**row["yardsticks"][0], "sf": True}, *row["yardsticks"][1:]]},
+        {**row, "yardsticks": [{**row["yardsticks"][0], "accepted": list(b)}, *row["yardsticks"][1:]]},
+    ):
+        with pytest.raises(ValueError):
+            checked_gains(corrupt)
+
+
+def test_checked_bank_gains_accepts_only_complete_singleton_shapes():
+    from shengji.train.belief_tree_bank_row import checked_gains
+
+    legal = dict(deal_key="deck:" + "f" * 64, decision_index=52, mirror=0, ply=52, seat=3,
+                 policy="served", eligible=False, ineligible_reason="single_legal_action",
+                 ballot=[["H7"]])
+    admitted = dict(legal, ineligible_reason="single_admitted_action", ballot=[["H7", "HK"]],
+                    flat_means=[.25], flat_final_action=["H7", "HK"], flat_final_accepted=["H7"])
+    assert checked_gains(legal) is None and checked_gains(admitted) is None
+    for corrupt in (
+        dict(legal, eligible=0), dict(legal, sf_gain=0.), dict(legal, ballot=[[]]),
+        dict(legal, ballot=[["P7"]]), dict(legal, ballot=[["H7", "H7", "H7"]]),
+        dict(admitted, ballot=[["HK", "H7"]]), dict(admitted, flat_means=[True]),
+        dict(admitted, flat_means=[float("inf")]), dict(admitted, flat_final_action=["H7"]),
+        {key: value for key, value in admitted.items() if key != "flat_final_accepted"},
+    ):
+        with pytest.raises(ValueError):
+            checked_gains(corrupt)
 
 
 def test_failed_throw_conditions_only_its_own_replies(paired_flat_probe, monkeypatch):

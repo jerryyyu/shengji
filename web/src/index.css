@@ -6156,10 +6156,6 @@ button.grp-row:disabled { cursor: default; }
 .lb-rank.medal-2 { background: #c9d1dc; }
 .lb-rank.medal-3 { background: #d08a4e; }
 /* This week's movement at the row's end: up green, down red, a dash for none */
-.lb-move { flex: none; min-width: 36px; text-align: right; font-size: var(--fs-13); font-weight: 600; font-variant-numeric: tabular-nums; }
-.lb-move.up { color: #5ccf8a; }
-.lb-move.down { color: #ff8a8a; }
-.lb-move.flat { color: #9aa3b2; }
 .lb-name { flex: 1; min-width: 0; display: flex; align-items: center; }
 .lb-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lb-you { flex: none; white-space: pre; }

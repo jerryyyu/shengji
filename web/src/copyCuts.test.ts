@@ -51,6 +51,8 @@ const CUT = [
   "重新打起",
   "满 80 上台",
   "Waiting for {n} players",
+  "本周上升",
+  "本周下降",
 ];
 
 const SRC = fileURLToPath(new URL(".", import.meta.url));

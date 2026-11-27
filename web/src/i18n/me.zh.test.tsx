@@ -137,7 +137,5 @@ describe("the leaderboard in Simplified Chinese", () => {
     expect(bold.textContent).toBe("新");
     expect(bold.getAttribute("title")).toBe("排位不到 20 局");
     expect(host.querySelector(".lb-pin .lb-name")?.textContent).toBe("Jerry（我）");
-    // This week's movement is read out in Chinese
-    expect([...host.querySelectorAll(".lb-move .sr-only")].map((s) => s.textContent)).toContain("，本周上升 3 名");
   });
 });

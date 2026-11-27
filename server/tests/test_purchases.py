@@ -269,6 +269,59 @@ def test_verify_refuses_guests_the_store_off_and_bad_input(accounts_on, client, 
         assert conn.execute("SELECT COUNT(*) FROM entitlements").fetchone()[0] == 0
 
 
+def test_store_accounts_turns_the_store_on_for_those_accounts_alone(accounts_on, client, shop, chain, keypair,
+                                                                   monkeypatch):
+    monkeypatch.setenv("STORE_ENABLED", "0")
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "1,2")
+    monkeypatch.setenv("STORE_ACCOUNTS", " 1, x,")
+    assert accounts_on.store_allowlist() == frozenset({1})
+    me = client.get("/api/me", headers=shop).json()
+    assert me["features"]["store"] is True and "store_token" in me
+    assert any(e["id"] == "lamb/newyear" and not e["unlocked"] for e in me["looks"])
+    assert client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=shop).status_code == 200
+    assert client.get("/api/me", headers=shop).json()["products"] == [LAMB]
+    # another account the Collection is on for, but not on the list, still sees no store
+    private_pem, _ = keypair
+    client.cookies.clear()
+    other = {"cookie": _session_cookie(accounts_on, client, private_pem, sub="222", email="b@example.com")}
+    assert client.get("/api/me", headers=other).json()["features"]["store"] is False
+    assert client.post("/api/store/verify", json={"jws": chain.sign(_txn(originalTransactionId="9", transactionId="9"))},
+                       headers=other).status_code == 404
+    # the list never opens the store to an account the Collection is off for, or to a guest
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "2")
+    assert accounts_on.store_for(1) is False
+    assert accounts_on.store_for(None) is False
+    # with the list empty and the flag off, nobody has the store
+    monkeypatch.setenv("COLLECTION_ACCOUNTS", "1,2")
+    monkeypatch.setenv("STORE_ACCOUNTS", "")
+    assert accounts_on.store_for(1) is False
+
+
+SOON = {"rabbit": "moon", "cat": "white", "fox": "orange", "lion": "red", "dragon": "red"}
+
+
+def test_the_coming_characters_can_be_neither_equipped_nor_bought(accounts_on, client, shop, chain):
+    from shengji.api import purchases
+
+    assert not set(SOON) & set(accounts_on.LOOKS)
+    assert not set(SOON) & set(accounts_on.COMPANION_PRODUCTS)
+    looks = client.get("/api/me", headers=shop).json()["looks"]
+    assert not any(e["id"].split("/")[0] in SOON for e in looks)
+    for kind, colour in SOON.items():
+        assert accounts_on.parse_look(f"{kind}/{colour}") is None
+        assert client.put("/api/me/look", json={"look": f"{kind}/{colour}"}, headers=shop).status_code == 400
+        product = f"com.jerryyu.shengji.companion.{kind}"
+        with pytest.raises(purchases.VerificationError, match="unknown_product"):
+            purchases.transaction(purchases.verify_jws(chain.sign(_txn(productId=product))))
+    # and over the wire, one of them
+    resp = client.post("/api/store/verify", json={"jws": chain.sign(_txn(productId="com.jerryyu.shengji.companion.rabbit"))},
+                       headers=shop)
+    assert resp.status_code == 400 and resp.json()["detail"] == "unknown_product"
+    assert client.get("/api/me", headers=shop).json()["products"] == []
+    with accounts_on.STORE._open() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM entitlements").fetchone()[0] == 0
+
+
 def test_the_china_storefront_buys_nothing(accounts_on, client, shop, chain):
     said = client.post("/api/store/verify", json={"jws": chain.sign(_txn()), "storefront": "CHN"},
                        headers=shop)

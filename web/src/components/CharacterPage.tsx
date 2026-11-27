@@ -4,6 +4,7 @@ import type { AuthUser } from "../auth";
 import { Companion, Portrait } from "../companion/Companion";
 import type { Pose } from "../companion/Companion";
 import { DRAWINGS } from "../companion/kinds";
+import type { DrawnColour, DrawnKind } from "../companion/kinds";
 import { parseLook } from "../companion/look";
 import type { Colour, CompanionKind, LookEntry, UnlockCount } from "../companion/look";
 import { guestName } from "../guestName";
@@ -156,15 +157,17 @@ export function UseButton({ entry, ownership, user, onUse, price }: {
   );
 }
 
-/** The moves a stage plays by itself, one after another, each for its time. */
+/** The moves a stage plays by itself, one after another, each for its
+ *  time; the signature reaction runs its own length (`reactMs`) and a beat. */
 const CYCLE: readonly [Pose, number][] = [["idle", 2200], ["hop", 900], ["idle", 1800], ["cheer", 1500], ["idle", 1800],
-  ["react", 1800], ["idle", 1800], ["sleep", 2400]];
+  ["react", 0], ["idle", 1800], ["sleep", 2400]];
+const REACT_BEAT = 300;
 const CHEER_STEP = CYCLE.findIndex(([pose]) => pose === "cheer");
 
 /** A live figure on felt that plays its moves in turn by itself (a tap plays
  *  the next at once), still under Reduce Motion and while the page is hidden. */
 export function Stage({ kind, colour, size, label, partner, cheer = 0 }: {
-  kind: CompanionKind; colour: Colour; size: number; label: string;
+  kind: DrawnKind; colour: DrawnColour; size: number; label: string;
   partner?: { kind: CompanionKind; colour: Colour; size: number } | null;
   /** Each new value plays the cheer at once (a purchase). */
   cheer?: number;
@@ -180,12 +183,13 @@ export function Stage({ kind, colour, size, label, partner, cheer = 0 }: {
     const go = () => {
       window.clearTimeout(timer.current);
       if (document.visibilityState === "hidden") return;
-      timer.current = window.setTimeout(() => setStep((s) => s + 1), CYCLE[step % CYCLE.length][1]);
+      const [now, ms] = CYCLE[step % CYCLE.length];
+      timer.current = window.setTimeout(() => setStep((s) => s + 1), now === "react" ? DRAWINGS[kind].reactMs + REACT_BEAT : ms);
     };
     go();
     document.addEventListener("visibilitychange", go);
     return () => { window.clearTimeout(timer.current); document.removeEventListener("visibilitychange", go); };
-  }, [step]);
+  }, [step, kind]);
   const next = () => setStep((s) => s + 1);
   return (
     <div className={`coll-felt char-stage${partner ? " char-try" : ""}`}>

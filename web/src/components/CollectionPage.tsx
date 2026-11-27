@@ -3,8 +3,9 @@ import { useAuth } from "../auth";
 import { appStoreUrl } from "../appStore";
 import { COMPANIONS, COMPANION_KINDS, COMPANION_PRODUCTS, FREE_KINDS, lookCatalogue, lookId, parseLook } from "../companion/look";
 import type { Colour, CompanionKind, LookEntry } from "../companion/look";
+import type { DrawnColour, DrawnKind } from "../companion/kinds";
 import { Companion } from "../companion/Companion";
-import { SOON, SOON_STAND_IN } from "../companion/characters";
+import { SOON, soonColour } from "../companion/characters";
 import type { SoonKind } from "../companion/characters";
 import { lookAccount, markLooksSeen, markSeen, newLooks } from "../companion/seen";
 import { setCompanionMode, shownAtTable, useCompanionMode } from "../companion/mode";
@@ -29,7 +30,7 @@ const isSoon = (k: Opened): k is SoonKind => (SOON as readonly string[]).include
  *  and "New" one with a colour newly unlocked and not yet seen; a tile just
  *  bought rises into Yours (`arrive`). */
 function Tile({ kind, colour, label, sub, gold, dim, worn, isNew, arrive, onOpen, onArrived }: {
-  kind: CompanionKind; colour: Colour; label: string; sub?: string; gold?: boolean; dim?: boolean;
+  kind: DrawnKind; colour: DrawnColour; label: string; sub?: string; gold?: boolean; dim?: boolean;
   worn?: boolean; isNew?: boolean; arrive?: boolean; onOpen: () => void; onArrived?: () => void;
 }) {
   const t = useT();
@@ -201,7 +202,7 @@ export default function CollectionPage() {
         <LargeTitlePage className="coll-page" scroller={scroller} title={kindName(t, showing)} phone={phone}
                        onRefresh={() => refreshAccount()} action={back}>
           <div className="char-page">
-            <Stage kind="tractor" colour={SOON_STAND_IN[showing]} size={phone ? 176 : 208} label={kindName(t, showing)} />
+            <Stage kind={showing} colour={soonColour(showing)} size={phone ? 176 : 208} label={kindName(t, showing)} />
             <div className="coll-use-row">
               <button type="button" className="btn big coll-use done" disabled>{t("home.soon")}</button>
             </div>
@@ -266,7 +267,7 @@ export default function CollectionPage() {
                     sub={shop.prices[COMPANION_PRODUCTS[k]!] ?? ""} gold onOpen={() => open(k)} />
             ))}
             {SOON.map((k) => (
-              <Tile key={k} kind="tractor" colour={SOON_STAND_IN[k]} label={kindName(t, k)} sub={t("home.soon")} dim
+              <Tile key={k} kind={k} colour={soonColour(k)} label={kindName(t, k)} sub={t("home.soon")} dim
                     onOpen={() => open(k)} />
             ))}
           </div>

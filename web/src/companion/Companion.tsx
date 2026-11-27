@@ -8,10 +8,10 @@ import type { CSSProperties } from "react";
 import { prefersReducedMotion } from "../motion";
 import { parseArt, renderArt } from "./Tractor";
 import { DRAWINGS } from "./kinds";
+import type { DrawnColour, DrawnKind } from "./kinds";
 import { companionSize } from "./rig";
 import type { CharPose, Team } from "./rig";
 import { lookId, parseLook } from "./look";
-import type { Colour, CompanionKind } from "./look";
 import "./companion.css";
 import "./companion.store.css";
 
@@ -21,6 +21,10 @@ export type Pose = CharPose;
 const ONCE: ReadonlySet<Pose> = new Set(["hop", "cheer", "react"]);
 /** How long a still pose stands before it ends, under Reduce Motion. */
 const STILL_MS = 1000;
+
+/** The suit the Lucky Cat's card turns up on one play: a joker about one
+ *  play in twelve, else one of the four suits. */
+export const pickSuit = (r: number): string => (r < 1 / 12 ? "j" : "shcd"[Math.min(3, Math.floor(((r - 1 / 12) / (11 / 12)) * 4))]);
 
 /** The whole companion in a `size`-pixel square. `hop`, `cheer` and `react`
  *  play once and then call `onPoseEnd`, so the owner returns it to `idle`.
@@ -32,7 +36,7 @@ const STILL_MS = 1000;
  *  `idle` says how idle and sleep move: `loop` (their own endless loops) or
  *  `rest` (still, so a page at rest draws no frames). */
 export function Companion({ kind = "tractor", colour, size, state = "idle", team, level, max, still, idle = "loop", grow = true, onPoseEnd }: {
-  kind?: CompanionKind; colour: Colour; size: number; state?: Pose; team?: Team; level?: number; max?: number;
+  kind?: DrawnKind; colour: DrawnColour; size: number; state?: Pose; team?: Team; level?: number; max?: number;
   still?: boolean; idle?: "loop" | "rest"; grow?: boolean; onPoseEnd?: () => void;
 }) {
   const id = useId().replace(/[^a-zA-Z0-9]/g, "");
@@ -42,6 +46,9 @@ export function Companion({ kind = "tractor", colour, size, state = "idle", team
   const detail = px >= 64;
   const art = useMemo(() => renderArt(parseArt(drawing.markup(colour, id, { pose: state, detail, still: calm, team }))),
     [drawing, colour, id, state, detail, calm, team]);
+
+  // each play of the Lucky Cat's reaction turns up a card of its own
+  const suit = useMemo(() => (kind === "cat" && state === "react" ? pickSuit(Math.random()) : undefined), [kind, state]);
 
   // a level gained grows the figure from the size it stood at
   const was = useRef(px);
@@ -60,11 +67,11 @@ export function Companion({ kind = "tractor", colour, size, state = "idle", team
 
   const resting = !ONCE.has(state);
   const poseCls = calm && ONCE.has(state) ? "" : resting && idle === "rest" ? `cmp-${state} cmp-rest` : `cmp-${state}`;
-  const cls = ["cmp", drawing.char ? "cmp-char" : "", `cmp-${kind}`, poseCls,
+  const cls = ["cmp", drawing.char ? "cmp-char" : "", `cmp-${kind}`, poseCls, calm ? "cmp-still" : "",
     team ? `cmp-${team}` : "", from !== null ? "cmp-grow" : ""].filter(Boolean).join(" ");
   const [zx, zy] = drawing.z;
   return (
-    <svg className={cls} width={px} height={px} viewBox="0 0 400 400" aria-hidden="true" focusable="false"
+    <svg className={cls} width={px} height={px} viewBox="0 0 400 400" aria-hidden="true" focusable="false" data-suit={suit}
          style={from !== null ? { "--cmp-from": from.toFixed(3) } as CSSProperties : undefined}
          onAnimationEnd={(e) => {
            if (e.target === e.currentTarget && e.animationName === "cmp-grow") setFrom(null);

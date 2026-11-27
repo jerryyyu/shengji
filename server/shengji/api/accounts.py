@@ -152,8 +152,11 @@ COMPANION_PRODUCTS: dict[str, str] = {
 }
 # The Shop is shown, and purchases are verified, only for an account the
 # Collection is on for (``collection_for``) and only while
-# ``STORE_ENABLED=1``. Refunds and revocations from Apple apply either way.
+# ``STORE_ENABLED=1`` or the account's id is in ``STORE_ACCOUNTS``
+# (comma-separated ids, a deploy secret, for testing purchases before the
+# store opens). Refunds and revocations from Apple apply either way.
 STORE_ENV = "STORE_ENABLED"
+STORE_ACCOUNTS_ENV = "STORE_ACCOUNTS"
 DEFAULT_COMPANION = "tractor"
 DEFAULT_COLOUR = "red"
 DEFAULT_LOOK = f"{DEFAULT_COMPANION}/{DEFAULT_COLOUR}"
@@ -236,13 +239,22 @@ def collection_enabled() -> bool:
     return os.environ.get(COLLECTION_ENV, "") == "1"
 
 
-def collection_allowlist() -> frozenset[int]:
+def _account_allowlist(env: str) -> frozenset[int]:
+    """The account ids in ``env``, comma-separated; anything else is ignored."""
     out = set()
-    for part in os.environ.get(COLLECTION_ACCOUNTS_ENV, "").split(","):
+    for part in os.environ.get(env, "").split(","):
         part = part.strip()
         if part.isdigit():
             out.add(int(part))
     return frozenset(out)
+
+
+def collection_allowlist() -> frozenset[int]:
+    return _account_allowlist(COLLECTION_ACCOUNTS_ENV)
+
+
+def store_allowlist() -> frozenset[int]:
+    return _account_allowlist(STORE_ACCOUNTS_ENV)
 
 
 def collection_for(user_id: int | None) -> bool:
@@ -267,10 +279,11 @@ def store_environments() -> frozenset[str]:
 
 def store_for(user_id: int | None) -> bool:
     """Whether ``user_id`` may see the Shop and have purchases verified: a
-    signed-in account the Collection is on for, while ``STORE_ENABLED=1``.
-    A guest never buys."""
-    return (user_id is not None and os.environ.get(STORE_ENV, "") == "1"
-            and collection_for(user_id))
+    signed-in account the Collection is on for, while ``STORE_ENABLED=1``
+    or when the account is in ``STORE_ACCOUNTS``. A guest never buys."""
+    if user_id is None or not collection_for(user_id):
+        return False
+    return os.environ.get(STORE_ENV, "") == "1" or user_id in store_allowlist()
 
 
 def device_accounts_enabled() -> bool:

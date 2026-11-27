@@ -566,7 +566,8 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   to unlock · 3 of 25", "Win a ranked game to unlock", inert), for a guest Sign in to use, which opens the
   identity sheet, and for a store character not owned Buy with StoreKit's price (Soon, inert, for one not
   launched). A tick marks the companion and the colour in use. A guest sees no counts.
-- **The store** (store plumbing, behind `features.store`: the Collection allowlist plus `STORE_ENABLED=1`):
+- **The store** (store plumbing, behind `features.store`: the Collection allowlist plus `STORE_ENABLED=1`, or
+  for testing purchases before launch, the accounts listed in the `STORE_ACCOUNTS` secret):
   More companions and Restore purchases show only in an app build with the StoreKit plugin, to an account the
   store is on for, off the China mainland storefront; elsewhere the grid is Yours alone, and a guest on the website
   gets one Get the app row (the App Store link) in their place. Buying and restoring need an Apple or Google
@@ -577,8 +578,16 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   to the account that pays; success is the character's cheer and the success haptic, nothing written, and Use
   takes Buy's place. Waiting for approval (Ask to Buy) and a refused purchase use the page's one status line, a
   failed restore the grid's. A transaction the server has not settled stays with the App Store and is delivered
-  again when the Collection opens or the account signs in. Until each store character's art lands it is drawn as
-  the Tractor in a stand-in colour.
+  again when the Collection opens or the account signs in.
+- **The store's characters**, each in its own art with four colours and its own signature reaction: on sale, the
+  Spring Lamb 小羊 (the horn butt, through a burst of stars and spring petals) and the Baby Panda 熊猫宝宝 / 熊貓寶寶
+  (the bamboo bite); coming, shown as Soon tiles and pages in their idle art with no look id, so they cannot be put
+  in use or bought, the Jade Rabbit 玉兔 (breaks a mooncake and holds half out), the Lucky Cat 招财猫 / 招財貓 (beckons
+  and turns up a card, a new suit each time and the joker about one time in twelve), the Fortune Fox 福狐 (spills
+  coins from its red envelope), the Dancing Lion 醒狮 / 醒獅 (its dance costume appears only for the dance) and the
+  Little Dragon 小龙 / 小龍 (flies a loop and breathes fire). A character page plays each reaction to its end. At the
+  table they are drawn as the free companions are: still drawings on their team's pads that walk, hop, cheer and
+  grow.
 - **Show at the table** (Jerry 2026-11-26, finding 2: one labelled switch, on by default) replaces Team ·
   Individual · Off. It is stored where the mode was (the account's `companions`, a guest's device), so an older
   client keeps working: off is off, and an older Team or Individual reads as on. The row has no card behind it

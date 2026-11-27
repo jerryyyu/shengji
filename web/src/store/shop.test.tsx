@@ -129,6 +129,20 @@ describe("the grid's sections", () => {
     expect(host.querySelector(".coll-shop, .shop-row")).toBeNull();
   });
 
+  it("every store tile draws its own character, and a Soon page shows its art with no Buy", async () => {
+    nativeShell();
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    const kinds = [...host.querySelectorAll(".coll-more .coll-tile svg.cmp")]
+      .map((svg) => [...svg.classList].find((c) => /^cmp-(lamb|panda|rabbit|cat|fox|lion|dragon|tractor)$/.test(c)));
+    expect(kinds).toEqual(["cmp-lamb", "cmp-panda", "cmp-rabbit", "cmp-cat", "cmp-fox", "cmp-lion", "cmp-dragon"]);
+    await openTile(".coll-more", 2);
+    expect(host.querySelector(".char-stage svg.cmp")?.classList.contains("cmp-rabbit")).toBe(true);
+    expect(host.querySelector(".coll-use")?.textContent).toBe("Soon");
+    expect(host.querySelectorAll(".coll-use")).toHaveLength(1);
+    expect(host.querySelector(".store-price, .char-swatches")).toBeNull();
+  });
+
   it("is hidden on the China storefront: Yours alone, no Restore purchases", async () => {
     nativeShell();
     plugin.storefront.mockImplementation(async () => ({ countryCode: "CHN" }));

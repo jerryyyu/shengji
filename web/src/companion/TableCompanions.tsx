@@ -168,17 +168,18 @@ export const SEAT_SIZE = { phone: { base: 44, max: 56 }, tablet: { base: 60, max
 export interface LevelUp { n: number; from: number; glyph: string }
 /** The shortest and longest wait before a companion by its player walks again. */
 const WALK_GAP: readonly [number, number] = [8000, 15000];
-/** A walk's shortest and longest time; one hop of its gait. */
-const WALK_MS: readonly [number, number] = [800, 1500];
-const STEP_MS = 260;
 /** A quick hop-walk off cards that landed or a layout that moved, and its step. */
 const QUICK_MS: readonly [number, number] = [300, 500];
 const QUICK_STEP_MS = 150;
-/** A walk a tap sent: an unhurried stroll, about half a second a figure's
- *  width, with a slower step to match; its shortest and longest time. */
+/** Every walk, a tap's or one on its own clock, is the same unhurried
+ *  stroll: about half a second a figure's width, one hop of its gait each
+ *  520 ms. A tap's walk takes 1.2 s at least; one on its own clock takes
+ *  just its distance's time, so the pace never changes. Both take 3 s at most. */
 export const TAP_WALK_MS: readonly [number, number] = [1200, 3000];
-const TAP_MS_PER_FIGURE = 500;
-const TAP_STEP_MS = 520;
+export const STROLL_MS_PER_FIGURE = 500;
+const STROLL_STEP_MS = 520;
+/** A stroll's time over `dist` px for a figure `px` wide, before a tap's floor. */
+export const strollMs = (dist: number, px: number) => Math.min(TAP_WALK_MS[1], (dist / px) * STROLL_MS_PER_FIGURE);
 
 /** The translation in a computed transform (`matrix(a, b, c, d, x, y)`) or
  *  an inline one (`translate(xpx, ypx)`); null for none. */
@@ -445,16 +446,16 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     const leg = via ? Math.hypot(via.x - from.x, via.y - from.y) : 0;
     const dist = via ? leg + Math.hypot(to.x - via.x, to.y - via.y) : Math.hypot(to.x - from.x, to.y - from.y);
     const ms = quick ? Math.min(QUICK_MS[1], Math.max(QUICK_MS[0], QUICK_MS[0] + (dist / px) * 80))
-      : slow ? Math.min(TAP_WALK_MS[1], Math.max(TAP_WALK_MS[0], (dist / px) * TAP_MS_PER_FIGURE))
-      : Math.min(WALK_MS[1], Math.max(WALK_MS[0], WALK_MS[0] + (dist / px) * 250));
+      : slow ? Math.max(TAP_WALK_MS[0], strollMs(dist, px))
+      : strollMs(dist, px);
     const dir = to.x < from.x ? -1 : 1;
     if (face.current) face.current.style.transform = `scaleX(${dir})`;
     const a = el.animate(via && dist > 0 ? [{ transform: at(from) }, { transform: at(via), offset: leg / dist }, { transform: at(to) }]
       : [{ transform: at(from) }, { transform: at(to) }], { duration: ms, easing: "ease-in-out" });
-    const step = quick ? QUICK_STEP_MS : slow ? TAP_STEP_MS : STEP_MS;
+    const step = quick ? QUICK_STEP_MS : STROLL_STEP_MS;
     const gait = face.current?.animate([
       { transform: `scaleX(${dir}) translateY(0)` }, { transform: `scaleX(${dir}) translateY(-12%)`, offset: 0.45 },
-      { transform: `scaleX(${dir}) translateY(0)` }], { duration: step, iterations: Math.max(2, Math.round(ms / step)) });
+      { transform: `scaleX(${dir}) translateY(0)` }], { duration: step, iterations: Math.max(1, Math.round(ms / step)) });
     walking.current = gait ? [a, gait] : [a];
     path.current = under ? null : { from, to };
     place(to);

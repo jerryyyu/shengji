@@ -23,7 +23,7 @@ import { DRAWINGS } from "./kinds";
 import { COMPANIONS, COMPANION_KINDS, FREE_KINDS, lookCatalogue, parseLook } from "./look";
 import { companionSize } from "./rig";
 import { parseArt } from "./Tractor";
-import TableCompanions, { LEVEL_UP_MS, MOVES, SEAT_SIZE, TAP_WALK_MS, around, levelIndex } from "./TableCompanions";
+import TableCompanions, { LEVEL_UP_MS, MOVES, SEAT_SIZE, STROLL_MS_PER_FIGURE, TAP_WALK_MS, around, levelIndex, strollMs } from "./TableCompanions";
 import { hasNewLook } from "./seen";
 import type { LookEntry } from "./look";
 import { HAND_LIFT, LIFT, clear, figureBox, meets, pathClear, zonesFor } from "./seatZones";
@@ -1440,7 +1440,7 @@ describe("the table", () => {
       expect(ws[1].frames[0].transform).toBe("translate(111px, 222px)");
     });
 
-    it("a walk a tap sent is an unhurried stroll (about 0.5 s a figure's width, 1.2 to 3 s, a slower step); idle walks keep their pace", async () => {
+    it("a walk a tap sent is an unhurried stroll (about 0.5 s a figure's width, 1.2 to 3 s, a slower step)", async () => {
       await render(state());
       const from = spotOf(0);
       tap(felt(), 420, 220);
@@ -1458,12 +1458,32 @@ describe("the table", () => {
       tap(felt(), here.x + 22 + 30, here.y + 44);
       const short = walks("0").at(-1)!;
       expect(short.ms).toBe(TAP_WALK_MS[0]);
-      // an idle walk keeps its own pace (0.8 to 1.5 s)
-      const n = walks("0").length;
+    });
+
+    it("a walk on its own clock strolls at the tapped pace: the same px a second and the same 520 ms step", async () => {
+      await render(state());
+      // the length of a walk's way, leg by leg, over its time
+      const length = (w: { frames: Keyframe[] }) => {
+        const at = w.frames.map((f) => /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(String(f.transform))!.slice(1).map(Number));
+        return at.slice(1).reduce((n, b, i) => n + Math.hypot(b[0] - at[i][0], b[1] - at[i][1]), 0);
+      };
+      const pxPerS = (w: { ms: number; frames: Keyframe[] }) => length(w) / (w.ms / 1000);
       await advance(16000);
-      const idle = walks("0").slice(n);
+      const idle = walks("0");
       expect(idle.length).toBeGreaterThan(0);
-      for (const iw of idle) expect(iw.ms).toBeLessThanOrEqual(1500);
+      await advance(3500);
+      const steps = anims.filter((a) => a.seat === "0" && a.box === "tc-face");
+      for (const g of steps) expect(g.ms).toBe(520);
+      // a wander's time is its distance's time: no floor that would slow a short one
+      for (const iw of idle) expect(iw.ms).toBeCloseTo(strollMs(length(iw), 44), 6);
+      // a tap's walk over a distance its floor does not reach goes at the same speed
+      await advance(3500);
+      tap(felt(), 230, 230);
+      const tw = walks("0").at(-1)!;
+      expect(tw.ms).toBeGreaterThan(TAP_WALK_MS[0]);
+      expect(tw.ms).toBeLessThan(TAP_WALK_MS[1]);
+      for (const iw of idle) expect(pxPerS(iw)).toBeCloseTo(pxPerS(tw), 6);
+      expect(pxPerS(tw)).toBeCloseTo((44 * 1000) / STROLL_MS_PER_FIGURE, 6);
     });
 
     it("a second tap mid-stroll turns it from where it is drawn", async () => {

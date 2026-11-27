@@ -620,7 +620,8 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   yours over the left end of your hand on a phone (Jerry 2026-11-26: it had stood by the left seat's card; beside
   your name line on a tablet), tagged You 你. On a phone that is where a full hand starts, so it holds still while
   the hand is dealt, and the banker's crown chip does not move it. Every 8 to 15 s, on its own clock, it walks a few hopping steps,
-  facing the way it goes, to another spot in a small zone by the nameplate that keeps clear of the cards played
+  at the tapped walk's stroll (Jerry 2026-11-27: "the random movements are too fast; it should keep consistent
+  speed": half a second a figure's width, so a short walk takes less time, never a faster pace), facing the way it goes, to another spot in a small zone by the nameplate that keeps clear of the cards played
   and their LEAD / WINS labels, the hand (and a chosen card's lift), every control of your row (the clock's ring,
   the crown, Declare and its options, Bury, Play, Clear, the turn pill, the hint line), the deck and its count, chat
   bubbles, an open menu, Chat or Last trick, the HUD, the nameplates and the other companions, and never goes under
@@ -650,7 +651,7 @@ watcher's card does this; a player's round end still waits for Next or Leave.
 - **Taps** (Jerry 2026-11-26: "If you tap on the board (outside of cards), the character walks there"): a tap on
   empty felt (not a card, a played trick, a seat, a button or any panel) walks your companion, facing its way, to
   the clear spot nearest the tap inside the safe area, at a stroll (Jerry 2026-11-27: "it's fun; make it go
-  slower": about half a second a figure's width, 1.2 to 3 s; a new tap turns it from where it is); it passes under the cards if they are in the way. That
+  slower": about half a second a figure's width, 1.2 to 3 s, the pace of every walk it takes; a new tap turns it from where it is); it passes under the cards if they are in the way. That
   spot is its home for the rest of the table (Jerry 2026-11-26: "The companion shouldn't walk home, just try to
   stay in the safe zone where it was last clicked"): its walks are small ones round it, and when cards or a moved
   layout cover it, it hops to the nearest clear spot and that becomes its home. A new table starts it by your

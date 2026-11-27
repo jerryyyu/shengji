@@ -596,7 +596,8 @@ keeps the table on screen.
   Sleep · the special by name** (Wheelie, Steamer pop, Flutter, Loop; Horn butt and Bamboo bite for the store's),
   then the table's own moves (see At the table below): **Ready · Watch · Big play** (准备 · 看牌 · 大牌: the jump and
   bobs of your turn, held at its larger size between them, the lean toward a card played, the two-bounce jump with
-  the figure cheering throughout, each jump lowered only as far as the stage's own height needs), each playing its
+  the figure cheering throughout, each jump, and on a stage shorter still its growth, lowered only as far as the stage's own height needs,
+  Reduce Motion's still poses included), each playing its
   move once before the
   cycle resumes, the special's chip the same as a tap on the figure (either ends a move still playing), each drawn
   still under Reduce Motion; then, in

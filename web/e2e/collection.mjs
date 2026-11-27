@@ -53,11 +53,27 @@ async function stageBeats(page, device, press = page.qa.d.touch === false ? "cli
         }
         return out;
       }, times);
+      const topDuring = (ms) => page.evaluate(async (ms) => {
+        const stage = document.querySelector(".char-stage").getBoundingClientRect();
+        let worst = Infinity;
+        const t0 = performance.now();
+        while (performance.now() - t0 < ms) {
+          await new Promise((r) => requestAnimationFrame(r));
+          worst = Math.min(worst, document.querySelector(".char-stage .char-box svg.cmp").getBoundingClientRect().top - stage.top);
+        }
+        return Math.round(worst * 100) / 100;
+      }, ms);
+      await chip("Ready")[press]();
+      const readyTop = await topDuring(4300);
+      await rep.check(`${device} Ready's jump and larger size stay inside the stage`, readyTop >= -1 ? null : `${-readyTop}px over its top`, page);
+      await sleep(300);
       await chip("Ready")[press]();
       // in the gaps between the jump and the bobs, and between the bobs (bobs start at 520, 1620, 2720 ms)
       const gaps = await scaleAt([1150, 2250, 3350]);
       await rep.check(`${device} Ready holds its larger size between its bobs`,
-        gaps.every((a) => a > 1.12) ? null : `scale in the gaps ${gaps.map((a) => a.toFixed(2)).join(", ")}`, page);
+        // the larger size held, the same in every gap (a short stage holds a smaller growth, never none)
+      gaps.every((a) => a > 1.01) && Math.max(...gaps) - Math.min(...gaps) < 0.01 ? null
+        : `scale in the gaps ${gaps.map((a) => a.toFixed(2)).join(", ")}`, page);
       await sleep(1200);
       const after = await scaleAt([0]);
       await rep.check(`${device} Ready ends at the figure's own size`, Math.abs(after[0] - 1) < 0.01 ? null : `scale ${after[0]}`, page);
@@ -100,6 +116,34 @@ async function stageBeats(page, device, press = page.qa.d.touch === false ? "cli
       await rep.check(`${device} Big play still jumps`, apex.rose >= 8 ? null : `rose ${apex.rose}px`, page);
       await rep.check(`${device} Big play holds the cheer through the jump`, apex.cheer ? null : "the pose left cheer before 1.45 s", page);
     });
+
+  // under Reduce Motion each beat is one still pose for a second: one that rises stays inside the stage too
+  await scenario(rep, `${device} stage beats, Reduce Motion`, page, async () => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    try {
+      for (const name of ["Ready", "Watch", "Big play"]) {
+        await sleep(1300);
+        await page.locator(".char-poses .char-move", { hasText: name })[press]();
+        const still = await page.evaluate(async () => {
+          const stage = document.querySelector(".char-stage").getBoundingClientRect();
+          const box = document.querySelector(".char-stage .char-box");
+          let worst = Infinity;
+          let held = false;
+          const t0 = performance.now();
+          while (performance.now() - t0 < 900) {
+            await new Promise((r) => requestAnimationFrame(r));
+            worst = Math.min(worst, document.querySelector(".char-stage .char-box svg.cmp").getBoundingClientRect().top - stage.top);
+            held ||= box.style.transform !== "";
+          }
+          return { worst: Math.round(worst * 100) / 100, held, running: box.getAnimations().length };
+        });
+        await rep.check(`${device} Reduce Motion: ${name}'s still pose stays inside the stage`,
+          still.worst >= -1 && still.held && still.running === 0 ? null : JSON.stringify(still), page);
+      }
+    } finally {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+    }
+  });
 }
 
 const browser = await launch();

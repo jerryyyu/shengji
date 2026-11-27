@@ -50,22 +50,45 @@ export function stageBeatMs(beat: StageBeat, still = prefersReducedMotion()): nu
   return Math.max(...STAGE_BEATS[beat].steps.map((s) => s.at + s.ms));
 }
 
-/** `frames` with every rise (`translateY`) scaled by `k`. */
-const lowered = (frames: readonly Keyframe[], k: number): Keyframe[] => frames.map((f) => ({
-  ...f, transform: String(f.transform ?? "").replace(/translateY\((-?[\d.]+)%\)/, (_, y) => `translateY(${Number(y) * k}%)`),
+/** `frames` with every rise (`translateY`) scaled by `k` and every growth
+ *  (`scale` away from 1) by `g`. */
+const lowered = (frames: readonly Keyframe[], k: number, g = 1): Keyframe[] => frames.map((f) => ({
+  ...f, transform: String(f.transform ?? "")
+    .replace(/translateY\((-?[\d.]+)%\)/, (_, y) => `translateY(${Number(y) * k}%)`)
+    .replace(/scale\((-?[\d.]+)(?:,\s*(-?[\d.]+))?\)/, (_, x, y) => {
+      const at = (v: number) => Math.round((1 + (v - 1) * g) * 1000) / 1000;
+      return y === undefined ? `scale(${at(Number(x))})` : `scale(${at(Number(x))}, ${at(Number(y))})`;
+    }),
 }));
-/** The rises tried, highest first, until a beat's apex stays inside the stage. */
-const RISES = [1, 0.85, 0.7, 0.55, 0.4, 0.25, 0.1, 0] as const;
+/** The fits tried, largest first, until a beat's apex stays inside the stage:
+ *  the rise lowered first, then (a stage too short for even the standing
+ *  growth, such as Ready's larger size) the growth too. */
+const FITS: readonly (readonly [number, number])[] = [
+  ...[1, 0.85, 0.7, 0.55, 0.4, 0.25, 0.1, 0].map((k) => [k, 1] as const),
+  ...[0.75, 0.5, 0.25, 0].map((g) => [0, g] as const),
+];
 
 /** `beat`'s steps for a figure `px` wide with `up` px of stage above it: its
- *  jumps lowered just enough that no frame reaches past the stage's top. */
+ *  jumps (and, where even that is not enough, its growth) lowered just
+ *  enough that no frame reaches past the stage's top. */
 export function fittedSteps(beat: StageBeat, px: number, up: number): Step[] {
   const steps = STAGE_BEATS[beat].steps;
-  for (const k of RISES) {
-    const tried = steps.map((s) => ({ ...s, frames: lowered(s.frames, k) }));
+  for (const [k, g] of FITS) {
+    const tried = steps.map((s) => ({ ...s, frames: lowered(s.frames, k, g) }));
     if (tried.every((s) => reachOfFrames(s.frames, px).up <= up)) return tried;
   }
-  return steps.map((s) => ({ ...s, frames: lowered(s.frames, 0) }));
+  return steps.map((s) => ({ ...s, frames: lowered(s.frames, 0, 0) }));
+}
+
+/** `beat`'s still pose (Reduce Motion) for the same stage: its rise lowered
+ *  just as far as `fittedSteps` would lower its jumps. */
+export function fittedStill(beat: StageBeat, px: number, up: number): string {
+  const still = [{ transform: STAGE_BEATS[beat].still }];
+  for (const [k, g] of FITS) {
+    const tried = lowered(still, k, g);
+    if (reachOfFrames(tried, px).up <= up) return String(tried[0].transform);
+  }
+  return String(lowered(still, 0, 0)[0].transform);
 }
 
 /** Play `beat` on `el` (the figure's move box, `px` wide, `up` px under the
@@ -74,8 +97,9 @@ export function fittedSteps(beat: StageBeat, px: number, up: number): Step[] {
  *  the whole beat lets go when its last step ends. */
 export function playStageBeat(el: HTMLElement | null, beat: StageBeat, room: { px: number; up: number }): { stop: () => void } {
   if (!el) return { stop: () => {} };
-  const { still } = STAGE_BEATS[beat];
   if (prefersReducedMotion() || typeof el.animate !== "function") {
+    // the still pose takes the same stage fit as the moving one
+    const still = fittedStill(beat, room.px, room.up);
     const was = el.style.transform;
     el.style.transform = still;
     const t = window.setTimeout(() => { el.style.transform = was; }, STILL_BEAT_MS);

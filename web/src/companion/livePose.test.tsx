@@ -26,7 +26,7 @@ import { DRAWINGS } from "./kinds";
 import { COMPANION_KINDS } from "./look";
 import { poseMs } from "./livePose";
 import { reachOfFrames } from "./beats";
-import { STAGE_BEATS, fittedSteps, stageBeatMs } from "./stageBeats";
+import { STAGE_BEATS, fittedStill, fittedSteps, stageBeatMs } from "./stageBeats";
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -359,6 +359,14 @@ describe("the stage's move chips", () => {
     } finally { unstub(); }
   });
 
+  it("a still pose is lowered by the same stage fit as the moving one", () => {
+    for (const b of ["ready", "watch", "big"] as const) {
+      expect(fittedStill(b, 176, 10_000)).toBe(STAGE_BEATS[b].still);
+    }
+    expect(fittedStill("big", 120, 26)).not.toBe(STAGE_BEATS.big.still);
+    expect(reachOfFrames([{ transform: fittedStill("big", 120, 26) }], 120).up).toBeLessThanOrEqual(26);
+  });
+
   it("a jump is lowered only as far as the stage's room above the figure needs", () => {
     for (const b of ["ready", "watch", "big"] as const) {
       expect(fittedSteps(b, 176, 10_000).map((s) => s.frames)).toEqual(STAGE_BEATS[b].steps.map((s) => s.frames));
@@ -377,7 +385,8 @@ describe("the stage's move chips", () => {
     const box = host.querySelector<HTMLElement>(".char-stage .char-box")!;
     for (const b of ["ready", "watch", "big"] as const) {
       await press({ ready: "Ready", watch: "Watch", big: "Big play" }[b]);
-      expect(box.style.transform).toBe(STAGE_BEATS[b].still);
+      // jsdom lays nothing out: no room above the figure, so the still pose is lowered to fit too
+      expect(box.style.transform).toBe(fittedStill(b, 176, 0));
       await tick(1000);
       expect(box.style.transform).toBe("");
       expect(pose(".char-stage")).toBe("idle");

@@ -417,6 +417,26 @@ describe("entitlements and writes stay with their session and their order", () =
     expect(authState.current.user?.look).toBe("tractor/green");
   });
 
+  it("a failed last choice puts back the confirmed look with the order of use confirmed with it", async () => {
+    server = { ...server, look: "chick/ink", recent_looks: ["chick/ink", "bun/plain", "tractor/red"] };
+    authState.current = { status: "in", clientId: "cid", user: { ...server } };
+    holdPuts = true;
+    const { equip } = await import("./writes");
+    let last: Promise<boolean> = Promise.resolve(true);
+    await act(async () => { void equip("tractor/red", true); });
+    await act(async () => { void equip("sparrow/tree", true); });      // waits behind the Tractor
+    await act(async () => { puts()[0].reply(); });                     // Tractor confirmed; Sparrow sent
+    await flush();
+    await act(async () => { last = equip("bun/plain", true); });       // waits behind the Sparrow
+    await act(async () => { puts()[1].reply(); });                     // Sparrow confirmed; Bun sent
+    await flush();
+    await act(async () => { puts()[2].reply(500); await last.catch(() => false); });
+    await flush();
+    expect(puts().map((h) => h.body)).toEqual([{ look: "tractor/red" }, { look: "sparrow/tree" }, { look: "bun/plain" }]);
+    expect(authState.current.user?.look).toBe("sparrow/tree");
+    expect(authState.current.user?.recent_looks).toEqual(["sparrow/tree", "tractor/red", "chick/ink", "bun/plain"]);
+  });
+
   it("a read the looks outran never puts the older order of use back", async () => {
     const order = ["chick/ink", "bun/plain", "tractor/red"];
     server = { ...server, look: "chick/ink", recent_looks: order };

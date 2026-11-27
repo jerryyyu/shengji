@@ -23,13 +23,15 @@ interface FieldState {
   intent: number;
   /** The latest choice's generation (0: none this session). */
   gen: number;
-  /** The server's value, and the generation of the choice it confirmed. */
-  confirmed: { gen: number; value: Value } | null;
+  /** The server's value, and the generation of the choice it confirmed;
+   *  for the look, with the order of use the same answer carried. */
+  confirmed: Confirmed | null;
   /** A write on the wire, by generation. */
   sending: number | null;
   /** The latest choice made while a write was on the wire. */
   waiting: { gen: number; value: Value; settle: Settle[] } | null;
 }
+type Confirmed = { gen: number; value: Value; recent?: string[] };
 type Settle = { resolve: (ok: boolean) => void; reject: (err: unknown) => void };
 
 let session: { scope: string; fields: Record<Field, FieldState>; reads: number; applied: number } | null = null;
@@ -75,6 +77,11 @@ export function intend(field: Field): number {
 const valueOf = (user: AuthUser, field: Field): Value =>
   field === "look" ? user.look ?? "" : user.companions ?? "team";
 
+/** `user`'s value of `field` as confirmed at `gen`: the look keeps its order of use with it. */
+const confirmedOf = (user: AuthUser, field: Field, gen: number): Confirmed =>
+  field === "look" && user.recent_looks ? { gen, value: valueOf(user, field), recent: user.recent_looks }
+    : { gen, value: valueOf(user, field) };
+
 function show(field: Field, value: Value, recent?: string[]): void {
   const now = signedInUser();
   if (!now) return;
@@ -109,7 +116,7 @@ export async function refreshAccount(): Promise<AuthUser | null> {
         next.recent_looks = now.recent_looks;
       } else next.companions = now.companions;
     } else if (f[field].confirmed === null || f[field].confirmed.gen <= f[field].gen) {
-      f[field].confirmed = { gen: f[field].gen, value: valueOf(user, field) };
+      f[field].confirmed = confirmedOf(user, field, f[field].gen);
     }
   }
   auth.updated(next);
@@ -122,14 +129,14 @@ function send(field: Field, gen: number, value: Value, scope: string, settle: Se
   f[field].sending = gen;
   if (f[field].confirmed === null) {
     const now = signedInUser();
-    if (now) f[field].confirmed = { gen: 0, value: valueOf(now, field) };
+    if (now) f[field].confirmed = confirmedOf(now, field, 0);
   }
   const change = field === "look" ? { look: value } : { companions: value as CompanionMode };
   putLook(change).then(
     (user) => {
       if (scopeNow() !== scope) return finish(false, null);
       const st = fields()[field];
-      if (!st.confirmed || gen >= st.confirmed.gen) st.confirmed = { gen, value: valueOf(user, field) };
+      if (!st.confirmed || gen >= st.confirmed.gen) st.confirmed = confirmedOf(user, field, gen);
       // the answer shows only while its choice is the latest; the order of use
       // goes with the look, so only the latest look's answer brings it
       if (st.gen === gen) show(field, valueOf(user, field), field === "look" ? user.recent_looks : undefined);
@@ -139,7 +146,9 @@ function send(field: Field, gen: number, value: Value, scope: string, settle: Se
       if (scopeNow() !== scope) return finish(false, null);
       const st = fields()[field];
       if (st.gen === gen && st.waiting === null) {
-        show(field, st.confirmed?.value ?? valueOf(signedInUser() ?? ({} as AuthUser), field));
+        // the confirmed look goes back with the order of use confirmed with it
+        if (st.confirmed) show(field, st.confirmed.value, st.confirmed.recent);
+        else show(field, valueOf(signedInUser() ?? ({} as AuthUser), field));
         return finish(false, err);
       }
       finish(false, null);
@@ -170,7 +179,7 @@ function choose(field: Field, value: Value, token: number = intend(field)): Prom
   const scope = scopeNow();
   if (f[field].confirmed === null) {
     const now = signedInUser();
-    if (now) f[field].confirmed = { gen: 0, value: valueOf(now, field) };
+    if (now) f[field].confirmed = confirmedOf(now, field, 0);
   }
   const gen = ++f[field].gen;
   show(field, value);

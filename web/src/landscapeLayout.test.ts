@@ -145,7 +145,9 @@ function evalLength(expr: string, vp: Viewport, vars: Record<string, string>, in
 }
 
 const tokens = rule(block, ".table-screen");
-const smallTokens = { ...tokens, ...rule(block, ".table-screen:has(.hand.small-cards)") };
+/** The play layout's cross, which the bury and the round end share, so the
+ *  table keeps one geometry from the kitty to the scores. */
+const SPREAD = ".table-screen:is(.phase-play, .phase-bury, .phase-round_end)";
 const handRule = rule(block, ".hand");
 const smallRule = rule(block, ".hand.small-cards");
 
@@ -185,8 +187,8 @@ function translateFrac(transform: string | undefined): [number, number] {
  *  in play, a two-card declaration while setting up. */
 function geometry(vp: Viewport, vars0: Record<string, string>, phase: "play" | "setup" = "play",
                   cards = phase === "play" ? 4 : 2) {
-  const vars = phase === "play" ? { ...vars0, ...rule(block, ".table-screen.phase-play") }
-    : { ...vars0, ...rule(block, ".table-screen.phase-deal, .table-screen.phase-declare, .table-screen.phase-bury") };
+  const vars = phase === "play" ? { ...vars0, ...rule(block, SPREAD) }
+    : vars0;
   const L = (name: string) => evalLength(vars[name], vp, vars);
   const has = (name: string) => vars[name] !== undefined;
   const tcw = L("--trick-cw");
@@ -299,7 +301,7 @@ describe("phone table geometry", () => {
     const crown = rule(block, ".you-row:has(.action-bar .btn) .you-tagline:has(.banker-crown)");
     expect([crown["grid-column"], crown["justify-self"], crown.width]).toEqual(["1", "end", "28px"]);
     expect(tokens["--cross-bottom"]).toBe("calc(var(--zone-bottom) + var(--row-reserve) + var(--gap-v))");
-    expect(rule(block, ".table-screen.phase-play")["--row-reserve"]).toBe("0px");
+    expect(rule(block, SPREAD)["--row-reserve"]).toBe("0px");
     // side seats' labels stand at the felt's edges, level with their cards
     expect(rule(block, ".opponent.pos-left, .opponent.pos-right").top)
       .toBe("calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2 + var(--side-dy))");
@@ -397,7 +399,7 @@ describe("phone table geometry", () => {
         expect(toHand).toBeGreaterThanOrEqual(8 - 0.01);
         expect(sideToRow).toBeGreaterThanOrEqual(8 - 0.01);
         // never tighter than the evenly spaced cross, whose gaps are --gap-v
-        const even = evalLength(tokens["--gap-v"], vp, { ...tokens, ...rule(block, ".table-screen.phase-play") });
+        const even = evalLength(tokens["--gap-v"], vp, { ...tokens, ...rule(block, SPREAD) });
         const between = play.slots.bottom.y0 - play.slots.top.y1;
         expect(between).toBeGreaterThanOrEqual(even - 0.01);
         expect(between).toBeGreaterThanOrEqual(play.slots.top.y0 - play.header - 0.01);
@@ -434,22 +436,23 @@ describe("phone table geometry", () => {
         expect(evalLength(handRule["--pitch"], vp, tokens, { n: 12 })).toBeCloseTo(play.handCw * 0.55, 5);
       });
 
-      it("fits the 33-card bury hand in one row, larger than 37px wherever the width allows", () => {
-        const gs = geometry(vp, smallTokens, "setup");
-        expect(gs.handCw).toBeGreaterThanOrEqual(44);
-        expect(gs.handCw).toBeLessThanOrEqual(56);
-        const pitch = evalLength(smallRule["--pitch"], vp, smallTokens, { n: 33 });
-        expect(32 * pitch + gs.handCw).toBeLessThanOrEqual(gs.safeW - 16 + 0.01);
+      it("fits the 33-card bury hand in one row at the hand's own card size, in play's layout", () => {
+        const pitch = evalLength(smallRule["--pitch"], vp, tokens, { n: 33 });
+        expect(32 * pitch + play.handCw).toBeLessThanOrEqual(play.safeW - 16 + 0.01);
         expect(pitch).toBeGreaterThanOrEqual(18);
-        checkRegions(gs, "setup");
+        checkRegions(play, "play");
       });
     });
   }
 
-  it("shrinks the hand's cards above 25, with no layout transition", () => {
-    expect(rule(block, ".table-screen:has(.hand.small-cards)")["--hand-cw"]).toBe("clamp(37px, calc(var(--safe-w) * 0.07), 56px)");
-    // the hand's glide (Hand.tsx) eases the size change by a transform
+  it("keeps the hand's card size above 25 (only the pitch tightens), with no layout transition", () => {
+    expect(block).not.toMatch(/:has\(\.hand\.small-cards\)\s*\{[^}]*--hand-cw/);
+    expect(smallRule["--cw"]).toBeUndefined();
     expect(block).not.toMatch(/transition:[^;]*\b(width|flex-basis)\b/);
+  });
+
+  it("lays the bury and the round end out as play: no row reserved under the cross", () => {
+    expect(rule(block, SPREAD)["--row-reserve"]).toBe("0px");
   });
 });
 
@@ -824,7 +827,7 @@ describe("the one toast at the table", () => {
     it(`covers no side seat's label, your row, the hand or the top seat's play: ${name}`, () => {
       for (const phase of ["play", "setup"] as const) {
         const g = geometry(vp, tokens, phase);
-        const vars = phase === "play" ? { ...tokens, ...rule(block, ".table-screen.phase-play") } : tokens;
+        const vars = phase === "play" ? { ...tokens, ...rule(block, SPREAD) } : tokens;
         const L = (e: string) => evalLength(e, vp, vars);
         const y1 = vp.h - L(t.bottom);
         // two lines at most: 2 x 17 + 12 of padding

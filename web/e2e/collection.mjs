@@ -209,6 +209,7 @@ try {
         // a tap while a fling is still moving the page; a tap the moving page carries off every tile
         // selects nothing and is tried again
         for (const n of [2, 3]) {
+          let delivered = false;
           for (let attempt = 0; attempt < 4; attempt++) {
             await deep(0);
             await page.evaluate(() => { window.__tileTaps = 0; document.addEventListener("click", (e) => {
@@ -223,9 +224,11 @@ try {
             await sleep(60);
             await tile(".coll-yours", n).tap({ force: true });
             if (!(await page.evaluate(() => window.__tileTaps > 0))) continue;
+            delivered = true;
             await settle(`a tap on tile ${n} during a fling`);
             break;
           }
+          if (!delivered) misses.push(`no tap on tile ${n} during a fling reached a tile in 4 tries`);
         }
         await rep.check(`${device} every lower tap leaves the stage in view at the top`, misses.length ? misses.join("; ") : null, page);
       });

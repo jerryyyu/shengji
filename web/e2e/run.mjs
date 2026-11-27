@@ -2,8 +2,8 @@
 //   node e2e/run.mjs ci     the scripted-socket suites (matrix, phases, actions, client, watch, collection): needs only web/dist
 //   node e2e/run.mjs full   those, then the live flows against a game server it starts
 //   node e2e/run.mjs flows  the live flows alone
-//   node e2e/run.mjs companions  companions through a real reconnect and rejoin, always against a server it
-//                           starts with the Collection and device accounts on (BASE does not apply to it)
+//   node e2e/run.mjs companions  companions through a real reconnect and rejoin, against COMPANIONS_BASE or a
+//                           server it starts with the Collection and device accounts on (BASE does not apply)
 // `full` needs a Python with the server's dependencies: PY=/path/to/python
 // (default server/.venv/bin/python). BASE=<url> skips starting anything.
 import { spawn, spawnSync } from "node:child_process";
@@ -78,11 +78,14 @@ async function gameServer(env = {}, { own = false } = {}) {
 if (mode === "full" || mode === "flows") {
   rc |= run("flows.mjs", { BASE: await gameServer() });
 }
-if (mode === "full" || mode === "companions") {
-  // always its own server, the Collection on for everyone and device accounts made, so each player has a
-  // look of their own: an ordinary BASE has neither. COMPANIONS_BASE names a server started with both.
+// The companions suite needs a server with the Collection on for everyone and device accounts made, so
+// each player has a look of their own; an ordinary BASE has neither. COMPANIONS_BASE names a server started
+// with both; otherwise it starts its own. A full run given an external BASE starts nothing local for it.
+if (mode === "companions" || (mode === "full" && (!process.env.BASE || process.env.COMPANIONS_BASE))) {
   const base = process.env.COMPANIONS_BASE ?? await gameServer({ COLLECTION_ENABLED: "1", SHENGJI_DEVICE_ACCOUNTS: "1" }, { own: true });
   rc |= run("companions.mjs", { BASE: base });
+} else if (mode === "full") {
+  console.log("companions: skipped (BASE is external; set COMPANIONS_BASE to a server with COLLECTION_ENABLED=1 and SHENGJI_DEVICE_ACCOUNTS=1)");
 }
 stop();
 process.exit(rc);

@@ -1,0 +1,139 @@
+{
+  "archive": {
+    "M17/live": {
+      "controls": 8,
+      "entries": 128147,
+      "groups": 9,
+      "overlaps": 0
+    },
+    "S17": {
+      "controls": 35,
+      "entries": 285043,
+      "groups": 35,
+      "overlaps": 0
+    },
+    "Y": {
+      "controls": 128,
+      "entries": 96300,
+      "groups": 128,
+      "overlaps": 0
+    },
+    "live decks": {
+      "entries": 268,
+      "groups": 1,
+      "overlaps": 0
+    }
+  },
+  "checkpoint_roots": [
+    "a09cef7c35793fa12ccadffbb578d110a14b0705778d7e3aaa400268b93ec962",
+    "7f028824f60b9e31cb6eebe20a7d87526b4edb4817ce97c5dde487c4c0841aed"
+  ],
+  "corpus": {
+    "deals": 600,
+    "distinct_training_seeds": 498100,
+    "extracts": 80,
+    "matching_training_seeds": 0,
+    "rows": 64685508,
+    "seed0": 2709000000
+  },
+  "deals": 600,
+  "distinct_keys": 600,
+  "fit_matches": 0,
+  "inputs": {
+    "Mini": [
+      "clearance-mini-parents.txt",
+      "clearance-archive.json"
+    ],
+    "Ultra": [
+      "clearance-ultra-roots.txt",
+      "clearance-corpus-confirmed.json"
+    ]
+  },
+  "nodes": {
+    "3e89e86f9b8227a49fc6201463c219af56bd1e99cbe762b115e396e1f1919cf8": {
+      "control": {
+        "hits": 62,
+        "probed": 64,
+        "seed0": 20260905
+      },
+      "exposure_counts": {
+        "fit": 396800,
+        "selection": 49843
+      },
+      "parents": [
+        "8ecd4feaec480f1e76c1cc0119aed8996472512fa48eaa868415ff3d2318dd01",
+        "a5248cc5ae97e69687910e892b1905613a1735cb47cbdc5e73a76e41d61e3f38"
+      ]
+    },
+    "7f028824f60b9e31cb6eebe20a7d87526b4edb4817ce97c5dde487c4c0841aed": {
+      "control": {
+        "hits": 60,
+        "probed": 64,
+        "seed0": 23260910
+      },
+      "exposure_counts": {
+        "fit": 396800,
+        "selection": 49843
+      },
+      "parents": [
+        "8ecd4feaec480f1e76c1cc0119aed8996472512fa48eaa868415ff3d2318dd01",
+        "a5248cc5ae97e69687910e892b1905613a1735cb47cbdc5e73a76e41d61e3f38"
+      ]
+    },
+    "8ecd4feaec480f1e76c1cc0119aed8996472512fa48eaa868415ff3d2318dd01": {
+      "control": {
+        "hits": 62,
+        "probed": 64,
+        "seed0": 20260905
+      },
+      "exposure_counts": {
+        "fit": 204800,
+        "selection": 25716
+      },
+      "parents": [
+        "a5248cc5ae97e69687910e892b1905613a1735cb47cbdc5e73a76e41d61e3f38"
+      ]
+    },
+    "a09cef7c35793fa12ccadffbb578d110a14b0705778d7e3aaa400268b93ec962": {
+      "control": {
+        "hits": 64,
+        "probed": 64,
+        "seed0": 1000200000
+      },
+      "exposure_counts": {
+        "fit": 489248,
+        "selection": 51769
+      },
+      "parents": [
+        "3e89e86f9b8227a49fc6201463c219af56bd1e99cbe762b115e396e1f1919cf8",
+        "8ecd4feaec480f1e76c1cc0119aed8996472512fa48eaa868415ff3d2318dd01",
+        "a5248cc5ae97e69687910e892b1905613a1735cb47cbdc5e73a76e41d61e3f38"
+      ]
+    },
+    "a5248cc5ae97e69687910e892b1905613a1735cb47cbdc5e73a76e41d61e3f38": {
+      "control": {
+        "hits": 62,
+        "probed": 64,
+        "seed0": 20260905
+      },
+      "exposure_counts": {
+        "fit": 140800,
+        "selection": 17600
+      },
+      "parents": []
+    }
+  },
+  "registry_main": "7cc5a6ba2f373c6c43aef1c6c83d0d6c5f15941b",
+  "registry_overlaps": 0,
+  "scope": "Pre-reservation. Same weights in both arms. Archive and seed-complete corpus coverage as in #1874. No launch or strength evidence.",
+  "seed0": 2709000000,
+  "selection_matches": 0,
+  "serving_release_tree": "3e00a55a7a38e5a135809f601c9b47fb315fa725",
+  "shared_teacher_and_control_pins": {
+    "SHENGJI_PV_BELIEF_SHA256": "35e225cf3afd460d231a44192e60be8595a5d7fce81c860f0bfe3153506f66e3",
+    "SHENGJI_PV_PRIOR_SHA256": "1fa201b288e78b3072979f55030aae44711ee214b50a14e155d0bbe11b6bb1bf",
+    "SHENGJI_PV_SHA256": "f4f4127ec0c8821b4aa07f7d651a4258c696f97a874707da2c78ad26c0c9b9fd",
+    "SHENGJI_PV_UNIFIED_SHA256": "e2951d35eeabd167347c3b5608a8065dffb9bd304b51aa4759eabbba1ce05883"
+  },
+  "unresolved_parent_shas": []
+}

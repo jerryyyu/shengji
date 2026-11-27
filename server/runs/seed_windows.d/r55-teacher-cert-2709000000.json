@@ -1,0 +1,14 @@
+{
+  "name": "r55-teacher-cert-2709000000",
+  "purpose": "screen",
+  "seed0": 2709000000,
+  "clusters": 600,
+  "span": [
+    2709000000,
+    2709000600
+  ],
+  "created_at": "2026-11-27T08:25:12+00:00",
+  "host": "mini",
+  "git_head": "7cc5a6ba2f373c6c43aef1c6c83d0d6c5f15941b",
+  "note": "R55 teacher certification, paired r2. Deal-key clearance in dev/r55_teacher/clearance.json. Reservation only."
+}

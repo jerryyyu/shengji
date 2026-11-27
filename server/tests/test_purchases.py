@@ -748,3 +748,19 @@ def test_an_old_goat_look_or_product_is_refused(accounts_on, client, shop, chain
     resp = client.post("/api/store/verify", json={"jws": chain.sign(_txn(productId="com.jerryyu.shengji.companion.goat"))},
                        headers=shop)
     assert resp.status_code == 400 and resp.json()["detail"] == "unknown_product"
+
+
+def test_me_says_the_date_each_owned_companion_was_bought_and_nothing_more(accounts_on, client, shop, chain):
+    nov27 = 1795780800000           # 2026-11-27 12:00 UTC, in ms
+    assert client.get("/api/me", headers=shop).json()["purchased_on"] == {}
+    bought = _txn(purchaseDate=nov27, originalPurchaseDate=nov27)
+    assert client.post("/api/store/verify", json={"jws": chain.sign(bought)}, headers=shop).status_code == 200
+    me = client.get("/api/me", headers=shop).json()
+    assert me["purchased_on"] == {LAMB: "2026-11-27"}
+    # a date only: no transaction id, no time, anywhere in the payload
+    assert "2000000111" not in str(me) and "12:00" not in str(me)
+    # a refunded purchase is no longer owned, so it has no date
+    refunded = _txn(purchaseDate=nov27, originalPurchaseDate=nov27,
+                    revocationDate=int(time.time() * 1000), revocationReason=0)
+    assert client.post("/api/store/notify", json=_notification(chain, "REFUND", refunded)).status_code == 200
+    assert client.get("/api/me", headers=shop).json()["purchased_on"] == {}

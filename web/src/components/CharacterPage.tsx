@@ -71,6 +71,26 @@ function unlockLine(t: ReturnType<typeof useT>, entry: LookEntry, user: AuthUser
   return of === 1 ? t("home.unlockRankedWin") : t("home.unlockRankedRounds", { of: num(of), n: num(n) });
 }
 
+const DATE_LOCALE = { en: undefined, "zh-Hans": "zh-CN", "zh-Hant": "zh-TW" } as const;
+
+/** How `user` got an owned look, for the one status line: the date its
+ *  companion was bought, or the count that unlocked its colour. "" for a look
+ *  free from the start, and for one kept in use from before its count was
+ *  reached: the line then names the look. */
+export function provenanceLine(t: ReturnType<typeof useT>, entry: LookEntry, user: AuthUser | null): string {
+  if (!user || !entry.unlocked) return "";
+  const bought = entry.product ? user.purchased_on?.[entry.product] : undefined;
+  if (bought) {
+    const [y, m, d] = bought.split("-").map(Number);
+    const date = new Date(y, m - 1, d).toLocaleDateString(DATE_LOCALE[locale()], { day: "numeric", month: "short", year: "numeric" });
+    return t("home.purchasedOn", { date });
+  }
+  if (!entry.needs || countOf(user, entry.needs.count) < entry.needs.of) return "";
+  const { count, of } = entry.needs;
+  if (count === "rounds") return t("home.unlockedRounds", { of: num(of) });
+  return of === 1 ? t("home.unlockedRankedWin") : t("home.unlockedRankedRounds", { of: num(of) });
+}
+
 /** What the one button may do for `entry` when `inUse` is worn. */
 export function ownershipOf(entry: LookEntry, inUse: string, user: AuthUser | null): Ownership {
   if (entry.product && !entry.unlocked) return "store";
@@ -218,7 +238,8 @@ const TRY_PARTNER: Record<CompanionKind, { kind: CompanionKind; colour: Colour }
 
 /** The selected character at the top of the Collection's one page (a tile
  *  selects it): the live figure on felt, Try on your table, `strip`, the
- *  colours, the one status line (the look shown) and the one button, or for a
+ *  colours, the one status line (how an owned look was got, what unlocks a
+ *  locked one, else the look shown) and the one button, or for a
  *  store character not owned `price` (Buy, Sign in to buy). A tap on a colour
  *  only shows it; the button puts it in use. "New" marks the colours in `fresh`. */
 export default function CharacterPage({ kind, shown, entries, inUse, user, phone, short = false, strip, fresh, onShow, onUse, price,
@@ -251,7 +272,8 @@ export default function CharacterPage({ kind, shown, entries, inUse, user, phone
       {strip}
       <Swatches entries={entries} shown={entry.id} inUse={inUse} user={user} size={56} className="char-swatches" fresh={fresh} onPick={onShow} />
       <p className="coll-status" role="status">
-        {status || (ownershipOf(entry, inUse, user) === "locked" ? unlockLine(t, entry, user) : lookName(t, entry.id))}
+        {status || (ownershipOf(entry, inUse, user) === "locked" ? unlockLine(t, entry, user)
+          : provenanceLine(t, entry, user) || lookName(t, entry.id))}
       </p>
       <UseButton ownership={ownershipOf(entry, inUse, user)} onUse={() => onUse(entry)} price={price} />
     </div>

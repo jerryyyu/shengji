@@ -581,8 +581,13 @@ keeps the table on screen.
   sleep, each move for its own animation's length; Jerry 2026-11-26: "all the animations there like the mock"), a
   tap playing its special from its start, still under Reduce Motion (a tap shows the special drawn still). Under
   it, the selected character's Try on your table (it stands beside a partner on your team's pads), its colour
-  swatches (56 px, four in a row on a phone), one status line naming what is shown ("Bun · Taro") and the one
-  button. Then **Yours** (the page has no switch; Show companions at the table is in Me's settings), the free companions and the ones bought, as tiles idling on felt
+  swatches (56 px, four in a row on a phone), one status line and the one button. The status line says how an
+  owned look was got (Jerry 2026-11-27: "It should say how we got the skin like 'achieved through x ranked wins' or
+  'purchased on x date'"): a Tractor colour won, the count that unlocked it ("Unlocked with 25 ranked rounds won",
+  赢 25 局排位解锁); a store companion, the date it was bought in the viewer's own date format ("Purchased 27 Nov
+  2026", 2026年11月27日购买; `/api/me` `purchased_on`, a date only). A look free from the start names what is
+  shown ("Bun · Taro"), with no "Free": every free look in Yours is free, so the word adds nothing. A look worn from
+  before its count was reached names it too. A locked look's line stays what unlocks it. Then **Yours** (the page has no switch; Show companions at the table is in Me's settings), the free companions and the ones bought, as tiles idling on felt
   with their names and a tick on the one in use, ordered by last use (Jerry 2026-11-27: "for yours, can we order by
   last used?"): the one in use first, then the others by when one of their looks was last put in use (the server
   keeps it per look, `/api/me` `recent_looks`), then those never used in Collection order; then, where the store can sell, **More companions**, the store's

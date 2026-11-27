@@ -43,11 +43,12 @@ def _without_look(body: dict) -> dict:
     from shengji.api import accounts
 
     look = {k: body.pop(k) for k in ("look", "ranked_wins", "ranked_games", "looks", "recent_looks",
-                                     "companions", "features", "products")}
+                                     "companions", "features", "products", "purchased_on")}
     assert look["look"].partition("/")[0] not in accounts.COMPANION_PRODUCTS
     assert look["look"] not in accounts.LOOK_UNLOCKS and look["recent_looks"] == [look["look"]]
     assert look["companions"] == "individual"
     assert look["features"] == {"collection": False, "store": False} and look["products"] == []
+    assert look["purchased_on"] == {}
     assert "store_token" not in body
     return body
 

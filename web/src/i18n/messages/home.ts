@@ -28,6 +28,11 @@ export const home = defineMessages({
   "home.unlockRounds": { en: "Play {of} rounds to unlock · {n} of {of}", zh: "打满 {of} 局解锁 · {n}/{of}", hant: "打滿 {of} 局解鎖 · {n}/{of}" },
   "home.unlockRankedRounds": { en: "Win {of} ranked rounds to unlock · {n} of {of}", zh: "赢 {of} 局排位解锁 · {n}/{of}", hant: "贏 {of} 局排位解鎖 · {n}/{of}" },
   "home.unlockRankedWin": { en: "Win a ranked round to unlock", zh: "赢一局排位解锁", hant: "贏一局排位解鎖" },
+  // how an owned look was got, on the same one status line
+  "home.unlockedRounds": { en: "Unlocked with {of} rounds played", zh: "打满 {of} 局解锁", hant: "打滿 {of} 局解鎖" },
+  "home.unlockedRankedRounds": { en: "Unlocked with {of} ranked rounds won", zh: "赢 {of} 局排位解锁", hant: "贏 {of} 局排位解鎖" },
+  "home.unlockedRankedWin": { en: "Unlocked with a ranked round won", zh: "赢一局排位解锁", hant: "贏一局排位解鎖" },
+  "home.purchasedOn": { en: "Purchased {date}", zh: "{date}购买", hant: "{date}購買" },
   // the Collection's grid and the store: its two sections, a coming
   // character, the website's one row, a store character's foot, the restore
   // row, and the one status line of a purchase

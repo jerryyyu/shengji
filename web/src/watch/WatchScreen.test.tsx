@@ -521,3 +521,110 @@ describe("caught up", () => {
     expect(actions()).toEqual(["Take a seat", "Leave"]);
   });
 });
+
+// A live table changes under the watcher on every play, and iOS WebKit holds
+// back the click of a tap while the page changes under it (its hover
+// heuristic), letting it land only after the change has settled: a control
+// that answers only the click toggles on a later play, not on the tap. A
+// control that answers the touch acts on the tap and cancels the click.
+describe("the menu while plays arrive", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+  });
+  afterEach(() => { watch.close(); });
+
+  const felt = () => host.querySelector(".felt")!.innerHTML;
+  const menuOpen = () => {
+    const more = button("More");
+    const shown = host.querySelector("[role=menu]") !== null;
+    expect(more.getAttribute("aria-expanded")).toBe(String(shown));
+    return shown;
+  };
+  /** Time runs until the next play changes the table. */
+  async function nextPlay() {
+    const was = felt();
+    for (let i = 0; i < 200 && felt() === was; i++) await act(async () => { vi.advanceTimersByTime(50); });
+    expect(felt()).not.toBe(was);
+  }
+  /** A tap as iOS WebKit delivers it while plays arrive: the touch now, and
+   *  its click, unless the touch cancelled it, only after the next play. */
+  async function tap(el: Element) {
+    const touch = { identifier: 1, clientX: 10, clientY: 10, target: el };
+    const fire = (type: string, touches: unknown[]) => {
+      const e = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(e, "touches", { value: touches });
+      Object.defineProperty(e, "changedTouches", { value: [touch] });
+      Object.defineProperty(e, "targetTouches", { value: touches });
+      el.dispatchEvent(e);
+      return e;
+    };
+    let end: Event | null = null;
+    await act(async () => { fire("touchstart", [touch]); end = fire("touchend", []); });
+    return async () => {
+      if (end!.defaultPrevented) return;
+      await act(async () => { (el as HTMLElement).click(); });
+    };
+  }
+
+  it("stays closed across plays with no tap", async () => {
+    await open();
+    for (let i = 0; i < 6; i++) {
+      await nextPlay();
+      expect(menuOpen()).toBe(false);
+    }
+  });
+
+  it("opens on the tap and stays open across plays until a tap closes it", async () => {
+    await open();
+    await nextPlay();
+    const late = await tap(button("More"));
+    expect(menuOpen()).toBe(true);
+    await nextPlay();
+    await late();
+    for (let i = 0; i < 6; i++) {
+      expect(menuOpen()).toBe(true);
+      await nextPlay();
+    }
+    const lateClose = await tap(button("More"));
+    expect(menuOpen()).toBe(false);
+    await nextPlay();
+    await lateClose();
+    for (let i = 0; i < 6; i++) {
+      expect(menuOpen()).toBe(false);
+      await nextPlay();
+    }
+  });
+
+  it("Next table and Leave act on the tap, once", async () => {
+    watch.open("casual");
+    await open();
+    await (await tap(button("More")))();
+    const rows = () => [...host.querySelectorAll<HTMLButtonElement>("[role=menuitem]")];
+    const picks = urls.length;
+    const lateNext = await tap(rows()[0]);
+    expect(host.querySelector("[role=menu]")).toBeNull();
+    expect(urls.length).toBe(picks + 1);
+    await nextPlay();
+    await lateNext();
+    expect(urls.length).toBe(picks + 1);
+    await (await tap(button("More")))();
+    const close = vi.spyOn(watch, "close");
+    await tap(rows()[1]);
+    expect(watch.get()).toBeNull();
+    expect(close).toHaveBeenCalledTimes(1);
+    close.mockRestore();
+  });
+
+  it("a replay's Leave acts on the tap, once", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ...feed, table: "rerun", rerun: true,
+      live_round: null, code: null }), { status: 200 })));
+    watch.open("ranked");
+    await open();
+    const close = vi.spyOn(watch, "close");
+    const late = await tap(button("Leave"));
+    expect(watch.get()).toBeNull();
+    await late();
+    expect(close).toHaveBeenCalledTimes(1);
+    close.mockRestore();
+  });
+});

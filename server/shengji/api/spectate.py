@@ -346,10 +346,12 @@ def round_ended(room: Any, written: bool = True) -> None:
         st.last = Finished(path=path, start=offset, round=n, ranked=ratings.ranked(room),
                            start_accounts=began, claims=dict(st.claims))
         st.recent.append(st.last)
-        if enabled() or allowlist():
+        if st.last.ranked or enabled() or allowlist():
             # read once now, so the lobby count and the feed agree from the start
             _remember(_doc_key(st.last, None), _build(st.last, None))
-        if st.last.ranked:
+        if st.last.ranked and st.last.whole is True:
+            # only a whole round is kept to replay, so a broken one never
+            # advertises a rerun nor pushes a good one out
             _ensure_loaded()
             _reruns.append(st.last)
             save()
@@ -636,7 +638,8 @@ def watchable(room: Any, wide: bool = False) -> bool:
 
 def servable(room: Any, now: float, wide: bool = False, token: str | None = None) -> bool:
     """Whether a watcher (``token``: one already counted here keeps its
-    place) gets a live round here now: the table is watchable, holds a
+    place) gets a live round here now; safe on any room, a lobby or an
+    undealt one included: the table is watchable, holds a
     finished round its log holds whole, and has a place. The lobby count and
     the pick both ask this, so the link offers exactly the tables the feed
     serves."""
@@ -692,11 +695,9 @@ def pick(mode: str | None, skip: str | None, token: str, now: float,
     watcher already counts there)."""
     best = None
     for room in _rooms():
-        if room.watch.id == skip:
+        if not servable(room, now, wide, token) or room.watch.id == skip:
             continue
         st = room.watch
-        if not servable(room, now, wide, token):
-            continue
         key = (_mode(room) == mode, room.game.round_no, st.last.round)
         if best is None or key > best[0]:
             best = (key, room)

@@ -66,7 +66,10 @@ export const figureBox = (s: Spot, size: number, tag: boolean): Rect => {
 
 /** Whether a figure at `s` clears every obstacle and stays on the felt. */
 export function clear(s: Spot, size: number, tag: boolean, layout: Layout): boolean {
-  const box = figureBox(s, size, tag);
+  return clearBox(figureBox(s, size, tag), layout);
+}
+/** Whether `box` clears every obstacle and stays on the felt. */
+export function clearBox(box: Rect, layout: Layout): boolean {
   if (box.x < 0 || box.y < 0 || box.x + box.w > layout.felt.w || box.y + box.h > layout.felt.h) return false;
   if (layout.safe && (box.x < layout.safe.x0 || box.x + box.w > layout.safe.x1)) return false;
   return !layout.obstacles.some((o) => meets(box, o));

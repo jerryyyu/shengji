@@ -29,6 +29,12 @@
   white-space: nowrap;
 }
 
+/* while yours stands larger for your turn its tag rides up with it */
+.tc-you { transition: transform 200ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .tc-you { transition: none; }
+}
+
 /* A level gained: the new level flashes by the figure's head as it pops and
    cheers (`LEVEL_UP_MS` in TableCompanions.tsx), clear of the "You" tag.
    Under Reduce Motion it stands still for the same time. */

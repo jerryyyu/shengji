@@ -12,7 +12,9 @@ import { describe, expect, it } from "vitest";
 import { Companion } from "./Companion";
 import { DRAWINGS } from "./kinds";
 import { FREE_KINDS } from "./look";
-import { figureBox } from "./seatZones";
+import { BIG, CHUGS, DROOPS, LEANS, PERKS, READY_BOB, READY_HELD, READY_SCALE, RELAX, fits, lookFrames, pickBeat, reachOfFrames } from "./beats";
+import { clear, figureBox } from "./seatZones";
+import type { Layout } from "./seatZones";
 import { parseArt } from "./Tractor";
 import type { ArtNode } from "./Tractor";
 
@@ -449,5 +451,90 @@ describe("the companions' specials", () => {
       const src = readFileSync(`${import.meta.dirname}/companion.store.css`, "utf8");
       expect(src).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.cmp \* \{ animation: none !important; \}/);
     });
+  });
+});
+
+// The moves that answer the game (`beats.ts`): the table plays the largest
+// of each that stays clear where the figure stands, by how far its keyframes
+// reach. Checked here with this file's own evaluator: the reach the table
+// keeps clear bounds the whole move, the most modest of each always has
+// room, and the largest fits in a stated few pixels at the phone's 44 px.
+describe("the moves that answer the game", () => {
+  const SIZES = [44, 56, 60, 76];
+  const NAMED: [string, Keyframe[], string][] = [
+    ...[...PERKS, READY_BOB, RELAX, BIG, ...DROOPS, ...CHUGS].map((b): [string, Keyframe[], string] => [b.name, b.frames, b.easing]),
+    ...([1, -1] as const).flatMap((dir) => [...LEANS.flatMap((lean) => [lean, -lean]).map((lean) => ({ dir, lean, up: false })), { dir, lean: 0, up: true }])
+      .map((to): [string, Keyframe[], string] => [`look ${to.dir} ${to.lean}${to.up ? " up" : ""}`, lookFrames({ dir: 1, lean: 0, up: false }, to, true), "ease-out"]),
+  ];
+  /** How far the move goes past the figure's own box, sampled through its length by this file's evaluator. */
+  const swept = (frames: Keyframe[], easing: string, px: number) => {
+    const list: Frame[] = frames.map((k, i) => ({ offset: k.offset ?? i / (frames.length - 1), transform: fns(String(k.transform)) }));
+    const out = { l: 0, r: 0, up: 0, down: 0 };
+    for (let n = 0; n <= 200; n++) {
+      const inner = matrix(sample(list, "transform", n / 200, easing)!, { x: 0, y: 0, w: px, h: px });
+      const m = mul(mul(shift(px / 2, px), inner), shift(-px / 2, -px));
+      const pts = [at(m, 0, 0), at(m, px, 0), at(m, 0, px), at(m, px, px)];
+      const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+      out.l = Math.max(out.l, -Math.min(...xs)); out.r = Math.max(out.r, Math.max(...xs) - px);
+      out.up = Math.max(out.up, -Math.min(...ys)); out.down = Math.max(out.down, Math.max(...ys) - px);
+    }
+    return out;
+  };
+  /** A figure at `s` with `room` px clear past its standing box on each side, and no more. */
+  const hemmed = (s: { x: number; y: number }, px: number, tag: boolean, room: { side: number; up: number }): Layout => {
+    const b = figureBox(s, px, tag);
+    return { felt: { w: 1000, h: 1000 }, plates: {}, tagline: null, row: null, hand: null, obstacles: [
+      { x: b.x - room.side - 50, y: 0, w: 50, h: 1000 }, { x: b.x + b.w + room.side, y: 0, w: 50, h: 1000 },
+      { x: 0, y: b.y - room.up - 50, w: 1000, h: 50 }, { x: 0, y: b.y + b.h, w: 1000, h: 50 }] };
+  };
+  const S = { x: 400, y: 400 };
+
+  it.each(NAMED)("%s never goes past the reach the table keeps clear for it, at 44 to 76 px", (_name, frames, easing) => {
+    for (const px of SIZES) {
+      const got = swept(frames, easing, px), kept = reachOfFrames(frames, px);
+      for (const side of ["l", "r", "up", "down"] as const) expect(got[side], `${side} at ${px}`).toBeLessThanOrEqual(kept[side] + 0.05);
+    }
+  });
+
+  it("the evaluator sees a move that leaves its reach: a droop tipped twice as far breaks the side", () => {
+    const tipped = DROOPS[0].frames.map((k) => ({ ...k, transform: String(k.transform).replace("rotate(6deg)", "rotate(12deg)") }));
+    expect(swept(tipped, "ease-in-out", 44).r).toBeGreaterThan(reachOfFrames(DROOPS[0].frames, 44).r + 1);
+  });
+
+  it("with nothing but its standing box clear, each has a form that fits: the ready size, the smallest droop, hops and lean", () => {
+    for (const px of SIZES) for (const tag of [true, false]) {
+      const tight = hemmed(S, px, tag, { side: 0, up: 0 });
+      expect(clear(S, px, tag, tight)).toBe(true);
+      for (const [name, frames] of [["grow", PERKS[PERKS.length - 1].frames], ["relax", RELAX.frames], ["droop", DROOPS[DROOPS.length - 1].frames],
+        ["chug", CHUGS[CHUGS.length - 1].frames], ["held", [{ transform: READY_HELD }]]] as const) {
+        expect(fits(frames, S, px, tag, tight), `${name} at ${px}`).toBe(true);
+      }
+      expect(pickBeat(PERKS, S, px, tag, tight)?.name).toBe("grow");
+      expect(pickBeat([BIG], S, px, tag, tight)).toBeNull();
+      const small = LEANS[LEANS.length - 1];
+      for (const dir of [1, -1] as const) for (const lean of [small, -small]) {
+        expect(fits(lookFrames({ dir, lean: 0, up: false }, { dir, lean, up: false }, true), S, px, tag, tight), `lean ${lean} at ${px}`).toBe(true);
+      }
+      expect(fits(lookFrames({ dir: 1, lean: 0, up: false }, { dir: 1, lean: 0, up: true }, true), S, px, tag, tight), `up at ${px}`).toBe(true);
+    }
+  });
+
+  it("at the phone's 44 px the full forms need little room: 12 px over the head and 3 px a side", () => {
+    const some = hemmed(S, 44, true, { side: 3, up: 12 });
+    expect(pickBeat(PERKS, S, 44, true, some)?.name).toBe("perk26");
+    expect(fits(READY_BOB.frames, S, 44, true, some)).toBe(true);
+    expect(pickBeat(DROOPS, S, 44, true, some)?.name).toBe("droop6");
+    expect(pickBeat(CHUGS, S, 44, true, some)?.name).toBe("chug18");
+    // a lean turns about the feet, so its far corner dips: 8 degrees needs a pixel under them, 7 does not
+    const lean = (deg: number, room: Layout) => fits(lookFrames({ dir: 1, lean: 0, up: false }, { dir: -1, lean: deg, up: false }, true), S, 44, true, room);
+    expect(LEANS.find((deg) => lean(deg, some))).toBe(7);
+    expect(lean(LEANS[0], { ...some, obstacles: some.obstacles.slice(0, 3) })).toBe(true);
+    expect(pickBeat([BIG], S, 44, true, some)?.name).toBe("big");
+    expect(pickBeat([BIG], S, 44, true, hemmed(S, 44, true, { side: 3, up: 8 }))).toBeNull();
+  });
+
+  it("the ready size is held as the box's own style, and each move sets only a transform", () => {
+    expect(READY_HELD).toBe(`scale(${READY_SCALE})`);
+    for (const [, frames] of NAMED) for (const k of frames) expect(Object.keys(k).filter((p) => p !== "offset")).toEqual(["transform"]);
   });
 });

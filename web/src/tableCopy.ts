@@ -21,6 +21,13 @@ export function attackingTeam(state: GameState): Team | null {
   return state.banker === null ? null : ((1 - (state.banker % 2)) as Team);
 }
 
+/** Whether the table is waiting on you: your play, or your bury as banker. */
+export function isYourTurnCue(state: GameState): boolean {
+  if (state.turn !== state.you) return false;
+  if (state.phase === "play") return true;
+  return state.phase === "bury" && (state.players.find((p) => p.seat === state.you)?.is_banker ?? false);
+}
+
 /** The banker's crown in words, for screen readers: "You, banker" for your
  *  own seat, "Sam, banker" for anyone else. */
 export function bankerText(player: StatePlayer, you: number): string {

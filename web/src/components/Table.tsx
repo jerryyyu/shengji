@@ -29,7 +29,7 @@ import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subs
 import { showToast } from "../toast";
 import { TurnClock, leadKind, nextTurnNumber, telemetry, useScreen } from "../telemetry";
 import { rounds } from "../roundTelemetry";
-import { bankerText, buryHelp, buryPointsText, declareHelp, seatStatus, seatStatusParts } from "../tableCopy";
+import { bankerText, isYourTurnCue, buryHelp, buryPointsText, declareHelp, seatStatus, seatStatusParts } from "../tableCopy";
 import { displayName, t, useT } from "../i18n";
 import type { MessageKey } from "../i18n";
 import LastTrickPanel from "./LastTrickPanel";
@@ -239,13 +239,6 @@ export function OpponentPanel({ player, state, readOnly = false }: { player: Sta
       {onTurn && actionPhase && !botControlled ? <div className="their-turn">{t("table.theirTurn")}</div> : null}
     </div>
   );
-}
-
-/** Whether the table is waiting on you: your play, or your bury as banker. */
-function isYourTurnCue(state: GameState): boolean {
-  if (state.turn !== state.you) return false;
-  if (state.phase === "play") return true;
-  return state.phase === "bury" && (state.players.find((p) => p.seat === state.you)?.is_banker ?? false);
 }
 
 /** Haptic ticks on the moments that matter (no-ops outside the iOS app):

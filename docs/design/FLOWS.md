@@ -666,9 +666,26 @@ watcher's card does this; a player's round end still waits for Next or Leave.
   when it takes a trick, and cheer when the trick is worth 10 points or more (Jerry may tune
   this; a cheer rises no higher than its zone keeps room for); when your team wins the round, each of its
   companions plays its signature special once the round-end
-  sheet has closed (after the level-up, when there is one). A companion sleeps while its person is away, and
+  sheet has closed (after the level-up, when there is one). They answer the game (Jerry 2026-11-27: "Do all 3
+  clips"; his worry was a table that reads flat). **Ready on your turn:** as the table waits on you (your play, or
+  your bury as banker) yours jumps once, as high as stays clear (26% of its height, lower where the room above is
+  short), lands 17% larger with its You tag riding up, bobs three times about a second apart, then holds that size
+  with nothing running until you play, when it settles back; a turn that comes round within 8 s of the last jump
+  (a fast table), or to a figure at 12 moves this minute, only grows, and a trick you take is hopped first.
+  **Watches the play:** as a card lands each figure turns to the seat that played it: your team's turn to face it
+  and lean in (up to 8°, the largest lean that stays clear), the other team's lean without turning round, a seat
+  over a figure's head stretches it up, and its own person's card moves it not at all; it stands straight again as
+  the trick is collected. A figure turns at most once in 4 s, never mid-move, mid-walk or while ready, and adds a
+  turn or a walk of its own only while under its share of moves this minute (8 for yours, 4 for another), so yours
+  makes 6 to 8 visible moves a minute at a person's pace. **Big plays:** a trick of 20 points or more is a
+  two-bounce jump for its winners (the cheer where there is no room over it) and a droop, a squash and a tip held
+  about a second, for the others; a tractor led is its team's two quick hops; these are 8 s apart at least (one
+  sooner is the plain cheer, and no droop), and none starts behind the round-end sheet. A kitty taken on the last
+  trick plays the takers' special once the sheet has closed, with a droop for the other team when it lost the
+  round. Each is a transform of a box the figure already has, and none loops. A companion sleeps while its person is away, and
   between moves fidgets once every 6 to 10 s (its clocks, for walks and fidgets, run on through the hops and specials: one due mid-move waits for it to end): a sway, a blink, a small hop, in turn. Nothing moves while the page
-  is hidden or under Reduce Motion (each stands on its home). A bot, and a seat its owner left, has none. They
+  is hidden or under Reduce Motion (each stands on its home; ready is the larger size alone, watching the turn
+  held, a big play the cheer drawn still, the droop held for a second, a tractor's hops nothing). A bot, and a seat its owner left, has none. They
   sit under the cards and controls.
 - **Taps** (Jerry 2026-11-26: "If you tap on the board (outside of cards), the character walks there"): a tap on
   empty felt (not a card, a played trick, a seat, a button or any panel) walks your companion, facing its way, to

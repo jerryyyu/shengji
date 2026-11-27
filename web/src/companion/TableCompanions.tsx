@@ -10,7 +10,13 @@
 // A level gained shows once the round-end sheet has closed and the table is
 // in view: each of the team's companions pops to its new size, cheers, and
 // flashes the new level by its head. A team's companions hop when it takes
-// a trick, and cheer when the trick is worth 10 points or more; a
+// a trick, and cheer when the trick is worth 10 points or more. They answer
+// the game (`beats.ts`): yours gets ready as your turn arrives (a jump, then
+// held a little larger with a few small bobs until you play); each turns or
+// leans to watch a card played; a trick of 20 points or more is a two-bounce
+// jump for its winners and a droop for the others, a tractor led is its
+// team's two quick hops, and a kitty taken on the last trick is the takers'
+// special once the sheet has closed. A
 // companion sleeps while its person is away. Between moves they stand
 // still, each with a short fidget every 6 to 10 s on its own clock (a sway,
 // a blink, a small hop, in turn), so a table at rest draws almost no
@@ -30,6 +36,9 @@ import { useCollection } from "./feature";
 import { parseLook } from "./look";
 import { shownAtTable, useCompanionMode } from "./mode";
 import { countPoke, countWalk } from "./usage";
+import { BEAT_MAX, BIG, BeatLog, CHUGS, DROOPS, GROW, LOOK_BACK_MS, LOOK_MS, PERKS, READY_BOB, READY_BOBS, READY_BOB_GAP_MS, READY_HELD, READY_JUMP_GAP_MS, READY_SCALE, RELAX,
+  aim, canWatch, facingCss, fits, kittyCapture, lastPlay, lookFrames, pickBeat, reactions, sameFacing, underBudget, yourTurn } from "./beats";
+import type { Beat, Facing, TableMove } from "./beats";
 import { HAND_LIFT, LIFT, clear, figureBox, nearest, nearestClear, nextSpot, pathClear, TAPPED_HIGH, TAPPED_WIDE, zoneAround, zonesFor } from "./seatZones";
 import type { Layout, Rect, SeatPos, Spot, Zone } from "./seatZones";
 import { useT } from "../i18n";
@@ -40,26 +49,10 @@ import type { Team } from "./rig";
 /** A team's level as the index companions grow by (2 is 0, A is 12). */
 export const levelIndex = (rank: string | undefined): number => Math.max(0, LEVELS.indexOf((rank ?? "2") as (typeof LEVELS)[number]));
 
-/** A trick worth this many points or more is cheered; a smaller one hopped. */
-export const CHEER_POINTS = 10;
+export { CHEER_POINTS } from "./beats";
 /** The fidget's length, and the shortest and longest wait before the next. */
 export const FIDGET_MS = 600;
 const FIDGET_GAP: readonly [number, number] = [6000, 10000];
-
-/** What each seat's companion does on this frame: its team took a trick
- *  (a hop, a cheer for 10 points or more). A level gained is not here: it
- *  waits for the round-end sheet to close (`useLevelUps`). */
-function reactions(state: GameState, prev: GameState | null): Record<number, Pose> {
-  const out: Record<number, Pose> = {};
-  if (!prev) return out;
-  const done = state.last_trick;
-  if (done && JSON.stringify(done) !== JSON.stringify(prev.last_trick)) {
-    const team = state.players.find((p) => p.seat === done.winner)?.team;
-    const pose: Pose = done.points >= CHEER_POINTS ? "cheer" : "hop";
-    for (const p of state.players) if (p.team === team && p.connected && !p.away) out[p.seat] = pose;
-  }
-  return out;
-}
 
 /** A hop's peak, as a share of the figure's height: the highest of these
  *  whose rise stays clear where it stands (`hopPeak`). */
@@ -115,18 +108,26 @@ function levelUpFrames(from: number): Keyframe[] {
  *  resolves when it ends (at once where the element cannot animate, or under
  *  Reduce Motion, after the move's length: a level gained holds its still
  *  badge as long as the move would have taken). */
-function play(el: HTMLElement | null, name: keyof typeof MOVES | "levelup", from = 1, frames: Keyframe[] | null = null): { done: Promise<void>; stop: () => void } {
-  const m = name === "levelup" ? { frames: levelUpFrames(from), ms: LEVEL_UP_MS, easing: "linear" }
+function play(el: HTMLElement | null, name: keyof typeof MOVES | "levelup" | Beat, from = 1, frames: Keyframe[] | null = null): { done: Promise<void>; stop: () => void } {
+  const m = typeof name !== "string" ? name
+    : name === "levelup" ? { frames: levelUpFrames(from), ms: LEVEL_UP_MS, easing: "linear" }
     : frames ? { ...MOVES[name], frames } : MOVES[name];
   if (!el || typeof el.animate !== "function" || prefersReducedMotion()) {
     let timer = 0;
-    const done = new Promise<void>((r) => { timer = window.setTimeout(r, name === "levelup" ? m.ms : Math.min(m.ms, FIDGET_MS)); });
-    return { done, stop: () => window.clearTimeout(timer) };
+    // a move with a held pose (the droop) stands in it for its still length
+    const held = typeof name !== "string" && el ? name.still : undefined;
+    const was = el?.style.transform ?? "";
+    if (held && el) el.style.transform = held;
+    const done = new Promise<void>((r) => { timer = window.setTimeout(r, name === "levelup" ? m.ms : held ? STILL_BEAT_MS : Math.min(m.ms, FIDGET_MS)); })
+      .then(() => { if (held && el) el.style.transform = was; });
+    return { done, stop: () => { window.clearTimeout(timer); if (held && el) el.style.transform = was; } };
   }
   const a = el.animate(m.frames, { duration: m.ms, easing: m.easing });
   return { done: a.finished.then(() => undefined, () => undefined), stop: () => a.cancel() };
 }
 
+/** How long a move's held pose stands under Reduce Motion. */
+export const STILL_BEAT_MS = 1000;
 /** How soon a fidget or walk that fell due mid-move looks again. */
 const RETRY_MS = 1000;
 /** The fidgets a companion at rest plays in turn. */
@@ -440,17 +441,23 @@ export const TAP_THROTTLE_MS = 500;
  *  played as a special once any level-up has ended. Every move is a Web
  *  Animation of a transform. Under Reduce Motion it stands on its home;
  *  while the page is hidden it rests. */
-function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal, tapped, wins, dealing, onEnd, onUpEnd, onGoal, onTapped, onStray }: {
+function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal, tapped, wins, dealing, ready, watch, onEnd, onUpEnd, onGoal, onTapped, onStray }: {
   player: StatePlayer; team: Team; px: number; pos: SeatPos; dealing: boolean;
-  zone: Zone; layout: Layout; roam: Layout; pose: Pose; up: LevelUp | null; you: boolean; goal: { spot: Spot; n: number } | null;
+  ready: boolean; watch: { pos: SeatPos; key: string } | null;
+  zone: Zone; layout: Layout; roam: Layout; pose: TableMove; up: LevelUp | null; you: boolean; goal: { spot: Spot; n: number } | null;
   tapped: Spot | null; wins: number; onEnd: () => void; onUpEnd: () => void; onGoal?: (n: number) => void;
   onTapped?: (s: Spot | null) => void; onStray?: (s: Spot | null) => void;
 }) {
   const t = useT();
   const { kind, colour } = parseLook(player.look);
   const away = !player.connected || player.away === true;
-  const move: Pose = away ? "sleep" : pose;
+  const move: TableMove = away ? "sleep" : pose;
   const walk = useRef<HTMLSpanElement | null>(null);
+  // how it faces and leans now, the turn in flight, and when its moves started
+  const facing = useRef<Facing>({ dir: pos === "right" ? -1 : 1, lean: 0, up: false });
+  const looking = useRef<Animation | null>(null);
+  const beats = useRef<BeatLog | null>(null);
+  beats.current ??= new BeatLog();
   const face = useRef<HTMLSpanElement | null>(null);
   const box = useRef<HTMLSpanElement | null>(null);
   const cur = useRef<Spot | null>(null);
@@ -500,7 +507,9 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
   // a tapped home stands on its own: the zone only matters without one; a
   // drawn figure stays drawn until it has been moved or taken off
   const placed = (tapped ?? zone.home ?? stray ?? cur.current) !== null;
-  useFidget(box, placed && move === "idle" && !up && !playing, setBlink);
+  // ready while the table waits on its person, between the other moves
+  const readyOn = ready && placed && !away && move === "idle" && !up && !playing && !dealing;
+  useFidget(box, placed && move === "idle" && !up && !playing && !readyOn, setBlink);
 
   const stop = () => { for (const a of walking.current) a.cancel(); walking.current = []; path.current = null; };
   const place = (s: Spot) => { cur.current = s; if (walk.current) walk.current.style.transform = at(s); };
@@ -535,6 +544,8 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
       : slow ? Math.max(TAP_WALK_MS[0], strollMs(dist, px))
       : strollMs(dist, px);
     const dir = to.x < from.x ? -1 : 1;
+    looking.current?.cancel();
+    facing.current = { dir, lean: 0, up: false };
     if (face.current) face.current.style.transform = `scaleX(${dir})`;
     const a = el.animate(via && dist > 0 ? [{ transform: at(from) }, { transform: at(via), offset: leg / dist }, { transform: at(to) }]
       : [{ transform: at(from) }, { transform: at(to) }], { duration: ms, easing: "ease-in-out" });
@@ -657,6 +668,7 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     // round the other companions, in two legs, where the straight way meets one
     const from = shown();
     const others: Layout = { ...layout, obstacles: roam.obstacles.slice(layout.obstacles.length) };
+    beats.current!.note(Date.now());
     goTo(goal.spot, { under: true, slow: true, via: from ? around(from, goal.spot, px, you, others) : null });
     tappedDone.current?.(goal.spot);
   }, [goalN]);
@@ -672,7 +684,7 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
   // the clock runs while the figure is drawn: a walk due mid-move (a hop for
   // a trick, a special) or while the hand is dealt waits for it to end, so
   // the moves do not keep putting it off
-  const idle = placed && move === "idle" && !up && !playing && !dealing;
+  const idle = placed && move === "idle" && !up && !playing && !dealing && !readyOn;
   const idleNow = useRef(idle);
   idleNow.current = idle;
   useEffect(() => {
@@ -680,11 +692,13 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     let timer = 0;
     const due = () => {
       if (!idleNow.current || walking.current.length > 0) { timer = window.setTimeout(due, RETRY_MS); return; }
+      // a figure that has done its share this minute stands until the next look
+      if (!underBudget(beats.current!, Date.now(), you)) { wait(); return; }
       const from = cur.current;
       // a spot it can reach without crossing anything; it stays put when none is
       for (let i = 0; from && i < 6; i++) {
         const to = nextSpot(zoneNow.current, from, px, Math.random());
-        if (to && pathClear(from, to, px, you, roomNow.current)) { goTo(to); break; }
+        if (to && pathClear(from, to, px, you, roomNow.current)) { beats.current!.note(Date.now()); goTo(to); break; }
       }
       wait();
     };
@@ -707,10 +721,103 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealing]);
 
+  /** Turn the face box to `to`: at once under Reduce Motion (the held pose)
+   *  or while hidden, else over `ms`, with a turn's small rise (`hop`). */
+  const faceTo = (to: Facing, ms: number, hop: boolean) => {
+    const el = face.current;
+    const from = facing.current;
+    if (!el || sameFacing(from, to)) return;
+    facing.current = to;
+    looking.current?.cancel();
+    looking.current = null;
+    el.style.transform = facingCss(to);
+    if (typeof el.animate !== "function" || prefersReducedMotion() || document.visibilityState === "hidden") return;
+    looking.current = el.animate(lookFrames(from, to, hop), { duration: ms, easing: "ease-out" });
+  };
+  /** Stand straight again, facing the same way: a lean is held only between the other moves. */
+  const straighten = () => faceTo({ dir: facing.current.dir, lean: 0, up: false }, LOOK_BACK_MS, false);
+  useEffect(() => () => looking.current?.cancel(), []);
+
+  // a card played: it turns or leans to watch the seat that played it, and
+  // stands straight again as the trick is collected. Not for its own
+  // person's card, mid-move or mid-walk, more often than `WATCH_GAP_MS`, or
+  // past its share of moves this minute
+  const watchKey = watch?.key ?? "";
+  const busy = !placed || away || !!up || playing || dealing || readyOn || move !== "idle";
+  const busyNow = useRef(busy);
+  busyNow.current = busy;
   useEffect(() => {
-    if (move !== "hop" && move !== "cheer") return;
-    // a hop as high as stays clear where it stands
-    const run = move === "hop" ? play(box.current, "hop", 1, hopFrames(hopPeak(cur.current, px, you, roamNow.current))) : play(box.current, move);
+    if (!watch) { straighten(); return; }
+    const s = cur.current;
+    if (watch.pos === pos || busyNow.current || !s || walking.current.length > 0) return;
+    const now = Date.now();
+    if (!canWatch(beats.current!, now, you)) return;
+    const to = aim(s, px, you, facing.current, watch.pos, team === "us", roamNow.current);
+    if (sameFacing(to, facing.current)) return;
+    beats.current!.note(now);
+    faceTo(to, LOOK_MS, true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchKey]);
+
+  // ready: as the turn arrives it jumps (as high as stays clear) and lands a
+  // little larger, bobs a few times, and holds that size until the turn
+  // passes; a turn back within 8 s only grows, with no jump or bob; under
+  // Reduce Motion only the held size. The size is the box's
+  // own style, so nothing runs while it is held
+  const calm = useRef({ up: !!up, playing });
+  calm.current = { up: !!up, playing };
+  const held = useRef(false);
+  const jumped = useRef(-Infinity);
+  useEffect(() => {
+    const el = box.current;
+    if (!readyOn || !el) return;
+    straighten();
+    held.current = true;
+    el.style.transform = READY_HELD;
+    // a turn that comes round again within `READY_JUMP_GAP_MS`, or to a figure that has done its most this minute, only grows
+    const now = Date.now();
+    const jump = now - jumped.current >= READY_JUMP_GAP_MS && beats.current!.count(now) < BEAT_MAX;
+    if (jump) { jumped.current = now; beats.current!.note(now); }
+    const moving = typeof el.animate === "function" && !prefersReducedMotion();
+    const runs: Animation[] = [];
+    const timers: number[] = [];
+    if (moving && document.visibilityState !== "hidden") {
+      const perk = (jump ? pickBeat(PERKS, cur.current, px, you, roamNow.current) : null) ?? GROW;
+      runs.push(el.animate(perk.frames, { duration: perk.ms, easing: perk.easing }));
+      for (let i = 1; jump && i <= READY_BOBS; i++) {
+        timers.push(window.setTimeout(() => {
+          const s = cur.current;
+          if (document.visibilityState === "hidden" || !s || !fits(READY_BOB.frames, s, px, you, roamNow.current)) return;
+          runs.push(el.animate(READY_BOB.frames, { duration: READY_BOB.ms, easing: READY_BOB.easing }));
+        }, perk.ms + i * READY_BOB_GAP_MS - READY_BOB.ms));
+      }
+    }
+    return () => {
+      for (const t of timers) window.clearTimeout(t);
+      for (const a of runs) a.cancel();
+      held.current = false;
+      el.style.transform = "";
+      // a level-up or a special that takes over starts from the held size itself
+      if (moving && el.isConnected && document.visibilityState !== "hidden" && !calm.current.up && !calm.current.playing) {
+        el.animate(RELAX.frames, { duration: RELAX.ms, easing: RELAX.easing });
+      }
+    };
+  // the jump's height is read where it stands as the turn arrives
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readyOn]);
+
+  useEffect(() => {
+    if (move === "idle" || move === "sleep" || move === "react") return;
+    straighten();
+    beats.current!.note(Date.now());
+    const s = cur.current;
+    // a hop as high as stays clear where it stands; a big jump only where it
+    // has the room, else the cheer; the droop and the tractor's hops at the
+    // largest that stays clear
+    const run = move === "hop" ? play(box.current, "hop", 1, hopFrames(hopPeak(s, px, you, roamNow.current)))
+      : move === "cheer" ? play(box.current, "cheer")
+      : move === "big" ? play(box.current, pickBeat([BIG], s, px, you, roamNow.current) ?? "cheer")
+      : play(box.current, pickBeat(move === "droop" ? DROOPS : CHUGS, s, px, you, roamNow.current) ?? (move === "droop" ? DROOPS[DROOPS.length - 1] : CHUGS[CHUGS.length - 1]));
     let live = true;
     void run.done.then(() => { if (live) ended.current(); });
     return () => { live = false; run.stop(); };
@@ -749,8 +856,9 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     const s = cur.current;
     const k = still || !s ? 1 : SPECIAL_SCALES.find((f) => clear(grown(s, px, f), px * f, you, roamNow.current)) ?? 1;
     const el = box.current;
+    beats.current!.note(Date.now());
     const a = k > 1 && el && typeof el.animate === "function"
-      ? el.animate([{ transform: "scale(1)" }, { transform: `scale(${k})`, offset: 0.15 }, { transform: `scale(${k})`, offset: 0.85 },
+      ? el.animate([{ transform: held.current ? READY_HELD : "scale(1)" }, { transform: `scale(${k})`, offset: 0.15 }, { transform: `scale(${k})`, offset: 0.85 },
                     { transform: "scale(1)" }], { duration: ms, easing: "ease-in-out" })
       : null;
     return () => { window.clearTimeout(timer); a?.cancel(); setPlaying(false); };
@@ -763,20 +871,22 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     // a tap while the special cools down still answers, with a small hop
     if (Date.now() - lastSpecial.current < SPECIAL_COOLDOWN_MS) {
       countPoke(false);
-      if (!prefersReducedMotion()) { nudging.current?.stop(); nudging.current = play(box.current, "nudge"); }
+      if (!prefersReducedMotion()) { nudging.current?.stop(); nudging.current = play(box.current, held.current ? READY_BOB : "nudge"); }
       return;
     }
     countPoke(true);
     setSpecial((n) => n + 1);
   };
 
-  const drawn: Pose = away ? "sleep" : up ? "cheer" : playing ? "react" : move;
+  const drawn: Pose = away ? "sleep" : up ? "cheer" : playing ? "react" : move === "big" ? "cheer" : move === "droop" || move === "chug" ? "idle" : move;
+  // the tag rides up with a figure standing larger
+  const lift = readyOn ? { transform: `translate(-50%, -${Math.ceil(px * (READY_SCALE - 1))}px)` } : undefined;
 
   if (!placed) return null;
   return (
     <span className="tc-seat" data-seat={player.seat} data-pos={pos}>
-      <span className={`tc-walk${you ? " tc-mine" : ""}`} ref={walk} onClick={you ? poked : undefined}>
-        {you ? <span className="tc-you">{t("table.companionYou")}</span> : null}
+      <span className={`tc-walk${you ? " tc-mine" : ""}`} ref={walk} onClick={you ? poked : undefined} data-ready={readyOn ? "" : undefined}>
+        {you ? <span className="tc-you" style={lift}>{t("table.companionYou")}</span> : null}
         {up && !away ? <span className="tc-level" key={up.n}>{up.glyph}</span> : null}
         <span className="tc-face" ref={face}>
           <span className="tc-move" ref={box} data-move={up && !away ? "levelup" : playing && !away ? "react" : move}>
@@ -950,20 +1060,34 @@ export function useLevelUps(state: GameState, size: { base: number; max: number 
   return { levels, ups, done };
 }
 
-/** Your team's rounds won, counted once each round-end sheet has closed
- *  and the table is in view (as a level gained is shown). */
-function useRoundWins(state: GameState, ours: 0 | 1): number {
-  const [wins, setWins] = useState(0);
-  const pending = useRef(false);
+/** What each team's companions owe a round's end, counted once its sheet
+ *  has closed and the table is in view (as a level gained is shown): a
+ *  special for your team's round won and for the team that took the kitty
+ *  on the last trick, and a droop (`onDroop`) for the team it was taken
+ *  from when that team lost the round with it. */
+function useRoundEnds(state: GameState, ours: 0 | 1, onDroop: (team: 0 | 1) => void): readonly [number, number] {
+  const [specials, setSpecials] = useState<readonly [number, number]>([0, 0]);
+  const pending = useRef<{ special: [boolean, boolean]; droop: 0 | 1 | null }>({ special: [false, false], droop: null });
+  const droop = useRef(onDroop);
+  droop.current = onDroop;
   const pageShown = usePageShown();
   const covered = state.phase === "round_end" || !pageShown;
-  if (state.phase === "round_end" && state.round_result && state.round_result.winner_team === ours) pending.current = true;
+  if (state.phase === "round_end" && state.round_result) {
+    if (state.round_result.winner_team === ours) pending.current.special[ours] = true;
+    const took = kittyCapture(state);
+    if (took !== null) {
+      pending.current.special[took] = true;
+      pending.current.droop = state.round_result.winner_team === took ? ((1 - took) as 0 | 1) : null;
+    }
+  }
   useEffect(() => {
-    if (covered || !pending.current) return;
-    pending.current = false;
-    setWins((n) => n + 1);
+    if (covered) return;
+    const { special, droop: lost } = pending.current;
+    pending.current = { special: [false, false], droop: null };
+    if (special[0] || special[1]) setSpecials((n) => [n[0] + (special[0] ? 1 : 0), n[1] + (special[1] ? 1 : 0)]);
+    if (lost !== null) droop.current(lost);
   }, [covered]);
-  return wins;
+  return specials;
 }
 
 /** What a tap on the felt is not: a card, a played trick, a seat, a
@@ -976,7 +1100,13 @@ export default function TableCompanions({ state }: { state: GameState }) {
   const account = useAuth();
   const mode = useCompanionMode(account.status === "in" ? account.user : null);
   const tablet = useMediaQuery(TABLET_SCREEN);
-  const [poses, setPoses] = useState<Record<number, Pose>>({});
+  const [poses, setPoses] = useState<Record<number, TableMove>>({});
+  const bigAt = useRef({ big: -Infinity });
+  // whether the table waits on you and the card it watches, as of the frame
+  // whose reactions are in `poses`: getting ready and watching wait for it,
+  // so a trick taken is hopped before either. A frame that changes neither
+  // (every card of the deal) renders nothing more
+  const [live, setLive] = useState<{ ready: boolean; play: { seat: number; key: string } | null }>({ ready: false, play: null });
   const [goal, setGoal] = useState<{ spot: Spot; n: number } | null>(null);
   // the spot your last tap chose: yours stays round it for the rest of this table
   const [tapped, setTapped] = useState<{ room: string; spot: Spot } | null>(null);
@@ -985,9 +1115,12 @@ export default function TableCompanions({ state }: { state: GameState }) {
   const prev = useRef<GameState | null>(null);
   const root = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    const moves = reactions(state, prev.current);
+    const moves = reactions(state, prev.current, Date.now(), bigAt.current);
     prev.current = state;
     if (Object.keys(moves).length) setPoses((p) => ({ ...p, ...moves }));
+    const ready = yourTurn(state);
+    const play = lastPlay(state);
+    setLive((was) => (was.ready === ready && was.play?.key === play?.key ? was : { ready, play }));
   }, [state]);
   // a table you only watch (an open table's newcomer until the next trick)
   // draws none, as the watch feed and a replay draw none
@@ -996,7 +1129,16 @@ export default function TableCompanions({ state }: { state: GameState }) {
   const { levels, ups, done } = useLevelUps(state, size);
   const me = state.players.find((p) => p.seat === state.you);
   const ours = me?.team ?? 0;
-  const wins = useRoundWins(state, ours);
+  const players = useRef(state.players);
+  players.current = state.players;
+  const specials = useRoundEnds(state, ours, (team) => setPoses((p) => {
+    const next = { ...p };
+    for (const q of players.current) if (q.team === team && q.connected && !q.away) next[q.seat] = "droop";
+    return next;
+  }));
+  // the card the table watches, and whether it waits on you
+  const played = on ? live.play : null;
+  const ready = on && live.ready;
   const key = JSON.stringify([state.phase, state.trick, state.last_trick?.winner, state.players.map((p) => [p.seat, p.is_bot, p.left]), tablet, levels]);
   const layout = useLayout(root, on, key, !tablet, state.phase === "deal");
   const people = state.players.filter((p) => !p.is_bot && !p.left);
@@ -1105,7 +1247,8 @@ export default function TableCompanions({ state }: { state: GameState }) {
                   px={you && home ? myPx : zone.size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max)}
                   pos={pos} zone={zone} layout={layout} roam={rooms ? rooms[pos] : layout} pose={poses[p.seat] ?? "idle"}
                   up={ups[p.seat] ?? null} you={you} goal={you ? goal : null} tapped={you ? home : null}
-                  wins={p.team === ours ? wins : 0} dealing={state.phase === "deal"} onEnd={end(p.seat)} onUpEnd={done(p.seat)}
+                  wins={specials[p.team]} dealing={state.phase === "deal"} ready={you && ready}
+                  watch={played ? { pos: SIDES[(played.seat - state.you + 4) % 4], key: played.key } : null} onEnd={end(p.seat)} onUpEnd={done(p.seat)}
                   onGoal={you ? takeGoal : undefined} onTapped={you ? takeHome : undefined}
                   onStray={stepped(pos, you && home ? myPx : zone.size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max))} />
         );

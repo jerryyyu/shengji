@@ -10,7 +10,7 @@ import { formatTableMessage, isDeclareMessage } from "../messageCopy";
 import { OFFLINE, useNearbySession } from "../offlineMode";
 import { useAuth } from "../auth";
 import { attackingTeam, myTeam } from "../tableCopy";
-import { clearToast, currentToast, releaseToast, showToast } from "../toast";
+import { clearToast, currentToast, heldToastKey, hideHeldToast, holdToast, releaseHeldToast, showToast } from "../toast";
 import { tookSeatText } from "../queue/tableText";
 import { useNearbyUi } from "../nearbyGate";
 import { displayName, t, useT } from "../i18n";
@@ -83,36 +83,40 @@ function playedSince(base: PlayMark, state: GameState): boolean {
   return now.done > base.done + 1 || !base.mine || now.mine;
 }
 
-/** The newcomer's line, once per seat taken, kept across a remount of the
- *  table (How to play and back tells it no second time). */
-let toldSeat: ({ key: string; id: number } & PlayMark) | null = null;
+/** The seat whose line was told, and where play stood then, kept across a
+ *  remount of the table so the first card is counted from the telling. */
+let toldSeat: ({ key: string } & PlayMark) | null = null;
 
-/** A seat taken mid-round is told once, as the one toast, held until this
- *  seat plays its first card: whose seat it was and, at a ranked table, that
- *  the round is unranked for them. A seat held from the round's start, or a
- *  seat taken at a round end, has no `took_seat` and hears nothing. */
+/** A seat taken mid-round is told once, as the one toast, held (in the
+ *  toast store, so How to play and back keeps it) until this seat plays its
+ *  first card, the round ends or the table is left: whose seat it was and,
+ *  at a ranked table, that the round is unranked for them. A seat held from
+ *  the round's start, or taken at a round end, has no `took_seat` and hears
+ *  nothing. */
 function useTookSeatToast(state: GameState, guest: boolean) {
   const took = state.phase !== "round_end" ? state.took_seat : undefined;
   const key = took ? `${state.room}:${took.name}` : "";
   useEffect(() => {
     if (!took) {
-      if (toldSeat !== null) releaseToast(toldSeat.id);
+      releaseHeldToast();
       toldSeat = null;
       return;
     }
-    if (toldSeat?.key === key) return;
+    const told = toldSeat?.key === key;
+    // told before and since let go: not again
+    if (told && heldToastKey() !== key) return;
+    if (!told) toldSeat = { key, ...playMark(state) };
     const ranked = state.joined_round === true && !guest;
-    const id = showToast(tookSeatText(took, ranked), { info: true, hold: true, dot: myTeam(state) }).id;
-    toldSeat = { key, id, ...playMark(state) };
-    // told on a new seat only; the rest is read with it
+    holdToast(key, tookSeatText(took, ranked), { info: true, dot: myTeam(state) });
+    // told on a new seat, or shown again on a remount; the rest is read with it
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   const played = toldSeat !== null && toldSeat.key === key && playedSince(toldSeat, state);
   useEffect(() => {
-    if (played && toldSeat !== null) releaseToast(toldSeat.id);
-  }, [played]);
-  // off the table the line has no hand to wait on
-  useEffect(() => () => { if (toldSeat !== null) releaseToast(toldSeat.id); }, []);
+    if (played) releaseHeldToast(key);
+  }, [played, key]);
+  // off the table it waits, unseen, for the table to come back
+  useEffect(() => () => hideHeldToast(), []);
 }
 
 /** A failed throw and the engine's table messages are told once, as the one

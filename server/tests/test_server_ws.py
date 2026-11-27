@@ -946,6 +946,49 @@ def test_takeover_of_dropped_human_is_announced_as_such(client, clock):
                 "took_over", "newbie", "amy", False), line
 
 
+def test_a_by_code_claim_of_a_bot_seat_mid_round_names_it_in_the_first_state(client):
+    """A friends' table has no open-table join: the claimer's own frame
+    still says whose seat it took, and nobody else's frame does."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code = _room_with_bots(a)
+        room = srv.rooms[code]
+        assert room.round is not None and room.round.phase != "round_end"
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "table_peek", "code": code})
+            seats = _drain(b, "room_seats")["seats"]
+            want = [s["seat"] for s in seats if s["is_bot"]][0]
+            botname = next(s["name"] for s in seats if s["seat"] == want)
+            b.send_json({"type": "table_join", "expect": "room", "code": code,
+                         "name": "mei", "seat": want})
+            st = _drain(b, "state")
+            assert st["you"] == want
+            assert st["took_seat"] == {"name": botname, "is_bot": True}
+            # presentation only: the rating and leave flag is the queue's alone
+            assert st["joined_round"] is False
+            assert "took_seat" not in srv.state_for(room, 0)
+            # the next round was started with them seated: nothing to tell
+            room.game.round_no += 1
+            assert "took_seat" not in srv.state_for(room, want)
+
+
+def test_a_by_code_takeover_of_a_dropped_seat_mid_round_names_it_in_the_first_state(client, clock):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        with ExitStack() as sockets:
+            code, room, socks, peer_stacks = _four_humans(client, a, sockets)
+            peer_stacks[0].close()
+            clock["v"] += srv.TAKEOVER_AFTER + 1
+            with client.websocket_connect("/ws") as r:
+                r.send_json({"type": "table_join", "expect": "room", "code": code,
+                             "name": "newbie", "seat": 1})
+                st = _drain(r, "state")
+                assert st["you"] == 1
+                assert st["took_seat"] == {"name": "amy", "is_bot": False}
+
+
 # ---------------------------------------------------------------- ship gate
 def test_stale_socket_cannot_detach_a_newer_connection(client):
     """P0-1: an old socket's teardown must only detach the generation it owns.

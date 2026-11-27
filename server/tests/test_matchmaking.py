@@ -3578,8 +3578,8 @@ def test_ws_a_joined_seat_reconnecting_gets_joined_round_in_its_state_frames(wse
         # a later round was started with them seated: nothing to tell
         room.round.phase = "round_end"
         assert "took_seat" not in srv.state_for(room, 2)
-        room.seats[2].joined_round = None
         room.round.phase = "play"
+        room.game.round_no += 1
         assert "took_seat" not in srv.state_for(room, 2)
 
 

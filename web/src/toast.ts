@@ -77,6 +77,43 @@ export function releaseToast(id: number): void {
   emit();
 }
 
+/** The one held line, kept here rather than in the view that showed it, so
+ *  a view that unmounts and comes back (How to play and back) finds it
+ *  still held. `key` names what it is about; `shownAt` is its first
+ *  showing, from which its at-least-TOAST_MS is counted. */
+let holding: { key: string; id: number; shownAt: number } | null = null;
+
+/** Show `text` held under `key` until `releaseHeldToast`. A key already
+ *  held is shown again only when it is off screen (hidden or replaced),
+ *  keeping its first showing's time. */
+export function holdToast(key: string, text: string, opts: ToastOpts = {}): void {
+  if (holding?.key === key && current?.id === holding.id) return;
+  const first = holding?.key === key ? holding.shownAt : null;
+  const t = showToast(text, { ...opts, hold: true });
+  if (first !== null) shownAt = first;
+  holding = { key, id: t.id, shownAt };
+}
+
+/** The key held now, or null. */
+export function heldToastKey(): string | null {
+  return holding?.key ?? null;
+}
+
+/** Take the held toast off screen without letting it go: its view is
+ *  gone for now, and `holdToast` with the same key shows it again. */
+export function hideHeldToast(): void {
+  if (holding !== null && current?.id === holding.id) clearToast();
+}
+
+/** Let the held line go (with `key`, only that one): shown, it fades out
+ *  once up TOAST_MS in all; hidden, it is simply forgotten. */
+export function releaseHeldToast(key?: string): void {
+  if (holding === null || (key !== undefined && holding.key !== key)) return;
+  const id = holding.id;
+  holding = null;
+  releaseToast(id);
+}
+
 /** Take the toast down now. */
 export function clearToast(): void {
   if (timer !== null) window.clearTimeout(timer);

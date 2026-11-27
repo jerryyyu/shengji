@@ -521,3 +521,20 @@ it("the round end fills in only for a result the socket that showed play deliver
   act(() => latest().deliver(result));
   expect(theirs()).toEqual({ was: null, fill: false });
 });
+
+it("leaving the table lets a held seat line go: it does not come back at the next table", async () => {
+  const { ws } = await mount();
+  const toast = await import("./toast");
+  ws.saveName("Me");
+  act(() => latest().open());
+  act(() => latest().deliver({ type: "resume", room: "ABCD", token: "tok-1" }));
+  act(() => latest().deliver({ ...playing, took_seat: { name: "Bot 0", is_bot: true } }));
+  expect(host.querySelector(".toast.held")?.textContent).toBe("You took Bot 0's seat");
+  act(() => { vi.advanceTimersByTime(10_000); });
+  expect(toast.heldToastKey()).toBe("ABCD:Bot 0");
+  act(() => { ws.conn.send({ type: "table_leave" }); });
+  act(() => latest().deliver({ type: "left" }));
+  expect(host.querySelector(".table-screen")).toBeNull();
+  expect(toast.heldToastKey()).toBeNull();
+  expect(host.querySelector(".toast.held")).toBeNull();
+});

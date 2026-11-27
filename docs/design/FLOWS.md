@@ -73,8 +73,11 @@ The host role passes on, and a ranked leave keeps "at best a draw".
     table: "You took Bot 2's seat"), the previous holder named as the table names them, held until you play
     your first card (at least 4 s); for that round the ⋯ menu's mode word reads "Unranked this round" in
     place of the gold "Ranked". The round end's "Unranked · joined mid-round" and the leave sheet's line are
-    unchanged. The state frame's optional `took_seat` (the holder before you, sent only during the round
-    joined) and its `joined_round` carry it; no new surface or message.
+    unchanged. The state frame's optional `took_seat` carries the name: the holder before you, from any
+    mid-round claim (an open-table join, or a by-code take of a bot's or a dropped player's seat), sent only
+    during that round. It is presentation only; `joined_round` alone sets the menu word and the rating and
+    leave rules. The hold lives in the toast store, so How to play and back keeps it; the first card, the
+    round end or leaving the table lets it go. No new surface or message.
 
 **Section 4, connection.** One "Reconnecting…" pill, Retry after 10 s, a full-screen state after 30 s (when the bot takes a dropped seat), and a
 bad code shown inline under the code box. The 30 s is one window on both sides (Jerry 2026-11-26, option B):

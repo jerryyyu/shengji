@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Toast from "./Toast";
-import { TOAST_MS, clearToast, currentToast, releaseToast, showToast } from "../toast";
+import { TOAST_MS, clearToast, currentToast, heldToastKey, hideHeldToast, holdToast, releaseHeldToast, releaseToast, showToast } from "../toast";
 
 let host: HTMLDivElement;
 let root: Root;
@@ -103,5 +103,27 @@ describe("a held toast", () => {
     expect(currentToast()?.leaving).toBeUndefined();
     act(() => { vi.advanceTimersByTime(TOAST_MS); });
     expect(shown()).toHaveLength(0);
+  });
+
+  it("held by key in the store: hidden and shown again keeps its first showing's time, and a release ends it", () => {
+    act(() => root.render(<Toast />));
+    act(() => holdToast("R:Bot 2", "line"));
+    act(() => { vi.advanceTimersByTime(1000); });
+    act(() => hideHeldToast());
+    expect(shown()).toHaveLength(0);
+    expect(heldToastKey()).toBe("R:Bot 2");
+    act(() => { vi.advanceTimersByTime(1000); });
+    act(() => holdToast("R:Bot 2", "line"));
+    expect(shown()[0].classList.contains("held")).toBe(true);
+    // shown again while on screen: nothing new
+    const id = currentToast()!.id;
+    act(() => holdToast("R:Bot 2", "line"));
+    expect(currentToast()!.id).toBe(id);
+    // a release for another key leaves it
+    act(() => releaseHeldToast("R:Mei"));
+    expect(heldToastKey()).toBe("R:Bot 2");
+    act(() => releaseHeldToast());
+    expect(heldToastKey()).toBeNull();
+    expect(currentToast()?.leaving).toBe(TOAST_MS - 2000);
   });
 });

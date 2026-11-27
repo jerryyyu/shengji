@@ -4,7 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { DUR } from "../motion";
 import type { GameState, Notice, StatePlayer } from "../protocol";
 import Hud from "./Hud";
-import { TOAST_MS, clearToast, currentToast, showToast } from "../toast";
+import { TOAST_MS, clearToast, currentToast, heldToastKey, releaseHeldToast, showToast } from "../toast";
 import { setLanguageChoice } from "../i18n";
 import { applyPlay, newRound } from "../offline/engine/round";
 import { newGame } from "../offline/engine/game";
@@ -249,7 +249,7 @@ describe("a seat taken mid-round: one held toast and the menu's word", () => {
   });
   const nextTrick = (plays: { seat: number; cards: string[] }[]) =>
     joined({ tricks_done: 4, trick: { leader: 3, plays } });
-  beforeEach(() => { n += 1; clearToast(); vi.useFakeTimers(); });
+  beforeEach(() => { n += 1; releaseHeldToast(); clearToast(); vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); setLanguageChoice("system"); });
   const toast = () => currentToast();
   const modeWord = (host: HTMLElement) => {
@@ -291,13 +291,38 @@ describe("a seat taken mid-round: one held toast and the menu's word", () => {
     view.unmount();
   });
 
-  it("a remount while it stands tells it no second time", () => {
+  it("How to play and back, past the usual time, finds it still held; the first card then lets it go", () => {
     const view = render(joined());
-    const id = toast()!.id;
+    // the table unmounts for How to play: off screen, still held
     view.unmount();
-    const again = render(joined());
-    expect(toast()?.id).toBe(id);
-    again.unmount();
+    expect(toast()).toBeNull();
+    expect(heldToastKey()).toBe(`J${n}:Bot 2`);
+    act(() => { vi.advanceTimersByTime(TOAST_MS * 3); });
+    const back = render(joined());
+    expect(toast()?.text).toBe("You took Bot 2's seat · unranked this round");
+    expect(toast()?.held).toBe(true);
+    act(() => { vi.advanceTimersByTime(TOAST_MS * 3); });
+    expect(toast()?.held).toBe(true);
+    // up long enough already: the first card leaves only the fade
+    back.rerender(nextTrick([{ seat: 3, cards: ["9C"] }, { seat: 0, cards: ["JC"] }, { seat: 1, cards: ["QC"] }, { seat: 2, cards: ["AC"] }]));
+    expect(toast()?.leaving).toBe(400);
+    expect(heldToastKey()).toBeNull();
+    act(() => { vi.advanceTimersByTime(400); });
+    expect(toast()).toBeNull();
+    // let go: another remount does not tell it again
+    back.unmount();
+    const third = render(nextTrick([]));
+    expect(toast()).toBeNull();
+    third.unmount();
+  });
+
+  it("a first card played while the table was away lets it go on return", () => {
+    const view = render(joined());
+    view.unmount();
+    const back = render(nextTrick([{ seat: 2, cards: ["AC"] }]));
+    expect(toast()?.held).toBe(false);
+    expect(heldToastKey()).toBeNull();
+    back.unmount();
   });
 
   it("names a person's seat as typed, and a casual table says nothing of ranking", () => {

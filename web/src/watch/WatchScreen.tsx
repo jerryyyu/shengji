@@ -15,6 +15,7 @@ import { queue } from "../queue/store";
 import { codes } from "../codeJoin";
 import { rounds } from "../roundTelemetry";
 import { tapHandlers } from "../tap";
+import { showToast } from "../toast";
 import { fetchWatch, followWatch } from "./api";
 import type { WatchDoc } from "./api";
 import {
@@ -22,6 +23,7 @@ import {
 } from "./playback";
 import type { Beat, Speed } from "./playback";
 import { watch } from "./store";
+import { watchUsage } from "./usage";
 import "./watch.css";
 
 /** How often a caught-up watcher asks whether the round in play finished. */
@@ -30,6 +32,9 @@ export const FOLLOW_MS = 15000;
 export const CARD_HOLD_MS = 5000;
 /** How long the table takes to turn to another player. */
 export const TURN_MS = 500;
+/** A read that failed (refused, a server error, no network) is tried once
+ *  more after this. */
+export const RETRY_MS = 1500;
 
 const noToggle = () => {};
 
@@ -213,6 +218,7 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   };
   const show = (l: Loaded) => {
     dropNext();
+    watchUsage.shown(l.doc.rerun ? "replay" : "live");
     table.current = l.doc.table;
     setLoaded(l);
     setLive({ round: l.doc.live_round, code: l.doc.code });
@@ -221,17 +227,47 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     setKitty(false);
     endedAt.current = null;
   };
-  const pick = (skip: string | null) => {
+  const retry = useRef<number | null>(null);
+  // a table to watch: the first, or another by Next table (`why` "next") or
+  // in place of one that is gone. "Nobody is playing" is said only when the
+  // server says so; a read that fails twice closes the watch with a toast,
+  // and one that fails while a table is on screen keeps that table.
+  const pick = (skip: string | null, why: "next" | "gone" | null = null) => {
     const mine = ++picks.current;
     dropNext();
-    void fetchWatch(mode, skip, loaded?.doc.watcher ?? null).then((r) => {
-      if (mine !== picks.current) return;
-      const l = r.ok ? load(r.doc) : null;
-      if (l) { setNone(false); show(l); } else if (!loaded) setNone(true);
-    });
+    if (retry.current !== null) window.clearTimeout(retry.current);
+    retry.current = null;
+    const read = (again: boolean) => {
+      void fetchWatch(mode, skip, loaded?.doc.watcher ?? null).then((r) => {
+        if (mine !== picks.current) return;
+        if (!r.ok && r.reason !== "none" && !again) {
+          retry.current = window.setTimeout(() => { retry.current = null; read(true); }, RETRY_MS);
+          return;
+        }
+        const l = r.ok ? load(r.doc) : null;
+        if (l) {
+          if (why) { watchUsage.left(why); watchUsage.begin("next"); }
+          setNone(false);
+          show(l);
+        } else if (loaded) {
+          // the table on screen stays
+        } else if (!r.ok && r.reason !== "none") {
+          showToast(t("watch.failed"));
+          watch.close("error");
+        } else {
+          setNone(true);
+        }
+      });
+    };
+    read(false);
   };
   useEffect(() => { pick(null); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => () => dropNext(), []);
+  useEffect(() => () => {
+    dropNext();
+    // a later answer to a pick is dropped, and none is tried again
+    picks.current++;
+    if (retry.current !== null) window.clearTimeout(retry.current);
+  }, []);
 
   const beats = loaded?.beats ?? [];
   const beat = beats[Math.min(at, Math.max(0, beats.length - 1))];
@@ -283,7 +319,7 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
           // whether or not another table is found in its place
           table.current = null;
           setLive({ round: null, code: null });
-          pick(doc.table);
+          pick(doc.table, "gone");
         }
       });
     };
@@ -310,7 +346,7 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
       if (menu) setMenu(false);
-      else watch.close();
+      else watch.close("escape");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -339,7 +375,7 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     ? t("watch.inPlay", { n: live.round }) : null;
   const goTo = (i: number) => { setAt(i); };
   const takeSeat = () => {
-    watch.close();
+    watch.close("seat");
     if (doc.mode === "ranked" || !live.code) {
       queue.setPlayMode(doc.mode);
       rounds.noteEntry("queue");
@@ -380,7 +416,7 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
                 {menu ? (
                   <div className="hud-menu" role="menu">
                     <button className="hud-menu-row" role="menuitem"
-                            {...tapHandlers(() => { setMenu(false); pick(doc.table); })}>{t("watch.next")}</button>
+                            {...tapHandlers(() => { setMenu(false); pick(doc.table, "next"); })}>{t("watch.next")}</button>
                     <div className="hud-menu-sep" role="separator" />
                     <button className="hud-menu-row leave" role="menuitem" {...tapHandlers(leave)}>{t("common.leave")}</button>
                   </div>

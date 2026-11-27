@@ -11,6 +11,7 @@ import { conn } from "./ws";
 import { onPageHide, telemetry, type RoundBy, type RoundMode } from "./telemetry";
 import { markPlayed, type Store } from "./telemetryStamps";
 import { offlineDigest, type OfflineDigest } from "./offlineDigest";
+import { watchUsage } from "./watch/usage";
 
 /** An online round in progress, kept in this tab's session storage so the
  *  same tab's next load can say it closed. Another tab never sees it, and a
@@ -170,6 +171,7 @@ export class RoundTracker {
     }
     const bots = state.players.filter((p) => p.controller === "bot").length;
     telemetry.roundStart(mode, bots, this.nth);
+    watchUsage.roundStarted();
     this.keep();
   }
 

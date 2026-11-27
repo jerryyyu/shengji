@@ -1,6 +1,8 @@
 // Whether this page is watching a table, and in which mode it asked. The
 // watch screen owns everything else; App only swaps it in for the Play tab.
 import { useSyncExternalStore } from "react";
+import type { WatchBy, WatchFrom } from "../telemetry";
+import { watchUsage } from "./usage";
 
 export interface Watching {
   mode: "ranked" | "casual";
@@ -58,9 +60,11 @@ function onPop(): void {
   if (m && current === null) {
     // forward onto a watch's entry opens that watch again
     session = m.session;
+    watchUsage.begin("history");
     set({ mode: m.mode });
   } else if (!m && current !== null) {
     session = 0;
+    watchUsage.left("back");
     set(null);
   }
 }
@@ -68,18 +72,20 @@ function onPop(): void {
 if (typeof window !== "undefined") window.addEventListener("popstate", onPop);
 
 export const watch = {
-  open(mode: "ranked" | "casual"): void {
+  open(mode: "ranked" | "casual", from: WatchFrom = "presence"): void {
     session = ++sessions;
+    watchUsage.begin(from);
     // while a close's back is on its way, the entry waits for it to land
     if (closing === null) pushEntry(mode, session);
     set({ mode });
   },
   /** End the watch now; its history entry is walked back, so a later back
-   *  goes where it would have before the watch. */
-  close(): void {
+   *  goes where it would have before the watch. `by` says why, for its telemetry. */
+  close(by: WatchBy = "close"): void {
     if (current === null) return;
     const id = session;
     session = 0;
+    watchUsage.left(by);
     set(null);
     if (closing !== null || markOf()?.session !== id) return;
     closing = id;

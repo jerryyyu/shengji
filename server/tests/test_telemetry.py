@@ -738,11 +738,47 @@ def test_an_invite_keeps_no_room_code_account_or_name():
     assert ev == {"e": "invite", "step": "seated", "h": _hash("0123456789ab")}
 
 
-def test_the_collection_screen_and_the_watch_taps_are_kept():
+def test_the_collection_screen_is_kept():
     assert telemetry.clean_event({"e": "screen", "name": "collection", "prev": "play"}) == {
         "e": "screen", "name": "collection", "prev": "play"}
+
+
+# watching a table
+
+@pytest.mark.parametrize("raw,kept", [
+    ({"e": "watch_open", "t": 3, "kind": "live", "from": "presence"},
+     {"e": "watch_open", "t": 3, "kind": "live", "from": "presence"}),
+    ({"e": "watch_open", "kind": "replay", "from": "history"}, {"e": "watch_open", "kind": "replay", "from": "history"}),
+    ({"e": "watch_leave", "t": 4, "by": "escape", "secs": 95, "kind": "live"},
+     {"e": "watch_leave", "t": 4, "by": "escape", "secs": 95, "kind": "live"}),
+    ({"e": "watch_leave", "by": "error", "secs": 3}, {"e": "watch_leave", "by": "error", "secs": 3}),
+    ({"e": "watch_to_play", "t": 5, "secs": 40, "by": "seat"}, {"e": "watch_to_play", "t": 5, "secs": 40, "by": "seat"}),
+])
+def test_the_watch_events_validate(raw, kept):
+    assert telemetry.clean_event(raw) == kept
+
+
+def test_the_watch_events_drop_the_table_its_players_and_a_bad_value():
+    assert telemetry.clean_event({
+        "e": "watch_open", "kind": "live", "from": "menu", "table": "abc123", "watcher": "w" * 32,
+        "code": "CSUL", "players": ["Mei"],
+    }) == {"e": "watch_open", "kind": "live"}
+    assert telemetry.clean_event({"e": "watch_leave", "by": "back", "secs": 86_401, "kind": "rerun"}) == {
+        "e": "watch_leave", "by": "back"}
+    assert telemetry.clean_event({"e": "watch_leave", "by": "other", "secs": 5}) is None
+    assert telemetry.clean_event({"e": "watch_to_play", "secs": True, "by": "seat"}) is None
     for tap in ("watch_open", "watch_leave"):
-        assert telemetry.clean_event({"e": "tap", "id": tap}) == {"e": "tap", "id": tap}
+        assert telemetry.clean_event({"e": "tap", "id": tap}) is None
+
+
+def test_every_client_watch_enum_is_on_the_server_allow_list():
+    src = (Path(__file__).resolve().parents[2] / "web/src/telemetry.ts").read_text()
+    for name, values in (("WatchKind", telemetry.WATCH_KINDS), ("WatchFrom", telemetry.WATCH_FROM),
+                         ("WatchBy", telemetry.WATCH_BY)):
+        union = re.search(rf"export type {name} =(.*?);", src, re.DOTALL)
+        assert union is not None
+        assert set(re.findall(r'"([a-z_]+)"', union.group(1))) == set(values)
+    assert f"MAX_WATCH_SECS = {telemetry.MAX_WATCH_SECS:_}" in src
 
 
 def test_every_client_screen_and_invite_enum_is_on_the_server_allow_list():

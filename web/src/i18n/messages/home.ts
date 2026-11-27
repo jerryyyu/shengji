@@ -35,6 +35,7 @@ export const home = defineMessages({
   "home.yours": { en: "Yours", zh: "我的", hant: "我的" },
   "home.moreCompanions": { en: "More companions", zh: "更多伙伴", hant: "更多夥伴" },
   "home.soon": { en: "Soon", zh: "即将推出", hant: "即將推出" },
+  "home.comingSoon": { en: "Coming soon", zh: "即将推出", hant: "即將推出" },
   "home.getApp": { en: "Get the app", zh: "下载 App", hant: "下載 App" },
   "home.buyPrice": { en: "Buy {price}", zh: "购买 {price}", hant: "購買 {price}" },
   "home.signInToBuy": { en: "Sign in to buy", zh: "登录后购买", hant: "登入後購買" },

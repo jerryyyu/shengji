@@ -22,6 +22,7 @@ vi.mock("../auth", async (importOriginal) => {
 import CollectionPage from "../components/CollectionPage";
 import { forgetHomeSession } from "../home/session";
 import { lookCatalogue } from "../companion/look";
+import { setLanguageChoice } from "../i18n";
 
 const LAMB = "com.jerryyu.shengji.companion.lamb";
 const PANDA = "com.jerryyu.shengji.companion.panda";
@@ -603,7 +604,7 @@ describe("a selected character that goes away", () => {
   // the stage: a selection that goes away gives it back to the one in use (the Tractor)
   const title = () => onStage();
 
-  it("a refund while the Lamb is selected gives the stage back to the one in use", async () => {
+  it("a refund while the Lamb is selected moves it to Coming soon, where the store cannot sell", async () => {
     authState.current = { status: "in", clientId: "cid", user: owner };
     await draw();
     await openTile(".coll-yours", 4);
@@ -611,24 +612,29 @@ describe("a selected character that goes away", () => {
     // a refresh brings the account back without the Lamb
     authState.current = { status: "in", clientId: "cid", user: { ...owner, products: [], looks: tractorLooks } };
     await draw();
-    expect(title()).toBe("Tractor");
+    expect(title()).toBe("Coming soon");
+    expect(host.querySelector(".char-stage svg.cmp-lamb")).not.toBeNull();
     expect(names(".coll-yours")).toEqual(FREE_TILES);
+    expect(host.querySelector(".coll-soon .coll-tile.selected")?.textContent).toBe("Spring Lamb");
   });
 
-  it("an account switch while the Lamb is selected gives the stage back to the one in use", async () => {
+  it("an account switch while the Lamb is selected shows it as Coming soon, never as the new account's own", async () => {
     authState.current = { status: "in", clientId: "cid", user: owner };
     await draw();
     await openTile(".coll-yours", 4);
     authState.current = { status: "in", clientId: "cid", user: { ...user, email: "mei@x", features: { collection: true },
       products: [], looks: tractorLooks } };
     await draw();
-    expect(title()).toBe("Tractor");
+    // the Lamb is not hers: never her Use, only Coming soon
+    expect(title()).toBe("Coming soon");
+    expect(host.querySelector(".char-page .coll-use, .char-swatches")).toBeNull();
     authState.current = { status: "out", clientId: "cid", user: null };
     await draw();
-    expect(title()).toBe("Tractor");
+    expect(title()).toBe("Coming soon");
+    expect(host.querySelector(".char-page .coll-use, .char-swatches")).toBeNull();
   });
 
-  it("the store turning off while a store character is selected gives the stage back to the one in use", async () => {
+  it("the store turning off while a store character is selected shows it as Coming soon, with no price", async () => {
     nativeShell();
     authState.current = { status: "in", clientId: "cid", user };
     await draw();
@@ -637,16 +643,18 @@ describe("a selected character that goes away", () => {
     expect(host.querySelector(".coll-use.gold")?.textContent).toBe("Buy $3.99");
     authState.current = { status: "in", clientId: "cid", user: { ...user, features: { collection: true } } };
     await draw();
-    expect(title()).toBe("Tractor");
-    expect(host.querySelector(".coll-more")).toBeNull();
-    // and a Soon page closes with the store too
+    expect(title()).toBe("Coming soon");
+    expect(host.querySelector(".char-stage svg.cmp-panda")).not.toBeNull();
+    expect(host.querySelector(".coll-more, .coll-use, .store-price")).toBeNull();
+    // and a Soon page turns Coming soon with the store too
     authState.current = { status: "in", clientId: "cid", user };
     await draw();
     await openTile(".coll-more", 2);
     expect(title()).toBe("Jade Rabbit");
     authState.current = { status: "in", clientId: "cid", user: { ...user, features: { collection: true } } };
     await draw();
-    expect(title()).toBe("Tractor");
+    expect(title()).toBe("Coming soon");
+    expect(host.querySelector(".char-stage svg.cmp-rabbit")).not.toBeNull();
   });
 });
 
@@ -672,15 +680,17 @@ describe("a store character by its address", () => {
     expect(window.location.hash).toBe("#/collection");          // selected, and the plain address in its place
   });
 
-  it("leaves the stage on the one in use once the store's check says no", async () => {
+  it("selects it as Coming soon once the store's check says no", async () => {
     nativeShell();
     plugin.storefront.mockImplementation(later("CHN"));
     window.history.replaceState(null, "", "/#/collection/rabbit");
     authState.current = { status: "in", clientId: "cid", user };
     await draw();
     expect(window.location.hash).toBe("#/collection/rabbit");
-    await wait(220);
     expect(title()).toBe("Tractor");
+    await wait(220);
+    expect(title()).toBe("Coming soon");
+    expect(host.querySelector(".char-stage svg.cmp-rabbit")).not.toBeNull();
     expect(window.location.hash).toBe("#/collection");
   });
 
@@ -698,14 +708,13 @@ describe("a store character by its address", () => {
 });
 
 describe("an address the viewer cannot follow", () => {
-  it("with Bun selected, a link to the Lamb while the store is unavailable gives the stage back to the one in use", async () => {
-    // no plugin: the store is unavailable, so the Lamb is not for this viewer
+  it("with Bun selected, a link to no character gives the stage back to the one in use", async () => {
     authState.current = { status: "in", clientId: "cid", user };
     await draw();
     await openTile(".coll-yours", 1);
     expect(onStage()).toBe("Bun");
     await act(async () => {
-      window.history.replaceState(null, "", "/#/collection/lamb");
+      window.history.replaceState(null, "", "/#/collection/unicorn");
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     });
     await settle();
@@ -763,5 +772,106 @@ describe("each store answer on its own line", () => {
     expect(said).toHaveLength(1);
     expect(host.querySelector(".coll-grid-status")?.textContent).toBe(said[0]);
     expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("Spring Lamb · New Year");
+  });
+});
+
+describe("Coming soon, where the store cannot sell", () => {
+  const STORE_SEVEN = ["Spring Lamb", "Baby Panda", "Jade Rabbit", "Lucky Cat", "Fortune Fox", "Dancing Lion", "Little Dragon"];
+  const noStore: AuthUser = { ...user, features: { collection: true } };
+  const sections = () => [...host.querySelectorAll(".coll-section")].map((h) => h.textContent);
+  const stageKind = () => [...(host.querySelector(".char-stage svg.cmp")?.classList ?? [])]
+    .find((c) => /^cmp-(tractor|bun|chick|sparrow|lamb|panda|rabbit|cat|fox|lion|dragon)$/.test(c));
+  /** No price, no buy, no store wording anywhere on the page. */
+  const sellsNothing = () => {
+    const text = host.textContent ?? "";
+    expect(text).not.toMatch(/\$|¥|Buy|Shop|Restore|购买|商店/);
+    expect(host.querySelector(".coll-use.gold, .store-price, .coll-restore, .coll-more")).toBeNull();
+  };
+
+  it("an account the store is off for sees the seven store characters under Yours, muted, with no price and no buy", async () => {
+    authState.current = { status: "in", clientId: "cid", user: noStore };
+    await draw();
+    expect(sections()).toEqual(["Yours", "Coming soon"]);
+    expect(names(".coll-yours")).toEqual(FREE_TILES);
+    expect(names(".coll-soon")).toEqual(STORE_SEVEN);
+    expect([...host.querySelectorAll(".coll-soon .coll-tile")].every((b) => b.classList.contains("dim"))).toBe(true);
+    sellsNothing();
+  });
+
+  it("so do a website guest (with Get the app), a guest in the app, and the China mainland storefront", async () => {
+    await draw();
+    expect(names(".coll-soon")).toEqual(STORE_SEVEN);
+    expect(host.querySelector(".coll-get-app")).not.toBeNull();
+    nativeShell();
+    await draw();
+    expect(names(".coll-soon")).toEqual(STORE_SEVEN);
+    plugin.storefront.mockImplementation(async () => ({ countryCode: "CHN" }));
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    expect(names(".coll-soon")).toEqual(STORE_SEVEN);
+    sellsNothing();
+  });
+
+  it("an account the store sells to keeps More companions and has no Coming soon; the store off, Coming soon takes its place", async () => {
+    nativeShell();
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    expect(sections()).toEqual(["Yours", "More companions"]);
+    expect(host.querySelector(".coll-soon")).toBeNull();
+    authState.current = { status: "in", clientId: "cid", user: noStore };
+    await draw();
+    expect(sections()).toEqual(["Yours", "Coming soon"]);
+  });
+
+  it("a character owned stays in Yours, not in Coming soon", async () => {
+    authState.current = { status: "in", clientId: "cid", user: { ...noStore, products: [LAMB],
+      looks: [...tractorLooks, ...lambLooks(true)] } };
+    await draw();
+    expect(names(".coll-yours")).toEqual([...FREE_TILES, "Spring Lamb"]);
+    expect(names(".coll-soon")).toEqual(STORE_SEVEN.slice(1));
+  });
+
+  it("a Coming soon tile puts the character live on the stage with the one status line Coming soon and no button", async () => {
+    authState.current = { status: "in", clientId: "cid", user: noStore };
+    await draw();
+    await openTile(".coll-soon", 0);
+    expect(stageKind()).toBe("cmp-lamb");
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("Coming soon");
+    expect(host.querySelectorAll(".char-page [role=status]")).toHaveLength(1);
+    expect(host.querySelector(".char-page .coll-use, .char-chip, .char-swatches")).toBeNull();
+    expect(host.querySelectorAll(".coll-soon .coll-tile")[0].classList.contains("selected")).toBe(true);
+    await openTile(".coll-soon", 4);
+    expect(stageKind()).toBe("cmp-fox");
+    // a tap on the figure plays its special
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-figure")!.click(); });
+    expect(host.querySelector(".char-stage svg.cmp-react")).not.toBeNull();
+    sellsNothing();
+    expect(plugin.purchase).not.toHaveBeenCalled();
+  });
+
+  it("a link to a store character opens it on the stage as Coming soon", async () => {
+    window.history.replaceState(null, "", "/#/collection/panda");
+    authState.current = { status: "in", clientId: "cid", user: noStore };
+    await draw();
+    expect(stageKind()).toBe("cmp-panda");
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("Coming soon");
+    expect(window.location.hash).toBe("#/collection");
+  });
+
+  it("reads in Chinese", async () => {
+    setLanguageChoice("zh-Hans");
+    try {
+      await draw();
+      expect(sections()).toEqual(["我的", "即将推出"]);
+      expect(names(".coll-soon")).toEqual(["小羊", "熊猫宝宝", "玉兔", "招财猫", "福狐", "醒狮", "小龙"]);
+      await openTile(".coll-soon", 3);
+      expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("即将推出");
+      setLanguageChoice("zh-Hant");
+      await draw();
+      expect(sections()).toEqual(["我的", "即將推出"]);
+      expect(names(".coll-soon")).toEqual(["小羊", "熊貓寶寶", "玉兔", "招財貓", "福狐", "醒獅", "小龍"]);
+    } finally {
+      setLanguageChoice("system");
+    }
   });
 });

@@ -61,8 +61,11 @@ function Tile({ kind, colour, label, sub, gold, dim, worn, isNew, selected, arri
  *  grid. Yours: the free companions and the ones bought, a tick on the one in
  *  use. Where the store can sell (`useShop`), More companions: the store's
  *  characters with StoreKit's price, or Soon, and Restore purchases as the
- *  last row; a guest on the website gets one Get the app row instead, and
- *  the China mainland storefront neither. A tap on a tile selects it into the
+ *  last row. Everywhere else (an account the store is off for, a guest, the
+ *  website, the China mainland storefront), Coming soon: the store's
+ *  characters not owned, muted, with no price and no button; selected, the
+ *  stage shows the character live with the one status line Coming soon. A
+ *  guest on the website also gets one Get the app row. A tap on a tile selects it into the
  *  stage, in place (a ring marks the selected tile; on a phone the page
  *  scrolls back up to the stage); a purchase sends its tile up into Yours. A
  *  link to `#/collection/<kind>` selects that character and leaves the plain
@@ -107,13 +110,19 @@ export default function CollectionPage() {
   // (a refund, a revocation or another account takes an owned one away), and
   // a store character only while the store is shown. One that is not gives
   // the stage back to the one in use.
+  // Where the store cannot sell, its characters show as Coming soon instead:
+  // a tile and the stage, with no price and no button.
+  const comingSoon = !shop.shown && shop.settled;
+  const previewed = (k: Selected): boolean =>
+    comingSoon && (isSoon(k) || (!!COMPANION_PRODUCTS[k] && !owns(k)));
   const available = (k: Selected): boolean => {
+    if (previewed(k)) return true;
     if (isSoon(k)) return shop.shown;
     if (entriesOf(k).length === 0) return false;
     return !COMPANION_PRODUCTS[k] || owns(k) || shop.shown;
   };
   const selected: Selected = picked !== null && available(picked) ? picked : worn.kind;
-  const kindShown = isSoon(selected) ? null : selected;
+  const kindShown = isSoon(selected) || previewed(selected) ? null : selected;
 
   // The colour shown on the stage. Selecting a character shows its first new
   // colour, else the one in use or its first. Until the player taps a colour
@@ -184,7 +193,7 @@ export default function CollectionPage() {
   const choose = (k: Selected) => {
     setBought(null);
     setPicked(k);
-    if (!isSoon(k)) {
+    if (!isSoon(k) && !previewed(k)) {
       const list = entriesOf(k);
       const id = fresh.find((f) => parseLook(f).kind === k && list.some((e) => e.id === f && e.unlocked))
         ?? (worn.kind === k ? inUse : `${k}/${COMPANIONS[k][0]}`);
@@ -244,7 +253,15 @@ export default function CollectionPage() {
   const hasNew = (k: CompanionKind) => k !== kindShown && unseen.some((id) => parseLook(id).kind === k);
 
   let stage;
-  if (isSoon(selected)) {
+  if (previewed(selected)) {
+    const colour = isSoon(selected) ? soonColour(selected) : COMPANIONS[selected][0];
+    stage = (
+      <div className="char-page">
+        <Stage key={selected} kind={selected} colour={colour} size={stageSize(phone, short)} label={kindName(t, selected)} />
+        <p className="coll-status" role="status">{t("home.comingSoon")}</p>
+      </div>
+    );
+  } else if (isSoon(selected)) {
     stage = (
       <div className="char-page">
         <Stage key={selected} kind={selected} colour={soonColour(selected)} size={stageSize(phone, short)} label={kindName(t, selected)} />
@@ -270,6 +287,7 @@ export default function CollectionPage() {
 
   const yours = COMPANION_KINDS.filter((k) => (FREE_KINDS as readonly string[]).includes(k) || owns(k));
   const forSale = COMPANION_KINDS.filter((k) => COMPANION_PRODUCTS[k] && !owns(k) && entriesOf(k).length > 0);
+  const soon: Selected[] = comingSoon ? [...COMPANION_KINDS.filter((k) => COMPANION_PRODUCTS[k] && !owns(k)), ...SOON] : [];
   const getApp = !isNative() && user === null;
 
   return (
@@ -296,6 +314,17 @@ export default function CollectionPage() {
                 selected={selected === k} arrive={arrived === k} onArrived={() => setArrived(null)} onOpen={() => select(k)} />
         ))}
       </div>
+      {soon.length > 0 ? (
+        <>
+          <h2 className="coll-section">{t("home.comingSoon")}</h2>
+          <div className="coll-grid coll-soon">
+            {soon.map((k) => (
+              <Tile key={k} kind={k} colour={isSoon(k) ? soonColour(k) : COMPANIONS[k][0]} label={kindName(t, k)} dim
+                    selected={selected === k} onOpen={() => select(k)} />
+            ))}
+          </div>
+        </>
+      ) : null}
       {shop.shown ? (
         <>
           <h2 className="coll-section">{t("home.moreCompanions")}</h2>

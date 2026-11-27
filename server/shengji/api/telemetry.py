@@ -115,7 +115,7 @@ TAPS = frozenset({
     "offer_join", "offer_wait", "offer_chip", "next_round", "round_end_leave",
     "menu_leave", "chip_leave", "leave_confirm", "leave_keep", "howto_open",
     "signin_open", "coach_on", "coach_off", "invite_share", "copy_code",
-    "app_store_badge", "hint_preselect", "watch_open", "watch_leave", "back_to_duo",
+    "app_store_badge", "hint_preselect", "watch_open", "watch_leave", "rejoin_duo",
 })
 # Server error codes the client may echo, plus the client's own notice ids.
 NOTICE_CODES = frozenset({

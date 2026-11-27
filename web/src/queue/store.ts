@@ -831,11 +831,11 @@ export class QueueStore {
     return b && (b.until === null || b.until > now) ? b : null;
   }
 
-  /** Play's "Back to Duo": the kept Duo table by its code, which the queue
+  /** Rejoin Duo: the kept Duo table by its code, which the queue
    *  gives back as it was, or your seat in the Duo's room by its code and
    *  seat, which the server's left-seat rule gives back. A refusal is the
    *  server's error; Play is Play again either way. */
-  backToDuo(): void {
+  rejoinDuo(): void {
     const b = this.backTo();
     if (!b) return;
     this.set({ back: null });
@@ -847,6 +847,14 @@ export class QueueStore {
       this.set({ back: b });
       this.notify(t("queue.note.offline"), t("queue.note.playLater"));
     }
+  }
+
+  /** Leave Duo on a kept Duo table you are not at: the queue's leave,
+   *  which gives the kept table up; false when it could not be sent. */
+  giveUpBack(): boolean {
+    if (!this.backTo()) return false;
+    this.leave();
+    return this.view.pending === "leave";
   }
 
   /** Put Play back after an in-game refusal. */

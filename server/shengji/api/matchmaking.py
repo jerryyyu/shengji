@@ -1819,6 +1819,7 @@ class Matchmaker:
     def _leave(self, uid: int) -> None:
         e = self._entry(uid)
         if e is None:
+            self._forget_kept(uid)     # Leave Duo gives a kept Duo seat up
             self._send(uid, self.queue_state(uid))
             return
         if e.size == 2:

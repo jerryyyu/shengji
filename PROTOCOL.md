@@ -426,7 +426,8 @@ other socket with `account_in_game`.
   your `table_join {code}` in that window takes it back as it was. With
   `room: true` (no `until`) it is your `seat` in your Duo's casual room, left
   by choice while the Duo stands; `table_join {code, seat, expect: "room"}`
-  takes it back. A new idle `queue_state` without `back` ends it.
+  takes it back. A `table_leave` while not queued gives a kept table or
+  seat up. A new idle `queue_state` without `back` ends it.
   `mode` is the search's mode (`"ranked"` or `"casual"`). The table
   fields (`table`, `code`, `allow_joiners`, `start_level`, `opener`,
   `held_seat`, `you_ready`) are sent until the table frame's step 3

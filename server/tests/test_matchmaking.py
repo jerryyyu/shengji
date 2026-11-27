@@ -5970,3 +5970,19 @@ def test_a_paired_duo_member_out_of_its_room_is_offered_its_left_seat():
 def test_the_kept_table_window_is_an_empty_rooms():
     from shengji.api import server as srv
     assert mm.KEEP_TABLE_SECS == srv.ROOM_TTL
+
+
+def test_leave_duo_on_a_kept_table_gives_it_up():
+    """The Play tab's Leave Duo on a kept Duo table sends the queue's leave:
+    the kept table and its code are gone at once."""
+    async def go():
+        env = Env()
+        await env.join(1, duo=True)
+        code = env.conns[1].last("queue_state")["code"]
+        await env.send(1, "queue_leave")
+        assert env.conns[1].last("queue_state")["back"]["code"] == code
+        await env.send(1, "queue_leave")
+        gone = env.conns[1].last("queue_state")
+        assert gone["queued"] is False and "back" not in gone
+        assert env.mm.kept == {} and not env.mm.has_code(code)
+    run(go())

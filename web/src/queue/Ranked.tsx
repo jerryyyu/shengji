@@ -151,23 +151,51 @@ function InGameBlock({ message, canReturn, online }: { message: string; canRetur
   );
 }
 
-/** A formed pair between games, for either member: who the Duo is with and
- *  a Leave that ends it (party_leave, never a search). Leave waits for the
- *  socket, and a send that fails keeps the sheet up. */
-function PairRow({ partner, online }: { partner: string; online: boolean }) {
+/** Your Duo on the Play tab between games, or the Duo table you left that
+ *  the server still keeps: one plain line naming the partner (when paired),
+ *  then the gold button, Rejoin Duo while a Duo seat is kept for you, else
+ *  the pair's Play for its leader (the other member has none), and Leave
+ *  Duo beside it. Leave Duo goes through the one Leave sheet: a pair's
+ *  party_leave ends the pairing; a kept table's table_leave gives it up. */
+function DuoBlock({ partner, online, rejoin, play, cooling, busy }: {
+  partner: string | null;
+  online: boolean;
+  /** The kept Duo seat's way back, or null. */
+  rejoin: (() => void) | null;
+  /** The leader's Play for the pair (its label and whether it may be tapped), or null. */
+  play: { label: string; disabled: boolean; onPlay: () => void } | null;
+  cooling: boolean;
+  busy: boolean;
+}) {
   const t = useT();
   const [asking, setAsking] = useState(false);
+  const primary = rejoin ? (
+    <button type="button" className="btn gold play-main q-find" disabled={!online || busy} onClick={rejoin}>
+      {t("home.rejoinDuo")}
+    </button>
+  ) : play ? (
+    <button type="button" className={`btn gold play-main q-find${busy ? " searching" : ""}`}
+            disabled={play.disabled} aria-busy={busy || undefined} onClick={play.onPlay}>
+      {play.label}
+    </button>
+  ) : null;
   return (
-    <div className="play-ranked-row play-pair-row">
-      <span className="play-pair-label">{t("home.duoWith", { name: shortName(partner) })}</span>
-      <button type="button" className="btn play-duo play-pair-leave" disabled={!online}
-              onClick={() => setAsking(true)}>{t("home.pairLeave")}</button>
+    <>
+      {partner ? <p className="play-pair-label">{t("home.duoWith", { name: shortName(partner) })}</p> : null}
+      {cooling ? <p className="play-cool-line">{t("home.coolLine")}</p> : null}
+      <div className="play-ranked-row">
+        {primary}
+        <button type="button" className={primary ? "btn play-duo play-pair-leave" : "btn play-main play-pair-leave"}
+                disabled={!online} onClick={() => setAsking(true)}>{t("home.leaveDuo")}</button>
+      </div>
       {asking ? (
-        <LeaveSheet context={{ kind: "duo", partner, opener: false }}
+        <LeaveSheet context={partner ? { kind: "duo", partner, opener: false } : { kind: "queue", others: [] }}
                     onStay={() => setAsking(false)}
-                    onLeave={() => { if (queue.leaveParty()) setAsking(false); }} />
+                    onLeave={() => {
+                      if (partner ? queue.leaveParty() : queue.giveUpBack()) setAsking(false);
+                    }} />
       ) : null}
-    </div>
+    </>
   );
 }
 
@@ -202,7 +230,6 @@ export function RankedSection({ online, room = null }: {
   let label = t("home.play");
   let disabled = !online || guarded || room !== null;
   if (joining) disabled = true;
-  else if (back) label = t("home.backToDuo");
   else if (cooling) {
     // a table you joined and left: Play counts the queue cooldown down
     label = t("home.playIn", { time: clock(q.cooldownUntil! - now, true) });
@@ -229,22 +256,25 @@ export function RankedSection({ online, room = null }: {
       </>
     );
   }
-  // the leader searches for the pair; the other member has only the row
+  // a Duo (paired, or its kept table) has Rejoin Duo or the pair's Play,
+  // and Leave Duo, in place of Play and Duo
   const partner = pair ? pair.members.find((m) => !m.you)?.name ?? null : null;
-  const pairRow = partner ? <PairRow partner={partner} online={online} /> : null;
+  const onPlay = () => { telemetry.tap("play"); rounds.noteEntry("queue"); queue.join(); };
   const body = q.inGame ? (
     <InGameBlock message={q.inGame.message} canReturn={q.inGame.canReturn} online={online} />
-  ) : pairRow && !pair!.you_lead && !back ? pairRow : (
+  ) : partner !== null || back ? (
     <>
-      {pairRow}
-      {cooling && !q.cooldownTold && !back ? <p className="play-cool-line">{t("home.coolLine")}</p> : null}
-      <PlayRow label={label} disabled={back ? !online || guarded || room !== null || joining : disabled}
-               busy={joining} duoDisabled={disabled}
-               onPlay={back
-                 ? () => { telemetry.tap("back_to_duo"); rounds.noteEntry("friend"); queue.backToDuo(); }
-                 : () => { telemetry.tap("play"); rounds.noteEntry("queue"); queue.join(); }}
-               onDuo={() => { telemetry.tap("duo"); rounds.noteEntry("friend"); queue.joinDuo(); }} />
+      <DuoBlock partner={partner} online={online} busy={joining} cooling={!back && cooling && !q.cooldownTold}
+                rejoin={back ? () => { telemetry.tap("rejoin_duo"); rounds.noteEntry("friend"); queue.rejoinDuo(); } : null}
+                play={pair?.you_lead ? { label, disabled, onPlay } : null} />
       {cooling && !back ? null : <PresenceLine q={q} online={online} />}
+    </>
+  ) : (
+    <>
+      {cooling && !q.cooldownTold ? <p className="play-cool-line">{t("home.coolLine")}</p> : null}
+      <PlayRow label={label} disabled={disabled} busy={joining} duoDisabled={disabled} onPlay={onPlay}
+               onDuo={() => { telemetry.tap("duo"); rounds.noteEntry("friend"); queue.joinDuo(); }} />
+      {cooling ? null : <PresenceLine q={q} online={online} />}
     </>
   );
   return (

@@ -154,17 +154,30 @@ function readFirstVisit(): boolean {
   }
 }
 
-/** Whether a script drives this page: the browser says so (WebDriver and
- *  Playwright set navigator.webdriver), the page was opened with `?e2e=1`
- *  (kept for the origin's later loads), or the harness set AUTOMATED_KEY. */
-export function automated(): boolean {
+/** Whether this load was marked as one of our automated runs: a `?e2e=1`
+ *  address or the harness's AUTOMATED_KEY. Read once, when the module is
+ *  evaluated and before any route can rewrite the address, then kept in
+ *  memory and written to storage where it can be. */
+function markAtLoad(): boolean {
+  let marked = false;
   try {
-    if (navigator.webdriver === true) return true;
-    if (new URLSearchParams(window.location.search).get("e2e") === "1") {
-      try { localStorage.setItem(AUTOMATED_KEY, "1"); } catch { /* the stamp still goes on this load */ }
-      return true;
-    }
-    return localStorage.getItem(AUTOMATED_KEY) === "1";
+    marked = new URLSearchParams(window.location.search).get("e2e") === "1";
+  } catch { /* no address: not marked by it */ }
+  try {
+    if (marked) localStorage.setItem(AUTOMATED_KEY, "1");
+    else marked = localStorage.getItem(AUTOMATED_KEY) === "1";
+  } catch { /* no storage: the in-memory mark still holds for this load */ }
+  return marked;
+}
+
+const MARKED_AT_LOAD = markAtLoad();
+
+/** Whether a script drives this page: the browser says so (WebDriver and
+ *  Playwright set navigator.webdriver), or this load was marked (markAtLoad). */
+export function automated(): boolean {
+  if (MARKED_AT_LOAD) return true;
+  try {
+    return navigator.webdriver === true;
   } catch {
     return false;
   }

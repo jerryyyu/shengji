@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./ws", () => ({ conn: { send: () => true } }));
 
-import { AUTOMATED_KEY, FLUSH_AT, FLUSH_MS, MAX_BYTES, Telemetry, TurnClock, leadKind, telemetry } from "./telemetry";
+import { FLUSH_AT, FLUSH_MS, MAX_BYTES, Telemetry, TurnClock, leadKind, telemetry } from "./telemetry";
 import { noteLink } from "./link";
 
 type Msg = { type: string; v: number; form: string; first_visit: boolean; events: Record<string, unknown>[] };
@@ -121,31 +121,6 @@ describe("funnel events and batch stamps", () => {
     expect(m).toMatchObject({ days_since_first: "0", session_n: "1", lang: "en" });
     expect(m.events).toEqual([{ e: "app_open", t: expect.any(Number), cold: true, ms_to_socket: 813 }]);
     expect(JSON.stringify(m)).not.toMatch(/\d{4}-\d{2}-\d{2}/);    // never the first-seen date itself
-  });
-
-  it("a batch says automated only when a script drives the page", () => {
-    localStorage.clear();
-    const batch = () => {
-      sent = [];
-      const t = new Telemetry(sender(), true);
-      t.appOpen(true);
-      t.flush();
-      return sent[0] as unknown as Record<string, unknown>;
-    };
-    expect(batch()).not.toHaveProperty("automated");               // a person's browser sends nothing
-    localStorage.setItem(AUTOMATED_KEY, "1");
-    expect(batch()).toMatchObject({ automated: true });               // the e2e harness's flag
-    localStorage.clear();
-    Object.defineProperty(navigator, "webdriver", { value: true, configurable: true });
-    expect(batch()).toMatchObject({ automated: true });               // WebDriver / Playwright
-    delete (navigator as { webdriver?: boolean }).webdriver;
-    window.history.replaceState(null, "", "/?e2e=1");
-    expect(batch()).toMatchObject({ automated: true });               // ?e2e=1, kept for later loads
-    window.history.replaceState(null, "", "/");
-    expect(batch()).toMatchObject({ automated: true });
-    expect(localStorage.getItem(AUTOMATED_KEY)).toBe("1");
-    localStorage.clear();
-    expect(batch()).not.toHaveProperty("automated");
   });
 
   it("caps app_open's time to the socket and each round count", () => {

@@ -15,7 +15,7 @@ def _event(round_no, kind, **fields):
     return {"round": round_no, "e": kind, **fields}
 
 
-def _completed_round(round_no=1):
+def _completed_round(round_no=1, first_throw=None):
     rnd = Round("4", 0, random.Random(731))
     events = [_event(
         round_no, "round_start", deck=list(rnd.deck), banker=rnd.banker,
@@ -42,13 +42,16 @@ def _completed_round(round_no=1):
     first = True
     while rnd.phase == "play":
         seat = rnd.turn
-        cards = bot.decide_play(rnd, seat)
+        cards = first_throw if first and first_throw else bot.decide_play(rnd, seat)
         previous_last = rnd.last_trick
         rnd.play(seat, cards)
         played = actual_play_after(rnd, seat, previous_last)
         events.append(_event(
             round_no, "play", seat=seat, cards=played,
             bot=(not first)))
+        if first and first_throw:
+            assert played == ["H10"]
+            events[-1].update(attempted_cards=cards, engine_resolution="failed_throw_forced")
         first = False
     events.append(_event(
         round_no, "round_end", attacker_points=rnd.attacker_points,
@@ -121,6 +124,29 @@ def test_corrupt_round_is_counted_and_its_pending_decision_is_discarded(tmp_path
     assert manifest["stats"]["play_decisions_accepted"] == 1
     assert sum(value for key, value in manifest["rejections"].items()
                if key.startswith("round_play_replay:")) == 1
+
+
+def test_failed_throw_labels_submitted_action_and_verifies_forced_component(tmp_path):
+    from shengji.rl.encode import encode_action
+    from shengji.rl.replay_log import rebuild_round
+
+    attempt = ["H10", "HQ"]
+    good = _completed_round(first_throw=attempt)
+    bad = _completed_round(2, first_throw=attempt)
+    next(e for e in bad if e["e"] == "play")["cards"] = ["HQ"]
+    source = tmp_path / "ROOM.jsonl"
+    _write_jsonl(source, good + bad)
+    out = tmp_path / "shards"
+    manifest = build_corpus([str(source)], str(out))
+
+    assert manifest["stats"]["rounds_replayed"] == 1
+    assert manifest["rejections"]["round_play_replay:HumanCorpusError"] == 1
+    record = json.loads((out / "play_decisions.jsonl").read_text())
+    assert record["chosen"] == attempt
+    assert record["engine_play"] == ["H10"]
+    with np.load(out / "shard_00000.npz") as shard:
+        chosen = shard["actions"][shard["offsets"][0] + shard["chosen"][0]]
+        np.testing.assert_allclose(chosen, encode_action(attempt, rebuild_round(good)))
 
 
 def test_existing_output_refuses_without_mutation(tmp_path):

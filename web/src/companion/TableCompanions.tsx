@@ -95,15 +95,16 @@ export const MOVES: Record<"fidget" | "nudge" | "hop" | "cheer", { frames: Keyfr
 };
 
 /** A level gained: the figure pops from its old size (`from`, old over new)
- *  past its new one and settles, then cheers; one animation of the box. */
+ *  past its new one and settles, then cheers; one animation of the box. The
+ *  pop grows it by no more than the room its zone keeps over it (`LIFT`). */
 export const POP_MS = 500;
 export const LEVEL_UP_MS = POP_MS + MOVES.cheer.ms;
-function levelUpFrames(from: number): Keyframe[] {
+export function levelUpFrames(from: number): Keyframe[] {
   const pop = POP_MS / LEVEL_UP_MS;
   const cheer = MOVES.cheer.frames;
   return [
     { transform: `translateY(0) scale(${from.toFixed(3)})`, offset: 0, easing: "cubic-bezier(0.3, 0.7, 0.3, 1)" },
-    { transform: "translateY(0) scale(1.22)", offset: pop * 0.5 },
+    { transform: `translateY(0) scale(${1 + LIFT})`, offset: pop * 0.5 },
     { transform: "translateY(0) scale(0.95)", offset: pop * 0.78 },
     ...cheer.map((f, i) => ({ ...f, offset: pop + (1 - pop) * (f.offset ?? i / (cheer.length - 1)) })),
   ];

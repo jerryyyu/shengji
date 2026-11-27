@@ -687,7 +687,7 @@ describe("the table", () => {
       // the pop starts at the old size over the new and overshoots it
       const frames = pops.find((p) => p.move === "levelup")!.frames;
       expect(frames[0].transform).toContain(`scale(${(44 / 50).toFixed(3)})`);
-      expect(frames.some((f) => /scale\(1\.2/.test(String(f.transform)))).toBe(true);
+      expect(frames.some((f) => /scale\(1\.15\)/.test(String(f.transform)))).toBe(true);
       expect(badges()).toEqual([["0", "4"], ["2", "4"]]);
       // the wrapper plays the pop: the drawing itself never grows on top of it
       expect([0, 2].map((seat) => host.querySelector(`.tc-seat[data-seat="${seat}"] svg`)!.classList.contains("cmp-grow"))).toEqual([false, false]);

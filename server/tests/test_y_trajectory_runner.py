@@ -209,9 +209,28 @@ def test_launcher_hold_then_guarded_resume_preserves_completed_shard(release50_p
     assert seal['rounds'] == 4 and seal['run_id'] == spec['run_id']
     with pytest.raises(launcher.Refused, match='leg identity'):
         launcher.seal_leg(dict(spec, seed=spec['seed']+1), out)
+    terminal = Path(str(out)+'.terminal.1.json')
+    archive = tmp_path/'leg.tar.zst'
+    # macOS fleet operators invoke the archive consumer with the system interpreter.
+    archive_python = '/usr/bin/python3' if sys.platform == 'darwin' else sys.executable
+    archive_cmd = [archive_python, str(source/'tools/y_datagen/archive_leg.py'),
+                   str(out), str(terminal), launcher.sha256(terminal)]
+    receipt = json.loads(subprocess.check_output([*archive_cmd, str(archive)]))
+    assert receipt['verified_members'] == 7
+    assert receipt['raw_member_bytes'] > receipt['compressed_bytes'] == archive.stat().st_size
+    published = archive.stat().st_ino
+    assert json.loads(subprocess.check_output([*archive_cmd, str(archive)])) == receipt
+    assert archive.stat().st_ino == published
     shard = out / manifest['shards'][0]['path']
     data = shard.read_bytes()
     shard.chmod(0o600)
     shard.write_bytes(b'X' + data[1:])
     with pytest.raises(launcher.Refused, match='trajectory digest differs'):
         launcher.seal_leg(spec, out)
+    rejected_archive = tmp_path/'drift.tar.zst'
+    refused = subprocess.run([*archive_cmd, str(rejected_archive)], capture_output=True, text=True)
+    assert refused.returncode and 'restored member differs' in refused.stderr
+    assert not rejected_archive.exists()
+    archive.write_bytes(b'truncated')
+    refused = subprocess.run([*archive_cmd, str(archive)], capture_output=True)
+    assert refused.returncode and archive.read_bytes() == b'truncated'

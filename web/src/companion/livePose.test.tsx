@@ -192,6 +192,23 @@ describe("taps on the page, and a stage scrolled away", () => {
     await tap();
     expect(host.querySelector(".char-stage svg.cmp")).not.toBe(after);
     expect(pose(".char-stage")).toBe("react");
+    // the restarted special stood in for the cycle's own: when it ends, the
+    // cycle moves on to the move after it, not to a second, empty special
+    await tick(400);
+    await ended(".char-stage");
+    expect(pose(".char-stage")).toBe("sleep");
+    await tick(2400);
+    expect(pose(".char-stage")).toBe("idle");
+  });
+
+  it("a tap during another move plays the special, and the cycle then resumes that move", async () => {
+    await act(async () => { root.render(<Stage kind="bun" colour="plain" size={176} label="Bun" />); });
+    await tick(3000);
+    expect(pose(".char-stage")).toBe("hop");
+    await act(async () => { host.querySelector<HTMLButtonElement>(".char-stage .coll-figure")!.click(); });
+    expect(pose(".char-stage")).toBe("react");
+    await ended(".char-stage");
+    expect(pose(".char-stage")).toBe("hop");
   });
 
   it("a stage scrolled away mid-move pauses its figure and finishes the move only when back on screen", async () => {

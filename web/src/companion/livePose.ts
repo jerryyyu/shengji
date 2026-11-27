@@ -82,10 +82,12 @@ export function useLivePose(kind: DrawnKind, cycle: readonly CycleStep[], on: Re
     if (extra !== null) {
       if (extra === "react" && cooldown) cool.current = Date.now() + TAP_COOLDOWN_MS;
       setExtra(null);
+      // a tap that restarted the cycle's own move stood in for it: move on past it
+      if (!still && extra === stepPose && once(stepPose)) setStep((s) => s + 1);
       return;
     }
     if (once(stepPose)) setStep((s) => s + 1);
-  }, [extra, stepPose, cooldown]);
+  }, [extra, stepPose, cooldown, still]);
   // a move that ends while the figure is out of view is counted when it is back
   const end = useCallback(() => {
     if (!shownNow.current) {

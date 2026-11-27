@@ -5,6 +5,8 @@ behavioural/proposal asset rather than strength truth: returns are coarse round
 outcomes and human skill is mixed. A sidecar retains replay keys for later
 counterfactual Teacher labeling. Human bury actions are captured separately
 because the play encoder/ballot does not represent the bury decision surface.
+For a recorded failed throw, the chosen action is the submitted throw; the
+sidecar also records the forced component under engine_play.
 
 Usage:
   uv run python -m shengji.rl.human_shards \
@@ -27,7 +29,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from ..engine.cards import total_points
-from ..engine.round import KITTY_SIZE, Round
+from ..engine.round import KITTY_SIZE, Round, actual_play_after
 from .actions import enumerate_actions
 from .bc_generate import round_value
 from .dataset import Decision, TrajectoryWriter
@@ -318,7 +320,8 @@ def build_corpus(patterns: list[str], out_dir: str,
                     if rnd.trick is not None and not rnd.trick.plays:
                         trick_no += 1
                     seat = event.get("seat")
-                    cards = event.get("cards")
+                    committed = event.get("cards")
+                    cards = event.get("attempted_cards", committed)
                     if event.get("bot") is False:
                         stats["human_play_events"] += 1
                         if seat in excluded:
@@ -363,13 +366,17 @@ def build_corpus(patterns: list[str], out_dir: str,
                                     "trick": trick_no,
                                     "cards_remaining": sum(len(h) for h in rnd.hands),
                                     "chosen": sorted(cards),
+                                    **({"engine_play": sorted(committed)} if "attempted_cards" in event else {}),
                                     "candidate_count": len(actions),
                                     "human_action_appended": appended,
                                 })
                             except Exception as exc:
                                 reject("human_decision_encode", reference, exc)
                     try:
+                        previous = rnd.last_trick
                         rnd.play(seat, cards)
+                        if sorted(actual_play_after(rnd, seat, previous)) != sorted(committed):
+                            raise HumanCorpusError("committed play differs from logged cards")
                     except Exception as exc:
                         replay_failed = exc
                         break

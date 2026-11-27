@@ -55,8 +55,27 @@
   stroke-width: 1.5;
   stroke-linejoin: round;
 }
-/* the tab bar floats over the page foot on a phone: the control stays clear of it */
-.coll-mode { margin: 24px 16px 0; padding-bottom: 104px; }
+/* a colour newly unlocked: a small gold "New" over its top edge until its companion is opened (`seen.ts`) */
+.coll-new {
+  position: absolute;
+  left: 50%;
+  top: -7px;
+  transform: translateX(-50%);
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #14171e;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 15px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* Show at the table: the label and the switch alone on the page, no group
+   card, the label on the grid's gutter; the row keeps its 44 px target */
+.coll-mode { margin: 16px 16px 0; background: none; border-radius: 0; overflow: visible; }
+.coll-mode .coll-at-table { padding: 0; border-radius: 10px; }
 /* the companions, one tile each: the gold ring is the one looked at, the tick the one in use */
 .coll-kinds {
   display: grid;
@@ -192,3 +211,5 @@
   cursor: pointer;
 }
 .store-price { margin: 0 0 8px; text-align: center; color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* on a grid tile, "New" sits inside the felt's top-left corner, across from the tick */
+.coll-tile-stage .coll-new { top: 8px; left: 8px; transform: none; }

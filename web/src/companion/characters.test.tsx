@@ -21,9 +21,11 @@ vi.mock("../auth", async (importOriginal) => {
 import { Companion } from "./Companion";
 import { DRAWINGS } from "./kinds";
 import { COMPANIONS, COMPANION_KINDS, FREE_KINDS, lookCatalogue, parseLook } from "./look";
-import { companionSize, levelScale } from "./rig";
+import { companionSize } from "./rig";
 import { parseArt } from "./Tractor";
-import TableCompanions, { SEAT_SIZE, levelIndex } from "./TableCompanions";
+import TableCompanions, { LEVEL_UP_MS, SEAT_SIZE, levelIndex } from "./TableCompanions";
+import { hasNewLook } from "./seen";
+import type { LookEntry } from "./look";
 import { clear, zoneFor } from "./seatZones";
 import type { Layout, Rect } from "./seatZones";
 import { TABLES } from "./seatZones.fixtures";
@@ -128,18 +130,15 @@ describe("the free companions", () => {
 });
 
 describe("level growth", () => {
-  it("grows 2.5% a level to 1.3 times at A, never past the seat cap", () => {
-    expect(levelScale(0)).toBe(1);
-    expect(levelScale(12)).toBeCloseTo(1.3);
-    expect(levelScale(40)).toBeCloseTo(1.3);
+  it("grows a step a level that shows (2 px on a phone, 3 on a tablet) from 2 to the seat cap at 6", () => {
     expect(levelIndex("2")).toBe(0);
     expect(levelIndex("A")).toBe(12);
     expect(levelIndex(undefined)).toBe(0);
     const { phone, tablet } = SEAT_SIZE;
-    expect(companionSize(phone.base, 0, phone.max)).toBe(32);
-    expect(companionSize(phone.base, 12, phone.max)).toBe(40);
-    expect(companionSize(tablet.base, 0, tablet.max)).toBe(44);
-    expect(companionSize(tablet.base, 12, tablet.max)).toBe(56);
+    const at = (s: { base: number; max: number }, ranks: string[]) => ranks.map((r) => companionSize(s.base, levelIndex(r), s.max));
+    expect(at(phone, ["2", "3", "4", "5", "6", "9", "A"])).toEqual([32, 34, 36, 38, 40, 40, 40]);
+    expect(at(tablet, ["2", "3", "4", "5", "6", "9", "A"])).toEqual([44, 47, 50, 53, 56, 56, 56]);
+    expect(companionSize(80, 3, Number.POSITIVE_INFINITY)).toBe(80);
   });
 
   it("a level gained pops the figure from its old size; a level lost does not", async () => {
@@ -147,10 +146,10 @@ describe("level growth", () => {
     const svg = () => host.querySelector("svg.cmp") as SVGSVGElement;
     expect(svg().getAttribute("width")).toBe("44");
     expect(svg().classList.contains("cmp-grow")).toBe(false);
-    await draw(<Companion kind="chick" colour="yellow" size={44} max={56} level={4} team="us" />);
-    expect(svg().getAttribute("width")).toBe("48");
+    await draw(<Companion kind="chick" colour="yellow" size={44} max={56} level={2} team="us" />);
+    expect(svg().getAttribute("width")).toBe("50");
     expect(svg().classList.contains("cmp-grow")).toBe(true);
-    expect(svg().style.getPropertyValue("--cmp-from")).toBe((44 / 48).toFixed(3));
+    expect(svg().style.getPropertyValue("--cmp-from")).toBe((44 / 50).toFixed(3));
     const name = "AnimationEvent" in window ? "animationend" : "webkitAnimationEnd";
     act(() => {
       const ev = new Event(name, { bubbles: true }) as Event & { animationName: string };
@@ -289,6 +288,211 @@ describe("the Collection's grid and the character page", () => {
     }
   });
 
+  const looksWith = (unlocked: string[]): LookEntry[] => lookCatalogue({ rounds: 0, ranked_wins: 0, ranked_games: 0 }, "bun/custard")
+    .map((e) => (unlocked.includes(e.id) ? { ...e, unlocked: true } : e.id === "chick/ink" ? { ...e, unlocked: false } : e));
+  const as = (over: Partial<AuthUser> & { unlocked?: string[] } = {}) => {
+    const { unlocked = [], ...rest } = over;
+    authState.current = { status: "in", clientId: "cid", user: { ...user, looks: looksWith(unlocked), ...rest } };
+  };
+  const withLooks = (unlocked: string[]) => as({ unlocked });
+  const newOn = () => [...host.querySelectorAll(".coll-swatch")].filter((s) => s.querySelector(".coll-new"))
+    .map((s) => s.getAttribute("aria-label"));
+  const tilesNew = () => [...host.querySelectorAll(".coll-tile")].filter((b) => b.querySelector(".coll-new"))
+    .map((b) => b.querySelector(".coll-tile-name")!.textContent);
+  const statusLine = () => host.querySelector(".char-page .coll-status")?.textContent;
+  // an account's first reading: what it has then is never new
+  const firstReading = async (over: Parameters<typeof as>[0] = {}) => {
+    as(over);
+    await draw(<CollectionPage />);
+    await draw(<></>);
+  };
+
+  it("a colour newly unlocked marks its tile, and on its page its swatch, New until that page has been opened", async () => {
+    await firstReading();
+    expect(tilesNew()).toEqual([]);
+    withLooks(["tractor/yellow"]);
+    await draw(<CollectionPage />);
+    expect(tilesNew()).toEqual(["Tractor"]);
+    await openTile("Tractor");
+    expect(statusLine()).toBe("Tractor · Imperial yellow");
+    expect(swatch("Imperial yellow").classList.contains("on")).toBe(true);
+    expect(swatch("Imperial yellow").querySelector(".coll-new")?.textContent).toBe("New");
+    expect(newOn()).toEqual(["Imperial yellow New"]);
+    await back();
+    expect(tilesNew()).toEqual([]);
+    // seen: a reload shows it as any other colour
+    await draw(<></>);
+    await draw(<CollectionPage />);
+    expect(tilesNew()).toEqual([]);
+    await openTile("Tractor");
+    expect(newOn()).toEqual([]);
+    expect(statusLine()).toBe("Tractor · Icon red");
+  });
+
+  it("New survives a reload until its page is opened, and a tap on the swatch clears it", async () => {
+    await firstReading();
+    withLooks(["tractor/yellow", "chick/ink"]);
+    // the grid alone sees nothing, across a reload
+    await draw(<CollectionPage />);
+    await draw(<></>);
+    expect(hasNewLook("j@x", looksWith(["tractor/yellow", "chick/ink"]))).toBe(true);
+    await draw(<CollectionPage />);
+    expect(tilesNew()).toEqual(["Tractor", "Chick"]);
+    await openTile("Tractor");
+    expect(newOn()).toEqual(["Imperial yellow New"]);
+    await act(async () => { swatch("Imperial yellow").click(); });
+    expect(newOn()).toEqual([]);
+    await back();
+    expect(tilesNew()).toEqual(["Chick"]);
+    await openTile("Chick");
+    expect(newOn()).toEqual(["Silkie black New"]);
+  });
+
+  it("the tab dot stays while a new look is unseen and clears once each one's page is opened or it is put in use", async () => {
+    const all = looksWith(["tractor/yellow", "chick/ink"]);
+    await firstReading();
+    expect(hasNewLook("j@x", looksWith([]))).toBe(false);
+    expect(hasNewLook("j@x", all)).toBe(true);
+    withLooks(["tractor/yellow", "chick/ink"]);
+    await draw(<CollectionPage />);
+    expect(hasNewLook("j@x", all)).toBe(true);
+    // the Tractor's page sees the Tractor's; the Chick's still holds the dot
+    await openTile("Tractor");
+    expect(hasNewLook("j@x", all)).toBe(true);
+    await back();
+    await openTile("Chick");
+    expect(hasNewLook("j@x", all)).toBe(false);
+    // another account on this device starts with nothing new
+    expect(hasNewLook("k@x", all)).toBe(false);
+  });
+
+  it("putting a new look in use records it as seen", async () => {
+    await firstReading();
+    withLooks(["tractor/yellow"]);
+    await draw(<CollectionPage />);
+    // a write as its page opens is undone here, so only Use records it
+    window.localStorage.setItem("shengji.looksSeen", JSON.stringify({ "j@x": looksWith([]).filter((e) => e.unlocked).map((e) => e.id) }));
+    expect(hasNewLook("j@x", looksWith(["tractor/yellow"]))).toBe(true);
+    await openTile("Tractor");
+    window.localStorage.setItem("shengji.looksSeen", JSON.stringify({ "j@x": looksWith([]).filter((e) => e.unlocked).map((e) => e.id) }));
+    await act(async () => { use()!.click(); });
+    await settle();
+    expect(puts).toEqual([{ look: "tractor/yellow" }]);
+    expect(hasNewLook("j@x", looksWith(["tractor/yellow"]))).toBe(false);
+  });
+
+  it("a new look seen by one account is not recorded for the next one signed in while the Collection stays open", async () => {
+    await firstReading({ email: "b@x" });
+    await firstReading();
+    as({ unlocked: ["tractor/yellow"] });
+    await draw(<CollectionPage />);
+    await openTile("Tractor");
+    expect(newOn()).toEqual(["Imperial yellow New"]);
+    // B signs in on the same open page, with yellow still locked: B's own colour
+    as({ email: "b@x" });
+    await draw(<CollectionPage />);
+    expect(statusLine()).toBe("Tractor · Icon red");
+    expect(newOn()).toEqual([]);
+    await back();
+    expect(tilesNew()).toEqual([]);
+    expect(JSON.parse(window.localStorage.getItem("shengji.looksSeen")!)["b@x"]).not.toContain("tractor/yellow");
+    // when B earns it, it is new for B
+    expect(hasNewLook("b@x", looksWith(["tractor/yellow"]))).toBe(true);
+    as({ email: "b@x", unlocked: ["tractor/yellow"] });
+    await draw(<CollectionPage />);
+    expect(tilesNew()).toEqual(["Tractor"]);
+    await openTile("Tractor");
+    expect(newOn()).toEqual(["Imperial yellow New"]);
+    expect(swatch("Imperial yellow").classList.contains("on")).toBe(true);
+  });
+
+  it("a viewer signed in on the open page starts from their own look, though it is the same as the last viewer's", async () => {
+    await firstReading({ email: "b@x" });
+    await firstReading();
+    // A, wearing the Bun's Custard, previews the new Imperial yellow
+    as({ unlocked: ["tractor/yellow"] });
+    await draw(<CollectionPage />);
+    await openTile("Tractor");
+    expect(swatch("Imperial yellow").classList.contains("on")).toBe(true);
+    // B wears the same Custard, with yellow locked: the page starts from B's own
+    as({ email: "b@x" });
+    await draw(<CollectionPage />);
+    expect(statusLine()).toBe("Tractor · Icon red");
+    expect(swatch("Imperial yellow").classList.contains("on")).toBe(false);
+    await back();
+    expect(host.querySelector(".coll-worn svg.cmp-bun")).not.toBeNull();
+    await openTile("Bun");
+    expect(statusLine()).toBe("Bun · Custard");
+    expect(use()?.textContent).toBe("In use");
+  });
+
+  it("an unlock a refresh brings marks its tile, and on its open page moves to it unless a colour was tapped there", async () => {
+    await firstReading();
+    // on the grid: the refresh's new colour marks its tile
+    withLooks([]);
+    await draw(<CollectionPage />);
+    withLooks(["tractor/yellow"]);
+    await draw(<CollectionPage />);
+    expect(tilesNew()).toEqual(["Tractor"]);
+    await draw(<></>);
+    // on the Tractor's page, nothing tapped: it moves to the new colour
+    await firstReading({ email: "c@x" });
+    as({ email: "c@x" });
+    await draw(<CollectionPage />);
+    await openTile("Tractor");
+    expect(statusLine()).toBe("Tractor · Icon red");
+    as({ email: "c@x", unlocked: ["tractor/yellow"] });
+    await draw(<CollectionPage />);
+    expect(statusLine()).toBe("Tractor · Imperial yellow");
+    expect(newOn()).toEqual(["Imperial yellow New"]);
+    await draw(<></>);
+    // a colour tapped first stands
+    await firstReading({ email: "d@x" });
+    as({ email: "d@x" });
+    await draw(<CollectionPage />);
+    await openTile("Tractor");
+    await act(async () => { swatch("Paddy green").click(); });
+    as({ email: "d@x", unlocked: ["tractor/yellow"] });
+    await draw(<CollectionPage />);
+    expect(statusLine()).toBe("Tractor · Paddy green");
+    expect(newOn()).toEqual(["Imperial yellow New"]);
+  });
+
+  it("a page opened while the refresh is out keeps its colour when the refresh brings a new look and another look in use", async () => {
+    await firstReading();
+    withLooks([]);
+    await draw(<CollectionPage />);
+    await openTile("Chick");
+    // the refresh: yellow newly unlocked, and the Tractor put in use elsewhere
+    as({ look: "tractor/red", unlocked: ["tractor/yellow"] });
+    await draw(<CollectionPage />);
+    expect(statusLine()).toBe("Chick · Chick yellow");
+    expect(hasNewLook("j@x", looksWith(["tractor/yellow"]))).toBe(true);
+  });
+
+  it("a colour tapped holds through a refresh that changes the look in use; Use and a Use put back are shown", async () => {
+    await firstReading({ look: "chick/yellow" });
+    as({ look: "chick/yellow" });
+    await draw(<CollectionPage />);
+    await openTile("Chick");
+    expect(statusLine()).toBe("Chick · Chick yellow");
+    await act(async () => { swatch("Cocoa").click(); });
+    // another session puts the Chick's Cream in use: the tapped Cocoa stands
+    as({ look: "chick/cream" });
+    await draw(<CollectionPage />);
+    expect(statusLine()).toBe("Chick · Cocoa");
+    // Use: the look in use follows, and one put back after a failure is shown again
+    await act(async () => { use()!.click(); });
+    await settle();
+    expect(puts).toEqual([{ look: "chick/cocoa" }]);
+    as({ look: "chick/cocoa" });
+    await draw(<CollectionPage />);
+    as({ look: "chick/cream" });
+    await draw(<CollectionPage />);
+    expect(statusLine()).toBe("Chick · Cream");
+    expect(use()?.textContent).toBe("In use");
+  });
+
   it("one switch, Show at the table, on by default; Off is stored as off and an older Team reads as on", async () => {
     await draw(<CollectionPage />);
     const sw = () => host.querySelector<HTMLButtonElement>(".coll-at-table")!;
@@ -382,12 +586,96 @@ describe("the table", () => {
     expect([fig(0), fig(2)].every((f) => f.querySelector(".cmp-confetti") !== null)).toBe(true);
   });
 
-  it("a team that climbs at round end cheers and grows", async () => {
-    await draw(table(state()));
+  describe("a level gained", () => {
+    // every Web Animation started, with the move its box was showing; each
+    // ends after its own duration on the fake clock
+    let pops: { seat: string | null; move: string | null; frames: Keyframe[] }[];
+    let had: unknown;
+    const proto = Element.prototype as unknown as { animate?: unknown };
+    beforeEach(() => {
+      vi.useFakeTimers();
+      pops = [];
+      had = proto.animate;
+      proto.animate = function (this: Element, frames: Keyframe[], opts: KeyframeAnimationOptions) {
+        pops.push({ seat: this.closest(".tc-seat")?.getAttribute("data-seat") ?? null, move: this.getAttribute("data-move"), frames });
+        let timer = 0;
+        const finished = new Promise<void>((r) => { timer = window.setTimeout(r, Number(opts?.duration ?? 0)); });
+        return { finished, cancel: () => window.clearTimeout(timer) };
+      };
+    });
+    afterEach(() => { proto.animate = had; vi.useRealTimers(); });
+    const render = async (s: GameState) => { await act(async () => { root.render(table(s)); }); };
+    const ups = () => pops.filter((p) => p.move === "levelup").map((p) => p.seat).sort();
+    const width = (seat: number) => host.querySelector(`.tc-seat[data-seat="${seat}"] svg`)!.getAttribute("width");
+    const badges = () => [...host.querySelectorAll(".tc-level")].map((b) => [b.closest(".tc-seat")!.getAttribute("data-seat"), b.textContent]);
     const result = { winner_team: 0, level_change: 2, new_levels: ["4", "A"] };
-    await draw(table(state({ phase: "round_end", levels: ["4", "A"], round_result: result } as unknown as Partial<GameState>)));
-    expect([0, 2].map((s) => host.querySelector(`.tc-seat[data-seat="${s}"] .tc-move`)!.getAttribute("data-move"))).toEqual(["cheer", "cheer"]);
-    expect([0, 2].every((s) => host.querySelector(`.tc-seat[data-seat="${s}"] svg`)!.classList.contains("cmp-grow"))).toBe(true);
+    const roundEnd = state({ phase: "round_end", levels: ["4", "A"], round_result: result } as unknown as Partial<GameState>);
+    const nextRound = state({ phase: "deal", levels: ["4", "A"] } as unknown as Partial<GameState>);
+
+    it("does not move while the round-end sheet is open", async () => {
+      await render(state());
+      await render(roundEnd);
+      act(() => { vi.advanceTimersByTime(3000); });
+      expect(ups()).toEqual([]);
+      expect(pops.filter((p) => p.seat !== null && p.move !== "idle")).toEqual([]);
+      expect(badges()).toEqual([]);
+      // the figures still stand at the level the round was played at
+      expect([width(0), width(2)]).toEqual(["32", "32"]);
+    });
+
+    it("pops each of the team's companions once when the sheet closes, to its new size, with the new level", async () => {
+      await render(state());
+      await render(roundEnd);
+      await render(nextRound);
+      expect(ups()).toEqual(["0", "2"]);
+      expect([width(0), width(2)]).toEqual(["36", "36"]);
+      // the pop starts at the old size over the new and overshoots it
+      const frames = pops.find((p) => p.move === "levelup")!.frames;
+      expect(frames[0].transform).toContain(`scale(${(32 / 36).toFixed(3)})`);
+      expect(frames.some((f) => /scale\(1\.2/.test(String(f.transform)))).toBe(true);
+      expect(badges()).toEqual([["0", "4"], ["2", "4"]]);
+      // later states of the same level move nothing again
+      await render(state({ phase: "play", levels: ["4", "A"] } as unknown as Partial<GameState>));
+      act(() => { vi.advanceTimersByTime(LEVEL_UP_MS + 10); });
+      await render(state({ phase: "play", levels: ["4", "A"], trick: { leader: 0, plays: [] } } as unknown as Partial<GameState>));
+      expect(ups()).toEqual(["0", "2"]);
+      expect(badges()).toEqual([]);
+    });
+
+    it("moves no companion whose team's level did not change", async () => {
+      await render(state());
+      const held = { winner_team: 1, level_change: 0, new_levels: ["2", "A"] };
+      await render(state({ phase: "round_end", round_result: held } as unknown as Partial<GameState>));
+      await render(state({ phase: "deal" } as unknown as Partial<GameState>));
+      expect(ups()).toEqual([]);
+      // the other team (at A throughout) does not move when this one climbs
+      await render(roundEnd);
+      await render(nextRound);
+      expect(ups()).toEqual(["0", "2"]);
+      // a new game's levels starting over shrink with no move
+      act(() => { vi.advanceTimersByTime(LEVEL_UP_MS + 10); });
+      await render(state({ phase: "deal", levels: ["2", "2"] } as unknown as Partial<GameState>));
+      expect(ups()).toEqual(["0", "2"]);
+      expect(width(1)).toBe("32");
+    });
+
+    it("waits for a hidden page to be shown again", async () => {
+      let hidden = false;
+      const vis = vi.spyOn(document, "visibilityState", "get").mockImplementation(() => (hidden ? "hidden" : "visible"));
+      try {
+        await render(state());
+        await render(roundEnd);
+        hidden = true;
+        act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+        await render(nextRound);
+        expect(ups()).toEqual([]);
+        hidden = false;
+        await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+        expect(ups()).toEqual(["0", "2"]);
+      } finally {
+        vis.mockRestore();
+      }
+    });
   });
 
   it("is the default: each person's companion stands by their nameplate, small, clear of the table, yours tagged You", async () => {

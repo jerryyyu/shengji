@@ -581,7 +581,9 @@ team page; nothing is built until he picks.
   the Tractor in a stand-in colour.
 - **Show at the table** (Jerry 2026-11-26, finding 2: one labelled switch, on by default) replaces Team ·
   Individual · Off. It is stored where the mode was (the account's `companions`, a guest's device), so an older
-  client keeps working: off is off, and an older Team or Individual reads as on.
+  client keeps working: off is off, and an older Team or Individual reads as on. The row has no card behind it
+  (Jerry 2026-11-26: "The show at table toggle doesn't need background"): the label and the switch sit on the page,
+  the label on the grid's gutter, the row still 44 px tall.
 - **The companions** (Jerry 2026-11-26: "we can start with tractor, bun, chick, sparrow"), all free from the start:
   the Tractor, now with its rider (a farm kid in a straw hat at the cab window), the Bun 包子, the Chick 小鸡 and the
   Sparrow 麻雀, four colours each beside the Tractor's eight. Hop and cheer are two different moves: hop one small
@@ -593,9 +595,14 @@ team page; nothing is built until he picks.
   walks a few hopping steps, facing the way it goes, to another spot in a small zone by the nameplate that keeps
   clear of the cards played, the hand, the buttons, the HUD and the nameplates; the zone is worked out again as
   cards land, and a companion they land on steps aside. It stands on its team's pad (a disc for Us, a diamond for
-  Them) in its team's scarf. A team's companions grow 2.5% a level from 2, to 1.3 times at A, capped at 40 px on a
-  phone and 56 px on a tablet, only when the level changes (round end), with a 0.4 s pop. A team's companions hop
-  when it takes a trick, and cheer when the trick is worth 10 points or more or the team climbs (Jerry may tune
+  Them) in its team's scarf. A team's companions grow an equal step a level from 2 to the seat cap at 6 (32 to 40 px
+  on a phone, 2 px a level; 44 to 56 px on a tablet, 3 px a level; the same size from 6 to A). A level gained
+  (Jerry 2026-11-26, red team finding 7) shows only once the round-end sheet has closed and the page is in view,
+  never behind the sheet: each of the climbing team's companions pops from its old size past its new one (0.5 s),
+  cheers, and flashes the new level's rank in a gold badge by its head (the rank alone, no words); once per level
+  gained, none for a team whose level held, and a new game's levels starting over shrink the figures with no move.
+  A table opened onto a result draws the settled size. A team's companions hop
+  when it takes a trick, and cheer when the trick is worth 10 points or more (Jerry may tune
   this); a companion sleeps while its person is away, and between moves sways once every 6 to 10 s. Nothing moves
   while the page is hidden or under Reduce Motion (each stands on its home). A bot, and a seat its owner left, has
   none. They sit under the cards and controls and take no taps.
@@ -604,8 +611,12 @@ team page; nothing is built until he picks.
   yellow at 10, Lantern orange at 25, Jade at 50, Blue and white at 100, Ink black at 1,000, the swatches in that
   order (a game won is a ranked round that took your team past A). The server
   refuses a locked colour; a colour already in use stays in use though its count falls short, but once changed
-  it is locked again until earned. A gold dot on the tab marks a colour unlocked since the
-  Collection was last opened on this device.
+  it is locked again until earned. A colour newly unlocked (Jerry 2026-11-26, red team finding 9) puts a small gold "New" 新 on its
+  character's tile in the grid and on its swatch's top edge; opening that character's page shows it. It is seen once
+  that page is opened or the colour is put in use; the swatch keeps the mark for that visit until it is tapped, and an
+  unlock a refresh brings while the page is open is shown unless a colour there was tapped. Looks that came with a
+  purchase are not marked (their tile arrives in Yours). The gold dot on the tab stays while any new colour is unseen. Seen colours are kept per account on this device;
+  an account's first reading records what it has, so nothing it starts with is new.
 - Offline and Nearby tables know no account, so they show the initials until the Collection is on for
   everyone; then every person there has the default portrait.
 - Not yet: the store characters, the Shop, rating finishes.

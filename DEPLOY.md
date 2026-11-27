@@ -1678,6 +1678,25 @@ Two Fly defaults to override:
   deploys ("volume already claimed" / "needs an unattached volume"); destroy extras with
   `fly volumes destroy <vol_id>`.
 
+### Companions and the Collection: on and off
+
+Two secrets decide who is shown the Collection tab and the table companions (`accounts.collection_for`):
+`COLLECTION_ENABLED=1` shows them to everyone, guests included, and `COLLECTION_ACCOUNTS` (comma-separated
+account ids) to those accounts only. Changing either is a deploy decision (Jerry's), made at `/healthz` rooms 0,
+because setting or unsetting a secret restarts the machine:
+
+```bash
+fly secrets set COLLECTION_ENABLED=1 -a shengji      # on for everyone
+fly secrets unset COLLECTION_ENABLED -a shengji      # off for everyone (listed accounts keep it)
+fly secrets unset COLLECTION_ACCOUNTS -a shengji     # off for the listed accounts too
+```
+
+What players see: every open page and every app in the background reconnects after the restart, and the
+socket's first frame (`heartbeat_ready`'s `collection`, PROTOCOL.md) turns companions and the Collection tab off
+or on within that reconnect, with no reload: a page on the Collection tab goes to Play, the table draws no
+figures, and every avatar is as it was before companions. A page offline or in a Nearby game keeps what it had until it is
+online again. The looks people chose stay on their accounts for the next time it is on.
+
 ### Option B: any VPS with Docker
 
 ```bash

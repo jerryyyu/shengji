@@ -18,6 +18,7 @@ import { prefersReducedMotion } from "../motion";
 import { useMediaQuery } from "../phoneLayout";
 import { useShop } from "../store/shop";
 import { showToast } from "../toast";
+import { telemetry, useScreen } from "../telemetry";
 import CharacterPage, { SHORT_SCREEN, Stage, Tick, kindName, stageSize } from "./CharacterPage";
 import { BuyFoot, RestoreRow } from "./StoreFoot";
 import "../companion/collection.css";
@@ -83,6 +84,7 @@ export default function CollectionPage() {
   const phone = !useMediaQuery(WIDE);
   const short = useMediaQuery(SHORT_SCREEN);
   const scroller = useTabScroll("collection", true);
+  useScreen("collection");
   const inUse = lookId(parseLook(user?.look));
   const looks = lookCatalogue({ rounds: user?.rounds_played ?? 0, ranked_wins: user?.ranked_wins ?? 0, ranked_games: user?.ranked_games ?? 0 },
                               inUse, user?.looks);
@@ -186,7 +188,7 @@ export default function CollectionPage() {
     manual.current = false;
     if (who !== null) markSeen(who, [entry.id], looks);
     // a failure puts the confirmed look back on the account, and with it here
-    equip(entry.id, entry.unlocked).catch((err: unknown) => {
+    equip(entry.id, entry.unlocked).then((ok) => { if (ok) telemetry.tap("look_use"); }, (err: unknown) => {
       showToast(err instanceof Error ? err.message : String(err));
     });
   };
@@ -216,6 +218,7 @@ export default function CollectionPage() {
     setShown(inUse);
   };
   const select = (k: Selected) => {
+    telemetry.tap("collection_tile");
     if (k !== selected) setSwaps((n) => n + 1);
     choose(k);
     // on a phone the stage is above the fold: bring it back into view

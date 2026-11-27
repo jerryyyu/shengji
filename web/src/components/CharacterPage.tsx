@@ -8,6 +8,7 @@ import { PAGE_CYCLE, useLivePose } from "../companion/livePose";
 import { parseLook } from "../companion/look";
 import type { Colour, CompanionKind, LookEntry, UnlockCount } from "../companion/look";
 import { guestName } from "../guestName";
+import { telemetry } from "../telemetry";
 import { locale, useT } from "../i18n";
 import type { MessageKey } from "../i18n";
 import { STORE_NAMES } from "../companion/characters";
@@ -243,7 +244,7 @@ export default function CharacterPage({ kind, shown, entries, inUse, user, phone
              partner={partner} cheer={cheer} />
       <div className="char-poses">
         <button type="button" className={`char-chip${tryOn ? " on" : ""}`} aria-pressed={tryOn}
-                onClick={() => setTryOn((v) => !v)}>
+                onClick={() => { if (!tryOn) telemetry.tap("try_on"); setTryOn(!tryOn); }}>
           {t("home.tryOnTable")}
         </button>
       </div>

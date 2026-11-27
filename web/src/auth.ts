@@ -11,6 +11,7 @@ import { isNative } from "./native";
 import { nativeAppleSignOut, nativeGoogleSignOut } from "./nativeAuth";
 import { telemetry } from "./telemetry";
 import { conn } from "./ws";
+import { onServerCollection } from "./serverCollection";
 import { t } from "./i18n";
 import { COMPANION_MODES } from "./companion/look";
 import type { CompanionMode, LookEntry } from "./companion/look";
@@ -87,6 +88,12 @@ export interface AuthState {
   deviceAccounts?: true;
   /** The server shows the Collection to everyone, guests included. */
   collection?: true;
+  /** The server's word on this socket's `heartbeat_ready`: whether this
+   *  account is shown the Collection now. Set, it overrides `collection`
+   *  and the account's `features`, read once at load, so a secret change
+   *  reaches an open page. An identity change clears it until the new
+   *  socket says. */
+  collectionLive?: boolean;
 }
 
 const GIS_SRC = "https://accounts.google.com/gsi/client";
@@ -240,6 +247,7 @@ export async function verifyPurchase(jws: string, storefront: string | null): Pr
  *  portraits: the server has it on for everyone, or for this account. Off,
  *  the home screen and every avatar are as they were before companions. */
 export function collectionShown(state: AuthState): boolean {
+  if (typeof state.collectionLive === "boolean") return state.collectionLive;
   return state.collection === true || (state.status === "in" && state.user?.features?.collection === true);
 }
 
@@ -670,11 +678,12 @@ class AuthStore {
         ...(cfg.collection === true ? { collection: true as const } : {}),
       };
       if (!cfg.google_client_id) {
-        this.set(relaunched ? { status: "in", clientId: null, user: relaunched, ...device }
+        this.set(relaunched ? { status: "in", clientId: null, user: relaunched, ...device, collectionLive: undefined }
           : { status: "off", clientId: null, user: null, ...device });
       } else {
         const user = relaunched ?? await fetchMe();
-        this.set({ status: user ? "in" : "out", clientId: cfg.google_client_id, user, ...device });
+        this.set({ status: user ? "in" : "out", clientId: cfg.google_client_id, user, ...device,
+                   ...(relaunched ? { collectionLive: undefined } : {}) });
       }
       // a socket opened before the restore carries the guest handshake
       if (relaunched) this.replaceSocket();
@@ -687,7 +696,7 @@ class AuthStore {
    *  still carries the guest handshake, so it is replaced. */
   signedIn(user: AuthUser): void {
     forgetPrivateSession();
-    this.set({ status: "in", user });
+    this.set({ status: "in", user, collectionLive: undefined });
     this.replaceSocket();
   }
 
@@ -729,6 +738,12 @@ class AuthStore {
     }
   }
 
+  /** The server's word on whether this socket's account is shown the
+   *  Collection (its `heartbeat_ready`); the same word again is no change. */
+  setCollection(on: boolean): void {
+    if (this.state.collectionLive !== on) this.set({ collectionLive: on });
+  }
+
   /** The account changed (a saved display name): every subscriber follows. */
   updated(user: AuthUser): void {
     if (this.state.status === "in") this.set({ user });
@@ -758,7 +773,7 @@ class AuthStore {
     void nativeGoogleSignOut();
     void nativeAppleSignOut(false);
     forgetPrivateSession();
-    this.set({ status: "out", user: null });
+    this.set({ status: "out", user: null, collectionLive: undefined });
     this.replaceSocket();
   }
 
@@ -774,7 +789,7 @@ class AuthStore {
     void nativeGoogleSignOut();
     void nativeAppleSignOut(true);
     forgetPrivateSession();
-    this.set({ status: "out", user: null });
+    this.set({ status: "out", user: null, collectionLive: undefined });
     this.replaceSocket();
   }
 
@@ -792,6 +807,7 @@ class AuthStore {
 }
 
 export const auth = new AuthStore();
+onServerCollection((on) => auth.setCollection(on));
 
 export function useAuth(): AuthState {
   const [state, setState] = useState<AuthState>(auth.state);

@@ -49,6 +49,7 @@ import { MESSAGES } from "./i18n/messages";
 import { useNearbyHostLeft, useNearbyUi } from "./nearbyGate";
 import { setSeatSafe, startReloadGate } from "./reloadGate";
 import { rounds } from "./roundTelemetry";
+import { companionUsage } from "./companion/usage";
 import WatchScreen from "./watch/WatchScreen";
 import { watch, useWatching } from "./watch/store";
 import { useCollection } from "./companion/feature";
@@ -328,7 +329,7 @@ export default function App() {
   const inRoom = room !== null || game !== null;
   // every state and room frame, shown or not, for the round telemetry
   useEffect(() => { rounds.noteRoom(room); }, [room]);
-  useEffect(() => { rounds.observe(game); }, [game]);
+  useEffect(() => { rounds.observe(game); companionUsage.observe(game); }, [game]);
   const q = useQueue();
   const account = useAuth();
   const seatedAnywhere = inRoom || q.queued;

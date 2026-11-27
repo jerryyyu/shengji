@@ -2339,9 +2339,10 @@ def test_a_finished_game_start_records_the_deal_and_bot_tasks(client):
 def test_negotiated_heartbeat_before_and_after_room_attach(client, monkeypatch):
     from shengji.api import server as srv
 
+    monkeypatch.delenv("COLLECTION_ENABLED", raising=False)
     monkeypatch.setattr(srv, "WEB_BUILD", None)
     with client.websocket_connect("/ws?heartbeat=1") as ws:
-        assert _drain(ws, "heartbeat_ready") == {"type": "heartbeat_ready"}
+        assert _drain(ws, "heartbeat_ready") == {"type": "heartbeat_ready", "collection": False}
         ws.send_json({"type": "ping", "nonce": 1})
         assert _drain(ws, "pong") == {"type": "pong", "nonce": 1}
         assert not srv.rooms
@@ -2360,9 +2361,11 @@ def test_negotiated_heartbeat_before_and_after_room_attach(client, monkeypatch):
 def test_heartbeat_ready_carries_the_served_page_build(client, monkeypatch):
     from shengji.api import server as srv
 
+    monkeypatch.delenv("COLLECTION_ENABLED", raising=False)
     monkeypatch.setattr(srv, "WEB_BUILD", "a1b2c3d4e5f6")
     with client.websocket_connect("/ws?heartbeat=1") as ws:
-        assert _drain(ws, "heartbeat_ready") == {"type": "heartbeat_ready", "build": "a1b2c3d4e5f6"}
+        assert _drain(ws, "heartbeat_ready") == {"type": "heartbeat_ready", "collection": False,
+                                                 "build": "a1b2c3d4e5f6"}
     assert client.get("/healthz").json()["web_build"] == "a1b2c3d4e5f6"
 
 

@@ -29,6 +29,7 @@ import type { Pose } from "./Companion";
 import { useCollection } from "./feature";
 import { parseLook } from "./look";
 import { shownAtTable, useCompanionMode } from "./mode";
+import { countPoke, countWalk } from "./usage";
 import { HAND_LIFT, LIFT, clear, figureBox, nearest, nearestClear, nextSpot, pathClear, TAPPED_HIGH, TAPPED_WIDE, zoneAround, zonesFor } from "./seatZones";
 import type { Layout, Rect, SeatPos, Spot, Zone } from "./seatZones";
 import { useT } from "../i18n";
@@ -761,9 +762,11 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     if (!you || away || playing || up) return;
     // a tap while the special cools down still answers, with a small hop
     if (Date.now() - lastSpecial.current < SPECIAL_COOLDOWN_MS) {
+      countPoke(false);
       if (!prefersReducedMotion()) { nudging.current?.stop(); nudging.current = play(box.current, "nudge"); }
       return;
     }
+    countPoke(true);
     setSpecial((n) => n + 1);
   };
 
@@ -1068,6 +1071,7 @@ export default function TableCompanions({ state }: { state: GameState }) {
       const spot = nearestClear({ x: p.x - f.x, y: p.y - f.y }, px, true, at.layout);
       if (!spot) return;
       at.last = now;
+      countWalk();
       setGoal({ spot, n: ++at.n });
     };
     // whether a panel was open as the tap began, before the tap closes it

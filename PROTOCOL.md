@@ -164,9 +164,10 @@ identity, and the token is what lets a player resume their own seat even while
 a stale socket of theirs is still open. Store it and send it back in
 `table_join`. `gen` is the connection generation that now owns the seat.
 
-### `{type: "heartbeat_ready", build?: string}`
+### `{type: "heartbeat_ready", build?: string, collection?: boolean}`
 
-Sent first on a socket opened with `?heartbeat=1`: the socket may now send
+Sent first on a socket opened with `?heartbeat=1` (after only a suspended
+account's `account_suspended` error): the socket may now send
 `{type: "ping", nonce}`, answered with `{type: "pong", nonce}`. The page holds
 one ping in flight and replaces the socket when its pong misses the deadline:
 away from a table it pings 15 s after the last pong (15 s deadline), at a
@@ -181,6 +182,14 @@ index.html, read at startup; absent when it has none), also shown as
 moment that drops no seat: off every table and queue (never at a round's end,
 where a closed socket leaves the ready quorum), with no sheet open and no text field focused or holding a
 draft; never offline, and at most once per build per tab (`web/src/reloadGate.ts`).
+`collection` is whether the socket's account (a guest on a cookieless socket)
+is shown the Collection and the table companions now: `COLLECTION_ENABLED`,
+or the account in `COLLECTION_ACCOUNTS`. It overrides what the page read from
+`/api/auth/config` and `/api/me` at load, so a secret change (which restarts
+the machine, and so reconnects every page) turns companions and the
+Collection tab off or on in every open page without a reload. A page ignores
+it offline and in a Nearby game, and a server that omits it changes nothing
+(`web/src/serverCollection.ts`).
 
 ### `{type: "state", ...GameState}`
 Full personalized game state:

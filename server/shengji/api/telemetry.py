@@ -116,6 +116,9 @@ TAPS = frozenset({
     "menu_leave", "chip_leave", "leave_confirm", "leave_keep", "howto_open",
     "signin_open", "coach_on", "coach_off", "invite_share", "copy_code",
     "app_store_badge", "hint_preselect", "watch_open", "watch_leave", "rejoin_duo",
+    # Show companions at the table switched on or off; a look put in use; a
+    # Collection tile selected into the stage; Try on your table turned on
+    "companions_on", "companions_off", "look_use", "collection_tile", "try_on",
 })
 # Server error codes the client may echo, plus the client's own notice ids.
 NOTICE_CODES = frozenset({
@@ -179,6 +182,11 @@ ROUND_BY = frozenset({"end", "left", "closed"})
 DAYS_BUCKETS = frozenset({"0", "1", "2-7", "8-30", "31+"})
 SESSION_BUCKETS = frozenset({"1", "2", "3-5", "6+"})
 LANGS = frozenset({"en", "zh"})
+# The companion kinds (``accounts.LOOKS``; a test holds the two equal): the
+# kind of the look a ``companions`` event's viewer wears, never its colour.
+COMPANION_KINDS = frozenset({"tractor", "bun", "chick", "sparrow", "lamb", "panda"})
+COMPANION_SETTINGS = frozenset({"on", "off"})
+MAX_COMPANION_TAPS = 500  # each companion_round count
 MAX_ROUNDS = 50          # nth_round_this_load
 MAX_DIGEST = 99          # each offline_digest count
 MAX_SOCKET_MS = 120_000  # app_open ms_to_socket
@@ -250,12 +258,23 @@ SCHEMA: dict[str, dict[str, Any]] = {
     "review_prompt": {"trigger": _enum(REVIEW_TRIGGERS), "version": _version},
     # ``h`` arrives as the link's raw token and is kept only as its hash
     "invite": {"step": _enum(INVITE_STEPS), "via": _enum(INVITE_VIA), "h": _host_hash},
+    # once per table, for a viewer shown the Collection: whether the table
+    # draws companions, the viewer's Show companions at the table switch, the
+    # kind of the viewer's look and how many figures are drawn
+    "companions": {"shown": _bool, "setting": _enum(COMPANION_SETTINGS),
+                   "kind": _enum(COMPANION_KINDS), "figures": _int(0, 4)},
+    # at each round end of a table drawing companions: felt taps that walked
+    # yours, taps on yours that played its special, and taps on it while the
+    # special cooled down
+    "companion_round": {"walk_taps": _int(0, MAX_COMPANION_TAPS), "specials": _int(0, MAX_COMPANION_TAPS),
+                        "nudges": _int(0, MAX_COMPANION_TAPS)},
 }
 # The field without which an event says nothing; missing or invalid drops it.
 REQUIRED = {"screen": "name", "turn_done": "phase", "tap": "id", "notice": "code",
             "signin": "step", "device_account": "step", "review_prompt": "trigger",
             "app_open": "cold", "round_start": "mode", "round_finish": "by",
-            "offline_digest": "rounds_started", "howto_step": "step", "invite": "step"}
+            "offline_digest": "rounds_started", "howto_step": "step", "invite": "step",
+            "companions": "shown", "companion_round": "walk_taps"}
 
 # Server-side queue events (``queue_event``): field -> check.
 QUEUE_FIELDS: dict[str, Any] = {

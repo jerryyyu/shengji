@@ -14,6 +14,7 @@ import { setReviewReporter, type Trigger as ReviewTrigger } from "./reviewPrompt
 import { isZh } from "./i18n";
 import { DeviceStamps, playedBefore, type Lang } from "./telemetryStamps";
 import { setInviteReporter, type InviteStep, type InviteVia } from "./codes";
+import type { CompanionKind } from "./companion/look";
 
 export type Screen =
   | "play" | "howto" | "name_sheet" | "duo_sheet" | "room" | "waiting_table"
@@ -26,7 +27,8 @@ export type TapId =
   | "offer_join" | "offer_wait" | "offer_chip" | "next_round" | "round_end_leave"
   | "menu_leave" | "chip_leave" | "leave_confirm" | "leave_keep" | "howto_open"
   | "signin_open" | "coach_on" | "coach_off" | "invite_share" | "copy_code" | "app_store_badge"
-  | "hint_preselect" | "watch_open" | "watch_leave" | "rejoin_duo";
+  | "hint_preselect" | "watch_open" | "watch_leave" | "rejoin_duo"
+  | "companions_on" | "companions_off" | "look_use" | "collection_tile" | "try_on";
 
 /** Where the identity sheet (the name, and Sign in) was opened. */
 export type SigninFrom =
@@ -67,6 +69,29 @@ export const MAX_SOCKET_MS = 120_000;
 /** round_start's count of rounds since the page loaded stops here. */
 export const MAX_ROUNDS_PER_LOAD = 50;
 
+/** A table's companions, once per table for a viewer shown the Collection:
+ *  whether the table draws them, the viewer's Show companions at the table
+ *  switch, the kind of the viewer's look (never its colour) and how many
+ *  figures are drawn. */
+export interface CompanionsSeen {
+  shown: boolean;
+  setting: "on" | "off";
+  kind?: CompanionKind;
+  figures: number;
+}
+
+/** A round's taps on a table drawing companions: felt taps that walked
+ *  yours, taps on yours that played its special, and taps on it while the
+ *  special cooled down. */
+export interface CompanionRound {
+  walk_taps: number;
+  specials: number;
+  nudges: number;
+}
+
+/** Each companion_round count stops here. */
+export const MAX_COMPANION_TAPS = 500;
+
 export interface TurnDone {
   phase: "play" | "bury";
   lead?: LeadKind;
@@ -94,7 +119,9 @@ type Event =
   | { e: "howto_step"; t: number; step: number; done: boolean }
   | { e: "notice"; t: number; code: string; where: Screen | "toast" | "other"; cause?: DropCause; ms?: number }
   | { e: "review_prompt"; t: number; trigger: ReviewTrigger; version: string }
-  | { e: "invite"; t: number; step: InviteStep; via?: InviteVia; h?: string };
+  | { e: "invite"; t: number; step: InviteStep; via?: InviteVia; h?: string }
+  | ({ e: "companions"; t: number } & CompanionsSeen)
+  | ({ e: "companion_round"; t: number } & CompanionRound);
 
 export const FLUSH_MS = 10_000;
 export const FLUSH_AT = 20;
@@ -381,6 +408,20 @@ export class Telemetry {
     if (via !== undefined) ev.via = via;
     if (h) ev.h = h;
     this.push(ev);
+  }
+
+  /** A table's companions, once per table (TableCompanions.tsx). */
+  companions(seen: CompanionsSeen): void {
+    const ev: Event = { e: "companions", t: now(), shown: seen.shown, setting: seen.setting,
+                        figures: clamp(seen.figures, 0, 4) };
+    if (seen.kind !== undefined) ev.kind = seen.kind;
+    this.push(ev);
+  }
+
+  /** A round's companion taps, counted on the page and sent once at its end. */
+  companionRound(c: CompanionRound): void {
+    this.push({ e: "companion_round", t: now(), walk_taps: clamp(c.walk_taps, 0, MAX_COMPANION_TAPS),
+                specials: clamp(c.specials, 0, MAX_COMPANION_TAPS), nudges: clamp(c.nudges, 0, MAX_COMPANION_TAPS) });
   }
 
   turnDone(turn: TurnDone): void {

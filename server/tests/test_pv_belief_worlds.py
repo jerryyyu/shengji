@@ -381,6 +381,39 @@ def test_learned_length_scores_change_hands_at_the_proposal_boundary():
     assert totals[0] != totals[1]
 
 
+def test_suit_length_bounds_match_all_feasible_completions():
+    from itertools import product
+    from shengji.train.belief_lengths import _allocation_steps
+
+    rng = np.random.default_rng(20)
+    for _ in range(30):
+        suits = rng.integers(0, 5, size=5)
+        card_feat = np.pad(np.eye(5)[suits], ((0, 0), (1, 0)))
+        masks = rng.random((5, 4)) < .65
+        holders = rng.integers(0, 4, size=5)
+        masks[np.arange(5), holders] = True
+        copies = np.array([2, 1, 1, 1, 1])
+        owners = np.repeat(np.arange(5), copies)
+        sizes = np.bincount(holders[owners], minlength=4)
+        assignments = np.array([r for r in product(*(np.flatnonzero(masks[c]) for c in owners))
+                                if np.array_equal(np.bincount(r, minlength=4), sizes)])
+        steps = _allocation_steps(card_feat, masks, copies, sizes)
+        step = next(steps)
+        while True:
+            totals = (assignments[:, step.cards[owners]] == step.receiver).sum(1)
+            np.testing.assert_array_equal(step.choices, np.unique(totals))
+            k = rng.choice(step.choices)
+            assignments = assignments[totals == k]
+            try:
+                step = steps.send(k)
+            except StopIteration:
+                break
+
+    with pytest.raises(ValueError, match="no feasible suit length"):
+        next(_allocation_steps(np.eye(1, 6, 1), [[True, False, False, False]],
+                               [2], [1, 1, 0, 0]))
+
+
 def test_paired_void_cli_reads_only_held_out_decisions(package, tmp_path, capsys):
     import hashlib
     from shengji.train import belief_history as bh

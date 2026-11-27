@@ -12,6 +12,17 @@ import numpy as np
 from .belief_seq import FEATURE_DIM, _SUB_OF, _SUBSETS
 
 
+_RECEIVER_BITS = 1 << np.arange(4)
+_UPPER_SUBSETS = tuple(
+    tuple(np.flatnonzero(includes & ~_SUB_OF[:, remaining]) for remaining in range(16))
+    for includes in _SUBSETS.T
+)
+_LOWER_SUBSETS = tuple(
+    tuple(np.flatnonzero(~includes & _SUB_OF[:, remaining]) for remaining in range(16))
+    for includes in _SUBSETS.T
+)
+
+
 class _Allocation(NamedTuple):
     suit: int
     mask_type: int
@@ -26,7 +37,7 @@ class _Allocation(NamedTuple):
 def _allocation_steps(card_feat, mask, copies, sizes):
     """Yield a length decision; receive the chosen count and update the prefix."""
     suit = card_feat[:, 1:6].argmax(1)
-    types = np.asarray(mask, bool) @ (1 << np.arange(4))
+    types = np.asarray(mask, bool) @ _RECEIVER_BITS
     classes = suit * 16 + types
     counts = np.zeros((5, 16), dtype=np.int64)
     np.add.at(counts.ravel(), classes, copies)
@@ -34,32 +45,36 @@ def _allocation_steps(card_feat, mask, copies, sizes):
     future = counts.sum(0)
     if (cap < 0).any() or cap.sum() != future.sum() or future[0]:
         raise ValueError("infeasible residual copies or receiver sizes")
+    # Hall's condition holds for every prefix of supported choices.
+    slack = _SUBSETS @ cap - _SUB_OF @ future
+    if (slack < 0).any():
+        raise ValueError("no feasible suit length")
     lengths = np.zeros((5, 4), dtype=np.int64)
     for s, t in zip(*counts.nonzero()):
         left = counts[s, t]
-        future[t] -= left
-        # For each subset of receivers, these future copies have nowhere else to go.
-        need = _SUB_OF @ future
+        slack += left * _SUB_OF[:, t]
+        cards = classes == s * 16 + t
         remaining_mask = int(t)
         for receiver in range(4):
             if not remaining_mask & (1 << receiver):
                 continue
             remaining_mask ^= 1 << receiver
-            choices = np.arange(min(left, cap[receiver]) + 1)
-            # After assigning k copies here, the remaining left-k must fit
-            # among the remaining receivers of this class. Hall's condition
-            # on all 16 subsets is necessary and sufficient for completion.
-            capacity = (_SUBSETS @ cap) - choices[:, None] * _SUBSETS[:, receiver]
-            required = need + (left - choices[:, None]) * _SUB_OF[:, remaining_mask]
-            choices = choices[(capacity >= required).all(1)]
-            if not len(choices):
-                raise ValueError("no feasible suit length")
-            k = yield _Allocation(s, t, receiver, lengths, cap, left, choices, classes == s * 16 + t)
+            if left and remaining_mask:
+                # Subsets covering only the receiver bound k from above. Those
+                # covering only the residual mask bound left-k from above.
+                upper = min(left, slack[_UPPER_SUBSETS[receiver][remaining_mask]].min())
+                lower = max(0, left - slack[_LOWER_SUBSETS[receiver][remaining_mask]].min())
+                choices = np.arange(lower, upper + 1)
+            else:
+                choices = np.array([left], dtype=np.int64)
+            k = yield _Allocation(s, t, receiver, lengths, cap, left, choices, cards)
             if k not in choices:
                 raise ValueError("length outside public feasible support")
             lengths[s, receiver] += k
             cap[receiver] -= k
             left -= k
+            if k:
+                slack -= k * _SUBSETS[:, receiver]
     return lengths
 
 

@@ -96,3 +96,7 @@
    both ends, the points chip inside it flat. */
 :root .watch-screen .watch-hud .hud-bar > .hud-group:nth-child(2) { border-radius: 999px; padding-right: 8px; }
 :root .watch-screen .watch-hud .hud-bar > .hud-group:nth-child(2) .points-chip { border-radius: 0; }
+/* the watcher's own companion: a gallery spot at the row's left end, standing
+   on the row, over the felt and never over the players' seats */
+.watch-own { position: absolute; left: 8px; bottom: 2px; z-index: 1; line-height: 0; pointer-events: none; }
+.watch-own .tc-you { bottom: calc(100% + 2px); }

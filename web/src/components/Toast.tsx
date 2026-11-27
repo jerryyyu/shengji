@@ -1,5 +1,9 @@
 import type { CSSProperties } from "react";
 import { TOAST_MS, useToast } from "../toast";
+import { Portrait } from "../companion/Companion";
+import { useCollection } from "../companion/feature";
+import { shownAtTable, useCompanionMode } from "../companion/mode";
+import { useAuth } from "../auth";
 
 /** The app's one toast, in one fixed spot: at the top of the page, or at the
  *  table centred under the top seat (on a phone table, just above your
@@ -12,6 +16,11 @@ import { TOAST_MS, useToast } from "../toast";
  *  has left. */
 export default function Toast({ place = "page" }: { place?: "page" | "table" }) {
   const toast = useToast();
+  // a portrait only where the Collection is shown to this account and its
+  // companions are on at the table (Show companions at the table); the words stay
+  const account = useAuth();
+  const mode = useCompanionMode(account.status === "in" ? account.user : null);
+  const portraits = useCollection() && shownAtTable(mode);
   if (toast === null) return null;
   const style = { "--toast-ms": `${toast.leaving ?? TOAST_MS}ms` } as CSSProperties;
   const hold = toast.held ? " held" : toast.leaving !== undefined ? " leaving" : "";
@@ -19,6 +28,7 @@ export default function Toast({ place = "page" }: { place?: "page" | "table" }) 
     <div key={toast.id} className={`toast${toast.info ? " toast-info" : ""}${place === "table" ? " at-table" : ""}${hold}`}
          role="status" aria-live={toast.info ? "polite" : "assertive"} style={style}>
       {toast.dot !== undefined ? <i className={`toast-dot team${toast.dot}`} aria-hidden="true" /> : null}
+      {toast.look && portraits ? <Portrait look={toast.look} size={24} /> : null}
       <span>{toast.text}{toast.sub ? <small>{toast.sub}</small> : null}</span>
     </div>
   );

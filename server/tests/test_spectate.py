@@ -164,7 +164,7 @@ def test_a_round_without_its_end_record_is_refused_by_the_reader(feed):
     t.act(plays=20)
     # point the feed at the round in play, as a bug in the hooks would
     st = t.room.watch
-    n, path, offset, _accounts = st.started
+    n, path, offset, _accounts, _looks = st.started
     live = spectate.Finished(path=path, start=offset, round=n, ranked=False)
     assert spectate.round_doc(live) is None
     assert spectate._is_over(t.room, n) is False
@@ -212,7 +212,7 @@ def test_the_feed_carries_no_pii_and_no_hidden_log_fields(feed):
     assert "WTCH" not in blob                 # a ranked table never names its code
     assert doc["code"] is None
     start = next(e for e in doc["events"] if e["e"] == "round_start")
-    assert all(set(p) == {"seat", "name", "is_bot"} for p in start["players"])
+    assert all(set(p) == {"seat", "name", "is_bot", "look"} for p in start["players"])
     assert doc["players"] == ["Mei", "Bot 1", "Bot 2", "Bot 3"]
     assert {e["e"] for e in doc["events"]} <= set(spectate.saved_games.PUBLIC_KEYS)
     assert all("room" not in e for e in doc["events"])
@@ -1032,14 +1032,14 @@ def test_a_listed_watcher_is_named_and_anyone_else_is_not(accounts_on, told):
     frames = run(t.room)
     w = frames[0]["watchers"]
     assert w["count"] == 3 and w["told"] == 1
-    assert w["joined"] == [None, None, {"name": "Mei Listed"}]
+    assert w["joined"] == [None, None, {"name": "Mei Listed", "look": "tractor/red"}]
     assert w["named"] == ["Mei Listed"]
     # nothing names the unlisted account or carries an account id, anywhere
     blob = json.dumps(frames)
     assert "Hana Hidden" not in blob and "Hana" not in blob
     # the field holds a count, a number, and names: no id in any shape
     assert set(w) == {"count", "told", "joined", "named"}
-    assert all(j is None or set(j) == {"name"} for j in w["joined"])
+    assert all(j is None or set(j) == {"name", "look"} for j in w["joined"])
     assert all(isinstance(n, str) for n in w["named"])
     # no toast when nobody new arrived
     assert run(t.room) is frames
@@ -1227,3 +1227,83 @@ def test_a_watcher_reading_through_a_long_round_stays_counted_and_is_told_once(t
         assert r.status_code == 200
         assert srv.state_for(t.room, 0)["watchers"]["count"] == 1
     assert len(scheduled) == 1 and t.room.watch.arrivals == [first["watcher"]]
+
+
+# ------------------------------------------------------- companions in the feed
+def _start_players(doc):
+    return next(e for e in doc["events"] if e["e"] == "round_start")["players"]
+
+
+def test_a_live_table_sends_each_persons_look_as_the_round_began(feed, monkeypatch):
+    from shengji.api import accounts
+
+    srv, spectate, client = feed
+    monkeypatch.setitem(accounts.STORE.seen_looks, 41, "panda/russet")
+    t = Table(srv, ranked=True)
+    t.play_round()
+    # a change of look after the round began is not that round's
+    accounts.STORE.seen_looks[41] = "bun/taro"
+    t.deal()
+    players = _start_players(_watch(client).json())
+    assert [p["look"] for p in players] == ["panda/russet", None, None, None]
+
+
+def test_a_rerun_shows_a_masked_seat_as_the_default_tractor(accounts_on, feed, monkeypatch):
+    from shengji.api import accounts
+
+    srv, spectate, client = feed
+    store = accounts_on.STORE
+    listed = _rated(store, "look-listed", "Mei")
+    hidden = _rated(store, "look-hidden", "Hidey", visible=False)
+    monkeypatch.setitem(accounts.STORE.seen_looks, listed, "panda/gilded")
+    monkeypatch.setitem(accounts.STORE.seen_looks, hidden, "sparrow/oriole")
+    t = Table(srv, code="LOOK", ranked=True)
+    t.room.seats = [srv.Seat(name="Mei", user_id=listed, connected=True),
+                    srv.Seat(name="Bot 1", is_bot=True),
+                    srv.Seat(name="Guesty", connected=True),
+                    srv.Seat(name="Hidey", user_id=hidden, connected=True)]
+    t.play_round()
+    srv.rooms.pop("LOOK")
+    rerun = _watch(client).json()
+    assert rerun["rerun"] is True
+    players = _start_players(rerun)
+    assert [(p["name"], p["look"]) for p in players] == [
+        ("Mei", "panda/gilded"), ("Bot 1", None), ("Player 3", "tractor/red"), ("Player 4", "tractor/red")]
+    # nothing in the whole payload carries the masked seat's own look
+    assert "sparrow" not in json.dumps(rerun)
+    # and the index keeps the looks across a restart, masked the same way
+    _restart(spectate, monkeypatch)
+    again = _start_players(_watch(client).json())
+    assert [p["look"] for p in again] == ["panda/gilded", None, "tractor/red", "tractor/red"]
+
+
+def test_an_index_entry_from_before_looks_draws_no_figures(feed, tmp_path):
+    srv, spectate, client = feed
+    f = spectate._from_entry({"path": str(tmp_path / "x.jsonl"), "start": 0, "round": 1, "ranked": True,
+                              "start_accounts": [None] * 4, "claims": []})
+    assert f is not None and f.start_looks == (None, None, None, None)
+    bad = spectate._from_entry({"path": str(tmp_path / "x.jsonl"), "start": 0, "round": 1, "ranked": True,
+                                "start_accounts": [None] * 4, "claims": [], "start_looks": ["evil/look"] * 4})
+    assert bad.start_looks == (None, None, None, None)
+
+
+def test_a_listed_watchers_look_rides_its_toast(accounts_on, told, monkeypatch):
+    from shengji.api import accounts
+
+    srv, spectate, client, _, _, run = told
+    store = accounts_on.STORE
+    mei = _watcher(store, "wl-mei", "Mei Listed")
+    hid = _watcher(store, "wl-hid", "Hana Hidden", listed=False)
+    for uid in (store.session_user(mei["cookie"].split("=", 1)[1])["id"],
+                store.session_user(hid["cookie"].split("=", 1)[1])["id"]):
+        monkeypatch.setitem(accounts.STORE.seen_looks, uid, "lamb/jade" if uid % 2 else "lamb/ink")
+    t = Table(srv, code="WLOK", ranked=True)
+    t.play_round()
+    t.deal()
+    client.get("/api/watch", headers=hid)
+    client.get("/api/watch", headers=mei)
+    w = run(t.room)[0]["watchers"]
+    assert w["joined"][0] is None
+    assert w["joined"][1]["name"] == "Mei Listed" and w["joined"][1]["look"].startswith("lamb/")
+    hid_uid = store.session_user(hid["cookie"].split("=", 1)[1])["id"]
+    assert accounts.STORE.seen_looks[hid_uid] not in json.dumps(w["joined"][:1])

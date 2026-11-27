@@ -19,6 +19,8 @@ export interface ToastMsg {
   held?: boolean;
   /** Released: the ms left before it goes, which its fade reads. */
   leaving?: number;
+  /** A companion portrait before the text, for a line about a person. */
+  look?: string;
 }
 
 export interface ToastOpts {
@@ -27,6 +29,7 @@ export interface ToastOpts {
   dot?: 0 | 1;
   /** Stay up until `releaseToast` (then at least TOAST_MS in all), not TOAST_MS. */
   hold?: boolean;
+  look?: string;
 }
 
 // The app's one toast: a new one replaces the one showing, so at most one is
@@ -52,6 +55,7 @@ export function showToast(text: string, opts: ToastOpts = {}): ToastMsg {
   // a newer toast supersedes the held line, on screen or hidden: the newest
   // wins, and the line is not brought back over it or after it
   if (!opts.hold && holding !== null) holding.superseded = true;
+  if (opts.look) t.look = opts.look;
   current = t;
   shownAt = Date.now();
   if (timer !== null) window.clearTimeout(timer);

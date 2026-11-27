@@ -234,12 +234,12 @@ export interface RoundRating {
 
 /** The players' view of their watchers: how many watch now, the latest
  *  "is watching" toast (`told` bumps once per toast; `joined` is who it
- *  tells of, a leaderboard-listed watcher by name, anyone else null), and the
+ *  tells of, a leaderboard-listed watcher by name and look, anyone else null), and the
  *  listed watchers' names now (at most two). */
 export interface Watchers {
   count: number;
   told: number;
-  joined: ({ name: string } | null)[];
+  joined: ({ name: string; look?: string } | null)[];
   named: string[];
 }
 

@@ -54,7 +54,8 @@ and bots keep their names; a late joiner's claim is named only by its own
 account (``_keeper``).
 The events pass the saved games' allow-list (``PUBLIC_KEYS``: no
 bot reasoning, timing, seeds or chat) and each seat carries only its seat,
-display name and whether it is a bot. No account id, address or room code
+display name, whether it is a bot and its companion look, masked as the
+name is (``_with_looks``). No account id, address or room code
 is in a feed; a casual table that seats joiners names its code, which the
 open-table offer already gives a stranger, so Take a seat can join it.
 """
@@ -136,6 +137,9 @@ class Finished:
     # bot), so a replay can name the players the leaderboard shows.
     # Server-only: never in a feed.
     start_accounts: tuple = (None, None, None, None)
+    # the look each seat showed when the round began (None: a bot, or a
+    # seat its person left), served masked as the seat's name is
+    start_looks: tuple = (None, None, None, None)
     # each ``seat_claimed`` record's account, by the record's byte offset in
     # the log (None: a guest or a bot), so a claim names its own claimer
     claims: dict = field(default_factory=dict)
@@ -159,8 +163,8 @@ class WatchState:
     claims: dict = field(default_factory=dict)
     # watcher token -> when it last read this table
     watchers: dict[str, float] = field(default_factory=dict)
-    # watcher token -> (its account id, its name), read from the session as
-    # it starts watching here; (None, None) for a guest
+    # watcher token -> (its account id, its name, its look), read from the
+    # session as it starts watching here; all None for a guest
     who: dict[str, tuple] = field(default_factory=dict)
     # watcher token -> its name as the players may read it, once told: the
     # name when the leaderboard listed the account then, else None
@@ -202,7 +206,7 @@ def _index_path() -> Path:
 
 def _entry(f: Finished) -> dict:
     return {"path": str(f.path), "start": f.start, "round": f.round, "ranked": f.ranked,
-            "start_accounts": list(f.start_accounts),
+            "start_accounts": list(f.start_accounts), "start_looks": list(f.start_looks),
             "claims": sorted([at, uid] for at, uid in f.claims.items())}
 
 
@@ -226,8 +230,13 @@ def _from_entry(e: Any) -> Finished | None:
             isinstance(c, list) and len(c) == 2 and isinstance(c[0], int) and _account(c[1])
             for c in claims):
         return None
+    looks = e.get("start_looks")
+    if not (isinstance(looks, list) and len(looks) == 4
+            and all(v is None or accounts.parse_look(v) is not None for v in looks)):
+        looks = [None] * 4          # an entry from before looks were kept: no figures
     return Finished(path=Path(path), start=start, round=n, ranked=True,
-                    start_accounts=tuple(accts), claims={at: uid for at, uid in claims})
+                    start_accounts=tuple(accts), claims={at: uid for at, uid in claims},
+                    start_looks=tuple(looks))
 
 
 def _starts_here(f: Finished) -> bool:
@@ -327,6 +336,16 @@ def _log_path(room: Any) -> Path:
     return Path(room.log_dir or server.LOG_DIR) / f"{room.code}.jsonl"
 
 
+def _looks(room: Any) -> tuple:
+    """The look each seat shows now (``server.seat_look``), None for a bot."""
+    from . import server
+    out = []
+    for i in range(4):
+        sd = room.seats[i] if i < len(room.seats) else None
+        out.append(server.seat_look(sd) if sd is not None else None)
+    return tuple(out)
+
+
 def _accounts(room: Any) -> tuple:
     """The signed-in account at each seat, None for a guest or a bot."""
     out = []
@@ -344,7 +363,7 @@ def round_started(room: Any, offset: int | None) -> None:
     try:
         st = _state(room)
         game = room.game
-        st.started = (game.round_no, _log_path(room), offset, _accounts(room)) if (
+        st.started = (game.round_no, _log_path(room), offset, _accounts(room), _looks(room)) if (
             game is not None and offset is not None) else None
         st.claims = {}
     except Exception:               # noqa: BLE001 - never raise into a game
@@ -368,9 +387,9 @@ def round_ended(room: Any, written: bool = True) -> None:
         game = room.game
         if not written or game is None or st.started is None or st.started[0] != game.round_no:
             return
-        n, path, offset, began = st.started
+        n, path, offset, began, looks = st.started
         st.last = Finished(path=path, start=offset, round=n, ranked=ratings.ranked(room),
-                           start_accounts=began, claims=dict(st.claims))
+                           start_accounts=began, claims=dict(st.claims), start_looks=looks)
         st.recent.append(st.last)
         if st.last.ranked or enabled() or allowlist():
             # read once now, so the lobby count and the feed agree from the start
@@ -441,6 +460,20 @@ def _players(rec: dict) -> list[dict]:
             out.append({"seat": seat, "name": str(p.get("name") or ""),
                         "is_bot": bool(p.get("is_bot"))})
     return out
+
+
+def _with_looks(players: list[dict], f: Finished, listed: set[int] | None) -> list[dict]:
+    """Each seat's look as the round began, masked as its name is: a bot has
+    none (nor a seat its person had left), and in a rerun a person the
+    leaderboard does not list shows the default look, so a look never tells
+    who a "Player N" is."""
+    for p in players:
+        seat = p["seat"]
+        look = None if p["is_bot"] else f.start_looks[seat]
+        if look is not None and listed is not None and f.start_accounts[seat] not in listed:
+            look = accounts.DEFAULT_LOOK
+        p["look"] = look
+    return players
 
 
 def _seat_name(seat: Any) -> str | None:
@@ -561,7 +594,7 @@ def round_doc(f: Finished, listed: set[int] | None = None) -> dict | None:
             continue
         ev = saved_games.public_event(rec, 0, True, None)
         if ev["e"] == "round_start":
-            ev["players"] = _players(rec)
+            ev["players"] = _with_looks(_players(rec), f, listed)
         ev.pop("room", None)
         if listed is not None:
             ev = _redact(ev, _keeper(ev, rec, f, listed))
@@ -776,7 +809,7 @@ async def _serve(room: Any, token: str, after: int | None,
 def players_field(room: Any) -> dict:
     """The state frame's ``watchers``: how many watch the table now, the
     latest "is watching" toast (``told`` bumps once per toast; ``joined`` is
-    who it tells of, a listed watcher by name and anyone else as null) and
+    who it tells of, a listed watcher by name and look, anyone else as null) and
     the names of the listed watchers now (at most two). A name is sent only
     for an account the leaderboard listed when it was told; never an id."""
     st = getattr(room, "watch", None)
@@ -796,11 +829,14 @@ def announcement(st: WatchState, listed: set[int], now: float) -> bool:
     st.arrivals = []
     if not fresh:
         return False
+    looks = {}
     for tok in fresh:
-        uid, name = st.who.get(tok, (None, None))
+        uid, name, look = st.who.get(tok, (None, None, None))
         st.shown[tok] = name if uid is not None and uid in listed and name else None
+        looks[tok] = look
     st.told += 1
-    st.joined = [{"name": st.shown[tok]} if st.shown[tok] else None for tok in fresh]
+    st.joined = [{"name": st.shown[tok], "look": looks[tok] or accounts.DEFAULT_LOOK}
+                 if st.shown[tok] else None for tok in fresh]
     st.told_at = now
     return True
 
@@ -837,8 +873,8 @@ def _arrived(room: Any, token: str, user: dict | None) -> None:
     table was last checked; server-side only) and the players' toast."""
     uid = user.get("id") if user else None
     st = room.watch
-    st.who[token] = ((uid, accounts.effective_name(user) or None)
-                     if isinstance(uid, int) and not isinstance(uid, bool) else (None, None))
+    st.who[token] = ((uid, accounts.effective_name(user) or None, accounts.account_look(uid))
+                     if isinstance(uid, int) and not isinstance(uid, bool) else (None, None, None))
     st.arrivals.append(token)
     _schedule(room)
 

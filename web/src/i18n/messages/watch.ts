@@ -4,7 +4,11 @@ import { defineMessages } from "../define";
 // kitty peek and the round end's watcher line and buttons.
 export const watch = defineMessages({
   "watch.round": { en: "Round {n}", zh: "第 {n} 局", hant: "第 {n} 局" },
+  "watch.replay": { en: "Replay", zh: "回放", hant: "回放" },
+  "watch.liveLink": { en: "Watch a table", zh: "看一桌", hant: "看一桌" },
+  "watch.rerunLink": { en: "Watch a replay", zh: "看回放", hant: "看回放" },
   "watch.inPlay": { en: "Round {n} in play", zh: "第 {n} 局进行中", hant: "第 {n} 局進行中" },
+  "watch.player": { en: "Player {n}", zh: "玩家 {n}", hant: "玩家 {n}" },
   "watch.players": { en: "Players", zh: "玩家", hant: "玩家" },
   "watch.back": { en: "Previous trick", zh: "上一墩", hant: "上一墩" },
   "watch.forward": { en: "Next trick", zh: "下一墩", hant: "下一墩" },

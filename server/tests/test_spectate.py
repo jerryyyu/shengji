@@ -484,3 +484,39 @@ def test_a_closed_tables_rerun_keeps_its_last_whole_round(feed):
     assert doc["events"][-1]["e"] == "round_end"
     assert [f.round for f in spectate._reruns] == [1]     # the broken round was dropped
     assert spectate.presence() == {"watch": 0, "rerun": True}
+
+
+def test_a_rerun_names_its_players_by_seat_and_a_live_table_by_name(feed):
+    srv, spectate, client = feed
+    t = Table(srv, code="NAME", ranked=True)
+    t.play_round()
+    t.deal()
+    live = _watch(client).json()
+    assert live["rerun"] is False and live["players"] == ["Mei", "Bot 1", "Bot 2", "Bot 3"]
+    srv.rooms.pop("NAME")
+    rerun = _watch(client).json()
+    assert rerun["rerun"] is True
+    assert rerun["players"] == ["Player 1", "Player 2", "Player 3", "Player 4"]
+    start = next(e for e in rerun["events"] if e["e"] == "round_start")
+    assert [p["name"] for p in start["players"]] == ["Player 1", "Player 2", "Player 3", "Player 4"]
+    assert "Mei" not in json.dumps(rerun)
+
+
+def test_a_rerun_after_a_late_join_carries_no_players_name_anywhere(feed):
+    srv, spectate, client = feed
+    t = Table(srv, code="LATE", ranked=True)
+    t.deal()
+    t.declare()
+    t.act(plays=10)
+    # a newcomer takes a bot's seat mid-round, logged as the server logs it
+    t.room.seats[2].name, t.room.seats[2].is_bot = "Zed Joiner", False
+    t.room.log_event("seat_claimed", seat=2, name="Zed Joiner", bot=False)
+    t.act()
+    srv.rooms.pop("LATE")
+    rerun = _watch(client).json()
+    assert rerun["rerun"] is True and rerun["round"] == 1
+    blob = json.dumps(rerun)
+    for name in ("Mei", "Bot 1", "Bot 2", "Bot 3", "Zed Joiner"):
+        assert name not in blob, name
+    claimed = [e for e in rerun["events"] if e["e"] == "seat_claimed"]
+    assert claimed and all(e.get("name") in (None, f"Player {e['seat'] + 1}") for e in claimed)

@@ -9,7 +9,7 @@ import TrickArea from "../components/TrickArea";
 import RoundEndModal from "../components/RoundEndModal";
 import { OpponentPanel } from "../components/Table";
 import { TrumpChip } from "../components/Hud";
-import { displayName, useT } from "../i18n";
+import { displayName, t, useT } from "../i18n";
 import { EASE, canAnimate, prefersReducedMotion } from "../motion";
 import { queue } from "../queue/store";
 import { codes } from "../codeJoin";
@@ -43,7 +43,21 @@ export interface Loaded {
   buried: string[] | null;
 }
 
-export function load(doc: WatchDoc): Loaded | null {
+/** A replay names nobody: the server sends its seats as "Player 1" to
+ *  "Player 4", and each is read here in the viewer's language. */
+function bySeat(doc: WatchDoc): WatchDoc {
+  if (!doc.rerun || !doc.events) return doc;
+  const name = (seat: number) => t("watch.player", { n: seat + 1 });
+  return {
+    ...doc,
+    players: [0, 1, 2, 3].map(name),
+    events: doc.events.map((e) => (e.e !== "round_start" || !Array.isArray(e.players) ? e
+      : { ...e, players: (e.players as { seat: number }[]).map((p) => ({ ...p, name: name(p.seat) })) })),
+  };
+}
+
+export function load(raw: WatchDoc): Loaded | null {
+  const doc = bySeat(raw);
   if (!doc.events || doc.round === undefined) return null;
   const replay = buildReplay({ game_id: "", round: doc.round, seat: doc.seat ?? 0,
                                players: doc.players ?? [], finished: true, events: doc.events });
@@ -312,31 +326,26 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
         <div className="hud-bar">
           <div className="hud-group" />
           <div className="hud-group">
+            <span className="chip watch-round"><Icon d={ICON.eye} />{doc.rerun ? t("watch.replay") : t("watch.round", { n: doc.round ?? 0 })}</span>
             <TrumpChip state={state} />
             <span className="chip points-chip">
               <span className="points-big">{frame.attackerPoints}</span>
               <span className="points-target">/80</span>
             </span>
           </div>
-          <div className="hud-group watch-controls">
-            <button type="button" className="watch-ctl" aria-label={t("watch.back")}
-                    disabled={at === 0} onClick={() => goTo(backTrick(beats, at))}><Icon d={ICON.back} /></button>
-            <button type="button" className="watch-ctl" aria-label={paused ? t("watch.resume") : t("watch.pause")}
-                    aria-pressed={paused} onClick={() => setPaused((p) => !p)}>
-              <Icon d={paused ? ICON.play : ICON.pause} />
-            </button>
-            <button type="button" className="watch-ctl" aria-label={t("watch.forward")}
-                    disabled={atEnd} onClick={() => goTo(forwardTrick(beats, at))}><Icon d={ICON.forward} /></button>
-            <button type="button" className="watch-ctl watch-speed" aria-label={t("watch.speed", { n: speed })}
-                    onClick={() => { const s = nextSpeed(speed); setSpeed(s); saveSpeed(s); }}>{speed}×</button>
+          <div className="hud-group">
             <div className="hud-more">
               <button type="button" className="hud-more-btn" aria-label={t("watch.menu")} aria-haspopup="menu"
                       aria-expanded={menu} onClick={() => setMenu((m) => !m)}>⋯</button>
               {menu ? (
                 <div className="hud-menu" role="menu">
-                  <button className="hud-menu-row" role="menuitem"
-                          onClick={() => { setMenu(false); pick(doc.table); }}>{t("watch.next")}</button>
-                  <div className="hud-menu-sep" role="separator" />
+                  {doc.rerun ? null : (
+                    <>
+                      <button className="hud-menu-row" role="menuitem"
+                              onClick={() => { setMenu(false); pick(doc.table); }}>{t("watch.next")}</button>
+                      <div className="hud-menu-sep" role="separator" />
+                    </>
+                  )}
                   <button className="hud-menu-row leave" role="menuitem" onClick={leave}>{t("common.leave")}</button>
                 </div>
               ) : null}
@@ -344,7 +353,6 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
           </div>
         </div>
       </div>
-      <span className="chip watch-round"><Icon d={ICON.eye} />{t("watch.round", { n: doc.round ?? 0 })}</span>
       <div className="felt">
         {opponents.map((p) => (
           <div key={p.seat} className="watch-seat" onClick={() => setSeat(p.seat)}>
@@ -356,6 +364,18 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
                    declaration={null} handRects={handRects} />
         <div className="you-area">
           <div className="watch-tabs-row">
+            <div className="watch-controls">
+              <button type="button" className="watch-ctl" aria-label={t("watch.back")}
+                      disabled={at === 0} onClick={() => goTo(backTrick(beats, at))}><Icon d={ICON.back} /></button>
+              <button type="button" className="watch-ctl" aria-label={paused ? t("watch.resume") : t("watch.pause")}
+                      aria-pressed={paused} onClick={() => setPaused((p) => !p)}>
+                <Icon d={paused ? ICON.play : ICON.pause} />
+              </button>
+              <button type="button" className="watch-ctl" aria-label={t("watch.forward")}
+                      disabled={atEnd} onClick={() => goTo(forwardTrick(beats, at))}><Icon d={ICON.forward} /></button>
+              <button type="button" className="watch-ctl watch-speed" aria-label={t("watch.speed", { n: speed })}
+                      onClick={() => { const s = nextSpeed(speed); setSpeed(s); saveSpeed(s); }}>{speed}×</button>
+            </div>
             <div className="watch-tabs" role="tablist" aria-label={t("watch.players")}>
               {order.map((s) => {
                 const p = setup.players[s];
@@ -371,12 +391,12 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
                 );
               })}
             </div>
-            {kittyShown ? (
+            <div className="watch-kitty-slot">{kittyShown ? (
               <button type="button" className="watch-kitty" aria-label={t("watch.kitty")}
                       aria-haspopup="dialog" onClick={() => setKitty(true)}>
                 <Card className="stacked" /><Card className="stacked" /><Card className="stacked" />
               </button>
-            ) : null}
+            ) : null}</div>
           </div>
           <div className="watch-hand" key={seat}>
             <Hand hand={hand} selected={lifted} selectable={false} onToggle={noToggle} rects={handRects} />

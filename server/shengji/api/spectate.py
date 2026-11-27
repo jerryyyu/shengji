@@ -33,7 +33,8 @@ reading anything. An account let in by the list alone may also watch any
 live table's last finished round, not only those a stranger could find, so
 a tester has a table to watch while the flag is off for everyone else.
 
-Privacy. The events pass the saved games' allow-list (``PUBLIC_KEYS``: no
+Privacy. A rerun names its players "Player 1" to "Player 4" (``by_seat``).
+The events pass the saved games' allow-list (``PUBLIC_KEYS``: no
 bot reasoning, timing, seeds or chat) and each seat carries only its seat,
 display name and whether it is a bot. No account id, address or room code
 is in a feed; a casual table that seats joiners names its code, which the
@@ -225,6 +226,34 @@ def _players(rec: dict) -> list[dict]:
             out.append({"seat": seat, "name": str(p.get("name") or ""),
                         "is_bot": bool(p.get("is_bot"))})
     return out
+
+
+def _seat_name(seat: Any) -> str | None:
+    return f"Player {seat + 1}" if isinstance(seat, int) and 0 <= seat < 4 else None
+
+
+def _redact(value: Any) -> Any:
+    """Every ``name`` in ``value``, at any depth and in any record kind: the
+    seat's "Player N" beside a seat, else dropped."""
+    if isinstance(value, list):
+        return [_redact(v) for v in value]
+    if not isinstance(value, dict):
+        return value
+    out = {k: _redact(v) for k, v in value.items() if k != "name"}
+    if "name" in value:
+        named = _seat_name(value.get("seat"))
+        if named is not None:
+            out["name"] = named
+    return out
+
+
+def by_seat(doc: dict) -> dict:
+    """A rerun's players as "Player 1" to "Player 4": a replay outlives its
+    table and plays to anyone, so it names nobody, in any record (a late
+    joiner's ``seat_claimed`` too). A live table's names are those its
+    seats show to the table."""
+    return {**doc, "players": [_seat_name(seat) for seat in range(4)],
+            "events": _redact(doc["events"])}
 
 
 def _cards(v: Any) -> list[str] | None:
@@ -469,7 +498,7 @@ async def watch(request: Request, mode: str | None = None, skip: str | None = No
         doc = await asyncio.to_thread(round_doc, rerun)
         if doc is not None:
             return {"table": RERUN_ID, "watcher": token, "mode": "ranked", "live_round": None,
-                    "code": None, "rerun": True, "waiting": False, **doc}
+                    "code": None, "rerun": True, "waiting": False, **by_seat(doc)}
         try:
             _reruns.remove(rerun)
         except ValueError:

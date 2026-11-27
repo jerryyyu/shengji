@@ -510,21 +510,31 @@ switch between accounts included, and goes once as whoever that leaves signed in
 ## Watching a table (Jerry 2026-11-26: "The spectate flow looks great in the video, let's build it")
 Behind the server's `SPECTATE_ENABLED`, or for the accounts its `SPECTATE_ACCOUNTS` lists (a tester before
 everyone; such an account may watch any live table); for anyone else nothing below shows. The way in is the Play tab's presence line: its
-"N playing" part (or, with nobody playing and a rerun to show, the nobody line) is a gold link with a chevron,
-and one tap goes to a table the server picks (the selected mode first, then the table furthest into its game),
-with no list. A watcher sees the table's last FINISHED round, one round behind: it never opens the table's socket,
+"N playing" part is a gold link with a chevron only when a live table can be watched, and one tap goes to a
+table the server picks (the selected mode first, then the table furthest into its game), with no list. With no
+live table to watch and a replay to show, the line says so: "Nobody is playing right now · Watch a replay ›"
+(现在没人在玩 · 看回放 ›); "Nobody is playing" itself never opens a game. A replay names its players Player 1–4
+(玩家 1–4), never their names, and its strip says Replay (回放), not a round number. A watcher sees the table's last FINISHED round, one round behind: it never opens the table's socket,
 and the players are not told. The watch screen is the table (`watch/WatchScreen.tsx` draws the table's own seats,
 trick and hand read-only), turned landscape as a game is: four tabs (team dot, crown, name, cards left; the
 selected one filled) in table order from the seat it lands behind, the banker; a tab turns the table to that
 player (cards and seats travel about 0.5 s, a fade under Reduce Motion) and docks their hand in the game's order.
 The round opens with the banker's bury (the eight cards rise and leave into the kitty); the next play's cards rise
-before they land, at a steady rhythm. The watcher bar holds icon controls (previous trick, play/pause, next trick,
-speed 0.5×/1×/2×, remembered on this device), which step whole tricks inside the finished round only, and ⋯ with
-Next table and Leave. A small kitty stack beside the tabs opens the kitty peek, the one surface added: the eight
+before they land, at a steady rhythm. The top-left strip is the game's own (round label, trump, points); ⋯ stays
+top right with Next table (live tables only) and Leave. One row above the hand holds the transport pill (previous
+trick, play/pause, next trick, speed 0.5×/1×/2×, remembered on this device; it steps whole tricks inside the
+finished round only), the four tabs centred, and the kitty; the trick cross keeps clear of that row as it does of
+a player's buttons, and the watcher's hand is drawn at the bury's size throughout, so nothing moves when the bury
+ends. On the iPad the row and the hand stack, centred, the hand no wider than the screen. A small kitty stack
+beside the tabs opens the kitty peek, the one surface added: the eight
 buried cards, dismissed by a tap. The round end is the game's own card (Details shows the kitty and the last
 trick) with the watcher's buttons: Take a seat (a casual table seating joiners: the code's own Join) or Play (a
 ranked table: the queue's Play), and Leave; under it the one line "Round N in play" until that round finishes,
 then its replay plays.
+
+TODO (needs Jerry's pick, red team item 9): the round end of a replay, and of a table that has gone, is a dead
+end: nothing plays after it and the card holds Play and Leave. The options and a recommendation are on the red
+team page; nothing is built until he picks.
 
 ## Collection and companions (Jerry 2026-11-26: "I like the Collection tab. Can we first build it with the default Tractor… do the character building with the Tractor first, before the store"; "let's add more colour schemes for free too")
 

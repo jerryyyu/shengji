@@ -316,6 +316,22 @@ describe("a seat taken mid-round: one held toast and the menu's word", () => {
     third.unmount();
   });
 
+  it("a newer toast shown while the table was away is kept on return, and the line is not brought back", () => {
+    const view = render(joined());
+    view.unmount();
+    act(() => { showToast("No game or pair has that code."); });
+    const back = render(joined());
+    expect(toast()?.text).toBe("No game or pair has that code.");
+    act(() => { vi.advanceTimersByTime(TOAST_MS); });
+    expect(toast()).toBeNull();
+    back.rerender(joined({ tricks_done: 3 }));
+    expect(toast()).toBeNull();
+    back.unmount();
+    const again = render(joined());
+    expect(toast()).toBeNull();
+    again.unmount();
+  });
+
   it("a first card played while the table was away lets it go on return", () => {
     const view = render(joined());
     view.unmount();

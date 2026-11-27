@@ -126,4 +126,37 @@ describe("a held toast", () => {
     expect(heldToastKey()).toBeNull();
     expect(currentToast()?.leaving).toBe(TOAST_MS - 2000);
   });
+
+  it("hidden with the slot left empty, it is shown again on return", () => {
+    act(() => root.render(<Toast />));
+    act(() => holdToast("R:Bot 2", "line"));
+    act(() => hideHeldToast());
+    act(() => { vi.advanceTimersByTime(TOAST_MS * 2); });
+    act(() => holdToast("R:Bot 2", "line"));
+    expect(shown().map((e) => e.textContent)).toEqual(["line"]);
+    expect(currentToast()?.held).toBe(true);
+  });
+
+  it("a newer toast supersedes it: a return keeps the newer one, or the empty slot once that is gone", () => {
+    act(() => root.render(<Toast />));
+    act(() => holdToast("R:Bot 2", "line"));
+    act(() => hideHeldToast());
+    act(() => { showToast("That game has ended."); });
+    act(() => holdToast("R:Bot 2", "line"));
+    expect(shown().map((e) => e.textContent)).toEqual(["That game has ended."]);
+    expect(heldToastKey()).toBeNull();
+    act(() => { vi.advanceTimersByTime(TOAST_MS); });
+    act(() => holdToast("R:Bot 2", "line"));
+    // superseded once is not held again under the same key
+    expect(currentToast()).toBeNull();
+  });
+
+  it("a newer toast over it while it shows supersedes it too", () => {
+    act(() => root.render(<Toast />));
+    act(() => holdToast("R:Bot 2", "line"));
+    act(() => { showToast("Alice joins next trick", { info: true }); });
+    expect(heldToastKey()).toBeNull();
+    act(() => hideHeldToast());
+    expect(shown().map((e) => e.textContent)).toEqual(["Alice joins next trick"]);
+  });
 });

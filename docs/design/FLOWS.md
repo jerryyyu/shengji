@@ -77,7 +77,8 @@ The host role passes on, and a ranked leave keeps "at best a draw".
     mid-round claim (an open-table join, or a by-code take of a bot's or a dropped player's seat), sent only
     during that round. It is presentation only; `joined_round` alone sets the menu word and the rating and
     leave rules. The hold lives in the toast store, so How to play and back keeps it; the first card, the
-    round end or leaving the table lets it go. No new surface or message.
+    round end or leaving the table lets it go, and a newer toast supersedes it (the newest wins; the line
+    is not brought back over or after it). No new surface or message.
 
 **Section 4, connection.** One "Reconnecting…" pill, Retry after 10 s, a full-screen state after 30 s (when the bot takes a dropped seat), and a
 bad code shown inline under the code box. The 30 s is one window on both sides (Jerry 2026-11-26, option B):

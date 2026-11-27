@@ -483,8 +483,9 @@ other socket with `account_in_game`.
   or codes.
   To a socket that may watch (`SPECTATE_ENABLED=1` for everyone, or a signed-in
   account listed in `SPECTATE_ACCOUNTS`) it also carries `watch` (tables that
-  can be watched) and `rerun` (a finished ranked round can be replayed); an
-  older client ignores both, and without them the line is not a link.
+  can be watched and have a free place) and `rerun` (a finished ranked round
+  can be replayed); an older client ignores both, and without them the line
+  is not a link.
 - `table_chat {table, id, seat, name, text, t}`: a line of your table's
   chat, to everyone there, the sender included; `table` is the waiting
   table's id, or null while you wait alone; `id` counts up per table, `seat`
@@ -739,7 +740,8 @@ account may watch any live table's last finished round.
   finished round: `{table, watcher, mode, live_round, code, rerun, waiting,
   round, seat, players, finished, events}`. `events` are the saved games'
   allow-listed records with every card shown; `seat` is the banker. With no
-  table it answers a recent finished ranked round with `rerun: true`, its players
+  table it answers a recent finished ranked round (kept across server restarts)
+  with `rerun: true`, its players
   named as the leaderboard shows them: a player it lists keeps their name, a
   bot its name, and anyone else is `Player 1` to `Player 4` by seat (in every
   record); with
@@ -747,8 +749,9 @@ account may watch any live table's last finished round.
 - `GET /api/watch/{table}?after=N&w=` follows that table: its round after `N`
   once finished, else `{waiting: true, live_round}`. 404 once the table cannot
   be watched.
-- `w` is the watcher token the first answer gave; a table counts at most 8
-  watchers, each until 90 s pass without a read. 30 reads a minute per
+- `w` is the watcher token the first answer gave; a table counts at most 50
+  watchers, each until 90 s pass without a read; a full table is not picked,
+  not followed by a new watcher and not counted in `watch`. 30 reads a minute per
   address. `code` is set only for a casual table seating joiners now.
 - Only a round whose `round_end` is logged is ever served.
 

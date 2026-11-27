@@ -10,7 +10,15 @@ Which tables. A table a stranger could already find: a ranked table, or a
 casual table with Allow joiners on (the queue offers those to strangers),
 with a person still connected, once one of its rounds has finished. With
 none, a rerun: the newest whole round among the last few finished ranked
-rounds seen since the process started, so the way in always leads somewhere.
+rounds, so the way in always leads somewhere.
+
+Reruns survive a restart. Where those rounds sit in their logs is written
+to an index beside the logs (``_index_path``; on the Fly volume,
+``/data/spectate/replays.json``) at each ranked round's end, replaced
+atomically, and read back on first use; an entry whose log no longer holds
+the whole round is dropped then. The index holds log paths, byte offsets,
+round numbers and account ids, never a name: names are read from the log
+and masked by the leaderboard rule each time a rerun is served.
 
 The guard. Only a round whose ``round_end`` record was written is served,
 and it is checked twice: the round's records must run from its
@@ -23,7 +31,10 @@ round as the engine plays one (``complete_sequence``); one with a lost
 record gives way to the table's previous finished round.
 
 Limits. At most ``WATCH_CAP`` watchers per table (a watcher counts until
-``WATCH_TTL`` passes without a poll), and ``LIMITER`` per address.
+``WATCH_TTL`` passes without a poll), and ``LIMITER`` per address. The
+presence line counts only tables with a free place, so its link never
+promises a live table the feed cannot give. A finished round is read and
+serialised once (``_doc``), not once per watcher.
 
 Who may watch. Nobody unless ``SPECTATE_ENABLED=1`` (everyone) or the
 signed-in account's id is in ``SPECTATE_ACCOUNTS`` (comma-separated account
@@ -56,7 +67,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 
 from ..engine.round import HAND_SIZE
 from . import accounts, ratings, saved_games
@@ -64,7 +75,7 @@ from . import accounts, ratings, saved_games
 log = logging.getLogger(__name__)
 
 ENV = "SPECTATE_ENABLED"
-WATCH_CAP = 8
+WATCH_CAP = 50
 WATCH_TTL = 90.0
 # A watcher polls a table about every 15 s while a round is in play, and a
 # tap on Next table reads one more; this leaves room for both.
@@ -73,6 +84,12 @@ LIMITER = accounts.RateLimiter(limit=30, window=60.0)
 READ_CAP = 4 * 1024 * 1024
 RERUN_ID = "rerun"
 KEEP_ROUNDS = 3
+INDEX_SCHEMA = 1
+# The index holds KEEP_ROUNDS small entries; a larger file is not ours.
+INDEX_CAP = 256 * 1024
+# Built round documents kept: a table's last few rounds, the reruns, and a
+# rerun's masks while the leaderboard changes under it.
+DOC_CACHE = 64
 
 
 ACCOUNTS_ENV = "SPECTATE_ACCOUNTS"
@@ -143,6 +160,112 @@ class WatchState:
 # close: a rerun plays the newest whose log holds the whole round, and one
 # that does not is dropped, so an older whole round still plays.
 _reruns: collections.deque = collections.deque(maxlen=KEEP_ROUNDS)
+# Whether ``_reruns`` has been read back from the index since the process started.
+_loaded = False
+
+
+def _index_path() -> Path:
+    """The rerun index, beside the logs it points into, so both live on the
+    same volume (``/data/logs`` -> ``/data/spectate/replays.json``)."""
+    from . import server
+    return Path(server.LOG_DIR).parent / "spectate" / "replays.json"
+
+
+def _entry(f: Finished) -> dict:
+    return {"path": str(f.path), "start": f.start, "round": f.round, "ranked": f.ranked,
+            "start_accounts": list(f.start_accounts),
+            "claims": sorted([at, uid] for at, uid in f.claims.items())}
+
+
+def _account(v: Any) -> bool:
+    return v is None or (isinstance(v, int) and not isinstance(v, bool))
+
+
+def _from_entry(e: Any) -> Finished | None:
+    """An index entry back as a ``Finished``, or None when any field is off."""
+    if not isinstance(e, dict):
+        return None
+    path, start, n, accts, claims = (e.get("path"), e.get("start"), e.get("round"),
+                                     e.get("start_accounts"), e.get("claims"))
+    if not isinstance(path, str) or not path or e.get("ranked") is not True:
+        return None
+    if not all(isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in (start, n)):
+        return None
+    if not isinstance(accts, list) or len(accts) != 4 or not all(_account(v) for v in accts):
+        return None
+    if not isinstance(claims, list) or not all(
+            isinstance(c, list) and len(c) == 2 and isinstance(c[0], int) and _account(c[1])
+            for c in claims):
+        return None
+    return Finished(path=Path(path), start=start, round=n, ranked=True,
+                    start_accounts=tuple(accts), claims={at: uid for at, uid in claims})
+
+
+def _whole(f: Finished) -> bool:
+    records = _read(f)
+    return records is not None and complete_sequence(records)
+
+
+def save() -> None:
+    """Write ``_reruns`` to the index: a temporary file, fsynced, renamed
+    over the old one, so a crash leaves the old index or the new, never part."""
+    try:
+        path = _index_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        body = json.dumps({"schema": INDEX_SCHEMA,
+                           "rounds": [_entry(f) for f in _reruns]}).encode("utf-8")
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        with open(tmp, "wb") as fh:
+            fh.write(body)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+        try:
+            fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+        except OSError:
+            pass                    # a directory that cannot be fsynced still has the rename
+    except Exception:               # noqa: BLE001 - never raise into a game
+        log.exception("spectate index write failed")
+
+
+def load() -> None:
+    """Read the index back into ``_reruns``, keeping only ranked rounds
+    whose log still holds the whole round. A missing, unreadable, corrupt
+    or other-schema index starts empty."""
+    global _loaded
+    _loaded = True
+    rounds: list = []
+    try:
+        path = _index_path()
+        if path.stat().st_size <= INDEX_CAP:
+            data = json.loads(path.read_bytes())
+            if isinstance(data, dict) and data.get("schema") == INDEX_SCHEMA \
+                    and isinstance(data.get("rounds"), list):
+                rounds = data["rounds"][-KEEP_ROUNDS:]
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError):
+        log.warning("spectate index unreadable; starting with no reruns")
+    except Exception:               # noqa: BLE001 - a bad index never stops the feed
+        log.exception("spectate index read failed")
+    kept = []
+    for e in rounds:
+        f = _from_entry(e)
+        if f is not None and _whole(f):
+            kept.append(f)
+    _reruns.clear()
+    _reruns.extend(kept)
+    if len(kept) != len(rounds):
+        save()
+
+
+def _ensure_loaded() -> None:
+    if not _loaded:
+        load()
 
 
 def _state(room: Any) -> WatchState:
@@ -204,7 +327,9 @@ def round_ended(room: Any, written: bool = True) -> None:
                            start_accounts=began, claims=dict(st.claims))
         st.recent.append(st.last)
         if st.last.ranked:
+            _ensure_loaded()
             _reruns.append(st.last)
+            save()
     except Exception:               # noqa: BLE001 - never raise into a game
         log.exception("spectate round_ended failed")
 
@@ -398,6 +523,67 @@ def round_doc(f: Finished, listed: set[int] | None = None) -> dict | None:
             "events": events}
 
 
+@dataclass(frozen=True)
+class Built:
+    """A round document and its JSON body without the outer braces, so an
+    answer is its header and these bytes."""
+    doc: dict
+    body: bytes
+
+
+_DOCS: collections.OrderedDict = collections.OrderedDict()
+_PENDING: dict = {}
+
+
+def _doc_key(f: Finished, listed: set[int] | None) -> tuple:
+    """What a round's document depends on: the round, and for a rerun
+    which of its own accounts the leaderboard shows now."""
+    if listed is None:
+        return (str(f.path), f.start, f.round, None)
+    own = {u for u in (*f.start_accounts, *f.claims.values()) if isinstance(u, int)}
+    return (str(f.path), f.start, f.round, frozenset(own & listed))
+
+
+def _build(f: Finished, listed: set[int] | None) -> Built | None:
+    doc = round_doc(f, listed)
+    if doc is None:
+        return None
+    return Built(doc, _dumps(doc)[1:-1])
+
+
+def _dumps(value: Any) -> bytes:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+
+async def _doc(f: Finished, listed: set[int] | None = None) -> Built | None:
+    """``round_doc`` read and serialised once per round (and per rerun
+    mask): a finished round's log never changes, so later watchers get the
+    same bytes from memory. Readers arriving together share one read."""
+    key = _doc_key(f, listed)
+    if key in _DOCS:
+        _DOCS.move_to_end(key)
+        return _DOCS[key]
+    task = _PENDING.get(key)
+    if task is None or task.get_loop() is not asyncio.get_running_loop():
+        task = asyncio.ensure_future(asyncio.to_thread(_build, f, listed))
+        _PENDING[key] = task
+    try:
+        built = await asyncio.shield(task)
+    finally:
+        if task.done() and _PENDING.get(key) is task:
+            del _PENDING[key]
+    _DOCS[key] = built
+    _DOCS.move_to_end(key)
+    while len(_DOCS) > DOC_CACHE:
+        _DOCS.popitem(last=False)
+    return built
+
+
+def _answer(head: dict, built: Built) -> Response:
+    return Response(content=_dumps(head)[:-1] + b"," + built.body + b"}",
+                    media_type="application/json")
+
+
 # ------------------------------------------------------------- picking
 def _rooms() -> list[Any]:
     from . import server
@@ -422,10 +608,18 @@ def _mode(room: Any) -> str:
     return "ranked" if ratings.ranked(room) else "casual"
 
 
+def _free(room: Any, now: float) -> bool:
+    """Whether one more watcher has a place at this table."""
+    return room.watch.live_watchers(now) < WATCH_CAP
+
+
 def _counts() -> tuple[int, int, bool]:
-    """(tables anyone may watch, live tables with a finished round, rerun)."""
-    rooms = _rooms()
-    return (sum(1 for r in rooms if watchable(r)), sum(1 for r in rooms if watchable(r, True)),
+    """(tables anyone may watch, live tables with a finished round, rerun),
+    counting only tables with a free place."""
+    _ensure_loaded()
+    rooms, now = _rooms(), time.time()
+    return (sum(1 for r in rooms if watchable(r) and _free(r, now)),
+            sum(1 for r in rooms if watchable(r, True) and _free(r, now)),
             len(_reruns) > 0)
 
 
@@ -461,7 +655,7 @@ def pick(mode: str | None, skip: str | None, token: str, now: float,
         if not watchable(room, wide) or room.watch.id == skip:
             continue
         st = room.watch
-        if token not in st.watchers and st.live_watchers(now) >= WATCH_CAP:
+        if token not in st.watchers and not _free(room, now):
             continue
         key = (_mode(room) == mode, room.game.round_no, st.last.round)
         if best is None or key > best[0]:
@@ -483,29 +677,31 @@ def _still(room: Any, wide: bool) -> bool:
     return server.rooms.get(room.code) is room and watchable(room, wide)
 
 
-async def _serve(room: Any, token: str, after: int | None, wide: bool) -> dict | None:
-    """One table's answer: its latest whole finished round (when newer than
-    ``after``; a round whose log is incomplete gives way to the one before
-    it), or that its round is still in play. None when, after the read, the
-    room is gone or no longer watchable; the answer's header is read then."""
+async def _serve(room: Any, token: str, after: int | None,
+                 wide: bool) -> tuple[dict, Built | None] | None:
+    """One table's answer: its header and its latest whole finished round
+    (when newer than ``after``; a round whose log is incomplete gives way to
+    the one before it), or the header alone (``waiting``) while its round is
+    in play. None when, after the read, the room is gone or no longer
+    watchable; the header is read then."""
     st = room.watch
-    doc = None
+    built = None
     for f in reversed(list(st.recent)):
         if after is not None and f.round <= after:
             break
         if not _is_over(room, f.round):
             continue
-        doc = await asyncio.to_thread(round_doc, f)
-        if doc is not None or not _still(room, wide):
+        built = await _doc(f)
+        if built is not None or not _still(room, wide):
             break
     # checked again after the reads: the same room, still watchable, past the round
     if not _still(room, wide):
         return None
     head = {"table": st.id, "watcher": token, "mode": _mode(room),
             "live_round": room.game.round_no, "code": _join_code(room), "rerun": False}
-    if doc is None or not _is_over(room, doc["round"]):
-        return {**head, "waiting": True}
-    return {**head, **doc, "waiting": False}
+    if built is None or not _is_over(room, built.doc["round"]):
+        return {**head, "waiting": True}, None
+    return {**head, "waiting": False}, built
 
 
 # ------------------------------------------------------------- endpoints
@@ -538,7 +734,7 @@ def _token(w: str | None) -> str:
 
 @router.get("/watch")
 async def watch(request: Request, mode: str | None = None, skip: str | None = None,
-                w: str | None = None) -> dict:
+                w: str | None = None) -> Response:
     """Pick a table and send its latest finished round; with no table, the
     rerun; with neither, 404."""
     wide = await _admit(request)
@@ -551,26 +747,30 @@ async def watch(request: Request, mode: str | None = None, skip: str | None = No
                 st.watchers.pop(token, None)
         room.watch.watchers[token] = now
         out = await _serve(room, token, None, wide)
-        if out is not None and not out["waiting"]:
-            return out
+        if out is not None and out[1] is not None:
+            return _answer(*out)
         if out is None:
             room.watch.watchers.pop(token, None)
+    _ensure_loaded()
+    listed = await asyncio.to_thread(_listed) if _reruns else set()
     for rerun in reversed(list(_reruns)):
-        listed = await asyncio.to_thread(_listed)
-        doc = await asyncio.to_thread(round_doc, rerun, listed)
-        if doc is not None:
-            return {"table": RERUN_ID, "watcher": token, "mode": "ranked", "live_round": None,
-                    "code": None, "rerun": True, "waiting": False, **doc}
+        built = await _doc(rerun, listed)
+        if built is not None:
+            return _answer({"table": RERUN_ID, "watcher": token, "mode": "ranked",
+                            "live_round": None, "code": None, "rerun": True,
+                            "waiting": False}, built)
         try:
             _reruns.remove(rerun)
         except ValueError:
             pass                    # another request dropped it first
+        else:
+            save()
     raise HTTPException(status_code=404, detail="Nothing to watch.")
 
 
 @router.get("/watch/{table}")
 async def follow(table: str, request: Request, after: int | None = None,
-                 w: str | None = None) -> dict:
+                 w: str | None = None) -> Response:
     """The table a watcher is at: its newer finished round, or ``waiting``
     while the round after ``after`` is in play. 404 once it cannot be
     watched (closed, emptied, Allow joiners off) or is at its cap."""
@@ -581,14 +781,17 @@ async def follow(table: str, request: Request, after: int | None = None,
     if room is None or not watchable(room, wide):
         raise HTTPException(status_code=404, detail="Not found.")
     st = room.watch
-    if token not in st.watchers and st.live_watchers(now) >= WATCH_CAP:
+    if token not in st.watchers and not _free(room, now):
         raise HTTPException(status_code=404, detail="Not found.")
     st.watchers[token] = now
     out = await _serve(room, token, after, wide)
     if out is None:
         st.watchers.pop(token, None)
         raise HTTPException(status_code=404, detail="Not found.")
-    return out
+    head, built = out
+    if built is None:
+        return Response(content=_dumps(head), media_type="application/json")
+    return _answer(head, built)
 
 
 def register_spectate(app) -> None:

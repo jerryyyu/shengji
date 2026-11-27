@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import time
+from pathlib import Path
 
 import pytest
 
@@ -87,6 +88,8 @@ def feed(client, monkeypatch):
 
     monkeypatch.setenv(spectate.ENV, "1")
     monkeypatch.setattr(spectate, "_reruns", spectate.collections.deque(maxlen=spectate.KEEP_ROUNDS))
+    monkeypatch.setattr(spectate, "_loaded", True)
+    monkeypatch.setattr(spectate, "_DOCS", spectate.collections.OrderedDict())
     spectate.LIMITER.reset()
     return srv, spectate, client
 
@@ -260,17 +263,23 @@ def test_picking_prefers_the_asked_mode_then_the_table_furthest_in_and_skips(fee
     assert nxt["table"] == early.room.watch.id
 
 
-def test_at_most_eight_watchers_per_table(feed):
+def test_every_watcher_up_to_the_cap_gets_the_live_table(feed, monkeypatch):
     srv, spectate, client = feed
+    monkeypatch.setattr(spectate.LIMITER, "limit", 1000)
     t = Table(srv, ranked=True)
     t.play_round()
     t.deal()
-    tokens = [_watch(client).json()["watcher"] for _ in range(spectate.WATCH_CAP)]
+    assert spectate.WATCH_CAP == 50
+    docs = [_watch(client).json() for _ in range(spectate.WATCH_CAP)]
+    # the 9th to the 50th as much as the first: this table, not a replay
+    assert all(d["table"] == t.room.watch.id and d["rerun"] is False and d["round"] == 1
+               for d in docs)
+    tokens = [d["watcher"] for d in docs]
     assert len(set(tokens)) == spectate.WATCH_CAP
     assert t.room.watch.live_watchers(spectate.time.time()) == spectate.WATCH_CAP
-    # the ninth gets the rerun (this table's own round, from the log), not a place here
-    ninth = _watch(client).json()
-    assert ninth["rerun"] is True and ninth["table"] == spectate.RERUN_ID
+    # one past the cap gets the rerun (this table's own round, from the log), not a place here
+    over = _watch(client).json()
+    assert over["rerun"] is True and over["table"] == spectate.RERUN_ID
     assert client.get(f"/api/watch/{t.room.watch.id}").status_code == 404
     # a watcher already counted keeps its place
     mine = client.get(f"/api/watch/{t.room.watch.id}", params={"w": tokens[0], "after": 1})
@@ -384,11 +393,13 @@ def test_with_no_flag_and_no_list_the_presence_line_is_unchanged(client, monkeyp
 
 # ------------------------------------------------------- after the read
 def _during_read(monkeypatch, spectate, change):
-    """Run ``change`` while the feed reads the log, as another request could."""
+    """Run ``change`` while the feed reads the log, as another request could.
+    Only a read can be raced, so the built rounds are forgotten first."""
+    spectate._DOCS.clear()
     real = spectate.round_doc
 
-    def reading(f):
-        doc = real(f)
+    def reading(f, listed=None):
+        doc = real(f, listed)
         change()
         return doc
 
@@ -404,6 +415,7 @@ def test_allow_joiners_switched_off_during_the_read_serves_nothing(feed, monkeyp
     _during_read(monkeypatch, spectate, lambda: setattr(t.room, "allow_joiners", False))
     assert _watch(client, w=token).status_code == 404
     t.room.allow_joiners = True
+    spectate._DOCS.clear()
     tid = t.room.watch.id
     assert client.get(f"/api/watch/{tid}", params={"w": token}).status_code == 404
 
@@ -624,3 +636,149 @@ def test_every_claim_writer_records_its_claimer():
     writes = re.findall(r'.*log_event\("seat_claimed".*', src)
     assert len(writes) == 3
     assert all("spectate.claimed(" in line for line in writes), writes
+
+
+# ------------------------------------------------------- capacity and the cache
+def test_the_count_leaves_out_a_full_table(feed, monkeypatch):
+    srv, spectate, client = feed
+    monkeypatch.setattr(spectate.LIMITER, "limit", 1000)
+    t = Table(srv, ranked=True)
+    t.play_round()
+    t.deal()
+    for _ in range(spectate.WATCH_CAP - 1):
+        _watch(client)
+    assert spectate.presence() == {"watch": 1, "rerun": True}
+    _watch(client)
+    # full: the line offers the replay, not a live table it cannot give
+    assert spectate.presence() == {"watch": 0, "rerun": True}
+    assert spectate.presence_key() == (0, 0, True)
+    for tok in list(t.room.watch.watchers):
+        t.room.watch.watchers[tok] -= spectate.WATCH_TTL + 1
+    assert spectate.presence() == {"watch": 1, "rerun": True}
+
+
+def test_a_finished_round_is_read_once_and_served_as_the_same_bytes(feed, monkeypatch):
+    srv, spectate, client = feed
+    t = Table(srv, code="CACH", ranked=True)
+    t.play_round()
+    t.deal()
+    reads = []
+    real = spectate.round_doc
+
+    def counting(f, listed=None):
+        reads.append((f.round, listed is None))
+        return real(f, listed)
+
+    monkeypatch.setattr(spectate, "round_doc", counting)
+    first, second = _watch(client), _watch(client)
+    assert first.json()["watcher"] != second.json()["watcher"]
+
+    def body(resp):
+        doc = resp.json()
+        doc.pop("watcher")
+        return json.dumps(doc, sort_keys=True)
+
+    assert body(first) == body(second)
+    tid = first.json()["table"]
+    follow = client.get(f"/api/watch/{tid}", params={"after": 0, "w": first.json()["watcher"]})
+    assert follow.json()["events"] == first.json()["events"]
+    assert reads == [(1, True)]
+    # a rerun is built once per leaderboard mask as well
+    srv.rooms.pop("CACH")
+    r1, r2 = _watch(client), _watch(client)
+    assert body(r1) == body(r2) and r1.json()["rerun"] is True
+    assert reads == [(1, True), (1, False)]
+
+
+# ------------------------------------------------------- reruns across a restart
+def _restart(spectate, monkeypatch):
+    """What a new process has: nothing in memory, the index on disk."""
+    monkeypatch.setattr(spectate, "_reruns", spectate.collections.deque(maxlen=spectate.KEEP_ROUNDS))
+    monkeypatch.setattr(spectate, "_DOCS", spectate.collections.OrderedDict())
+    monkeypatch.setattr(spectate, "_loaded", False)
+
+
+def test_reruns_survive_a_restart(feed, monkeypatch):
+    srv, spectate, client = feed
+    t = Table(srv, code="KEEP", ranked=True)
+    t.play_round()
+    t.play_round()
+    srv.rooms.pop("KEEP")
+    before = _watch(client).json()
+    index = spectate._index_path()
+    assert index == srv.LOG_DIR.parent / "spectate" / "replays.json"
+    text = index.read_text()
+    saved = json.loads(text)
+    assert saved["schema"] == spectate.INDEX_SCHEMA and [e["round"] for e in saved["rounds"]] == [1, 2]
+    assert saved["rounds"][0]["start_accounts"] == [41, None, None, None]
+    assert "Mei" not in text and "Bot 1" not in text      # ids only, never a name
+    assert not list(index.parent.glob("*.tmp"))
+
+    _restart(spectate, monkeypatch)
+    assert spectate.presence() == {"watch": 0, "rerun": True}
+    after = _watch(client).json()
+    assert after["rerun"] is True and after["round"] == 2
+    assert after["events"] == before["events"] and after["players"] == before["players"]
+
+
+@pytest.mark.parametrize("content", [None, b"", b"{not json", b"[]", b'{"schema": 99, "rounds": []}',
+                                     b'{"schema": 1, "rounds": [{"path": 3}, "x", null]}',
+                                     b"\x00" * (300 * 1024)],
+                         ids=["missing", "empty", "not-json", "a-list", "other-schema",
+                              "bad-entries", "oversize"])
+def test_a_missing_or_corrupt_index_starts_empty(feed, monkeypatch, content):
+    srv, spectate, client = feed
+    index = spectate._index_path()
+    index.parent.mkdir(parents=True, exist_ok=True)
+    if content is not None:
+        index.write_bytes(content)
+    _restart(spectate, monkeypatch)
+    assert spectate.presence() == {"watch": 0, "rerun": False}
+    assert list(spectate._reruns) == []
+    assert _watch(client).status_code == 404
+    # the next ranked round end writes a good index over it
+    t = Table(srv, code="NEXT", ranked=True)
+    t.play_round()
+    assert [e["round"] for e in json.loads(index.read_text())["rounds"]] == [1]
+
+
+def test_an_entry_whose_log_is_gone_or_cut_is_dropped_on_load(feed, monkeypatch):
+    srv, spectate, client = feed
+    gone = Table(srv, code="GONE", ranked=True)
+    gone.play_round()
+    cut = Table(srv, code="CUTS", ranked=True)
+    cut.play_round()
+    kept = Table(srv, code="KEPT", ranked=True)
+    kept.play_round()
+    for code in ("GONE", "CUTS", "KEPT"):
+        srv.rooms.pop(code)
+    spectate._log_path(gone.room).unlink()
+    _drop_a_play(spectate._log_path(cut.room), 1)
+    _restart(spectate, monkeypatch)
+    spectate.load()
+    assert [Path(f.path).name for f in spectate._reruns] == ["KEPT.jsonl"]
+    saved = json.loads(spectate._index_path().read_text())
+    assert [Path(e["path"]).name for e in saved["rounds"]] == ["KEPT.jsonl"]
+    doc = _watch(client).json()
+    assert doc["rerun"] is True and doc["events"][-1]["e"] == "round_end"
+
+
+def test_a_player_who_leaves_the_leaderboard_is_masked_on_the_next_serve(accounts_on, feed, monkeypatch):
+    from shengji.api import ratings
+
+    srv, spectate, client = feed
+    store = accounts_on.STORE
+    mei = _rated(store, "leaver", "Mei")
+    t = Table(srv, code="LEFT", ranked=True)
+    t.room.seats[0] = srv.Seat(name="Mei", user_id=mei, connected=True)
+    t.play_round()
+    srv.rooms.pop("LEFT")
+    assert _watch(client).json()["players"][0] == "Mei"
+    _restart(spectate, monkeypatch)
+    assert _watch(client).json()["players"][0] == "Mei"     # named again from the log
+    ratings.set_visible(store, mei, False)
+    hidden = _watch(client).json()
+    assert hidden["players"][0] == "Player 1"
+    assert "Mei" not in json.dumps(hidden)
+    ratings.set_visible(store, mei, True)
+    assert _watch(client).json()["players"][0] == "Mei"

@@ -141,10 +141,12 @@ describe("the watch screen", () => {
 
 describe("a replay", () => {
   const rerun = { ...feed, table: "rerun", rerun: true, live_round: null, code: null, mode: "ranked",
-    players: ["Player 1", "Player 2", "Player 3", "Player 4"],
+    // seat 1's player is on the leaderboard and keeps their name; the server
+    // names everyone else by seat
+    players: ["Mei", "Player 2", "Player 3", "Player 4"],
     events: fixture.events.map((e) => (e.e !== "round_start" ? e : {
       ...e, players: (e as { players: { seat: number; is_bot: boolean }[] }).players
-        .map((p) => ({ ...p, name: `Player ${p.seat + 1}` })) })) };
+        .map((p) => ({ ...p, name: p.seat === 0 ? "Mei" : `Player ${p.seat + 1}` })) })) };
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       urls.push(url);
@@ -165,22 +167,22 @@ describe("a replay", () => {
     expect([...host.querySelectorAll("[role=menuitem]")].map((b) => b.textContent)).toEqual(["Leave"]);
   });
 
-  it("names its players by seat in the viewer's language", async () => {
+  it("keeps a leaderboard player's name and reads the others' seats in the viewer's language", async () => {
     setLanguageChoice("zh-Hans");
     try {
       await open();
       expect(tabs().map((b) => b.querySelector(".watch-tab-name")!.textContent).sort())
-        .toEqual(["玩家 1", "玩家 2", "玩家 3", "玩家 4"]);
+        .toEqual(["Mei", "玩家 2", "玩家 3", "玩家 4"]);
     } finally {
       setLanguageChoice("system");
     }
   });
 
-  it("names its players by seat", async () => {
+  it("shows the names as the server sends them", async () => {
     await open();
     expect(tabs().map((b) => b.querySelector(".watch-tab-name")!.textContent))
-      .toEqual(["Player 1", "Player 2", "Player 3", "Player 4"].slice(banker).concat(
-        ["Player 1", "Player 2", "Player 3", "Player 4"].slice(0, banker)));
+      .toEqual(["Mei", "Player 2", "Player 3", "Player 4"].slice(banker).concat(
+        ["Mei", "Player 2", "Player 3", "Player 4"].slice(0, banker)));
   });
 });
 

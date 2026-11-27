@@ -33,7 +33,9 @@ reading anything. An account let in by the list alone may also watch any
 live table's last finished round, not only those a stranger could find, so
 a tester has a table to watch while the flag is off for everyone else.
 
-Privacy. A rerun names its players "Player 1" to "Player 4" (``by_seat``).
+Privacy. A rerun (always a ranked round) names a player only if the
+leaderboard shows them (``ratings.listed_ids``); everyone else is "Player N"
+and bots keep their names (``by_seat``).
 The events pass the saved games' allow-list (``PUBLIC_KEYS``: no
 bot reasoning, timing, seeds or chat) and each seat carries only its seat,
 display name and whether it is a bot. No account id, address or room code
@@ -105,6 +107,11 @@ class Finished:
     start: int
     round: int
     ranked: bool
+    # the account at each seat when the round began and when it ended (None:
+    # a guest or a bot), so a replay can name the players the leaderboard
+    # shows. Server-only: never in a feed.
+    start_accounts: tuple = (None, None, None, None)
+    end_accounts: tuple = (None, None, None, None)
 
 
 @dataclass
@@ -146,6 +153,16 @@ def _log_path(room: Any) -> Path:
     return Path(room.log_dir or server.LOG_DIR) / f"{room.code}.jsonl"
 
 
+def _accounts(room: Any) -> tuple:
+    """The signed-in account at each seat, None for a guest or a bot."""
+    out = []
+    for i in range(4):
+        sd = room.seats[i] if i < len(room.seats) else None
+        uid = getattr(sd, "user_id", None) if sd is not None and not sd.is_bot else None
+        out.append(uid if isinstance(uid, int) else None)
+    return tuple(out)
+
+
 # ------------------------------------------------------------- room hooks
 def round_started(room: Any, offset: int | None) -> None:
     """After a ``round_start`` record: where the round in play begins. A
@@ -153,7 +170,7 @@ def round_started(room: Any, offset: int | None) -> None:
     try:
         st = _state(room)
         game = room.game
-        st.started = (game.round_no, _log_path(room), offset) if (
+        st.started = (game.round_no, _log_path(room), offset, _accounts(room)) if (
             game is not None and offset is not None) else None
     except Exception:               # noqa: BLE001 - never raise into a game
         log.exception("spectate round_started failed")
@@ -166,8 +183,9 @@ def round_ended(room: Any, written: bool = True) -> None:
         game = room.game
         if not written or game is None or st.started is None or st.started[0] != game.round_no:
             return
-        n, path, offset = st.started
-        st.last = Finished(path=path, start=offset, round=n, ranked=ratings.ranked(room))
+        n, path, offset, began = st.started
+        st.last = Finished(path=path, start=offset, round=n, ranked=ratings.ranked(room),
+                           start_accounts=began, end_accounts=_accounts(room))
         st.recent.append(st.last)
         if st.last.ranked:
             _reruns.append(st.last)
@@ -232,28 +250,52 @@ def _seat_name(seat: Any) -> str | None:
     return f"Player {seat + 1}" if isinstance(seat, int) and 0 <= seat < 4 else None
 
 
-def _redact(value: Any) -> Any:
-    """Every ``name`` in ``value``, at any depth and in any record kind: the
-    seat's "Player N" beside a seat, else dropped."""
+def _redact(value: Any, shown: set[int], in_start: bool = False) -> Any:
+    """Every ``name`` in ``value``, at any depth and in any record kind, kept
+    for a bot or for a seat in ``shown``, else the seat's "Player N" (dropped
+    with no seat). ``shown`` holds the seats whose player the leaderboard
+    lists: at the round's start for its ``round_start`` record, at its end for
+    the rest (a late joiner)."""
     if isinstance(value, list):
-        return [_redact(v) for v in value]
+        return [_redact(v, shown, in_start) for v in value]
     if not isinstance(value, dict):
         return value
-    out = {k: _redact(v) for k, v in value.items() if k != "name"}
+    out = {k: _redact(v, shown, in_start) for k, v in value.items() if k != "name"}
     if "name" in value:
-        named = _seat_name(value.get("seat"))
-        if named is not None:
+        seat = value.get("seat")
+        if value.get("is_bot") is True or value.get("bot") is True or seat in shown:
+            out["name"] = value["name"]
+        elif (named := _seat_name(seat)) is not None:
             out["name"] = named
     return out
 
 
-def by_seat(doc: dict) -> dict:
-    """A rerun's players as "Player 1" to "Player 4": a replay outlives its
-    table and plays to anyone, so it names nobody, in any record (a late
-    joiner's ``seat_claimed`` too). A live table's names are those its
-    seats show to the table."""
-    return {**doc, "players": [_seat_name(seat) for seat in range(4)],
-            "events": _redact(doc["events"])}
+def by_seat(doc: dict, start_shown: set[int], end_shown: set[int]) -> dict:
+    """A rerun names a player only if the leaderboard shows them: a replay
+    outlives its table and plays to anyone, so everyone else (a guest, an
+    account not on the leaderboard) is "Player 1" to "Player 4", in every
+    record. Bots keep their names. A live table's names are those its seats
+    show to the table."""
+    events = [_redact(ev, start_shown) if ev.get("e") == "round_start" else _redact(ev, end_shown)
+              for ev in doc["events"]]
+    start = next((e for e in events if e.get("e") == "round_start"), {})
+    names = [_seat_name(seat) for seat in range(4)]
+    for p in start.get("players", []):
+        if isinstance(p.get("seat"), int) and 0 <= p["seat"] < 4 and p.get("name"):
+            names[p["seat"]] = p["name"]
+    return {**doc, "players": names, "events": events}
+
+
+def _listed_seats(f: Finished) -> tuple[set[int], set[int]]:
+    """The seats whose player the leaderboard shows, at the round's start and
+    end; none when the accounts store cannot be read."""
+    try:
+        listed = ratings.listed_ids(accounts.STORE)
+    except Exception:               # noqa: BLE001 - unreadable: name nobody
+        log.exception("spectate leaderboard read failed")
+        listed = set()
+    pick = lambda ids: {i for i, uid in enumerate(ids) if uid is not None and uid in listed}  # noqa: E731
+    return pick(f.start_accounts), pick(f.end_accounts)
 
 
 def _cards(v: Any) -> list[str] | None:
@@ -497,8 +539,9 @@ async def watch(request: Request, mode: str | None = None, skip: str | None = No
     for rerun in reversed(list(_reruns)):
         doc = await asyncio.to_thread(round_doc, rerun)
         if doc is not None:
+            shown = await asyncio.to_thread(_listed_seats, rerun)
             return {"table": RERUN_ID, "watcher": token, "mode": "ranked", "live_round": None,
-                    "code": None, "rerun": True, "waiting": False, **by_seat(doc)}
+                    "code": None, "rerun": True, "waiting": False, **by_seat(doc, *shown)}
         try:
             _reruns.remove(rerun)
         except ValueError:

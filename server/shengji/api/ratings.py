@@ -456,6 +456,29 @@ def _rank_of(population: list[dict], user_id: int) -> int | None:
     return None
 
 
+def _period_rows(players: list[dict], period: str) -> tuple[list[dict], dict[int, int] | None]:
+    """The period's population and its rank moves: everyone with a rated
+    round ("all"), or with one in the last seven days ("week")."""
+    if period == "week":
+        players = [r for r in players if r["week_rounds"] > 0]
+        return players, _week_rank_moves(players)
+    return players, None
+
+
+def _shown(players: list[dict]) -> list[dict]:
+    """The rows a leaderboard shows: the top ``LEADERBOARD_SIZE`` visible players."""
+    return [r for r in players if r["leaderboard_visible"]][:LEADERBOARD_SIZE]
+
+
+def listed_ids(store: accounts.Store, now: float | None = None) -> set[int]:
+    """The accounts the leaderboard shows now, in either period: a replay
+    names exactly these players (``spectate``)."""
+    t = int(now if now is not None else time.time())
+    with closing(store._open()) as conn:
+        players = _player_rows(conn, t - WEEK_SECONDS)
+    return {int(r["id"]) for period in ("all", "week") for r in _shown(_period_rows(players, period)[0])}
+
+
 def leaderboard(store: accounts.Store, period: str, viewer: int | None,
                 now: float | None = None) -> dict:
     """The top ``LEADERBOARD_SIZE`` visible players by current rating, among
@@ -466,12 +489,8 @@ def leaderboard(store: accounts.Store, period: str, viewer: int | None,
     t = int(now if now is not None else time.time())
     with closing(store._open()) as conn:
         players = _player_rows(conn, t - WEEK_SECONDS)
-    moves = None
-    if period == "week":
-        players = [r for r in players if r["week_rounds"] > 0]
-        moves = _week_rank_moves(players)
-    visible = [r for r in players if r["leaderboard_visible"]]
-    shown = visible[:LEADERBOARD_SIZE]
+    players, moves = _period_rows(players, period)
+    shown = _shown(players)
     mine = next((r for r in players if r["id"] == viewer), None) if viewer is not None else None
     # a sold companion shows only while its account still owns it
     sold = [r["id"] for r in [*shown, *([mine] if mine else [])] if accounts.sold_look(r)]

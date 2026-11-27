@@ -525,8 +525,12 @@ trick and hand read-only), turned landscape as a game is: four tabs (team dot, c
 selected one filled) in table order from the seat it lands behind, the banker; a tab turns the table to that
 player (cards and seats travel about 0.5 s, a fade under Reduce Motion) and docks their hand in the game's order.
 The round opens with the banker's bury (the eight cards rise and leave into the kitty); the next play's cards rise
-before they land, at a steady rhythm. The top-left strip is the game's own (round label, trump, points); ⋯ stays
-top right with Next table (live tables only) and Leave. One row above the hand holds the transport pill (previous
+before they land, at a steady rhythm. The top-left strip is the game's own (round label, trump, points). At top right a live table keeps ⋯ with Next
+table and Leave; a replay, which has only Leave there, draws one ✕ in its place instead (named Leave, 离开 / 離開),
+and one tap leaves (Jerry 2026-11-27: "Spectate leave feels clunky"). Entering a watch adds one history entry at
+the Play tab's own address, so the browser's back and the iOS app's left-edge swipe (on while watching, off only
+at a game) leave it too, and so does Escape when nothing is open over the table (the menu, the kitty peek and the
+round end card each close first). Every way out lands on the Play tab with its presence line; no surface is added. One row above the hand holds the transport pill (previous
 trick, play/pause, next trick, speed 0.5×/1×/2×, remembered on this device; it steps whole tricks inside the
 finished round only), the four tabs centred, and the kitty; the trick cross keeps clear of that row as it does of
 a player's buttons, and the watcher's hand is drawn at the bury's size throughout, so nothing moves when the bury

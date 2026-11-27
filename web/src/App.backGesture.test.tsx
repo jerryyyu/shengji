@@ -131,6 +131,30 @@ describe("the app's edge swipe back", () => {
     expect(gameMode).toEqual([false, true, false]);
   });
 
+  it("is on while watching a table, where back leaves the watch", async () => {
+    const gesture = fakeShell();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 404 })));
+    try {
+      await mountApp();
+      const { watch } = await import("./watch/store");
+      act(() => watch.open("ranked"));
+      await flush();
+      expect(host.querySelector(".watch-screen")).not.toBeNull();
+      // the watch is a table on screen, but the swipe stays on
+      expect(gesture.every((on) => on)).toBe(true);
+      expect(gameMode.at(-1)).toBe(true);
+      await act(async () => {
+        window.history.back();
+        await new Promise<void>((r) => window.addEventListener("popstate", () => r(), { once: true }));
+      });
+      await flush();
+      expect(host.querySelector(".watch-screen")).toBeNull();
+      expect(host.querySelector(".lobby-panel")).not.toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("is never asked for in a browser", async () => {
     const ws = await mountApp();
     const entries = window.history.length;

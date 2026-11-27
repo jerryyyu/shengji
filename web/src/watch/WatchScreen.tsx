@@ -177,6 +177,7 @@ const ICON = {
   pause: "M8 6v12M16 6v12",
   play: "M8 5l11 7-11 7z",
   eye: "M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
+  close: "M6 6l12 12M18 6L6 18",
 };
 
 /** Watching a table, one round behind: the table drawn from the seat whose
@@ -300,6 +301,19 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   useTurn(root, seat);
 
   const leave = () => { watch.close(); };
+  // Escape leaves, unless it is closing something drawn over the table
+  // first: the menu, the kitty peek or the round end card (each closes itself)
+  const cardShown = atEnd && !!loaded && !!loaded.replay.frames[beat.frame].result && !endClosed;
+  useEffect(() => {
+    if (kitty || cardShown) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (menu) setMenu(false);
+      else watch.close();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [kitty, cardShown, menu]);
   if (!loaded || !beat) {
     return (
       <div className="table-screen watch-screen watch-empty">
@@ -349,22 +363,26 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
             </span>
           </div>
           <div className="hud-group">
-            <div className="hud-more">
-              <button type="button" className="hud-more-btn" aria-label={t("watch.menu")} aria-haspopup="menu"
-                      aria-expanded={menu} onClick={() => setMenu((m) => !m)}>⋯</button>
-              {menu ? (
-                <div className="hud-menu" role="menu">
-                  {doc.rerun ? null : (
-                    <>
-                      <button className="hud-menu-row" role="menuitem"
-                              onClick={() => { setMenu(false); pick(doc.table); }}>{t("watch.next")}</button>
-                      <div className="hud-menu-sep" role="separator" />
-                    </>
-                  )}
-                  <button className="hud-menu-row leave" role="menuitem" onClick={leave}>{t("common.leave")}</button>
-                </div>
-              ) : null}
-            </div>
+            {doc.rerun ? (
+              // a replay has nothing but Leave there: one tap, no menu
+              <div className="hud-more">
+                <button type="button" className="hud-more-btn watch-close" aria-label={t("common.leave")}
+                        onClick={leave}><Icon d={ICON.close} /></button>
+              </div>
+            ) : (
+              <div className="hud-more">
+                <button type="button" className="hud-more-btn" aria-label={t("watch.menu")} aria-haspopup="menu"
+                        aria-expanded={menu} onClick={() => setMenu((m) => !m)}>⋯</button>
+                {menu ? (
+                  <div className="hud-menu" role="menu">
+                    <button className="hud-menu-row" role="menuitem"
+                            onClick={() => { setMenu(false); pick(doc.table); }}>{t("watch.next")}</button>
+                    <div className="hud-menu-sep" role="separator" />
+                    <button className="hud-menu-row leave" role="menuitem" onClick={leave}>{t("common.leave")}</button>
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
         </div>
       </div>

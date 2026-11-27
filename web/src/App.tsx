@@ -298,8 +298,9 @@ export default function App() {
     (game !== null && !gamesRoute && !howtoRoute && !infoRoute && !homeRoute) || watchShown;
   useEffect(() => { void lockFor(atTable ? "game" : "lobby"); }, [atTable]);
   // the app's edge swipe back is off at the table, so a live game is never
-  // covered by an earlier page by accident
-  useEffect(() => { void setBackGesture(!atTable); }, [atTable]);
+  // covered by an earlier page by accident; a watch is its own history
+  // entry, so there the swipe leaves it
+  useEffect(() => { void setBackGesture(!atTable || watchShown); }, [atTable, watchShown]);
   // the screen stays awake and the home gesture needs a second swipe at the table
   useEffect(() => { void setGameMode(atTable); }, [atTable]);
   // a portrait phone browser gets the table turned sideways instead

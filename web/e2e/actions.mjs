@@ -4,7 +4,7 @@
 // the row uses, nothing in it covers the hand, a seat or the trick.
 //   node e2e/actions.mjs [device-regex] [state-regex]
 import { Report, launch, lint, open, shot, sleep } from "./lib.mjs";
-import { HAND25, base, fakeSocketScript, hand, plays, push } from "./fake.mjs";
+import { HAND25, LONG_NAMES, NAMES, base, fakeSocketScript, hand, plays, push } from "./fake.mjs";
 
 const onlyDev = process.argv[2] ? new RegExp(process.argv[2]) : null;
 const onlyState = process.argv[3] ? new RegExp(process.argv[3]) : null;
@@ -23,6 +23,8 @@ const STATES = [
   ["play_clock", ranked({ turn: 0, trick: { leader: 1, plays: plays(1, 3, 2) } }, { banker: 0 })],
   ["play_clock_chosen", ranked({ turn: 0, trick: { leader: 0, plays: [] } }, { banker: 0 }),
     (page) => page.locator(".hand .hand-slot .card").last().click()],
+  // the widest name pill, crowned, with the clock beside it: it stays on the screen
+  ["play_clock_long", ranked({ turn: 0, trick: { leader: 1, plays: plays(1, 3, 1) } }, { banker: 0, names: [LONG_NAMES[1], ...NAMES.slice(1)] })],
   ["play_waiting", base({ turn: 2, trick: { leader: 1, plays: plays(1, 1, 1) } }, { banker: 0 })],
   ["play_wide", base({ turn: 0, trick: { leader: 1, plays: plays(1, 3, 6) } }, { banker: 1 })],
   ["deal_open", base({ ...dealt, phase: "deal", hand: hand(HAND25.slice(0, 14)), declare_options: [[12], [13]] }, { banker: null })],
@@ -51,7 +53,9 @@ function rowChecks(page) {
     const felt = document.querySelector(".felt").getBoundingClientRect();
     const mid = felt.left + felt.width / 2;
     const bar = document.querySelector(".you-row .action-bar");
-    const play = bar?.querySelector(".play-wrap, .bury-btn");
+    // the phone centres Bury and the coach's points together; the wider tables centre Bury
+    const phone = document.documentElement.classList.contains("phone-landscape");
+    const play = bar?.querySelector(phone ? ".play-wrap" : ".play-wrap, .bury-btn");
     const parts = bar ? [...bar.querySelectorAll(".btn, .timer-ring")].filter(shown) : [];
     let anchor = null;
     if (shown(play)) anchor = play.getBoundingClientRect();

@@ -1608,17 +1608,35 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
    column, so neither moves the action. The hint stands above the row. */
 :root:not(.phone-landscape) .you-row {
   --you-gap: 8px;
+  /* the room right of your name: a gap, and the timer with its own gap */
+  --name-room: var(--you-gap);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   align-self: stretch;
   min-height: 38px;
+  /* the same either side, so the middle column stays on the table's centre */
+  padding-inline: calc(16px + max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px)));
 }
 
+/* a long name ends in an ellipsis rather than leave the screen */
 :root:not(.phone-landscape) .you-row > .you-tagline {
   grid-area: 1 / 1;
   justify-self: end;
-  margin: 0 var(--you-gap) 0 0;
+  min-width: 0;
+  max-width: calc(100% - var(--name-room));
+  margin: 0 var(--name-room) 0 0;
+}
+
+:root:not(.phone-landscape) .you-row > .you-tagline .you-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root:not(.phone-landscape) .you-row > .you-tagline > :not(.you-name) {
+  flex: none;
 }
 
 :root:not(.phone-landscape) .you-row > .action-bar {
@@ -1649,8 +1667,8 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   margin-right: calc(var(--you-gap) * 1.5);
 }
 
-:root:not(.phone-landscape) :is(.phase-play, .phase-bury) .you-row:has(.action-bar > .timer-ring) > .you-tagline {
-  margin-right: calc(var(--you-gap) * 2.5 + 44px);
+:root:not(.phone-landscape) :is(.phase-play, .phase-bury) .you-row:has(.action-bar > .timer-ring) {
+  --name-room: calc(var(--you-gap) * 2.5 + 44px);
 }
 
 /* ---------- Hand ---------- */

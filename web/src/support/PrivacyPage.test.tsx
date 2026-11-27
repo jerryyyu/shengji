@@ -21,7 +21,8 @@ describe("the privacy page", () => {
                               "IP addresses and server logs", "Where it is kept", "Deleting your account",
                               "Children", "Automated play", "Contact"]);
     const text = host.textContent ?? "";
-    expect(text).toContain("Last updated 2026-11-26");
+    expect(text).toContain("Last updated 2026-11-27");
+    expect(text).toContain("whether a script is driving the page");
     expect(text).toContain("it carries a random code for your device so we can count");
     expect(text).toContain("We store only a scrambled version of it");
     expect(text).toContain("groups those events across visits");

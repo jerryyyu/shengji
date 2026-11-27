@@ -130,6 +130,9 @@ export const MAX_BYTES = 1900;
 /** Events kept while the socket is down; the oldest go first. */
 const MAX_BUFFER = 100;
 const SEEN_KEY = "shengji.telemetry.seen";
+/** Set by our own automated runs (the e2e harness, or a page opened with
+ *  `?e2e=1`), so their batches say so and growth counts can leave them out. */
+export const AUTOMATED_KEY = "shengji.automated";
 
 type Send = (msg: unknown) => boolean;
 
@@ -146,6 +149,22 @@ function readFirstVisit(): boolean {
     const first = localStorage.getItem(SEEN_KEY) === null;
     if (first) localStorage.setItem(SEEN_KEY, "1");
     return first;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether a script drives this page: the browser says so (WebDriver and
+ *  Playwright set navigator.webdriver), the page was opened with `?e2e=1`
+ *  (kept for the origin's later loads), or the harness set AUTOMATED_KEY. */
+export function automated(): boolean {
+  try {
+    if (navigator.webdriver === true) return true;
+    if (new URLSearchParams(window.location.search).get("e2e") === "1") {
+      try { localStorage.setItem(AUTOMATED_KEY, "1"); } catch { /* the stamp still goes on this load */ }
+      return true;
+    }
+    return localStorage.getItem(AUTOMATED_KEY) === "1";
   } catch {
     return false;
   }
@@ -286,9 +305,11 @@ export class Telemetry {
     }
   }
 
-  /** The batch's bucket stamps; a bucket the device cannot tell is left out. */
-  private bucketStamps(): { days_since_first?: string; session_n?: string; lang: Lang } {
-    const out: { days_since_first?: string; session_n?: string; lang: Lang } = { lang: lang() };
+  /** The batch's bucket stamps; a bucket the device cannot tell is left out,
+   *  and `automated` is sent only when true. */
+  private bucketStamps(): { days_since_first?: string; session_n?: string; lang: Lang; automated?: true } {
+    const out: { days_since_first?: string; session_n?: string; lang: Lang; automated?: true } = { lang: lang() };
+    if (automated()) out.automated = true;
     try {
       const days = this.stamps.days();
       const session = this.stamps.sessionN();

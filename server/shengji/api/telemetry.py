@@ -26,6 +26,13 @@ the server read it at the handshake: ``guest``, ``device`` (an account with
 no Google or Apple identity, the iOS app's own) or ``linked`` (an account
 with one); never the account itself.
 
+A batch from a page a script drives says ``automated: true`` (the page's
+``navigator.webdriver``, a ``?e2e=1`` load or the e2e harness's flag; see
+web/src/telemetry.ts ``automated``). Only ``true`` is kept: the socket then
+stamps ``automated: true`` on that batch and every later row it writes,
+queue events included, so growth counts can leave our own runs out. A
+person's page sends nothing, and its rows carry no such field.
+
 ``app_version`` is the iOS app's own version, from the ``ShengjiApp/<version>``
 token its WebView appends to the handshake's User-Agent (``appendUserAgent``
 in web/capacitor.config.ts). The app loads the live site, so the page cannot
@@ -331,11 +338,12 @@ class SocketTelemetry:
     """Per-socket state: the random sid, the hourly event budget and the
     app version read at the handshake."""
 
-    __slots__ = ("sid", "window_start", "count", "app_version")
+    __slots__ = ("sid", "window_start", "count", "app_version", "automated")
 
     def __init__(self) -> None:
         self.sid = secrets.token_hex(8)
         self.app_version: str | None = None
+        self.automated = False
         self.window_start = time.monotonic()
         self.count = 0
 
@@ -370,8 +378,13 @@ def handshake(conn: Any, user_agent: Any) -> None:
         pass
 
 
-def _app_stamp(st: SocketTelemetry) -> dict[str, str]:
-    return {"app_version": st.app_version} if st.app_version is not None else {}
+def _socket_stamps(st: SocketTelemetry) -> dict[str, Any]:
+    """What the socket stamps on each row it writes: the app version, and
+    ``automated`` once any of its batches said so."""
+    out: dict[str, Any] = {"app_version": st.app_version} if st.app_version is not None else {}
+    if st.automated:
+        out["automated"] = True
+    return out
 
 
 def clean_event(raw: Any) -> dict[str, Any] | None:
@@ -399,7 +412,8 @@ def clean_event(raw: Any) -> dict[str, Any] | None:
 def clean_message(msg: Any, raw_bytes: int | None = None) -> tuple[list[dict], dict[str, Any]]:
     """The kept events of one ``client_event`` message and its stamps
     (``form``, ``platform``, ``first_visit``, ``days_since_first``, ``session_n``,
-    ``lang``); nothing for a malformed or oversize one."""
+    ``lang``, and ``automated`` only when true); nothing for a malformed or
+    oversize one."""
     if not isinstance(msg, dict) or msg.get("v") != 1:
         return [], {}
     size = raw_bytes if raw_bytes is not None else len(
@@ -420,6 +434,8 @@ def clean_message(msg: Any, raw_bytes: int | None = None) -> tuple[list[dict], d
     first = _bool(msg.get("first_visit"))
     if first is not None:
         stamps["first_visit"] = first
+    if msg.get("automated") is True:
+        stamps["automated"] = True
     for field, values in (("days_since_first", DAYS_BUCKETS), ("session_n", SESSION_BUCKETS),
                           ("lang", LANGS)):
         value = _enum(values)(msg.get(field))
@@ -526,12 +542,14 @@ def receive(conn: Any, msg: Any, kind: str) -> int:
         if not events:
             return 0
         st = state_for(conn)
+        if stamps.pop("automated", False):
+            st.automated = True
         # classified before the quota cut: a dropped identity event still
         # marks the rows kept with it, so they cannot date the sign-in
         identity = any(_identity_moment(ev) for ev in events)
         events = events[:st.take(len(events))]
         ts = round(time.time())
-        records = [{**_stamped(ev, ts, identity), **stamps, **_app_stamp(st), "sid": st.sid,
+        records = [{**_stamped(ev, ts, identity), **stamps, **_socket_stamps(st), "sid": st.sid,
                     "who": kind, "build": build_id()} for ev in events]
         return len(records) if write(records, identity=identity) else 0
     except Exception:          # noqa: BLE001
@@ -557,7 +575,7 @@ def queue_event(conn: Any, event: str, **fields: Any) -> bool:
             if not st.take(1):
                 return False
             rec["sid"] = st.sid
-            rec.update(_app_stamp(st))
+            rec.update(_socket_stamps(st))
         rec["build"] = build_id()
         rec["ts"] = round(time.time())
         return write([rec])

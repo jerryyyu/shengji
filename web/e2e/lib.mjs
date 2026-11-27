@@ -91,6 +91,9 @@ export async function open(browser, device, { url = "", storage = {}, base = BAS
     await page.addInitScript(`for (const [k, v] of Object.entries(${JSON.stringify(storage)})) { try { if (localStorage.getItem(k) === null) localStorage.setItem(k, v); } catch {} }`);
   }
   await page.addInitScript(INJECT);
+  // telemetry.ts stamps this page's batches automated, so a run against a real server
+  // never counts as players (navigator.webdriver says the same in Chromium)
+  await page.addInitScript(`try { localStorage.setItem("shengji.automated", "1"); } catch {}`);
   if (native) await page.addInitScript(NATIVE);
   // The table reads its safe areas through --frame-safe-* (index.css), so a notch and a
   // toolbar can be put there. The lobby reads env() directly, which no browser lets a test set.

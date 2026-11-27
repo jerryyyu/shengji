@@ -18,6 +18,8 @@
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+/* a live figure out of view holds still where it is */
+.live-paused .cmp, .live-paused .cmp * { animation-play-state: paused !important; }
 /* the companion in use at the top of the grid answers a tap with a light press */
 .coll-press { transition: transform var(--dur-fast, 0.12s) ease-out; }
 .coll-press:active { transform: scale(0.96); }

@@ -57,11 +57,11 @@ function Tile({ kind, colour, label, sub, gold, dim, worn, isNew, arrive, onOpen
  *  short rest before another tap counts). */
 function WornFelt({ kind, colour, label }: { kind: CompanionKind; colour: Colour; label: string }) {
   const felt = useRef<HTMLDivElement>(null);
-  const live = useLivePose(kind, TOP_CYCLE, felt);
+  const live = useLivePose(kind, TOP_CYCLE, felt, { cooldown: true });
   return (
-    <div ref={felt} className="coll-felt coll-worn">
+    <div ref={felt} className={`coll-felt coll-worn${live.paused ? " live-paused" : ""}`}>
       <button type="button" className="coll-figure coll-press" aria-label={label} onClick={live.tap}>
-        <Companion kind={kind} colour={colour} size={96} state={live.pose} onPoseEnd={live.onPoseEnd} />
+        <Companion key={live.key} kind={kind} colour={colour} size={96} state={live.pose} onPoseEnd={live.onPoseEnd} />
       </button>
     </div>
   );

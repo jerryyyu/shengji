@@ -158,9 +158,9 @@ export function UseButton({ entry, ownership, user, onUse, price }: {
 
 /** A live figure on felt that cycles through its moves by itself (idle,
  *  hop, cheer, its special, a short sleep: `PAGE_CYCLE`), each once-move for
- *  its own animation's length, while it is on screen. A tap plays its
- *  special at once. Under Reduce Motion it stands still, and a tap shows the
- *  special drawn still. */
+ *  its own animation's length, while it is on screen; off screen its figure
+ *  is paused. Every tap plays its special from the start. Under Reduce
+ *  Motion it stands still, and a tap shows the special drawn still. */
 export function Stage({ kind, colour, size, label, partner, cheer = 0 }: {
   kind: DrawnKind; colour: DrawnColour; size: number; label: string;
   partner?: { kind: CompanionKind; colour: Colour; size: number } | null;
@@ -174,9 +174,9 @@ export function Stage({ kind, colour, size, label, partner, cheer = 0 }: {
     if (cheer > 0) play("cheer");
   }, [cheer, play]);
   return (
-    <div ref={felt} className={`coll-felt char-stage${partner ? " char-try" : ""}`}>
+    <div ref={felt} className={`coll-felt char-stage${partner ? " char-try" : ""}${live.paused ? " live-paused" : ""}`}>
       <button type="button" className="coll-figure" aria-label={label} onClick={live.tap}>
-        <Companion kind={kind} colour={colour} size={size} state={live.pose} team={partner ? "us" : undefined}
+        <Companion key={live.key} kind={kind} colour={colour} size={size} state={live.pose} team={partner ? "us" : undefined}
                    onPoseEnd={live.onPoseEnd} />
       </button>
       {partner ? (

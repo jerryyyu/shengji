@@ -37,14 +37,24 @@ export function poseMs(kind: DrawnKind, pose: Pose): number {
 const once = (p: Pose) => p === "hop" || p === "cheer" || p === "react";
 
 /** The pose of a live figure of `kind` cycling through `cycle` while the
- *  element `on` is on screen; `tap()` plays the special now (ignored while
- *  one plays and for `TAP_COOLDOWN_MS` after), `play(pose)` any once-move
- *  now (a purchase's cheer), and `onPoseEnd` goes to the figure. */
-export function useLivePose(kind: DrawnKind, cycle: readonly CycleStep[], on: RefObject<Element | null>) {
+ *  element `on` is on screen. `tap()` plays the special now: on the
+ *  character page (`cooldown` false) every tap starts it over, even during
+ *  one, and the figure's `key` changes so its animation restarts from the
+ *  top; on the grid (`cooldown` true) a tap is ignored while one plays and
+ *  for `TAP_COOLDOWN_MS` after. `play(pose)` plays any once-move now (a
+ *  purchase's cheer). While the figure is off screen or the page hidden,
+ *  `paused` is true (the owner pauses its animations) and a move that ends
+ *  then is counted only once it is back in view. `onPoseEnd` goes to the
+ *  figure. */
+export function useLivePose(kind: DrawnKind, cycle: readonly CycleStep[], on: RefObject<Element | null>,
+                            { cooldown = false }: { cooldown?: boolean } = {}) {
   const still = prefersReducedMotion();
   const [step, setStep] = useState(0);
   const [extra, setExtra] = useState<Pose | null>(null);
+  const [nonce, setNonce] = useState(0);
   const [shown, setShown] = useState(true);
+  const shownNow = useRef(true);
+  const owed = useRef(false);
   const cool = useRef(0);
   const [stepPose, rest] = cycle[step % cycle.length];
   const pose: Pose = extra ?? (still ? "idle" : stepPose);
@@ -53,7 +63,11 @@ export function useLivePose(kind: DrawnKind, cycle: readonly CycleStep[], on: Re
   useEffect(() => {
     const el = on.current;
     let inView = true;
-    const update = () => setShown(inView && document.visibilityState !== "hidden");
+    const update = () => {
+      const now = inView && document.visibilityState !== "hidden";
+      shownNow.current = now;
+      setShown(now);
+    };
     let io: IntersectionObserver | null = null;
     if (el && typeof IntersectionObserver === "function") {
       io = new IntersectionObserver((entries) => { inView = entries.some((e) => e.isIntersecting); update(); });
@@ -64,14 +78,28 @@ export function useLivePose(kind: DrawnKind, cycle: readonly CycleStep[], on: Re
     return () => { io?.disconnect(); document.removeEventListener("visibilitychange", update); };
   }, [on]);
 
-  const end = useCallback(() => {
+  const finish = useCallback(() => {
     if (extra !== null) {
-      if (extra === "react") cool.current = Date.now() + TAP_COOLDOWN_MS;
+      if (extra === "react" && cooldown) cool.current = Date.now() + TAP_COOLDOWN_MS;
       setExtra(null);
       return;
     }
     if (once(stepPose)) setStep((s) => s + 1);
-  }, [extra, stepPose]);
+  }, [extra, stepPose, cooldown]);
+  // a move that ends while the figure is out of view is counted when it is back
+  const end = useCallback(() => {
+    if (!shownNow.current) {
+      owed.current = true;
+      return;
+    }
+    finish();
+  }, [finish]);
+  useEffect(() => {
+    if (shown && owed.current) {
+      owed.current = false;
+      finish();
+    }
+  }, [shown, finish]);
 
   // a resting step moves on after its time; a once-move after its animation
   // (onPoseEnd), or its length and some slack when no end comes
@@ -86,12 +114,16 @@ export function useLivePose(kind: DrawnKind, cycle: readonly CycleStep[], on: Re
     const t = window.setTimeout(once(stepPose) ? end : () => setStep((s) => s + 1),
       once(stepPose) ? poseMs(kind, stepPose) + END_SLACK_MS : rest ?? 0);
     return () => window.clearTimeout(t);
-  }, [shown, still, extra, stepPose, rest, step, kind, end]);
+  }, [shown, still, extra, nonce, stepPose, rest, step, kind, end]);
 
-  const play = useCallback((p: Pose) => setExtra(p), []);
+  const play = useCallback((p: Pose) => {
+    setExtra(p);
+    setNonce((n) => n + 1);
+  }, []);
   const tap = useCallback(() => {
-    if (extra === "react" || Date.now() < cool.current) return;
+    if (cooldown && (extra === "react" || Date.now() < cool.current)) return;
     setExtra("react");
-  }, [extra]);
-  return { pose, tap, play, onPoseEnd: end };
+    setNonce((n) => n + 1);
+  }, [extra, cooldown]);
+  return { pose, tap, play, onPoseEnd: end, key: nonce, paused: !shown };
 }

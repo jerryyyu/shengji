@@ -157,3 +157,67 @@ describe("each kind's special", () => {
     expect(poseMs("bun", "react")).toBe(DRAWINGS.bun.reactMs);
   });
 });
+
+describe("taps on the page, and a stage scrolled away", () => {
+  it("a tap just after the special ended plays it again at once: the page has no cooldown", async () => {
+    await act(async () => { root.render(<Stage kind="bun" colour="plain" size={176} label="Bun" />); });
+    const tap = () => act(async () => { host.querySelector<HTMLButtonElement>(".char-stage .coll-figure")!.click(); });
+    await tap();
+    expect(pose(".char-stage")).toBe("react");
+    await ended(".char-stage");
+    expect(pose(".char-stage")).toBe("idle");
+    await tick(50);
+    await tap();
+    expect(pose(".char-stage")).toBe("react");
+  });
+
+  it("a tap during a special restarts it from its start", async () => {
+    await act(async () => { root.render(<Stage kind="bun" colour="plain" size={176} label="Bun" />); });
+    const tap = () => act(async () => { host.querySelector<HTMLButtonElement>(".char-stage .coll-figure")!.click(); });
+    // the cycle's own special, 900 ms in
+    await tick(3000);
+    await ended(".char-stage");
+    await tick(1200);
+    await ended(".char-stage");
+    await tick(1200);
+    expect(pose(".char-stage")).toBe("react");
+    await tick(900);
+    const before = host.querySelector(".char-stage svg.cmp");
+    await tap();
+    const after = host.querySelector(".char-stage svg.cmp");
+    expect(pose(".char-stage")).toBe("react");
+    expect(after).not.toBe(before);                      // a new figure: its animation starts over
+    // and a tap during a tapped special restarts that too
+    await tick(400);
+    await tap();
+    expect(host.querySelector(".char-stage svg.cmp")).not.toBe(after);
+    expect(pose(".char-stage")).toBe("react");
+  });
+
+  it("a stage scrolled away mid-move pauses its figure and finishes the move only when back on screen", async () => {
+    const seen: { cb: (e: { isIntersecting: boolean }[]) => void }[] = [];
+    class IO {
+      cb: (e: { isIntersecting: boolean }[]) => void;
+      constructor(cb: (e: { isIntersecting: boolean }[]) => void) { this.cb = cb; seen.push(this); }
+      observe() {}
+      disconnect() {}
+    }
+    (window as unknown as { IntersectionObserver: unknown }).IntersectionObserver = IO;
+    try {
+      await act(async () => { root.render(<Stage kind="bun" colour="plain" size={176} label="Bun" />); });
+      const felt = () => host.querySelector(".char-stage")!;
+      await tick(3000);
+      expect(pose(".char-stage")).toBe("hop");
+      await act(async () => { for (const io of seen) io.cb([{ isIntersecting: false }]); });
+      expect(felt().classList.contains("live-paused")).toBe(true);
+      await ended(".char-stage");                        // the hop's end, as it reached the edge
+      await tick(10000);
+      expect(pose(".char-stage")).toBe("hop");           // nothing moves on offscreen
+      await act(async () => { for (const io of seen) io.cb([{ isIntersecting: true }]); });
+      expect(felt().classList.contains("live-paused")).toBe(false);
+      expect(pose(".char-stage")).toBe("idle");          // the move it finished counts now
+    } finally {
+      delete (window as unknown as { IntersectionObserver?: unknown }).IntersectionObserver;
+    }
+  });
+});

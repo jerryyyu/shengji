@@ -1,0 +1,14 @@
+{
+  "name": "rt4ma-r55-dev-2675200000",
+  "purpose": "screen",
+  "seed0": 2675200000,
+  "clusters": 1020,
+  "span": [
+    2675200000,
+    2675201020
+  ],
+  "created_at": "2026-11-26T19:48:13-05:00",
+  "host": "ultra",
+  "git_head": "05a61df35b1740f35c8906c74f7dd894a0ab349a",
+  "note": "RT4-M Arm A vs served R55. Score the first 1,000 paired deals from Arm A's side. Reserve the last 20 for the validity-only pilot. DEV passes at mean >= +0.020 levels/round and one-sided LB80 > 0. See #1869."
+}

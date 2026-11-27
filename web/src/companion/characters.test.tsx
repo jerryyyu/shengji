@@ -26,7 +26,7 @@ import { parseArt } from "./Tractor";
 import TableCompanions, { LEVEL_UP_MS, SEAT_SIZE, levelIndex } from "./TableCompanions";
 import { hasNewLook } from "./seen";
 import type { LookEntry } from "./look";
-import { HAND_LIFT, clear, zonesFor } from "./seatZones";
+import { HAND_LIFT, clear, figureBox, meets, zonesFor } from "./seatZones";
 import type { Layout, Rect, SeatPos } from "./seatZones";
 import { TABLES } from "./seatZones.fixtures";
 import CollectionPage from "../components/CollectionPage";
@@ -929,6 +929,35 @@ describe("the table", () => {
       await advance(LEVEL_UP_MS + 20);
       expect(moves("0").map((a) => a.move)).toEqual(["levelup"]);
       expect(specialOn("0")).toBe(true);
+    });
+
+    it("a tap on another companion's spot sends yours beside it, never over it", async () => {
+      await render(state());
+      const left = host.querySelector('.tc-seat[data-seat="1"] svg')!;
+      const at = spotOf(1);
+      const w = Number(left.getAttribute("width"));
+      tap(felt(), at.x + w / 2, at.y + w);
+      expect(walks("0")).toHaveLength(1);
+      const end = spotOf(0);
+      expect(meets(figureBox(end, 44, true), figureBox(at, w, false))).toBe(false);
+    });
+
+    it("under Reduce Motion a tap on your companion shows its special's still peak, no animation", async () => {
+      const mm = window.matchMedia;
+      window.matchMedia = ((q: string) => ({ matches: q.includes("reduce"), addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
+      try {
+        await render(state());
+        tap(host.querySelector('.tc-seat[data-seat="0"] .tc-walk')!, 0, 0);
+        const svg = host.querySelector('.tc-seat[data-seat="0"] svg')!;
+        expect(host.querySelector('.tc-seat[data-seat="0"] .tc-move')!.getAttribute("data-move")).toBe("react");
+        // the peak drawn still: no pose class to animate it
+        expect(svg.classList.contains("cmp-react")).toBe(false);
+        expect(moves("0")).toHaveLength(0);
+        await advance(1100);
+        expect(host.querySelector('.tc-seat[data-seat="0"] .tc-move')!.getAttribute("data-move")).toBe("idle");
+      } finally {
+        window.matchMedia = mm;
+      }
     });
 
     it("cards landing on a companion's spot send it on a quick hop-walk from where it stands, never a jump", async () => {

@@ -163,4 +163,19 @@ describe("a tap on the felt", () => {
       expect(Math.hypot(t.x + px / 2 - (card.x + card.w / 2), t.y + px - (card.y + card.h / 2)), name).toBeLessThan(card.w + card.h + 2 * px);
     }
   });
+
+  it("lands beside another companion's zone, never over it (the measured tap at 263, 175)", () => {
+    const m = TABLES["phone-land-app-lead1"];
+    const px = SEAT_SIZE.phone.base;
+    const layout = layoutOf(m);
+    const zones = zonesFor(seats(px), layout);
+    const peers = (["left", "top", "right"] as const).flatMap((pos) =>
+      zones[pos].spots.map((s) => figureBox(s, zones[pos].size ?? px, false)));
+    const raw = nearestClear({ x: 263, y: 175 }, px, true, layout)!;
+    // the table alone would put yours over the left seat's companion
+    expect(peers.some((b) => meets(figureBox(raw, px, true), b))).toBe(true);
+    const s = nearestClear({ x: 263, y: 175 }, px, true, { ...layout, obstacles: [...layout.obstacles, ...peers] })!;
+    expect(peers.some((b) => meets(figureBox(s, px, true), b))).toBe(false);
+    expect(clear(s, px, true, layout)).toBe(true);
+  });
 });

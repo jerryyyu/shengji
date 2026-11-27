@@ -29,7 +29,7 @@ import type { Pose } from "./Companion";
 import { useCollection } from "./feature";
 import { parseLook } from "./look";
 import { shownAtTable, useCompanionMode } from "./mode";
-import { HAND_LIFT, clear, nearest, nearestClear, nextSpot, pathClear, zonesFor } from "./seatZones";
+import { HAND_LIFT, clear, figureBox, nearest, nearestClear, nextSpot, pathClear, zonesFor } from "./seatZones";
 import type { Layout, Rect, SeatPos, Spot, Zone } from "./seatZones";
 import { useT } from "../i18n";
 import { LEVELS, companionSize } from "./rig";
@@ -251,9 +251,9 @@ export const TAP_THROTTLE_MS = 500;
  *  played as a special once any level-up has ended. Every move is a Web
  *  Animation of a transform. Under Reduce Motion it stands on its home;
  *  while the page is hidden it rests. */
-function Walker({ player, team, px, pos, zone, layout, pose, up, you, goal, wins, onEnd, onUpEnd }: {
+function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal, wins, onEnd, onUpEnd }: {
   player: StatePlayer; team: Team; px: number; pos: SeatPos;
-  zone: Zone; layout: Layout; pose: Pose; up: LevelUp | null; you: boolean; goal: { spot: Spot; n: number } | null;
+  zone: Zone; layout: Layout; roam: Layout; pose: Pose; up: LevelUp | null; you: boolean; goal: { spot: Spot; n: number } | null;
   wins: number; onEnd: () => void; onUpEnd: () => void;
 }) {
   const t = useT();
@@ -349,7 +349,8 @@ function Walker({ player, team, px, pos, zone, layout, pose, up, you, goal, wins
     }
     const quick = { under: true, quick: true };
     if (roaming.current) {
-      if (!clear(now, px, you, layout)) goTo(nearestClear({ x: now.x + px / 2, y: now.y + px }, px, you, layout) ?? zone.home, quick);
+      // away from its zone it keeps clear of the other companions' zones too
+      if (!clear(now, px, you, roam)) goTo(nearestClear({ x: now.x + px / 2, y: now.y + px }, px, you, roam) ?? zone.home, quick);
       return;
     }
     const flight = path.current;
@@ -360,7 +361,7 @@ function Walker({ player, team, px, pos, zone, layout, pose, up, you, goal, wins
     const near = nearest(zone, now);
     const off = !near || Math.hypot(near.x - now.x, near.y - now.y) > px / 2;
     if (off || !clear(now, px, you, layout)) goTo(off ? zone.home : near, quick);
-  }, [zone, layout, px, you]);
+  }, [zone, layout, roam, px, you]);
 
   // a tap on the felt sends yours there
   const goalN = goal?.n;
@@ -455,7 +456,7 @@ function Walker({ player, team, px, pos, zone, layout, pose, up, you, goal, wins
         <span className="tc-face" ref={face}>
           <span className="tc-move" ref={box} data-move={up && !away ? "levelup" : playing && !away ? "react" : move}>
             <Companion kind={kind} colour={colour} size={px} team={team}
-                       blink={blink && drawn === "idle"} still={!(drawn === "react" && playing)} idle="rest"
+                       blink={blink && drawn === "idle"} still={drawn === "react" && playing ? undefined : true} idle="rest"
                        state={drawn === "cheer" ? "cheer" : drawn === "sleep" ? "sleep" : drawn === "react" ? "react" : "idle"} />
           </span>
         </span>
@@ -612,10 +613,18 @@ export default function TableCompanions({ state }: { state: GameState }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [layout, seatsKey, state.you, size.base, size.max, levels[0], levels[1]]);
   const mine = me && !me.is_bot && !me.left ? zones?.bottom ?? null : null;
+  // where yours may go off its zone (a tap, or stepping off cards there):
+  // clear of the other companions' zones as well as the table
+  const roam = useMemo(() => {
+    if (!layout || !zones) return null;
+    const peers = (["left", "top", "right"] as const).flatMap((pos) =>
+      zones[pos].spots.map((s) => figureBox(s, zones[pos].size ?? size.base, false)));
+    return { ...layout, obstacles: [...layout.obstacles, ...peers] };
+  }, [layout, zones, size.base]);
 
   // a tap on empty felt walks yours to the clear spot nearest the tap
-  const tapState = useRef({ layout, mine, last: -Infinity, n: 0 });
-  tapState.current.layout = layout;
+  const tapState = useRef({ layout: roam, mine, last: -Infinity, n: 0 });
+  tapState.current.layout = roam;
   tapState.current.mine = mine;
   useEffect(() => {
     const felt = root.current?.parentElement;
@@ -650,7 +659,7 @@ export default function TableCompanions({ state }: { state: GameState }) {
         return (
           <Walker key={p.seat} player={p} team={p.team === ours ? "us" : "them"}
                   px={zone.size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max)}
-                  pos={pos} zone={zone} layout={layout} pose={poses[p.seat] ?? "idle"}
+                  pos={pos} zone={zone} layout={layout} roam={you && roam ? roam : layout} pose={poses[p.seat] ?? "idle"}
                   up={ups[p.seat] ?? null} you={you} goal={you ? goal : null} wins={p.team === ours ? wins : 0}
                   onEnd={end(p.seat)} onUpEnd={done(p.seat)} />
         );

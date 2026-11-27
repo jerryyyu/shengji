@@ -1062,19 +1062,26 @@ describe("the tablet table's trick cross", () => {
     });
   }
 
-  it("lays your name, the hint and your controls in one row above the hand", () => {
-    const area = rule(tablet, ".you-area");
-    expect(area.display).toBe("grid");
-    expect(area["grid-template-columns"]).toBe("max-content minmax(0, 1fr) max-content");
-    expect(area.width).toBe("fit-content");
-    expect(rule(tablet, ".you-tagline")["grid-area"]).toBe("1 / 1");
-    expect(rule(tablet, ".action-bar")["grid-area"]).toBe("1 / 3");
-    const line = rule(tablet, ".hand-line, .hand-line.help");
-    expect(line["grid-area"]).toBe("1 / 2");
-    // in the row's flow: the hint showing takes the middle cell, never a control's
-    expect(line.position).toBe("static");
-    expect(line["max-width"]).toBe("100%");
-    expect(rule(tablet, ".hand")["grid-area"]).toBe("2 / 1 / 3 / -1");
+  it("lays your row as the phone's: the action centred, your name and timer left of it, Clear right", () => {
+    // the tablet block places nothing in the row: the wide table's row rules do
+    expect(rule(tablet, ".you-area").display).toBeUndefined();
+    for (const sel of [".you-tagline", ".action-bar", ".hand-line, .hand-line.help", ".hand"]) {
+      expect(rule(tablet, sel)["grid-area"]).toBeUndefined();
+      expect(rule(tablet, sel)["justify-self"]).toBeUndefined();
+    }
+    // the hint stays out of the flow (the base rule), so showing it never moves a control
+    expect(rule(tablet, ".hand-line, .hand-line.help").position).toBeUndefined();
+    const W = ":root:not(.phone-landscape)";
+    const row = rule(css, `${W} .you-row`);
+    expect(row.display).toBe("grid");
+    expect(row["grid-template-columns"]).toBe("minmax(0, 1fr) auto minmax(0, 1fr)");
+    expect(rule(css, `${W} .you-row > .action-bar`)["grid-area"]).toBe("1 / 2");
+    expect(rule(css, `${W} :is(.phase-play, .phase-bury) .you-row :is(.play-wrap, .bury-btn)`)["grid-area"]).toBe("1 / 2");
+    expect(rule(css, `${W} :is(.phase-play, .phase-bury) .you-row .action-bar > :is(.btn.subtle, .bury-points)`)["grid-area"]).toBe("1 / 3");
+    expect(rule(css, `${W} :is(.phase-play, .phase-bury) .you-row .action-bar > .timer-ring`)["grid-area"]).toBe("1 / 1");
+    const name = rule(css, `${W} .you-row > .you-tagline`);
+    expect(name["grid-area"]).toBe("1 / 1");
+    expect(name["justify-self"]).toBe("end");
   });
 
   it("stands the joining pill in your row, its bottom level with the row's", () => {

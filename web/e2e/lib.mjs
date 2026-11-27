@@ -33,6 +33,8 @@ export const DEVICES = {
   "ipad13-port": { w: 1032, h: 1376, touch: true, kb: 400 },
   "ipad11-land": { w: 1180, h: 820, touch: true, kb: 400 },
   "ipad-mini-land": { w: 1133, h: 744, touch: true, kb: 400 },
+  "ipad11-port": { w: 820, h: 1180, touch: true, kb: 400 },
+  "ipad-mini-port": { w: 744, h: 1133, touch: true, kb: 400 },
   // touch windows around the tablet table's 810x740 threshold (phoneLayout.ts TABLET_SCREEN):
   // just above the phone table's 500px, short and narrow ones, and either side of the threshold
   "touch-1024x501": { w: 1024, h: 501, touch: true, kb: 300 },
@@ -41,6 +43,10 @@ export const DEVICES = {
   "touch-1024x739": { w: 1024, h: 739, touch: true, kb: 400 },
   "touch-810x740": { w: 810, h: 740, touch: true, kb: 400 },
   desktop: { w: 1280, h: 800, touch: false, kb: 0 },
+  "desktop-1440": { w: 1440, h: 900, touch: false, kb: 0 },
+  "desktop-1920": { w: 1920, h: 1080, touch: false, kb: 0 },
+  // a window under the tablet table's 740px height keeps the wide table's fixed sizes
+  "desktop-1280x700": { w: 1280, h: 700, touch: false, kb: 0 },
 };
 
 function chromePath() {

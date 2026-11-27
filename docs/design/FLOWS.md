@@ -388,9 +388,12 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
   its "their turn" line) and your row; the side seats stand level with its centre. A play longer than four cards
   packs tighter so it never spans more than four would. Seat panels keep their card counts; a side seat ends before
   its trick slot, and a long name there ends in an ellipsis, shown whole on a long press as on the phone.
-- **One row above the hand (L2; Jerry 2026-11-26, "Desktop / tablet — L2 looks good", decision mocks section 1).** Your name, the hint and
-  Play / Clear (or Declare / Pass, Bury) share one row that spans the hand: your name at its start, the controls at its end, the hint
-  between them, so the hint showing never moves a control; a short hand keeps the row at a set width. The card sizes are unchanged
+- **One row above the hand, laid out as the phone's (L2; Jerry 2026-11-26, "Desktop / tablet — L2 looks good", decision mocks section 1;
+  centred 2026-11-27, "why isnt play button centered on desktop like it is on mobile?").** The action (Play, Bury, or Declare's options
+  and Pass) stands centred under the trick; Clear just right of Play, and your name pill (crown, name, YOUR TURN) and the move timer
+  just left of the action, outside its column, so neither moves it. The hint (an error, the coach, the phase's help) stands centred
+  just above the row, out of the flow, so showing it never moves a control. A desktop window too small for the tablet table keeps the
+  same row at the wide table's fixed sizes. The card sizes are unchanged
   (sized as if your name still had a row of its own); the height the one row frees goes to the cross, which stretches down into it
   (at 1440×900 the top play to your play goes from 34 px to 87 px). "Joining after this trick" stands in that row. The phone table is unchanged.
 - **An iPad held upright: each play in front of its seat (L1; Jerry 2026-11-26, decision mocks section 8, option B).** Each seat

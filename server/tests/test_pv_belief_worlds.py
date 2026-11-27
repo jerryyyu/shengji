@@ -526,6 +526,18 @@ def test_paired_void_cli_reads_only_held_out_decisions(package, tmp_path, capsys
     cohort.write_text(json.dumps({"deals": [member], "belief_sha256": "bad"}))
     with pytest.raises(ValueError, match="different belief package"):
         evaluator.main([*args, "--cohort", str(cohort)])
+    # Two individually valid chunks replace the third decision with a repeat of the second.
+    with np.load(tmp_path / "test.npz") as original:
+        for split, indices in (("test", [0, 1]), ("other", [1])):
+            path = tmp_path / f"overlap-{split}.npz"
+            np.savez(path, **{key: original[key][indices] for key in bl.ARRAY_KEYS})
+            np.savez(hist / path.name, **bh.chunk_history(str(path), [str(tmp_path / "test.jsonl")]))
+            histories[path.name] = hashlib.sha256((hist / path.name).read_bytes()).hexdigest()
+            files[split] = dict(file=path.name, rows=len(indices),
+                                sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+    manifests(extra=True)
+    with pytest.raises(ValueError, match="duplicate held-out decision"):
+        select(member)
     files["test"] = files["train"]
     manifests()
     with pytest.raises(ValueError, match="training exposure"):

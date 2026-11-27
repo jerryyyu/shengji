@@ -2,7 +2,7 @@
 import argparse
 import hashlib
 import json
-from collections import Counter
+from collections import defaultdict
 from pathlib import Path
 import re
 from time import perf_counter
@@ -97,7 +97,7 @@ def evaluate(extract, head, training, belief, seed, worlds=64, *, ll_max_draws=N
     loss = MarginalLoss(ll_replicates, ll_max_draws) if ll_max_draws is not None else None
     verified = bs._Verified()
     selected = cohort_selection(cohort, extract, belief.package_sha256) if cohort is not None else None
-    observed = Counter()
+    observed = defaultdict(set)
     decisions = 0
     for entry in entries:
         part = bs.load_part(entry, bs.ROW_KEYS + ("decision", "seed"), verified)
@@ -113,8 +113,11 @@ def evaluate(extract, head, training, belief, seed, worlds=64, *, ll_max_draws=N
                     if pair[0] in seeds or deal in ids:
                         raise ValueError("cohort seed and extracted deal disagree")
                     continue
-                observed[pair] += 1
-                if observed[pair] > expected[pair]:
+                decision_id = int(part["decision"][row])
+                if decision_id in observed[pair]:
+                    raise ValueError("duplicate held-out decision in evaluation cohort")
+                observed[pair].add(decision_id)
+                if len(observed[pair]) > expected[pair]:
                     raise ValueError("extra rows for evaluation cohort")
             seen.add(deal)
             inp = decision(part, row)
@@ -149,7 +152,7 @@ def evaluate(extract, head, training, belief, seed, worlds=64, *, ll_max_draws=N
                 role = "kitty" if r == 3 else "banker" if r == banker_receiver else "other_seats"
                 for arm, table in (("plain", plain), ("joint", joint)):
                     stats[arm][role].add(np.mean(table[:, s, r] == 0), actual[s, r] == 0)
-    if selected is not None and observed != selected[0]:
+    if selected is not None and {pair: len(ids) for pair, ids in observed.items()} != selected[0]:
         raise ValueError("missing rows for evaluation cohort")
     if not decisions:
         raise ValueError("no held-out decisions")

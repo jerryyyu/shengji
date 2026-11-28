@@ -90,6 +90,8 @@ def feed(client, monkeypatch):
     monkeypatch.setattr(spectate, "_reruns", spectate.collections.deque(maxlen=spectate.KEEP_ROUNDS))
     monkeypatch.setattr(spectate, "_loaded", True)
     monkeypatch.setattr(spectate, "_DOCS", spectate.collections.OrderedDict())
+    monkeypatch.setattr(spectate, "_leases", {})
+    monkeypatch.setattr(spectate, "_early", spectate.collections.OrderedDict())
     spectate.LIMITER.reset()
     return srv, spectate, client
 
@@ -259,8 +261,304 @@ def test_picking_prefers_the_asked_mode_then_the_table_furthest_in_and_skips(fee
     late.deal()
     assert _watch(client, mode="ranked").json()["table"] == late.room.watch.id
     assert _watch(client, mode="casual").json()["table"] == casual.room.watch.id
+    late.room.watch.id, early.room.watch.id, casual.room.watch.id = "b2", "c3", "a1"
+    # Next goes on from the skipped table in one fixed order: the asked mode, then by id
     nxt = _watch(client, mode="ranked", skip=late.room.watch.id).json()
     assert nxt["table"] == early.room.watch.id
+
+
+def _next_tables(client, mode, start, n):
+    seen, at, w = [], start, None
+    for _ in range(n):
+        doc = _watch(client, mode=mode, skip=at, **({"w": w} if w else {})).json()
+        at, w = doc["table"], doc["watcher"]
+        seen.append(at)
+    return seen
+
+
+def test_next_table_reaches_every_table_in_turn_and_wraps(feed, monkeypatch):
+    srv, spectate, client = feed
+    monkeypatch.setattr(spectate.LIMITER, "limit", 1000)
+    tables = []
+    for code, tid, rounds in (("T1", "aa", 1), ("T2", "bb", 3), ("T3", "cc", 2)):
+        t = Table(srv, code=code, ranked=True)
+        for _ in range(rounds):
+            t.play_round()
+        t.deal()
+        t.room.watch.id = tid
+        tables.append(t)
+    first = _watch(client, mode="ranked").json()["table"]
+    assert first == "bb"                     # the first pick: furthest into its game
+    # each Next another table, all three in turn, then round again; never the rerun
+    assert _next_tables(client, "ranked", first, 6) == ["cc", "aa", "bb", "cc", "aa", "bb"]
+    # how far each table has played changes between reads; the turn order does not
+    tables[0].play_round()
+    tables[0].play_round()
+    tables[0].play_round()
+    tables[0].deal()
+    assert _next_tables(client, "ranked", "bb", 3) == ["cc", "aa", "bb"]
+
+
+def test_next_table_with_the_only_table_stays_there_not_on_its_rerun(feed):
+    srv, spectate, client = feed
+    t = Table(srv, ranked=True)
+    t.play_round()
+    t.play_round()
+    t.deal()
+    assert len(spectate._reruns) == 2        # its own rounds are reruns too
+    doc = _watch(client, mode="ranked").json()
+    again = _watch(client, mode="ranked", skip=doc["table"], w=doc["watcher"]).json()
+    assert again["rerun"] is False and again["table"] == t.room.watch.id
+    assert t.room.watch.live_watchers(spectate.time.time()) == 1
+    # a table that went away gives way to the rerun as before
+    srv.rooms.pop(t.room.code)
+    gone = _watch(client, mode="ranked", skip=doc["table"], w=doc["watcher"]).json()
+    assert gone["rerun"] is True
+
+
+W = "a" * 32
+
+
+def _leave(client, w=W, e=1):
+    return client.post("/api/watch/leave", params={k: v for k, v in (("w", w), ("e", e)) if v is not None})
+
+
+def _counts(*tables):
+    from shengji.api import spectate
+    now = spectate.time.time()
+    return [t.room.watch.live_watchers(now) for t in tables]
+
+
+def _live(srv, code, tid, ranked=True):
+    t = Table(srv, code=code, ranked=ranked)
+    t.play_round()
+    t.deal()
+    t.room.watch.id = tid
+    return t
+
+
+def test_leaving_stops_the_count_and_a_stranger_token_changes_nothing(feed):
+    srv, spectate, client = feed
+    t = _live(srv, "LV1", "aa")
+    a = _watch(client, w=W, e=1).json()["watcher"]
+    b = _watch(client).json()["watcher"]
+    assert a == W and _counts(t) == [2]
+    # reopening with the same token is the same watcher
+    assert _watch(client, w=W, e=2).json()["watcher"] == W
+    assert _counts(t) == [2]
+    assert _leave(client, e=2).status_code == 204
+    assert _counts(t) == [1] and W not in t.room.watch.who
+    # an unknown token, a malformed one, none: nothing changes
+    assert _leave(client, w="0" * 32).status_code == 204
+    assert _leave(client, w="x").status_code == 204
+    assert _leave(client, w=None).status_code == 204
+    assert _counts(t) == [1] and b in t.room.watch.watchers
+    # watching again (a new session) counts once
+    assert _watch(client, w=W, e=3).json()["watcher"] == W
+    assert _counts(t) == [2]
+
+
+def test_a_leave_from_an_older_session_changes_nothing(feed):
+    srv, spectate, client = feed
+    t = _live(srv, "LV1", "aa")
+    _watch(client, w=W, e=1)
+    _leave(client, e=1)
+    _watch(client, w=W, e=2)                 # the same table, watched again
+    assert _counts(t) == [1]
+    # the first screen's late answer sends its leave again: the reopened watch stays
+    assert _leave(client, e=1).status_code == 204
+    assert _counts(t) == [1]
+    # a read of the session that left counts nowhere, though it is answered
+    assert _watch(client, w=W, e=1).status_code == 200
+    assert client.get("/api/watch/aa", params={"w": W, "e": 1, "after": 0}).status_code == 200
+    _leave(client, e=2)
+    assert _counts(t) == [0]
+    assert client.get("/api/watch/aa", params={"w": W, "e": 2, "after": 0}).status_code == 200
+    assert _counts(t) == [0]
+
+
+def test_a_follow_numbered_below_the_next_that_moved_the_token_counts_nowhere(feed):
+    srv, spectate, client = feed
+    a, b = _live(srv, "LV1", "aa"), _live(srv, "LV2", "bb")
+    first = _watch(client, mode="ranked", w=W, e=1, q=1).json()["table"]
+    other = "aa" if first == "bb" else "bb"
+    # Next (read 3) lands on the other table; a follow of the first sent
+    # before it (read 2) reaches the server after it
+    assert _watch(client, mode="ranked", skip=first, w=W, e=1, q=3).json()["table"] == other
+    follow = client.get(f"/api/watch/{first}", params={"w": W, "e": 1, "q": 2, "after": 0})
+    assert follow.status_code == 200
+    assert _counts(a, b) == ([1, 0] if other == "aa" else [0, 1])
+    # the screen closes: nothing counts anywhere
+    _leave(client, e=1)
+    assert _counts(a, b) == [0, 0]
+
+
+def test_a_follow_after_a_next_whose_answer_was_lost_takes_the_token_back(feed):
+    srv, spectate, client = feed
+    a, b = _live(srv, "LV1", "aa"), _live(srv, "LV2", "bb")
+    first = _watch(client, mode="ranked", w=W, e=1, q=1).json()["table"]
+    other = "aa" if first == "bb" else "bb"
+    # Next (read 2) is admitted at the other table, and its answer never
+    # reaches the screen, which still draws the first and follows it (read 3)
+    _watch(client, mode="ranked", skip=first, w=W, e=1, q=2)
+    assert _counts(a, b) == ([1, 0] if other == "aa" else [0, 1])
+    client.get(f"/api/watch/{first}", params={"w": W, "e": 1, "q": 3, "after": 0})
+    assert _counts(a, b) == ([1, 0] if first == "aa" else [0, 1])
+    # reads without numbers keep the older rule: a follow does not move the token
+    _watch(client, mode="ranked", skip=first, w="u" * 32, e=1)
+    client.get(f"/api/watch/{first}", params={"w": "u" * 32, "e": 1, "after": 0})
+    assert "u" * 32 in (a if other == "aa" else b).room.watch.watchers
+
+
+def test_picks_overtaken_by_later_nexts_count_nowhere_whatever_order_they_settle_in(feed, monkeypatch):
+    import itertools
+
+    srv, spectate, client = feed
+    monkeypatch.setattr(spectate.LIMITER, "limit", 10_000)
+    tables = [_live(srv, f"LV{i}", tid) for i, tid in enumerate(("aa", "bb", "cc"))]
+    # the screen draws aa; Next (read 2, skip aa) is delayed; Next again (read
+    # 3, still skip aa) brings bb, Next (read 4, skip bb) brings cc, which the
+    # screen draws and follows (read 5); read 2 reaches the server whenever
+    reads = [("pick", 2, "aa"), ("pick", 3, "aa"), ("pick", 4, "bb"), ("follow", 5, "cc")]
+    for n, order in enumerate(itertools.permutations(reads)):
+        token = f"{n}".rjust(32, "f")
+        first = _watch(client, mode="ranked", w=token, e=1, q=1).json()
+        assert first["table"] in ("aa", "bb", "cc")
+        for kind, q, at in order:
+            if kind == "pick":
+                _watch(client, mode="ranked", skip=at, w=token, e=1, q=q)
+            else:
+                client.get(f"/api/watch/{at}", params={"w": token, "e": 1, "q": q, "after": 0})
+        where = [t.room.watch.id for t in tables if token in t.room.watch.watchers]
+        assert where == ["cc"], (order, where)
+        _leave(client, w=token, e=1)
+        assert not any(token in t.room.watch.watchers for t in tables)
+
+
+def test_one_token_counts_at_one_table_at_most(feed):
+    srv, spectate, client = feed
+    a, b = _live(srv, "LV1", "aa"), _live(srv, "LV2", "bb")
+    _watch(client, mode="ranked", w=W, e=1)
+    for table in ("aa", "bb", "aa"):
+        # a newer session's follow moves the token there, from wherever it was
+        client.get(f"/api/watch/{table}", params={"w": W, "e": 5 if table == "bb" else 9, "after": 0})
+        assert sum(_counts(a, b)) == 1
+    assert _counts(a, b) == [1, 0]
+
+
+def test_a_late_answer_after_leave_and_a_rate_limited_reopen_count_nothing(feed, monkeypatch):
+    srv, spectate, client = feed
+    t = _live(srv, "LV1", "aa")
+    _watch(client, w=W, e=1)                 # admitted; its answer is on its way
+    _leave(client, e=1)                      # the screen closed first
+    monkeypatch.setattr(spectate.LIMITER, "limit", 0)
+    # the reopened screen's pick and its retry are both refused
+    assert _watch(client, w=W, e=2).status_code == 429
+    assert _watch(client, w=W, e=2).status_code == 429
+    _leave(client, e=2)                      # that screen closes on the failure
+    _leave(client, e=1)                      # the first answer lands: its leave again
+    assert _counts(t) == [0]
+    # a leave that reaches the server before its own session's admission still holds
+    monkeypatch.setattr(spectate.LIMITER, "limit", 1000)
+    _leave(client, w="b" * 32, e=1)
+    _watch(client, w="b" * 32, e=1)
+    assert _counts(t) == [0]
+
+
+def _overlap(spectate, monkeypatch, first_fails):
+    """Two pick handlers at one table: session 1's read is admitted and its
+    answer held in ``_serve``; session 2 reopens and completes; then session
+    1's answer completes (failing when ``first_fails``)."""
+    import asyncio
+
+    from starlette.requests import Request
+
+    async def nobody(_request):
+        return None
+
+    monkeypatch.setattr(spectate, "_viewer", nobody)
+    monkeypatch.setattr(spectate, "_schedule", lambda room: None)
+    real = spectate._serve
+
+    def request():
+        return Request({"type": "http", "method": "GET", "path": "/api/watch", "headers": [],
+                        "query_string": b"", "client": ("203.0.113.7", 1)})
+
+    async def run():
+        gate, entered, calls = asyncio.Event(), asyncio.Event(), []
+
+        async def serve(room, token, after, wide):
+            calls.append(token)
+            if len(calls) == 1:
+                entered.set()
+                await gate.wait()
+                if first_fails:
+                    return None
+            return await real(room, token, after, wide)
+
+        monkeypatch.setattr(spectate, "_serve", serve)
+        older = asyncio.create_task(spectate.watch(request(), w=W, e=1))
+        await entered.wait()
+        newer = await spectate.watch(request(), w=W, e=2)
+        held = spectate._leases[W]
+        gate.set()
+        try:
+            await older
+        except Exception:               # noqa: BLE001 - a failed pick ends in the rerun or a 404
+            pass
+        return newer, held
+
+    return asyncio.run(run())
+
+
+@pytest.mark.parametrize("first_fails", [True, False])
+def test_an_older_read_finishing_after_a_newer_reopen_leaves_the_newer_watch(feed, monkeypatch, first_fails):
+    srv, spectate, client = feed
+    t = _live(srv, "LV1", "aa")
+    newer, held = _overlap(spectate, monkeypatch, first_fails)
+    assert newer.status_code == 200
+    st = t.room.watch
+    # the newer admission still holds the token, counted once, told of once
+    assert spectate._leases[W] is held and held.table == "aa" and held.epoch == 2
+    assert W in st.watchers and _counts(t) == [1]
+    assert st.arrivals.count(W) == 1
+
+
+def test_a_full_table_feeds_its_watchers_only(feed, monkeypatch):
+    srv, spectate, client = feed
+    monkeypatch.setattr(spectate, "WATCH_CAP", 1)
+    t = _live(srv, "LV1", "aa")
+    member = "m" * 32
+    _watch(client, w=member, e=1)
+    assert _counts(t) == [1]
+    # a member follows its full table
+    assert client.get("/api/watch/aa", params={"w": member, "e": 1, "after": 0}).status_code == 200
+    # a stranger does not get its feed, whether its read may renew a lease or not
+    _watch(client, w=W, e=3)                 # the full table: not picked, so W's session 3 counts nowhere
+    for e in (1, 3, 4):
+        assert client.get("/api/watch/aa", params={"w": W, "e": e, "after": 0}).status_code == 404
+    _leave(client, w=W, e=3)
+    assert client.get("/api/watch/aa", params={"w": W, "e": 3, "after": 0}).status_code == 404
+    assert _counts(t) == [1]
+
+
+def test_early_leaves_are_bounded_and_the_oldest_give_way(feed, monkeypatch):
+    srv, spectate, client = feed
+    monkeypatch.setattr(spectate, "EARLY_LEAVES", 3)
+    t = _live(srv, "LV1", "aa")
+    tokens = [f"{i}".rjust(32, "e") for i in range(5)]
+    for tok in tokens:
+        assert _leave(client, w=tok, e=1).status_code == 204
+    assert list(spectate._early) == tokens[2:]
+    # a kept early leave still holds its session's late read off the table
+    _watch(client, w=tokens[4], e=1)
+    assert _counts(t) == [0]
+    # one forgotten for room is no worse than before the leave existed: its lease
+    _watch(client, w=tokens[0], e=1)
+    assert _counts(t) == [1]
+    # a newer session of a token with an early leave is admitted, and forgets it
+    _watch(client, w=tokens[3], e=2)
+    assert _counts(t) == [2] and tokens[3] not in spectate._early
 
 
 def test_every_watcher_up_to_the_cap_gets_the_live_table(feed, monkeypatch):

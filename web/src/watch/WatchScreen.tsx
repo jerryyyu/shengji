@@ -16,8 +16,8 @@ import { codes } from "../codeJoin";
 import { rounds } from "../roundTelemetry";
 import { tapHandlers } from "../tap";
 import { showToast } from "../toast";
-import { fetchWatch, followWatch } from "./api";
-import type { WatchDoc } from "./api";
+import { fetchWatch, followWatch, leaveWatch, nextWatchSession } from "./api";
+import type { WatchDoc, WatchFetch } from "./api";
 import {
   backTrick, beatMs, beatsOf, forwardTrick, handAt, liftedIds, nextSpeed, saveSpeed, savedSpeed, tabOrder,
 } from "./playback";
@@ -43,6 +43,21 @@ const noToggle = () => {};
 
 function cardList(v: unknown): string[] | null {
   return Array.isArray(v) && v.every((c) => typeof c === "string") ? (v as string[]) : null;
+}
+
+/** One mount's watch reads: its Watch session, whether a read is on its way
+ *  (`busy`) or a pick, its retry included, is under way (`picking`: no follow
+ *  is sent meanwhile), a pick held for the read on its way (`waiting`),
+ *  whether Next was asked again meanwhile (`more`), and the retry's timer.
+ *  `dead` once the mount is gone. */
+interface Run {
+  dead: boolean;
+  session: number;
+  busy: boolean;
+  picking: boolean;
+  waiting: (() => void) | null;
+  more: boolean;
+  retry: number | null;
 }
 
 export interface Loaded {
@@ -194,6 +209,9 @@ const ICON = {
 export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   const t = useT();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
+  // the table drawn, for reads that answer after the render that sent them
+  const loadedRef = useRef<Loaded | null>(null);
+  loadedRef.current = loaded;
   const [none, setNone] = useState(false);
   const [at, setAt] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -225,8 +243,6 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   const endedAt = useRef<number | null>(null);
   // the table on screen: a late answer about any other is dropped
   const table = useRef<string | null>(null);
-  // the latest pick: an answer to an earlier one is dropped
-  const picks = useRef(0);
   // what a waiting reply says now: the round in play, and the code Take a seat joins
   const [live, setLive] = useState<{ round: number | null; code: string | null; watchers?: number }>({ round: null, code: null });
   const root = useRef<HTMLDivElement>(null);
@@ -241,6 +257,18 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   // table's watch and begins the next one's; the next round of the same
   // table keeps it
   const usageTable = useRef<string | null>(null);
+  // This mount's reads: made as the screen mounts and dead once it unmounts
+  // (React's development double mount makes two), so an answer to a dead
+  // run's read is never drawn and schedules nothing.
+  const run = useRef<Run | null>(null);
+  /** True for an answer to a read of a dead run: it is not shown, and that
+   *  run's session leaves again, since the server may have counted the
+   *  watcher as it answered, after the first leave arrived. */
+  const late = (r: Run, res: WatchFetch) => {
+    if (!r.dead) return false;
+    if (res.ok && !res.doc.rerun) leaveWatch(r.session);
+    return true;
+  };
   const show = (l: Loaded, why: WatchBy = "ended") => {
     dropNext();
     if (usageTable.current !== null && usageTable.current !== l.doc.table) {
@@ -257,48 +285,117 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     setKitty(false);
     endedAt.current = null;
   };
-  const retry = useRef<number | null>(null);
+  // One watch read at a time (`Run`): every read may move where the server
+  // counts this watcher, so the table drawn is the one the last read settled on.
+  const send = (r: Run, read: (session: number) => Promise<WatchFetch>): Promise<WatchFetch> => {
+    r.busy = true;
+    return read(r.session).finally(() => {
+      r.busy = false;
+      const go = r.waiting;
+      r.waiting = null;
+      if (go && !r.dead) go();
+    });
+  };
+  /** The live run, when a follow may be sent now: nothing on its way, no
+   *  pick under way. */
+  const idleRun = (): Run | null => {
+    const r = run.current;
+    return r && !r.dead && !r.busy && !r.picking ? r : null;
+  };
+  // the table drawn, followed at once: after a pick that drew no other
+  // table, this read (numbered after the pick's) counts the watcher there again
+  const reassert = () => {
+    const doc = loadedRef.current?.doc;
+    const r = idleRun();
+    if (!doc || !r || doc.rerun || table.current !== doc.table) return;
+    void send(r, (e) => followWatch(doc.table, next.current?.doc.round ?? doc.round ?? 0, e)).then((res) => {
+      if (late(r, res)) return;
+      if (res.ok && res.doc.waiting && table.current === doc.table) {
+        setLive({ round: res.doc.live_round, code: res.doc.code, watchers: res.doc.watchers });
+      }
+    });
+  };
   // a table to watch: the first, or another by Next table (`why` "next") or
   // in place of one that is gone. "Nobody is playing" is said only when the
   // server says so (its 404); a read that fails or brings a round that cannot
   // be drawn is tried once more, a second such read closes the watch with a
-  // toast, and one while a table is on screen keeps that table.
+  // toast, and one while a table is on screen keeps that table. A Next asked
+  // while a pick is under way waits for it: the pick's table is drawn, and
+  // then one more pick goes on from there.
   const pick = (skip: string | null, why: "next" | "gone" | null = null) => {
-    const mine = ++picks.current;
-    dropNext();
-    if (retry.current !== null) window.clearTimeout(retry.current);
-    retry.current = null;
+    const r = run.current;
+    if (!r || r.dead) return;
+    if (r.picking) {
+      if (why === "next") r.more = true;
+      return;
+    }
+    r.picking = true;
+    // a round buffered behind the card is dropped only when another table
+    // is shown (`show`); the same table brought back keeps it and its hold
+    const settle = (drew: string | null) => {
+      r.picking = false;
+      const again = r.more;
+      r.more = false;
+      if (drew !== null && again) pick(drew, "next");
+      else if (drew === null) reassert();
+    };
     const read = (again: boolean) => {
-      void fetchWatch(mode, skip, loaded?.doc.watcher ?? null).then((r) => {
-        if (mine !== picks.current) return;
-        const l = r.ok ? load(r.doc) : null;
-        const failed = r.ok ? l === null : r.reason !== "none";
+      const go = () => void send(r, (e) => fetchWatch(mode, skip, e)).then((res) => {
+        if (late(r, res)) return;
+        const l = res.ok ? load(res.doc) : null;
+        const failed = res.ok ? l === null : res.reason !== "none";
         if (failed && !again) {
-          retry.current = window.setTimeout(() => { retry.current = null; read(true); }, RETRY_MS);
+          r.retry = window.setTimeout(() => { r.retry = null; if (!r.dead) read(true); }, RETRY_MS);
           return;
         }
-        if (l) {
+        if (l && why === "next" && l.doc.table === skip && table.current === skip) {
+          // Next found no other table: the one on screen, still followed,
+          // stays as it is, its round, seat and any round buffered behind it
+          settle(null);
+        } else if (l) {
           setNone(false);
           show(l, why ?? "next");
-        } else if (loaded) {
-          // the table on screen stays
+          settle(l.doc.rerun ? null : l.doc.table);
+        } else if (loadedRef.current) {
+          // the table on screen stays, and is counted there again
+          settle(null);
         } else if (failed) {
+          r.picking = false;
           showToast(t("watch.failed"));
           watch.close("error");
         } else {
+          r.picking = false;
           setNone(true);
         }
       });
+      if (r.busy) r.waiting = go;
+      else go();
     };
     read(false);
   };
-  useEffect(() => { pick(null); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => () => {
-    dropNext();
-    // a later answer to a pick is dropped, and none is tried again
-    picks.current++;
-    if (retry.current !== null) window.clearTimeout(retry.current);
-  }, []);
+  // A run per mount: its session, its one read at a time, its pick. Leaving
+  // (any way out unmounts this screen) or the page going away tells the
+  // server the session left; a page shown again from the back-forward cache
+  // watches on as a new session.
+  useEffect(() => {
+    const r: Run = { dead: false, session: nextWatchSession(), busy: false, picking: false,
+                     waiting: null, more: false, retry: null };
+    run.current = r;
+    const hide = () => leaveWatch(r.session);
+    const back = (e: PageTransitionEvent) => { if (e.persisted) r.session = nextWatchSession(); };
+    window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", back);
+    pick(null);
+    return () => {
+      r.dead = true;
+      r.waiting = null;
+      if (r.retry !== null) window.clearTimeout(r.retry);
+      window.removeEventListener("pagehide", hide);
+      window.removeEventListener("pageshow", back);
+      leaveWatch(r.session);
+      dropNext();
+    };
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const beats = loaded?.beats ?? [];
   const beat = beats[Math.min(at, Math.max(0, beats.length - 1))];
@@ -325,8 +422,10 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     const { doc } = loaded;
     let on = true;
     const poll = window.setInterval(() => {
-      if (document.visibilityState === "hidden" || table.current !== doc.table) return;
-      void followWatch(doc.table, next.current?.doc.round ?? doc.round ?? 0, doc.watcher).then((res) => {
+      const r = idleRun();
+      if (document.visibilityState === "hidden" || table.current !== doc.table || !r) return;
+      void send(r, (e) => followWatch(doc.table, next.current?.doc.round ?? doc.round ?? 0, e)).then((res) => {
+        if (late(r, res)) return;
         if (!on || table.current !== doc.table || !res.ok) return;
         if (res.doc.waiting) {
           setLive({ round: res.doc.live_round, code: res.doc.code, watchers: res.doc.watchers });
@@ -358,10 +457,10 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
       }, Math.max(0, wait));
     };
     const ask = () => {
-      if (next.current || table.current !== doc.table) return;
-      const r = doc.rerun ? fetchWatch(mode, null, doc.watcher)
-        : followWatch(doc.table, doc.round ?? 0, doc.watcher);
-      void r.then((res) => {
+      const r = idleRun();
+      if (next.current || table.current !== doc.table || !r) return;
+      void send(r, (e) => doc.rerun ? fetchWatch(mode, null, e) : followWatch(doc.table, doc.round ?? 0, e)).then((res) => {
+        if (late(r, res)) return;
         if (!on || table.current !== doc.table) return;
         if (res.ok && res.doc.waiting) {
           setLive({ round: res.doc.live_round, code: res.doc.code, watchers: res.doc.watchers });

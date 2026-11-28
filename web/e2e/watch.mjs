@@ -5,7 +5,9 @@
 // ends; a live table's menu stays as a tap left it while plays arrive; in the
 // iOS app sideways the menu opens on top and Leave leaves, and the watcher's
 // own companion stands in the safe area and walks to a tap; and a replay is
-// left in one tap, by back or by Escape.
+// left in one tap, by back or by Escape; Next table goes on to another table
+// and back, or keeps the only one as it was; and a watcher who leaves and
+// comes back counts once, even when it leaves before its first answer lands.
 //   node e2e/watch.mjs [device-regex]
 import fs from "node:fs";
 import path from "node:path";
@@ -49,6 +51,33 @@ function doc(k) {
   return { table: "a1b2c3d4", watcher: "f".repeat(32), mode: "ranked", live_round: 2, code: null, rerun: false,
     waiting: false, round: 1, seat: banker, players: NAMES, finished: true, events: ev };
 }
+
+/** The server's watcher leases (spectate.py `admissible`, `admit`,
+ *  `release`) for the stubbed feeds: a token counts at one table at most, a
+ *  read or leave of an older Watch session than one admitted changes
+ *  nothing, and within the session the read numbered highest (`q`) wins, a
+ *  pick or a follow alike. */
+function leases() {
+  const at = new Map();
+  return {
+    read(token, epoch, table, follow, seq = 0) {
+      const l = at.get(token);
+      const ok = !l || epoch > l.epoch
+        || (epoch === l.epoch && !l.left
+            && (seq > l.seq || (seq === l.seq && (!follow || l.table === null || l.table === table))));
+      if (ok) at.set(token, { table, epoch, seq, left: false });
+      return ok;
+    },
+    leave(token, epoch) {
+      const l = at.get(token);
+      if (!l || epoch >= l.epoch) at.set(token, { table: null, epoch, seq: 0, left: true });
+    },
+    count(table) { return [...at.values()].filter((l) => l.table === table).length; },
+    total() { return [...at.values()].filter((l) => l.table !== null).length; },
+  };
+}
+const epochOf = (u) => Number(u.searchParams.get("e")) || 0;
+const seqOf = (u) => Number(u.searchParams.get("q")) || 0;
 
 const presence = { type: "presence", tables: 1, playing: 1, waiting: 0, ranked: 1, casual: 0, watch: 1, rerun: true };
 
@@ -299,6 +328,255 @@ for (const device of ["phone-land", "phone-land-se", "ipad11-land"]) {
       const back = await page.waitForSelector(".play-presence-watch", { timeout: 3000 }).then(() => true, () => false);
       await rep.check(`${name}: Leave lands on the Play tab`, back && !(await page.$(".watch-screen")) ? null : "still watching", page);
       if (SHOTS?.test(name)) await shot(page, name);
+    });
+    await page.context().close();
+  }
+}
+// Next table and the watcher count against a stub that keeps the server's
+// rules: Next goes on from the skipped table in a fixed order and wraps
+// (staying put only with one table), a request with no token mints one, and
+// the stubbed leases count. Two tables: Next reaches the other and comes back,
+// and the bottom seat is each table's banker every time; one table: Next keeps
+// the round where it was. Then watch, leave, watch again: a count of 1.
+for (const tables of [["a1b2c3d4", "e5f6a7b8"], ["a1b2c3d4"]]) {
+  const device = "phone-land";
+  const name = `watch-next-${tables.length}-tables-${device}`;
+  if (only && !only.test(name)) continue;
+  const L = leases();
+  let minted = 0;
+  const docOf = (table, w, e, follow, q) => {
+    L.read(w, e, table, follow, q);
+    const i = tables.indexOf(table);
+    return { ...doc(0), table, watcher: w, round: 1 + i, live_round: 2 + i, watchers: L.count(table) };
+  };
+  const page = await open(browser, device, {
+    storage: { "shengji.coach": "off", "shengji.muted": "1", "shengji.name": "Jerry" },
+    fakeSocket: fakeSocketScript([presence]),
+    setup: async (p) => {
+      await p.route("**/api/**", (r) => r.fulfill({ status: 404, json: {} }));
+      await p.route("**/api/watch/**", (r) => {
+        const u = new URL(r.request().url());
+        const w = u.searchParams.get("w");
+        if (u.pathname.endsWith("/leave")) { L.leave(w, epochOf(u)); return r.fulfill({ status: 204, body: "" }); }
+        const table = decodeURIComponent(u.pathname.split("/")[3]);
+        return r.fulfill({ json: { ...docOf(table, w, epochOf(u), true, seqOf(u)), waiting: true, events: undefined } });
+      });
+      await p.route("**/api/watch?**", (r) => {
+        const u = new URL(r.request().url());
+        const skip = u.searchParams.get("skip");
+        const w = u.searchParams.get("w") || `${String(++minted).padStart(4, "0")}${"c".repeat(28)}`;
+        const table = skip && tables.includes(skip) ? tables[(tables.indexOf(skip) + 1) % tables.length] : tables[0];
+        return r.fulfill({ json: docOf(table, w, epochOf(u), false, seqOf(u)) });
+      });
+    },
+  });
+  await scenario(rep, name, page, async () => {
+    // the round label, without the watcher count before it
+    const strip = () => page.evaluate(() => {
+      const c = document.querySelector(".watch-round")?.cloneNode(true);
+      c?.querySelector(".watch-count")?.remove();
+      return c?.textContent ?? "";
+    });
+    const bottom = () => page.evaluate(() => document.querySelector("[role=tab][aria-selected=true]")?.textContent ?? "");
+    const next = async () => {
+      await page.click('.watch-hud [aria-haspopup="menu"]');
+      await page.click(".watch-screen [role=menu] [role=menuitem]:first-child");
+      await sleep(700);
+    };
+    await page.waitForSelector(".play-presence-watch");
+    await page.click(".play-presence-watch");
+    await page.waitForSelector(".watch-tabs");
+    await page.click('button[aria-label="Pause"]');
+    const first = { strip: await strip(), seat: await bottom() };
+    const seen = [];
+    for (let i = 0; i < 3; i++) {
+      if (tables.length === 1) {
+        await page.click('button[aria-label="Next trick"]');
+        await page.click("[role=tab]:nth-child(2)");
+      }
+      const before = { strip: await strip(), seat: await bottom(),
+        felt: await page.evaluate(() => document.querySelector(".felt").innerHTML) };
+      await next();
+      const after = { strip: await strip(), seat: await bottom(),
+        felt: await page.evaluate(() => document.querySelector(".felt").innerHTML) };
+      seen.push(after.strip);
+      if (tables.length === 1) {
+        await rep.check(`${name}: Next ${i + 1} keeps the only table as it was`,
+          after.strip === before.strip && after.seat === before.seat && after.felt === before.felt ? null
+            : `${JSON.stringify(before.strip)} ${before.seat} then ${JSON.stringify(after.strip)} ${after.seat}`, page);
+      } else {
+        await rep.check(`${name}: Next ${i + 1} lands behind that table's banker`,
+          after.seat === first.seat ? null : `${after.seat}, not ${first.seat}`, page);
+      }
+    }
+    if (tables.length > 1) {
+      await rep.check(`${name}: Next goes to the other table and back, never the same one twice running`,
+        JSON.stringify([first.strip, ...seen]) === JSON.stringify(["Round 1 · previous round", "Round 2 · previous round",
+          "Round 1 · previous round", "Round 2 · previous round"])
+          ? null : `strips ${JSON.stringify([first.strip, ...seen])}`, page);
+    }
+    // watch, leave, watch again: one watcher
+    const count = () => page.evaluate(() => document.querySelector(".watch-count")?.textContent ?? "none");
+    await page.click('.watch-hud [aria-haspopup="menu"]');
+    await page.click(".watch-screen [role=menu] .leave");
+    await page.waitForSelector(".play-presence-watch");
+    await sleep(300);
+    const left = L.total();
+    await page.click(".play-presence-watch");
+    await page.waitForSelector(".watch-tabs");
+    await rep.check(`${name}: leaving stops the count, and watching again counts 1`,
+      left === 0 && (await count()) === "1" && minted === 0 ? null
+        : `after leaving ${left} counted, then the eye says ${await count()}, ${minted} tokens minted for reads with none`, page);
+    if (SHOTS?.test(name)) await shot(page, name);
+  });
+  await page.context().close();
+}
+// The count against the stubbed leases (and a stub that mints a token for a
+// read with none): Leave from the loading screen while the first pick's
+// answer is held, the answer then lands, and the table counts nobody; a fresh
+// tab left and opened again before that answer counts one; the same, with the
+// reopened screen's pick and its retry refused (429), counts nobody; and a
+// replay's end that finds a live table, left during the round end card,
+// counts nobody.
+for (const how of ["loading", "reopen", "reopen-429", "replay-end"]) {
+  const device = "phone-land";
+  const name = `watch-count-${how}-${device}`;
+  if (only && !only.test(name)) continue;
+  const L = leases();
+  let minted = 0, reads = 0;
+  let release = null;
+  const held = new Promise((r) => { release = r; });
+  const page = await open(browser, device, {
+    storage: { "shengji.coach": "off", "shengji.muted": "1", "shengji.name": "Jerry" },
+    fakeSocket: fakeSocketScript([presence]),
+    setup: async (p) => {
+      await p.route("**/api/**", (r) => r.fulfill({ status: 404, json: {} }));
+      await p.route("**/api/watch/**", (r) => {
+        const u = new URL(r.request().url());
+        const w = u.searchParams.get("w");
+        if (u.pathname.endsWith("/leave")) { L.leave(w, epochOf(u)); return r.fulfill({ status: 204, body: "" }); }
+        L.read(w, epochOf(u), "a1b2c3d4", true, seqOf(u));
+        return r.fulfill({ json: { ...doc(0), watcher: w, waiting: true, events: undefined, watchers: L.count("a1b2c3d4") } });
+      });
+      await p.route("**/api/watch?**", async (r) => {
+        const u = new URL(r.request().url());
+        const w = u.searchParams.get("w") || `${String(++minted).padStart(4, "0")}${"c".repeat(28)}`;
+        const n = ++reads;
+        if (how === "replay-end" && n === 1) return r.fulfill({ json: { ...doc(0), rerun: true, live_round: null, watcher: w } });
+        if (how === "reopen-429" && n > 1) return r.fulfill({ status: 429, json: {} });
+        L.read(w, epochOf(u), "a1b2c3d4", false, seqOf(u));      // counted as the server answers
+        if (how !== "replay-end" && n === 1) await held;
+        await r.fulfill({ json: { ...doc(0), watcher: w, watchers: L.count("a1b2c3d4") } }).catch(() => {});
+      });
+    },
+  });
+  await scenario(rep, name, page, async () => {
+    await page.waitForSelector(".play-presence-watch");
+    await page.click(".play-presence-watch");
+    if (how === "replay-end") {
+      await page.waitForSelector(".watch-tabs");
+      await page.click('button[aria-label="Pause"]');
+      for (let i = 0; i < 40 && await page.$('button[aria-label="Next trick"]:not([disabled])'); i++) {
+        await page.click('button[aria-label="Next trick"]');
+      }
+      for (let i = 0; i < 30 && reads < 2; i++) await sleep(100);
+      await page.keyboard.press("Escape");   // the card closes first
+      await page.click('.watch-hud button[aria-label="Leave"]');
+    } else {
+      await page.waitForSelector(".watch-empty .btn");
+      await page.click(".watch-empty .btn");
+    }
+    await page.waitForSelector(".play-presence-watch");
+    if (how === "reopen") {
+      await page.click(".play-presence-watch");
+      await page.waitForSelector(".watch-tabs");
+    } else if (how === "reopen-429") {
+      await page.click(".play-presence-watch");
+      // the pick and its retry are refused: the toast, and back on the Play tab
+      for (let i = 0; i < 40 && reads < 3; i++) await sleep(100);
+      await page.waitForSelector(".play-presence-watch:not(.watch-screen *)", { timeout: 4000 });
+      await sleep(300);
+    }
+    release();
+    const want = how === "reopen" ? 1 : 0;
+    for (let i = 0; i < 20 && L.total() !== want; i++) await sleep(100);
+    await sleep(300);
+    const eye = await page.evaluate(() => document.querySelector(".watch-count")?.textContent ?? "none");
+    await rep.check(`${name}: the table counts ${want} for this one viewer`,
+      L.total() === want && minted === 0 && (how !== "reopen" || eye === "1") && (how !== "reopen-429" || reads === 3) ? null
+        : `${L.total()} counted, eye ${eye}, ${reads} picks, ${minted} tokens minted for reads with none`, page);
+  });
+  await page.context().close();
+}
+// Three tables, Nexts while one is held: the screen draws A; a Next is held
+// on its way to the server; two more Nexts are asked meanwhile. Released, the
+// held Next draws B, and one more pick goes on from there: it brings C, or
+// (refused) is refused with its retry and B stays. Either way only the table
+// drawn counts this viewer, and no two reads were ever on their way at once.
+for (const how of ["overtaken", "refused"]) {
+  const device = "phone-land";
+  const name = `watch-next-${how}-${device}`;
+  if (!only || only.test(name)) {
+    const tables = ["a1b2c3d4", "b1b2c3d4", "c1b2c3d4"];
+    const L = leases();
+    let picks = 0, release = null, inFlight = 0, most = 0;
+    const held = new Promise((r) => { release = r; });
+    const page = await open(browser, device, {
+      storage: { "shengji.coach": "off", "shengji.muted": "1", "shengji.name": "Jerry" },
+      fakeSocket: fakeSocketScript([presence]),
+      setup: async (p) => {
+        await p.route("**/api/**", (r) => r.fulfill({ status: 404, json: {} }));
+        await p.route("**/api/watch/**", (r) => {
+          const u = new URL(r.request().url());
+          const w = u.searchParams.get("w");
+          if (u.pathname.endsWith("/leave")) { L.leave(w, epochOf(u)); return r.fulfill({ status: 204, body: "" }); }
+          const table = decodeURIComponent(u.pathname.split("/")[3]);
+          if (inFlight > 0) most = Math.max(most, inFlight + 1);
+          L.read(w, epochOf(u), table, true, seqOf(u));
+          return r.fulfill({ json: { ...doc(0), table, watcher: w, waiting: true, events: undefined } });
+        });
+        await p.route("**/api/watch?**", async (r) => {
+          const u = new URL(r.request().url());
+          const skip = u.searchParams.get("skip");
+          const w = u.searchParams.get("w");
+          const n = ++picks;
+          inFlight++;
+          most = Math.max(most, inFlight);
+          // the first Next reaches the server only once released
+          if (n === 2) await held;
+          if (how === "refused" && n > 2) {
+            inFlight--;
+            return r.fulfill({ status: 429, json: {} }).catch(() => {});
+          }
+          inFlight--;
+          const table = skip ? tables[(tables.indexOf(skip) + 1) % tables.length] : tables[0];
+          L.read(w, epochOf(u), table, false, seqOf(u));
+          const i = tables.indexOf(table);
+          await r.fulfill({ json: { ...doc(0), table, watcher: w, round: 1 + i, live_round: 2 + i } }).catch(() => {});
+        });
+      },
+    });
+    await scenario(rep, name, page, async () => {
+      const next = async () => {
+        await page.click('.watch-hud [aria-haspopup="menu"]');
+        await page.click(".watch-screen [role=menu] [role=menuitem]:first-child");
+        await sleep(500);
+      };
+      const round = () => page.evaluate(() => document.querySelector(".watch-round")?.textContent ?? "");
+      await page.waitForSelector(".play-presence-watch");
+      await page.click(".play-presence-watch");
+      await page.waitForSelector(".watch-tabs");
+      await page.click('button[aria-label="Pause"]');
+      await next();                        // held
+      await next();                        // B
+      await next();                        // C
+      release();
+      await sleep(how === "refused" ? 2600 : 800);   // the refused pick's retry comes 1.5 s on
+      const where = tables.filter((t) => L.count(t) > 0).map((t) => t.slice(0, 1));
+      const want = how === "refused" ? { round: "Round 2", at: '["b"]' } : { round: "Round 3", at: '["c"]' };
+      await rep.check(`${name}: only the table drawn counts the viewer, one read at a time`,
+        (await round()).includes(want.round) && JSON.stringify(where) === want.at && most <= 1 ? null
+          : `drawn ${JSON.stringify(await round())}, counted at ${JSON.stringify(where)}, ${most} reads at once`, page);
     });
     await page.context().close();
   }

@@ -81,3 +81,19 @@ link never detaches a newer one.
 - `web/src/offline/server/nearby/oneSeat.test.ts`: `seatedAt3`;
   `web/src/nearbyRestart.test.ts`: `forgetKeptSeat` (#1769).
 - `web/src/nearbyChaosPage.test.ts`: the seed-30050 replays (#1770), `KeptToken`.
+- A watcher's kept token (`test_spectate.py`): a leave or read from an older
+  Watch session changes nothing
+  (`test_a_leave_from_an_older_session_changes_nothing`), a follow numbered
+  below the Next that moved the token counts nowhere
+  (`test_a_follow_numbered_below_the_next_that_moved_the_token_counts_nowhere`), a
+  follow after a Next whose answer was lost takes the token back
+  (`test_a_follow_after_a_next_whose_answer_was_lost_takes_the_token_back`), one token
+  counts at one table, and a rate-limited reopen with a late first answer
+  counts nothing (`test_a_late_answer_after_leave_and_a_rate_limited_reopen_count_nothing`;
+  in the browser, `e2e/watch.mjs` `watch-count-*`); a read finishing after a
+  newer reopen leaves the newer watch, failing or not
+  (`test_an_older_read_finishing_after_a_newer_reopen_leaves_the_newer_watch`,
+  two overlapping handlers); a pick overtaken by later Nexts counts nowhere,
+  in every order its reads settle in
+  (`test_picks_overtaken_by_later_nexts_count_nowhere_whatever_order_they_settle_in`;
+  `e2e/watch.mjs` `watch-next-overtaken`) (#2023).

@@ -12,6 +12,7 @@ import { telemetry } from "../telemetry";
 import { clearToast, currentToast } from "../toast";
 import { watch } from "./store";
 import { canWatch } from "./store";
+import { forgetWatcherToken } from "./api";
 import { setLanguageChoice } from "../i18n";
 
 // a watcher shown the Collection: companions on the felt, no portrait on the round end
@@ -34,6 +35,7 @@ const feed = {
   finished: true, events: fixture.events,
 };
 const urls: string[] = [];
+const beacons: string[] = [];
 let root: Root;
 let host: HTMLDivElement;
 
@@ -44,6 +46,11 @@ beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true,
     value: function (this: HTMLDialogElement) { this.removeAttribute("open"); } });
   urls.length = 0;
+  beacons.length = 0;
+  sessionStorage.clear();
+  forgetWatcherToken();
+  Object.defineProperty(navigator, "sendBeacon", { configurable: true,
+    value: (url: string) => { beacons.push(url); return true; } });
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
     urls.push(url);
     const body = url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined } : feed;
@@ -510,12 +517,12 @@ describe("caught up", () => {
     expect(h.querySelector(".watch-round")!.textContent).toContain("Round 7");
   });
 
-  it("ignores a pick that answers after a later one", async () => {
+  it("a Next asked while a pick is under way waits for it, then goes on from the table it drew", async () => {
     let release: (() => void) | null = null;
     const slow = new Promise<void>((r) => { release = r; });
     reply = async (url) => {
       if (url.includes("skip=abc123")) { await slow; return { ...feed, table: "old111", round: 9 }; }
-      if (url.includes("skip=")) return { ...feed, table: "new222", round: 8 };
+      if (url.includes("skip=old111")) return { ...feed, table: "new222", round: 8 };
       return url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined } : feed;
     };
     const h = await screen();
@@ -526,13 +533,18 @@ describe("caught up", () => {
       await flush();
     };
     await next();                          // skip=abc123: slow
-    await next();                          // still on abc123, so skip=abc123 again: also slow
-    reply = async (url) => (url.includes("skip=") ? { ...feed, table: "new222", round: 8 } : feed);
-    await next();
-    expect(h.querySelector(".watch-round")!.textContent).toContain("Round 8");
+    await next();                          // waits for it
+    await next();                          // still one more, not two
+    const skips = () => urls.filter((u) => u.includes("skip="));
+    expect(skips()).toHaveLength(1);
+    expect(h.querySelector(".watch-round")!.textContent).toContain("Round 3");
+    // nothing else is read while the pick is under way
+    await act(async () => { vi.advanceTimersByTime(FOLLOW_MS * 2); });
+    expect(urls.filter((u) => u.startsWith("/api/watch/"))).toEqual([]);
     release!();
     await flush();
     expect(h.querySelector(".watch-round")!.textContent).toContain("Round 8");
+    expect(skips().map((u) => new URL(u, "http://x").searchParams.get("skip"))).toEqual(["abc123", "old111"]);
   });
 
   const actions = () => [...document.querySelectorAll(".round-end .round-end-actions button:not(.round-end-view-btn)")].map((b) => b.textContent);
@@ -544,6 +556,224 @@ describe("caught up", () => {
     expect(urls.some((u) => u.includes("skip=abc123"))).toBe(true);
     expect(actions()).toEqual(["Play", "Leave"]);
     expect(document.querySelector(".round-end")!.textContent).not.toContain("in play");
+  });
+
+  const nextTable = async (h: HTMLElement) => {
+    await act(async () => { btn(h, "More")!.click(); });
+    await act(async () => { [...h.querySelectorAll<HTMLButtonElement>("[role=menuitem]")][0].click(); });
+    await flush();
+  };
+
+  it("a Next table that brings back the only table keeps it as it is: its round, its beat and its seat", async () => {
+    reply = (url) => url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined }
+      : url.includes("skip=abc123") ? { ...feed, round: 3, seat: (banker + 2) % 4 } : feed;
+    const h = await screen();
+    await act(async () => { btn(h, "Pause")!.click(); });
+    for (let i = 0; i < 3; i++) await act(async () => { btn(h, "Next trick")!.click(); });
+    const tab = [...h.querySelectorAll<HTMLButtonElement>("[role=tab]")][1];
+    await act(async () => { tab.click(); });
+    const before = { felt: h.querySelector(".felt")!.innerHTML, hand: h.querySelector(".watch-hand")!.innerHTML };
+    await nextTable(h);
+    expect(urls.some((u) => u.includes("skip=abc123"))).toBe(true);
+    expect(tab.getAttribute("aria-selected")).toBe("true");
+    expect(h.querySelector(".watch-hand")!.innerHTML).toBe(before.hand);
+    expect(h.querySelector(".felt")!.innerHTML).toBe(before.felt);
+    expect(btn(h, "Previous trick")!.disabled).toBe(false);
+  });
+
+  it("Next table goes on to the table the server picks, each in turn", async () => {
+    const order = ["abc123", "bbb222", "ccc333"];
+    reply = (url) => {
+      if (url.startsWith("/api/watch/")) return { ...feed, waiting: true, events: undefined };
+      const skip = new URL(url, "http://x").searchParams.get("skip");
+      const table = skip ? order[(order.indexOf(skip) + 1) % order.length] : "abc123";
+      return { ...feed, table, round: 3 + order.indexOf(table) };
+    };
+    const h = await screen();
+    const seen = [];
+    for (let i = 0; i < 4; i++) {
+      await nextTable(h);
+      seen.push(h.querySelector(".watch-round")!.textContent);
+    }
+    expect(seen).toEqual(["Round 4 · previous round", "Round 5 · previous round",
+                          "Round 3 · previous round", "Round 4 · previous round"]);
+    // a move to another table needs no leave: the server moves the watcher's count with it
+    expect(beacons).toEqual([]);
+  });
+
+  const wOf = (url: string) => new URL(url, "http://x").searchParams.get("w");
+  const eOf = (url: string) => new URL(url, "http://x").searchParams.get("e");
+  const leaveOf = (e: number) => `/api/watch/leave?w=${sessionStorage.getItem("shengji.watcher")}&e=${e}`;
+
+  it("opening the watch again is the same watcher in a new session, and each close tells the server once", async () => {
+    reply = (url) => url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined }
+      : { ...feed, watcher: wOf(url) };
+    await screen();
+    // the token is made before the first read, and kept for the session
+    const mine = sessionStorage.getItem("shengji.watcher")!;
+    expect(mine).toMatch(/^[0-9a-f]{32}$/);
+    expect([wOf(urls[0]), eOf(urls[0])]).toEqual([mine, "1"]);
+    const first = roots.pop()!;
+    act(() => first.root.unmount());
+    first.host.remove();
+    expect(beacons).toEqual([leaveOf(1)]);
+    urls.length = 0;
+    await screen();
+    expect([wOf(urls[0]), eOf(urls[0])]).toEqual([mine, "2"]);
+    // the page going away tells it too, in its own session
+    window.dispatchEvent(new Event("pagehide"));
+    expect(beacons).toEqual([leaveOf(1), leaveOf(2)]);
+  });
+
+  it("numbers its reads within the session, so a pick overtaken by a later Next counts nowhere", async () => {
+    const held1 = held();
+    const order = ["abc123", "bbb222", "ccc333"];
+    let picks = 0;
+    reply = async (url) => {
+      if (url.startsWith("/api/watch/")) return { ...feed, waiting: true, events: undefined };
+      const n = ++picks;
+      if (n === 2) await held1.gate;
+      const skip = new URL(url, "http://x").searchParams.get("skip");
+      const table = skip ? order[(order.indexOf(skip) + 1) % order.length] : order[0];
+      return { ...feed, table, round: 3 + order.indexOf(table) };
+    };
+    const h = await screen();
+    await act(async () => { btn(h, "Pause")!.click(); });
+    await nextTable(h);                    // held
+    await nextTable(h);                    // bbb222
+    await nextTable(h);                    // ccc333
+    await held1.deliver();
+    expect(h.querySelector(".watch-round")!.textContent).toContain("Round 5");
+    const qs = urls.filter((u) => u.startsWith("/api/watch")).map((u) => Number(new URL(u, "http://x").searchParams.get("q")));
+    expect(qs).toEqual(qs.map((_, i) => i + 1));
+    close();
+    urls.length = 0;
+    await screen();
+    expect(new URL(urls[0], "http://x").searchParams.get("q")).toBe("1");   // a new session counts afresh
+  });
+
+  const close = () => {
+    const r = roots.pop()!;
+    act(() => r.root.unmount());
+    r.host.remove();
+  };
+  const held = () => {
+    let deliver: (() => void) | null = null;
+    const gate = new Promise<void>((res) => { deliver = res; });
+    return { gate, deliver: async () => { deliver!(); await flush(); } };
+  };
+
+  it("an answer that lands after the screen closed sends that session's leave again", async () => {
+    const first = held();
+    reply = async (url) => {
+      if (url.startsWith("/api/watch/")) return { ...feed, waiting: true, events: undefined };
+      await first.gate;
+      return feed;
+    };
+    const h = await screen();
+    expect(h.querySelector(".watch-tabs")).toBeNull();      // still loading: its Leave
+    close();
+    expect(beacons).toEqual([leaveOf(1)]);
+    await first.deliver();
+    expect(beacons).toEqual([leaveOf(1), leaveOf(1)]);
+  });
+
+  it("closing while Next's answer is on its way: the leave names the session, whatever table it counts at", async () => {
+    const b = held();
+    reply = async (url) => {
+      if (url.startsWith("/api/watch/")) return { ...feed, waiting: true, events: undefined };
+      if (url.includes("skip=abc123")) { await b.gate; return { ...feed, table: "bbb222", round: 8 }; }
+      return feed;
+    };
+    const h = await screen();
+    await nextTable(h);
+    // a follow of the table still drawn, sent while Next's answer is on its way, is the same session
+    await act(async () => { vi.advanceTimersByTime(FOLLOW_MS); });
+    expect(urls.filter((u) => u.startsWith("/api/watch/abc123")).every((u) => eOf(u) === "1")).toBe(true);
+    close();
+    await b.deliver();
+    expect(beacons).toEqual([leaveOf(1), leaveOf(1)]);
+  });
+
+  it("a fresh tab left and opened again before its first answer: one token, and the late leave is the old session's", async () => {
+    const first = held();
+    let reads = 0;
+    reply = async (url) => {
+      if (url.startsWith("/api/watch/")) return { ...feed, waiting: true, events: undefined };
+      const n = ++reads;
+      if (n === 1) await first.gate;
+      // the server echoes a token it is sent, and mints one for a read without
+      return { ...feed, watcher: wOf(url) ?? `m${n}`.padEnd(32, "0") };
+    };
+    await screen();
+    close();
+    const h = await screen();
+    expect(h.querySelector(".watch-tabs")).not.toBeNull();
+    await first.deliver();
+    const picks = urls.filter((u) => u.startsWith("/api/watch?"));
+    expect(picks.map((u) => [wOf(u), eOf(u)])).toEqual([[wOf(picks[0]), "1"], [wOf(picks[0]), "2"]]);
+    expect(wOf(picks[0])).toMatch(/^[0-9a-f]{32}$/);
+    expect(sessionStorage.getItem("shengji.watcher")).toBe(wOf(picks[0]));
+    // the late answer's leave names session 1: the server keeps session 2's watch
+    expect(beacons).toEqual([leaveOf(1), leaveOf(1)]);
+  });
+
+  it("a replay's end that finds a live table, left during the card, tells the server", async () => {
+    const rerun = { ...feed, table: "rerun", rerun: true, live_round: null, code: null };
+    let picks = 0;
+    reply = (url) => url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined }
+      : picks++ === 0 ? rerun : feed;
+    const h = await screen();
+    await toEnd(h);                        // the next pick lands on abc123, buffered behind the card
+    expect(picks).toBe(2);
+    expect(h.querySelector(".watch-round")!.textContent).toBe("Replay");
+    close();
+    expect(beacons).toEqual([leaveOf(1)]);
+  });
+
+  it("a table that 404s and is found live again by the recovery pick plays on", async () => {
+    let follows404 = 1;
+    reply = (url) => {
+      if (url.startsWith("/api/watch/abc123")) {
+        if (follows404-- > 0) return GONE;
+        return { ...feed, round: 4, waiting: true, events: undefined };
+      }
+      return url.includes("skip=abc123") ? { ...feed, round: 4 } : feed;
+    };
+    const h = await screen();
+    await toEnd(h);
+    expect(urls.some((u) => u.includes("skip=abc123"))).toBe(true);
+    await act(async () => { vi.advanceTimersByTime(CARD_HOLD_MS + 100); });
+    await flush();
+    expect(h.querySelector(".watch-round")!.textContent).toContain("Round 4");
+    // and it is followed again
+    const before = follows();
+    await toEnd(h);
+    for (let s = 0; s < 3; s++) await act(async () => { vi.advanceTimersByTime(FOLLOW_MS); });
+    await flush();
+    expect(follows()).toBeGreaterThan(before);
+  });
+
+  it("Next on the only table keeps the round buffered behind the card, and its hold", async () => {
+    reply = (url) => url.startsWith("/api/watch/abc123") ? { ...feed, round: 4 } : feed;
+    const h = await screen();
+    await toEnd(h);                        // round 4 of abc123 is buffered behind the card
+    expect(follows()).toBeGreaterThanOrEqual(1);
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    await flush();
+    await nextTable(h);
+    expect(urls.some((u) => u.includes("skip=abc123"))).toBe(true);
+    expect(h.querySelector(".watch-round")!.textContent).toContain("Round 3");
+    await act(async () => { vi.advanceTimersByTime(CARD_HOLD_MS - 1000 + 100); });
+    await flush();
+    expect(h.querySelector(".watch-round")!.textContent).toContain("Round 4");
+  });
+
+  it("a replay's close sends its one leave too: the server knows what it counts", async () => {
+    reply = () => ({ ...feed, table: "rerun", rerun: true, live_round: null, code: null });
+    await screen();
+    close();
+    expect(beacons).toEqual([leaveOf(1)]);
   });
 
   it("a Next table that finds nothing keeps the table and its seat offer", async () => {
@@ -638,13 +868,14 @@ describe("the menu while plays arrive", () => {
     await open();
     await (await tap(button("More")))();
     const rows = () => [...host.querySelectorAll<HTMLButtonElement>("[role=menuitem]")];
-    const picks = urls.length;
+    const pickReads = () => urls.filter((u) => u.startsWith("/api/watch?")).length;
+    const picks = pickReads();
     const lateNext = await tap(rows()[0]);
     expect(host.querySelector("[role=menu]")).toBeNull();
-    expect(urls.length).toBe(picks + 1);
+    expect(pickReads()).toBe(picks + 1);
     await nextPlay();
     await lateNext();
-    expect(urls.length).toBe(picks + 1);
+    expect(pickReads()).toBe(picks + 1);
     await (await tap(button("More")))();
     const close = vi.spyOn(watch, "close");
     await tap(rows()[1]);

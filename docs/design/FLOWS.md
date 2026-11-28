@@ -588,7 +588,11 @@ player (cards and seats travel about 0.5 s, a fade under Reduce Motion) and dock
 The round opens with the banker's bury (the eight cards rise and leave into the kitty); the next play's cards rise
 before they land, at a steady rhythm. The top-left strip is the game's own (round label, trump, points). At top right a live table keeps ⋯ with Next
 table and Leave; a replay, which has only Leave there, draws one ✕ in its place instead (named Leave, 离开 / 離開),
-and one tap leaves (Jerry 2026-11-27: "Spectate leave feels clunky"). Entering a watch adds one history entry at
+and one tap leaves (Jerry 2026-11-27: "Spectate leave feels clunky"). Next table goes to another live table, every
+table in turn and round again (Jerry 2026-11-28: "The next table for spectate just rotates across same table"); with
+no other table it keeps the one on screen as it was, its beat and seat, and never turns to a replay of it. The eye's
+count is people: a watcher who leaves stops counting at once, and one who comes back in the same tab or app session
+counts once (Jerry 2026-11-28: "I joined and left, how does it count me"). Entering a watch adds one history entry at
 the Play tab's own address, so the browser's back and the iOS app's left-edge swipe (on while watching, off only
 at a game) leave it too, and so does Escape when nothing is open over the table (the menu, the kitty peek and the
 round end card each close first). Every way out lands on the Play tab with its presence line; no surface is added. One row above the hand holds the transport pill (previous

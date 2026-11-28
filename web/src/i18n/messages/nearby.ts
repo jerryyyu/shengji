@@ -6,7 +6,7 @@ export const nearby = defineMessages({
   "nearby.switchLabel": { en: "Nearby", zh: "面对面", hant: "面對面" },
   "nearby.tryAgain": { en: "Try again", zh: "再试一次", hant: "再試一次" },
   "nearby.browsing": { en: "Looking for the table…", zh: "正在找牌桌…", hant: "正在找牌桌…" },
-  "nearby.connecting": { en: "Connecting to the table…", zh: "正在连接牌桌…", hant: "正在連線牌桌…" },
+  "nearby.connecting": { en: "Connecting to the table…", zh: "正在连接牌桌…", hant: "正在連線到牌桌…" },
   "nearby.notFound": { en: "No table nearby with that code", zh: "附近没有这个房间码的牌桌", hant: "附近沒有這個房間碼的牌桌" },
   "nearby.full": { en: "That table is full", zh: "这桌满了", hant: "這桌滿了" },
   "nearby.explain": {

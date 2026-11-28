@@ -88,7 +88,7 @@ export const queue = defineMessages({
   "queue.waitPeople": { en: "Wait for people", zh: "等真人", hant: "等真人" },
   "queue.chat": { en: "Chat", zh: "聊天", hant: "聊天" },
   "queue.chat.unread": { en: "Chat, {n} new", zh: "聊天，{n} 条新消息", hant: "聊天，{n} 條新訊息" },
-  "queue.chat.offline": { en: "Chat needs a connection", zh: "聊天要联网", hant: "聊天要連網" },
+  "queue.chat.offline": { en: "Chat needs a connection", zh: "聊天要联网", hant: "聊天需要網路" },
   "queue.code": { en: "Table code {code}", zh: "房间码 {code}", hant: "房間碼 {code}" },
   "queue.invite": { en: "Invite", zh: "邀请", hant: "邀請" },
   "queue.invite.copied": { en: "Link copied", zh: "链接已复制", hant: "連結已複製" },
@@ -105,7 +105,7 @@ export const queue = defineMessages({
 
   // confirms
   "queue.cancel": { en: "Cancel", zh: "取消", hant: "取消" },
-  "queue.takeover.title": { en: "{name} dropped out. Take their seat?", zh: "{name} 掉线了。坐 TA 的位置吗？", hant: "{name} 斷線了。坐 TA 的位置嗎？" },
+  "queue.takeover.title": { en: "{name} dropped out. Take their seat?", zh: "{name} 掉线了。坐 TA 的位置吗？", hant: "{name} 斷線了。要接手這個座位嗎？" },
   "queue.takeover.confirm": { en: "Take seat", zh: "坐下", hant: "坐下" },
   "queue.move.title": { en: "Move {name} here?", zh: "把 {name} 换到这里？", hant: "把 {name} 換到這裡？" },
   "queue.move.confirm": { en: "Move", zh: "换座", hant: "換座" },
@@ -189,7 +189,7 @@ export const queue = defineMessages({
   },
   "queue.note.movedOurs": { en: "{name} moved to your team.", zh: "{name} 换到了你这队。", hant: "{name} 換到了你這隊。" },
   "queue.note.movedTheirs": { en: "{name} moved to the other team.", zh: "{name} 换到了另一队。", hant: "{name} 換到了另一隊。" },
-  "queue.note.signedIn": { en: "Signed in. Press Play to find a table.", zh: "已登录。点开始找牌桌。", hant: "已登入。點開始找牌桌。" },
+  "queue.note.signedIn": { en: "Signed in. Press Play to find a table.", zh: "已登录。点“开始”找牌桌。", hant: "已登入。點「開始」找牌桌。" },
   "queue.note.leftAway": { en: "You left the table while away.", zh: "你不在，已离开牌桌。", hant: "你不在，已離開牌桌。" },
   "queue.note.noCooldown": { en: "No cooldown.", zh: "不用等冷却。", hant: "不用等冷卻。" },
   "queue.note.closedDevice": { en: "Your table was closed from another device.", zh: "你的牌桌在另一台设备上关了。", hant: "你的牌桌在另一台裝置上關了。" },
@@ -197,7 +197,7 @@ export const queue = defineMessages({
   "queue.note.movedDevice": { en: "Your table moved to another device.", zh: "你的牌桌转到了另一台设备。", hant: "你的牌桌轉到了另一台裝置。" },
   "queue.note.movedWindow": { en: "Your table moved to another window.", zh: "你的牌桌转到了另一个窗口。", hant: "你的牌桌轉到了另一個視窗。" },
   "queue.note.noTable": { en: "You're no longer at a table.", zh: "你已不在牌桌上。", hant: "你已不在牌桌上。" },
-  "queue.note.findOne": { en: "Press Play to find one.", zh: "点开始再找一桌。", hant: "點開始再找一桌。" },
+  "queue.note.findOne": { en: "Press Play to find one.", zh: "点“开始”再找一桌。", hant: "點「開始」再找一桌。" },
   "queue.note.noStart": { en: "The game could not start.", zh: "这盘没能开始。", hant: "這盤沒能開始。" },
   "queue.note.keepPlace": { en: "You keep your place.", zh: "你的位置还在。", hant: "你的位置還在。" },
   "queue.note.leftIdle": { en: "You left the table.", zh: "你离开了牌桌。", hant: "你離開了牌桌。" },
@@ -210,9 +210,9 @@ export const queue = defineMessages({
   "queue.note.left": { en: "{name} left the table.", zh: "{name} 离开了牌桌。", hant: "{name} 離開了牌桌。" },
   "queue.note.leftAnd": { en: " and ", zh: "、", hant: "、" },
   "queue.note.noOpen": { en: "Couldn't open a table.", zh: "没能开桌。", hant: "沒能開桌。" },
-  "queue.note.tryPlay": { en: "Press Play to try again.", zh: "点开始再试一次。", hant: "點開始再試一次。" },
-  "queue.note.offline": { en: "Not connected.", zh: "没有联网。", hant: "沒有連網。" },
-  "queue.note.playLater": { en: "Press Play again in a moment.", zh: "稍后再点开始。", hant: "稍後再點開始。" },
+  "queue.note.tryPlay": { en: "Press Play to try again.", zh: "点“开始”再试一次。", hant: "點「開始」再試一次。" },
+  "queue.note.offline": { en: "Not connected.", zh: "没有联网。", hant: "沒有網路連線。" },
+  "queue.note.playLater": { en: "Press Play again in a moment.", zh: "稍后再点“开始”。", hant: "稍後再點「開始」。" },
 
   // coded refusals the queue says itself (errorCodes.ts)
   "queue.err.closed": { en: "That table is no longer open.", zh: "这桌已经关了。", hant: "這桌已經關了。" },
@@ -220,5 +220,5 @@ export const queue = defineMessages({
   "queue.err.seatTaken": { en: "That seat was just taken.", zh: "这个位置刚被人坐了。", hant: "這個位置剛被人坐了。" },
   "queue.err.pickAnother": { en: "Pick another.", zh: "换一个吧。", hant: "換一個吧。" },
   "queue.err.pairFixed": { en: "A Duo's seats stay together.", zh: "组队的两个座位不能分开。", hant: "組隊的兩個座位不能分開。" },
-  "queue.err.alreadyReady": { en: "You tapped Ready, so your seat is set.", zh: "你已点准备，座位定了。", hant: "你已點準備，座位定了。" },
+  "queue.err.alreadyReady": { en: "You tapped Ready, so your seat is set.", zh: "你已点“准备”，座位定了。", hant: "你已點「準備」，座位定了。" },
 });

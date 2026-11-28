@@ -195,19 +195,21 @@ describe("bot names in zh-Hans", () => {
   it("a replay names its bots 机器人 N and keeps a guest's bot-shaped name", () => {
     render(<ReplayBoard replay={replay()} />);
     const chips = () => [...host.querySelectorAll(".replay-seat-name")].map((e) => e.textContent);
-    expect(chips()).toEqual(["Ana (you)", "机器人 1", "Bot 2", "机器人 3"]);
-    const next = host.querySelector<HTMLButtonElement>('button[aria-label="Next play"]')!;
+    expect(chips()).toEqual(["Ana（我）", "机器人 1", "Bot 2", "机器人 3"]);
+    const next = host.querySelector<HTMLButtonElement>('button[aria-label="下一手"]')!;
     const caption = () => host.querySelector(".replay-caption")?.textContent ?? "";
     const seen: string[] = [];
     for (let i = 0; i < 8; i++) { act(() => next.click()); seen.push(caption()); }
-    expect(seen.some((c) => /^Trick \d+: 机器人 [13] /.test(c))).toBe(true);
-    expect(seen.some((c) => /^Trick \d+: Bot 2 /.test(c))).toBe(true);
+    expect(seen.some((c) => /^第 \d+ 轮：机器人 [13] (首出|出) /.test(c))).toBe(true);
+    expect(seen.some((c) => /^第 \d+ 轮：Bot 2 (首出|出) /.test(c))).toBe(true);
+    expect(seen.join(" ")).not.toMatch(/Trick|led|played|wins/);
     expect(seen.join(" ")).not.toMatch(/Bot [13]/);
-    const last = host.querySelector<HTMLButtonElement>('button[aria-label="Next trick"]')!;
+    const last = host.querySelector<HTMLButtonElement>('button[aria-label="下一轮"]')!;
     for (let i = 0; i < 40 && !last.disabled; i++) act(() => last.click());
-    const show = [...host.querySelectorAll("button")].find((b) => b.textContent === "Show other hands")!;
+    expect(host.querySelector(".replay-result")?.textContent).not.toMatch(/[A-Za-z]{2,}/);
+    const show = [...host.querySelectorAll("button")].find((b) => b.textContent === "看其他人的牌")!;
     act(() => show.click());
-    expect([...host.querySelectorAll(".replay-mini-label")].map((e) => e.textContent).filter((n) => n !== "Kitty"))
+    expect([...host.querySelectorAll(".replay-mini-label")].map((e) => e.textContent).filter((n) => n !== "底牌"))
       .toEqual(["机器人 1", "Bot 2", "机器人 3"]);
   });
 

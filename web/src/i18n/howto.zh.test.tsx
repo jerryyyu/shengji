@@ -36,7 +36,7 @@ describe("How to play in zh-Hans", () => {
     expect(text(".howto-nav button")).toBe("下一步");
     expect(host.querySelector(".howto-nav")!.getAttribute("aria-label")).toBe("步骤");
     expect(labels()).toEqual(expect.arrayContaining(["级数 2 到 A", "重播动画", "显示静态图"]));
-    expect(all()).toContain("Bea · 队友");
+    expect(all()).toContain("Bea · 搭档");
     expect([...host.querySelectorAll(".level-chip")].map((c) => c.textContent)).toEqual(["我方 2", "对方 2"]);
     expect(all()).not.toMatch(/partner|Lv |Us |Them /);
   });
@@ -141,7 +141,7 @@ describe("How to play in zh-Hant", () => {
     act(() => root.unmount());
     host.remove();
     await open(10);
-    expect(text(".howto-caption")).toBe("頂欄記著盤數。登入後打完整的一局排位才計入積分，休閒局不計。");
+    expect(text(".howto-caption")).toBe("畫面上方記著盤數。登入後打完整的一局排位才計入積分，休閒局不計。");
     expect([...host.querySelectorAll(".level-chip")].map((c) => c.textContent)).toEqual(["我方 A", "我方 2", "對方 2"]);
   });
 });

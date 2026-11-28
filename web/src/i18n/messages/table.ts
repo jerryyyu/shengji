@@ -238,7 +238,7 @@ export const table = defineMessages({
   "table.chat": { en: "Chat", zh: "聊天", hant: "聊天" },
   "table.closeChat": { en: "Close chat", zh: "关闭聊天", hant: "關閉聊天" },
   "table.chatLog": { en: "Messages", zh: "消息", hant: "訊息" },
-  "table.quickPhrases": { en: "Quick phrases", zh: "快捷短语", hant: "快捷短語" },
+  "table.quickPhrases": { en: "Quick phrases", zh: "快捷短语", hant: "常用語" },
   "table.quickHi": { en: "Hi!", zh: "大家好！", hant: "大家好！" },
   "table.quickGg": { en: "GG", zh: "GG", hant: "GG" },
   "table.quickNice": { en: "Nice!", zh: "好牌！", hant: "好牌！" },
@@ -270,16 +270,16 @@ export const table = defineMessages({
 
   // a player's options
   "table.optionsOf": { en: "{name}: player options", zh: "{name}：玩家选项", hant: "{name}：玩家選項" },
-  "table.reportName": { en: "Report {name}", zh: "举报 {name}", hant: "舉報 {name}" },
-  "table.reportWhy": { en: "Why? The last chat lines go with the report.", zh: "为什么？最近的聊天记录会随举报一起提交。", hant: "為什麼？最近的聊天記錄會隨舉報一起提交。" },
+  "table.reportName": { en: "Report {name}", zh: "举报 {name}", hant: "檢舉 {name}" },
+  "table.reportWhy": { en: "Why? The last chat lines go with the report.", zh: "为什么？最近的聊天记录会随举报一起提交。", hant: "為什麼？最近的聊天紀錄會隨檢舉一起送出。" },
   "table.reasonAbuse": { en: "Abusive chat", zh: "辱骂", hant: "辱罵" },
   "table.reasonSpam": { en: "Spam", zh: "刷屏", hant: "洗版" },
   "table.reasonCheating": { en: "Cheating", zh: "作弊", hant: "作弊" },
   "table.reasonOther": { en: "Something else", zh: "其他", hant: "其他" },
   "table.block": { en: "Block player", zh: "屏蔽玩家", hant: "封鎖玩家" },
   "table.unblock": { en: "Unblock player", zh: "取消屏蔽", hant: "取消封鎖" },
-  "table.signInToReport": { en: "Sign in to report", zh: "登录后举报", hant: "登入後舉報" },
-  "table.report": { en: "Report player", zh: "举报玩家", hant: "舉報玩家" },
+  "table.signInToReport": { en: "Sign in to report", zh: "登录后举报", hant: "登入後檢舉" },
+  "table.report": { en: "Report player", zh: "举报玩家", hant: "檢舉玩家" },
   // who watches this table (the eye chip and its toast)
   "table.watching": { en: "{n} watching", zh: "{n} 人观战", hant: "{n} 人觀戰" },
   "table.watcherOne": {

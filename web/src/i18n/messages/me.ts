@@ -2,6 +2,9 @@ import { defineMessages } from "../define";
 import type { Params } from "../define";
 
 const rounds = (p: Params) => `${p.n} round${Number(p.n) === 1 ? "" : "s"}`;
+const str = (p: Params, k: string) => String(p[k] ?? "");
+/** A name before a Chinese word: "Sam 亮 ♥7", "我亮 ♥7". */
+const gap = (name: string) => (/[A-Za-z0-9]$/.test(name) ? `${name} ` : name);
 
 export const me = defineMessages({
   "me.title": { en: "Me", zh: "我", hant: "我" },
@@ -96,4 +99,85 @@ export const me = defineMessages({
   "me.games.signInLine": { en: "Sign in to see your saved games.", zh: "登录后查看保存的对局。", hant: "登入後檢視儲存的對局。" },
   "me.games.unavailable": { en: "This game isn't available.", zh: "这盘对局无法查看。", hant: "這盤對局無法檢視。" },
   "me.games.myGames": { en: "My games", zh: "我的对局", hant: "我的對局" },
+
+  // one round replayed: the chips, the caption under the felt, the stepping
+  // controls and the result
+  "me.replay.trump": { en: "Trump", zh: "主", hant: "主" },
+  "me.replay.attackers": { en: "Attackers {n}", zh: "闲家 {n} 分", hant: "閒家 {n} 分" },
+  "me.replay.banker": { en: "Banker", zh: "庄家", hant: "莊家" },
+  "me.replay.you": { en: "You", zh: "我", hant: "我" },
+  "me.replay.comma": { en: ", ", zh: "，", hant: "，" },
+  "me.replay.dealtNone": {
+    en: "Dealt. Nobody declared; trump was flipped from the kitty.",
+    zh: "发牌结束。没人亮主，翻底定主。",
+    hant: "發牌結束。沒人亮主，翻底定主。",
+  },
+  "me.replay.dealt": { en: "Dealt. {list}.", zh: "发牌结束。{list}。", hant: "發牌結束。{list}。" },
+  "me.replay.declared": {
+    en: "{name} declared {cards}",
+    zh: (p) => `${gap(str(p, "name"))}亮 ${str(p, "cards")}`,
+    hant: (p) => `${gap(str(p, "name"))}亮 ${str(p, "cards")}`,
+  },
+  "me.replay.buriedYou": { en: "You buried {cards}.", zh: "我埋了 {cards}。", hant: "我埋了 {cards}。" },
+  "me.replay.buried": {
+    en: "{name} buried 8 cards.",
+    zh: (p) => `${gap(str(p, "name"))}埋了 8 张底牌。`,
+    hant: (p) => `${gap(str(p, "name"))}埋了 8 張底牌。`,
+  },
+  "me.replay.over": { en: "Round over.", zh: "这一局结束。", hant: "這一局結束。" },
+  "me.replay.led": {
+    en: "Trick {n}: {name} led {cards}",
+    zh: (p) => `第 ${str(p, "n")} 轮：${gap(str(p, "name"))}首出 ${str(p, "cards")}`,
+    hant: (p) => `第 ${str(p, "n")} 輪：${gap(str(p, "name"))}首出 ${str(p, "cards")}`,
+  },
+  "me.replay.played": {
+    en: "Trick {n}: {name} played {cards}",
+    zh: (p) => `第 ${str(p, "n")} 轮：${gap(str(p, "name"))}出 ${str(p, "cards")}`,
+    hant: (p) => `第 ${str(p, "n")} 輪：${gap(str(p, "name"))}出 ${str(p, "cards")}`,
+  },
+  "me.replay.open": { en: "{head}.", zh: "{head}。", hant: "{head}。" },
+  "me.replay.wonYou": { en: "{head}. You win the trick.", zh: "{head}。这一轮我赢。", hant: "{head}。這一輪我贏。" },
+  "me.replay.wonYouPts": {
+    en: "{head}. You win the trick and {points} points.",
+    zh: "{head}。这一轮我赢，得 {points} 分。",
+    hant: "{head}。這一輪我贏，得 {points} 分。",
+  },
+  "me.replay.won": {
+    en: "{head}. {name} wins the trick.",
+    zh: (p) => `${str(p, "head")}。这一轮 ${gap(str(p, "name"))}赢。`,
+    hant: (p) => `${str(p, "head")}。這一輪 ${gap(str(p, "name"))}贏。`,
+  },
+  "me.replay.wonPts": {
+    en: "{head}. {name} wins the trick and {points} points.",
+    zh: (p) => `${str(p, "head")}。这一轮 ${gap(str(p, "name"))}赢，得 ${str(p, "points")} 分。`,
+    hant: (p) => `${str(p, "head")}。這一輪 ${gap(str(p, "name"))}贏，得 ${str(p, "points")} 分。`,
+  },
+  "me.replay.teamWon": { en: "Your team won the round", zh: "我方赢了这一局", hant: "我方贏了這一局" },
+  "me.replay.teamLost": { en: "Your team lost the round", zh: "我方输了这一局", hant: "我方輸了這一局" },
+  "me.replay.scored": { en: "Attackers scored {n} points.", zh: "闲家得 {n} 分。", hant: "閒家得 {n} 分。" },
+  "me.replay.scoredKitty": {
+    en: "Attackers scored {n} points (kitty {kitty}).",
+    zh: "闲家得 {n} 分（抠底 {kitty} 分）。",
+    hant: "閒家得 {n} 分（摳底 {kitty} 分）。",
+  },
+  "me.replay.levelsUp": {
+    en: (p) => `Up ${p.n} level${Number(p.n) === 1 ? "" : "s"}. Levels ${p.a}–${p.b}.`,
+    zh: (p) => `升 ${p.n} 级。级数 ${p.a}–${p.b}。`,
+    hant: (p) => `升 ${p.n} 級。級數 ${p.a}–${p.b}。`,
+  },
+  "me.replay.levelsSame": { en: "No level change. Levels {a}–{b}.", zh: "级数不变：{a}–{b}。", hant: "級數不變：{a}–{b}。" },
+  "me.replay.prevPlay": { en: "Previous play", zh: "上一手", hant: "上一手" },
+  "me.replay.nextPlay": { en: "Next play", zh: "下一手", hant: "下一手" },
+  "me.replay.jump": { en: "Jump to trick", zh: "跳到第几轮", hant: "跳到第幾輪" },
+  "me.replay.jumpPick": { en: "Trick…", zh: "选一轮…", hant: "選一輪…" },
+  "me.replay.trickN": { en: "Trick {n}", zh: "第 {n} 轮", hant: "第 {n} 輪" },
+  "me.replay.unfinished": { en: "This round did not finish.", zh: "这一局没有打完。", hant: "這一局沒有打完。" },
+  "me.replay.showHands": { en: "Show other hands", zh: "看其他人的牌", hant: "看其他人的牌" },
+  "me.replay.hideHands": { en: "Hide other hands", zh: "收起其他人的牌", hant: "收起其他人的牌" },
+  "me.replay.handOf": {
+    en: "{name}'s hand",
+    zh: (p) => `${gap(str(p, "name"))}的手牌`,
+    hant: (p) => `${gap(str(p, "name"))}的手牌`,
+  },
+  "me.replay.failed": { en: "Could not load the round ({status}).", zh: "这一局加载失败（{status}）。", hant: "這一局載入失敗（{status}）。" },
 });

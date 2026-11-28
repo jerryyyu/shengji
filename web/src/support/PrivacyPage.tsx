@@ -288,10 +288,8 @@ export default function PrivacyPage() {
 
         <Section title="Children">
           <p>
-            Anyone can play Sheng Ji. The game asks no one’s age, and we do not knowingly collect
-            personal information from children under 13. Children should have a parent or guardian’s
-            permission before signing in, chatting or buying. If you think a child under 13 has signed
-            in, tell us through the{" "}
+            Sheng Ji is not directed at children under 13, and we do not knowingly collect personal
+            information from them. If you think a child under 13 has signed in, tell us through the{" "}
             <SupportLink /> and we will delete the account.
           </p>
         </Section>

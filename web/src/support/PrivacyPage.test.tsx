@@ -57,8 +57,7 @@ describe("the privacy page", () => {
     expect(text).toContain("we store the pair of accounts and the");
     expect(text).toContain("the blocks you made, or others made of you");
     expect(text).not.toContain("Muting a player");
-    expect(text).toContain("we do not knowingly collect personal information from children under 13");
-    expect(text).not.toContain("not directed at children under 13");
+    expect(text).toContain("not directed at children under 13");
     expect(text).not.toContain("no ratings or leaderboards");
     expect(text).not.toContain("don’t use analytics");
     expect(text).not.toContain("My games");

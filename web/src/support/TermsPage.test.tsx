@@ -26,8 +26,7 @@ describe("the terms of use page", () => {
     expect(text).toContain("If Apple refunds a purchase, its look is removed.");
     expect(text).toContain("choose Restore purchases");
     expect(text).not.toContain("There are no purchases");
-    expect(text).toContain("Anyone can play. Children should have a parent or guardian’s permission before signing in, chatting or buying.");
-    expect(text).not.toContain("13 or older");
+    expect(text).toContain("You must be 13 or older to play.");
     expect(text).toContain("zero tolerance for objectionable content");
     expect(text).toContain("within 24 hours");
     expect(text).toContain("choose Report");

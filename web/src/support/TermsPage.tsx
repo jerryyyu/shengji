@@ -43,8 +43,7 @@ export default function TermsPage() {
 
         <Section title="Guests and accounts">
           <p>
-            Anyone can play. Children should have a parent or guardian’s permission before signing in,
-            chatting or buying. You can play as a guest under a name you choose, or sign in
+            You must be 13 or older to play. You can play as a guest under a name you choose, or sign in
             with Google or Apple to keep your games and get a rating. Keep your sign-in to yourself; you
             are responsible for what is done with your account. The <PrivacyLink /> says what we keep
             and why.

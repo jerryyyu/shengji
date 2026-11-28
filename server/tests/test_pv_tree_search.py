@@ -1392,6 +1392,25 @@ def test_capped_follow_can_include_a_winning_ruff_without_expanding_the_ballot()
     assert _bounded_replies(child, 28, True) == _bounded_replies(child, 28, False)
 
 
+def test_complete_small_multicard_follows_include_discards_that_keep_the_ten():
+    from types import SimpleNamespace
+    from shengji.engine.cards import Ordering
+    from shengji.engine.round import Trick, TrickPlay
+    from shengji.train.belief_tree_backup import _bounded_replies
+
+    hand = ["C10", "C4", "C5", "C9", "CQ"]
+    child = SimpleNamespace(hands=[[], hand, [], []], turn=1, ordering=Ordering("S", "2"),
+                            trick=Trick(0, [TrickPlay(0, ["H8", "H8"])]))
+    assert all("C10" in reply for reply in _bounded_replies(child, 4, True))
+    complete = _bounded_replies(child, 4, True, True)
+    assert len(complete) == 10 and ["C9", "CQ"] in complete
+    hand.append("CK")
+    assert _bounded_replies(child, 4, True, True) == _bounded_replies(child, 4, True)
+    hand.pop()
+    child.trick = Trick(0, [TrickPlay(0, ["H8"])])
+    assert _bounded_replies(child, 4, True, True) == _bounded_replies(child, 4, True)
+
+
 def test_belief_reply_backup_weights_actor_replies_on_original_root_world(monkeypatch):
     from shengji.engine.round import actual_play_after
     from shengji.train.belief_tree_backup import root_reply_backup
@@ -1554,12 +1573,12 @@ def test_reserved_deck_cli_scores_both_mirrors_and_publishes_once(
     monkeypatch.setattr(bank, "make_bot", make_registered)
     if substitution:
         argv = argv[:argv.index("--seed")] + ["--pilot-settings"]
-        for override in (["--depth-worlds", "3"], ["--cover-winning-follow"]):
+        for override in (["--depth-worlds", "3"], ["--cover-winning-follow"], ["--complete-small-multicard-follows"]):
             with pytest.raises(SystemExit):
                 bank.main(argv + override)
             assert not output.exists()
     else:
-        argv.append("--cover-winning-follow")
+        argv.extend(["--cover-winning-follow", "--complete-small-multicard-follows"])
     bank.main(argv)
     result = json.loads(output.read_bytes())
     assert result["settings"]["reply_value_weight"] == 1.
@@ -1574,7 +1593,7 @@ def test_reserved_deck_cli_scores_both_mirrors_and_publishes_once(
     if not substitution:
         with pytest.raises(ValueError, match="scoring settings changed"):
             checked_deck(result, deck, source=source, bank_sha256=pin, settings=expected_settings)
-        expected_settings["cover_winning_follow"] = True
+        expected_settings.update(cover_winning_follow=True, complete_small_multicard_follows=True)
     gains, _ = checked_deck(result, deck, source=source, bank_sha256=pin, settings=expected_settings)
     assert gains == [(r["sf_gain"], r["vt_gain"]) for r in result["rows"] if r["eligible"]]
     with pytest.raises(FileExistsError):
@@ -1637,6 +1656,12 @@ def test_bank_analysis_requires_complete_paired_cohort_and_clusters_by_deck(tmp_
         return analyze_bank(data, outputs, bank_sha256=pin, settings=settings)
 
     result = read(reversed(decks))
+    expanded = dict(settings, complete_small_multicard_follows=True)
+    expanded_result = analyze_bank(data, (dict(d, settings=expanded) for d in decks),
+                                   bank_sha256=pin, settings=expanded)
+    assert expanded_result == dict(result, settings=expanded)
+    with pytest.raises(ValueError, match="settings"):
+        analyze_bank(data, decks, bank_sha256=pin, settings=expanded)
     path = tmp_path / "reserved.json"
     path.write_bytes(data)
     for flags in (["--settings", json.dumps(settings)], ["--pilot-settings"]):

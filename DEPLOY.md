@@ -1589,6 +1589,19 @@ A shortlist package (releases 22–28, now only a rollback path) also needs the 
 smoke: `server/scripts/cwv_serving_gate.py --serving --threshold 1000` (last run for release 28; never run for a
 `pv-search` release). The older generic smoke is `server/scripts/cwv_serving_smoke.py`.
 
+### Layout and menus: the iOS Simulator smoke
+
+Before a web or app release that touches layout, the header or any pop-up, run
+`node web/scripts/ios_sim_smoke.mjs` on a Mac with Xcode (no signing team; it builds nothing, so run
+`npm run build` in `web/` first). It serves `web/dist` with a scripted table and watch feed, opens it in the
+`shengji-smoke` iPhone simulator's Mobile Safari, visits Play, Collection, Me, the watch screen and a table
+against bots, opens each ⋯ menu, and screenshots every state into `web/e2e/out/ios-sim/`. It exits 1 and
+prints `INVISIBLE` for a menu whose screen region did not change when it opened, the paint failure Chromium and
+Playwright's WebKit do not show. It passes only when each orientation asked for was the page's own and both ⋯
+menus were judged drawn in it. `simctl` cannot turn a simulator, so landscape (`--orient left,right`) needs a
+turning command in `SIM_ROTATE`; asked for without one, nothing runs and it exits 2. The default portrait run
+draws the table turned in the same phone layout and header.
+
 ## Releases
 
 Every deploy was `fly deploy --ha=false` on machine `48e7e35a9597e8`. Full per-release notes (served names,

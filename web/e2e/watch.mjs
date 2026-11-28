@@ -2,8 +2,10 @@
 // trick never covers a seat's name tag, the watcher's row (transport, tabs,
 // kitty) or the LEAD / WINS labels, on the phones and the iPad, from every
 // tab, with narrow and wide tricks; and the hand keeps its size when the bury
-// ends; a live table's menu stays as a tap left it while plays arrive; and a
-// replay is left in one tap, by back or by Escape.
+// ends; a live table's menu stays as a tap left it while plays arrive; in the
+// iOS app sideways the menu opens on top and Leave leaves, and the watcher's
+// own companion stands in the safe area and walks to a tap; and a replay is
+// left in one tap, by back or by Escape.
 //   node e2e/watch.mjs [device-regex]
 import fs from "node:fs";
 import path from "node:path";
@@ -199,6 +201,107 @@ for (const device of ["phone-land", "ipad11-land"]) {
     if (SHOTS?.test(name)) await shot(page, name);
   });
   await page.context().close();
+}
+// The iOS app sideways, the Dynamic Island's inset on the left and the right
+// (it changes sides as the phone turns), the table turned once (portrait and
+// back) and the plays arriving: one tap on ⋯ opens a menu that is on screen
+// and on top where its rows are, Leave there lands on the Play tab; and the
+// watcher's own companion stands inside the safe area, walks to a tap on the
+// felt, and a tap on a watched player's companion walks it there instead of
+// moving that player's.
+for (const device of ["phone-land", "phone-land-se", "ipad11-land"]) {
+  for (const side of ["left", "right"]) {
+    const name = `watch-app-${side}-${device}`;
+    if (only && !only.test(name)) continue;
+    const insets = { t: 0, b: 21, l: side === "left" ? 59 : 0, r: side === "right" ? 59 : 0 };
+    const live = { ...doc(0) };
+    live.events = live.events.map((e, i) => (i === 0 ? { ...e, players: e.players.map((p) => (p.seat === 2 ? { ...p, is_bot: false, look: "bun/cream" } : p)) } : e));
+    const page = await open(browser, device, {
+      native: true, insets,
+      storage: { "shengji.coach": "off", "shengji.muted": "1", "shengji.name": "Jerry" },
+      fakeSocket: fakeSocketScript([presence]),
+      setup: async (p) => {
+        await p.route("**/api/**", (r) => r.fulfill({ status: 404, json: {} }));
+        await p.route("**/api/auth/config", (r) => r.fulfill({ json: { google_client_id: null, device_accounts: false, collection: true } }));
+        await p.route("**/api/watch/**", (r) => r.fulfill({ json: { ...live, waiting: true, events: undefined } }));
+        await p.route("**/api/watch?**", (r) => r.fulfill({ json: live }));
+      },
+    });
+    await scenario(rep, name, page, async () => {
+      await page.waitForSelector(".play-presence-watch");
+      await page.tap(".play-presence-watch");
+      await page.waitForSelector(".watch-tabs");
+      const { w, h } = page.qa.d;
+      await page.setViewportSize({ width: h, height: w });
+      await sleep(400);
+      await page.setViewportSize({ width: w, height: h });
+      await sleep(900);
+      const own = '.table-companions .tc-seat[data-seat="-1"] .tc-move';
+      const boxOf = (sel) => page.evaluate((s) => {
+        const b = document.querySelector(s)?.getBoundingClientRect();
+        return b ? { x: b.left, y: b.top, r: b.right, b: b.bottom } : null;
+      }, sel);
+      const start = await boxOf(own);
+      await rep.check(`${name}: the watcher's companion stands inside the safe area, clear of the row and the top strip`, await page.evaluate(({ s, ins }) => {
+        if (!s) return "no watcher companion";
+        const out = [];
+        if (s.x < ins.l || s.r > innerWidth - ins.r) out.push(`at ${s.x.toFixed(0)}-${s.r.toFixed(0)}, outside the safe area ${ins.l}-${innerWidth - ins.r}`);
+        for (const sel of [".watch-controls", ".watch-tabs", ".watch-hud .hud-group .chip", ".hud-more-btn"]) {
+          for (const e of document.querySelectorAll(sel)) {
+            const b = e.getBoundingClientRect();
+            if (Math.min(b.right, s.r) - Math.max(b.left, s.x) > 0.5 && Math.min(b.bottom, s.b) - Math.max(b.top, s.y) > 0.5) out.push(`over ${sel}`);
+          }
+        }
+        return out;
+      }, { s: start, ins: insets }), page);
+      await page.tap('.watch-hud [aria-haspopup="menu"]');
+      await sleep(250);
+      await rep.check(`${name}: one tap on ⋯ opens the menu, on screen and on top`, await page.evaluate(() => {
+        const rows = [...document.querySelectorAll(".watch-hud [role=menu] [role=menuitem]")];
+        if (!rows.length) return "not open";
+        return rows.map((r) => {
+          const b = r.getBoundingClientRect();
+          const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+          return b.right > innerWidth || b.left < 0 ? `${r.textContent} off screen` : r.contains(hit) ? null : `${r.textContent} under ${hit?.className}`;
+        });
+      }), page);
+      await rep.check(`${name}: nothing runs past the screen`, await page.evaluate(() =>
+        document.documentElement.scrollWidth > innerWidth ? `page ${document.documentElement.scrollWidth}px wide` : null), page);
+      // the header the menu opens under clips nothing: iOS WebKit leaves a menu outside a clipped header undrawn
+      await rep.check(`${name}: the menu's header clips nothing`, await page.evaluate(() => {
+        const cs = getComputedStyle(document.querySelector(".watch-hud"));
+        return cs.overflowX === "visible" && cs.overflowY === "visible" ? null : `overflow ${cs.overflowX} ${cs.overflowY}`;
+      }), page);
+      await page.tap('.watch-hud [aria-haspopup="menu"]');
+      await sleep(600);
+      // a tap on empty felt walks the watcher's own there
+      const felt = await boxOf(".felt");
+      const to = { x: Math.round(felt.x + (felt.r - felt.x) * 0.3), y: Math.round(felt.y + (felt.b - felt.y) * 0.3) };
+      await page.touchscreen.tap(to.x, to.y);
+      await sleep(3600);
+      const walked = await boxOf(own);
+      // to the clear spot nearest the tap: a seat's figure or plate may stand on the tap itself
+      const off = (f) => Math.hypot((f.x + f.r) / 2 - to.x, f.b - to.y);
+      await rep.check(`${name}: a tap on the felt walks the watcher's companion there`,
+        walked && start && off(walked) < 120 && off(walked) < off(start) - 40 ? null
+          : `tap ${to.x},${to.y}, figure ${JSON.stringify(start)} then ${JSON.stringify(walked)}`, page);
+      const theirs = '.table-companions .tc-seat[data-seat="2"] .tc-move';
+      const before = await boxOf(theirs);
+      if (before) {
+        await page.touchscreen.tap(Math.round((before.x + before.r) / 2), Math.round((before.y + before.b) / 2));
+        await sleep(250);
+        await rep.check(`${name}: a watched player's companion takes no tap`, await page.evaluate(() =>
+          document.querySelector('.table-companions .tc-seat[data-seat="2"] .tc-move')?.getAttribute("data-move") === "react" ? "it played its special" : null), page);
+      }
+      await page.tap('.watch-hud [aria-haspopup="menu"]');
+      await sleep(250);
+      await page.tap('.watch-hud [role=menu] .leave');
+      const back = await page.waitForSelector(".play-presence-watch", { timeout: 3000 }).then(() => true, () => false);
+      await rep.check(`${name}: Leave lands on the Play tab`, back && !(await page.$(".watch-screen")) ? null : "still watching", page);
+      if (SHOTS?.test(name)) await shot(page, name);
+    });
+    await page.context().close();
+  }
 }
 // A replay's top right is one Leave control: a tap, the browser's back or
 // Escape each land on the Play tab with its presence line.

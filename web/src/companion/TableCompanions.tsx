@@ -240,7 +240,7 @@ export function translateOf(t: string | null | undefined): Spot | null {
  *  hint line, and an open Last trick. */
 const OBSTACLES = ".trick-play, .trick-tag, .you-row .btn, .action-bar .btn, .action-bar > *, .you-tagline, .you-tagline > *, "
   + ".timer-ring, .opponent, .last-trick-btn, .last-trick-panel, .deal-deck, .deal-deck-count, .hand-line, "
-  + ".watch-controls, .watch-tabs, .watch-kitty, .watch-own";
+  + ".watch-controls, .watch-tabs, .watch-kitty";
 /** Of those, what stays put while a hand is dealt: your name pill and your row's controls (Declare and its options among them). */
 const FIXED = ".you-tagline, .you-row .btn, .action-bar .btn, .action-bar > *, .timer-ring";
 const OVERLAYS = ".hud-group, .hud .chip, .hud button, .hud-menu, .chat-launch, .chat-panel, .chat-bubble, .away-pill";
@@ -1223,13 +1223,32 @@ function useRoundEnds(state: GameState, ours: 0 | 1, onDroop: (team: 0 | 1) => v
 
 /** What a tap on the felt is not: a card, a played trick, a seat, a
  *  control, a panel, or a companion. */
+const noUp = () => {};
 const NOT_FELT = "button, a, input, textarea, select, label, [role='button'], [role='switch'], .card, .hand, .hand-line, "
   + ".trick-play, .opponent, .hud, .you-row, .action-bar, .deal-deck, .chat-panel, .modal, .panel, .last-trick-panel, .tc-walk";
 
 /** `watch`: the watch screen's table, where the bottom seat is the player
- *  whose tab is selected, not you: nobody is tagged "You", a tap walks
- *  nobody, a seat whose look the feed left out draws none, and `quiet`
- *  (fast play, a step back, a turn to another seat) skips the hops. */
+ *  whose tab is selected, not you: no seat is tagged "You" and a seat whose
+ *  look the feed left out draws none. The watcher's own companion stands
+ *  as yours does at the table, tagged You, on a spot of its own (WATCHER):
+ *  it starts just left of the watcher's controls, inside the safe area, a
+ *  tap on the felt walks it, a tap on it plays its special, and it cheers
+ *  each new `cheer` (a trick worth CHEER_POINTS or more as it is won), at
+ *  most once per WATCHER_CHEER_GAP_MS. `quiet` (fast play, a step back, a
+ *  turn to another seat) skips the hops and the cheers. */
+export const WATCHER = -1;
+/** At most one cheer of the watcher's own companion in this long. */
+export const WATCHER_CHEER_GAP_MS = 4000;
+
+/** Where the watcher's own companion starts: its feet just left of the
+ *  watcher's controls, on the clear spot nearest there. */
+function watcherStart(felt: Element | null | undefined, px: number, layout: Layout): Spot | null {
+  const ctl = felt?.querySelector(".watch-controls");
+  if (!felt || !ctl) return null;
+  const f = framed(felt, felt.getBoundingClientRect());
+  const c = framed(ctl, ctl.getBoundingClientRect());
+  return nearestClear({ x: c.x - f.x - 6 - px / 2, y: c.y - f.y + c.h }, px, true, layout);
+}
 /** The companion moves the other seats' people shared (`companion`), the
  *  latest of each seat, with a count that tells one from the next. */
 export type SharedMoves = Partial<Record<number, { act: "special" } & { n: number } | { act: "home"; x: number; y: number; n: number }>>;
@@ -1251,7 +1270,7 @@ function fromShared(l: Layout, x: number, y: number): Spot {
 export const HOME_SHARE_GAP_MS = 1100;
 
 export default function TableCompanions({ state, watch = null, shared, onShare }: {
-  state: GameState; watch?: { quiet: boolean } | null;
+  state: GameState; watch?: { quiet: boolean; cheer?: number | null } | null;
   /** The other seats' shared moves (`Table.tsx` reads them off the socket). */
   shared?: SharedMoves;
   /** Send one of yours to the table: its special on a tap, the spot a tap parked it. */
@@ -1321,14 +1340,16 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
   const flair = useFlairLayer(material, flairBack, flairFront, layout?.felt, state.phase === "deal", state.phase === "play");
   // the spot your last tap chose, at this table; yours stands round it, at
   // its full size, whatever room its zone by your hand has
-  const myPx = companionSize(size.base, levelIndex(levels[ours]), size.max);
+  const myPx = watching ? size.base : companionSize(size.base, levelIndex(levels[ours]), size.max);
   // after a reload the spot comes from the seat's own frame (its shared home)
   const ownShared = !watch && me && !me.is_bot ? me.home : undefined;
   const ownKey = ownShared && layout ? `${ownShared[0]},${ownShared[1]},${layout.felt.w},${layout.felt.h},${myPx}` : "";
   const fromFrame = useMemo(() => (ownShared && layout ? nearestClear(fromShared(layout, ownShared[0], ownShared[1]), myPx, true, layout) : null),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [ownKey]);
-  const home = tapped && tapped.room === state.room ? tapped.spot : fromFrame;
+  // the watcher's own starts clear of every seat's zone (the zones are laid out without it)
+  const [start, setStart] = useState<Spot | null>(null);
+  const home = tapped && tapped.room === state.room ? tapped.spot : watching ? start : fromFrame;
   // what yours takes round a tapped home, as far as it wanders there: no
   // other seat's zone or step-out comes into it
   const homeKey = home ? `${home.x},${home.y},${myPx}` : "";
@@ -1344,10 +1365,11 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
   const seatsKey = JSON.stringify(people.map((p) => [p.seat, p.team]));
   const zones = useMemo(() => (layout ? zonesFor(people.map((p) => ({
     pos: SIDES[(p.seat - state.you + 4) % 4], size: companionSize(size.base, levelIndex(levels[p.team]), size.max),
-    tag: !watch && p.seat === state.you })), taken ? { ...layout, obstacles: [...layout.obstacles, taken] } : layout) : null),
+    tag: !watch && p.seat === state.you })), taken && !watching ? { ...layout, obstacles: [...layout.obstacles, taken] } : layout) : null),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [layout, seatsKey, state.you, size.base, size.max, levels[0], levels[1], taken, watching]);
-  const mine = me && !me.is_bot && !me.left ? zones?.bottom ?? null : null;
+  const mine = watching ? (start ? { home: start, spots: [start] } : null)
+    : me && !me.is_bot && !me.left ? zones?.bottom ?? null : null;
   // where yours may go off its zone (a tap, or stepping off cards there):
   // clear of the other companions' zones as well as the table
   // and for each seat, the table with every other seat's zone in it: where a
@@ -1359,14 +1381,23 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
       const own = zones[pos].spots.map((s) => figureBox(s, zones[pos].size ?? size.base, pos === "bottom"));
       const out = strays[pos];
       if (out) own.push(figureBox(out.spot, out.px, pos === "bottom"));
-      if (pos === "bottom" && taken) own.push(taken);
+      if (pos === "bottom" && taken && !watching) own.push(taken);
       return own;
     };
-    const out = {} as Record<SeatPos, Layout>;
-    for (const pos of SIDES) out[pos] = { ...layout, obstacles: [...layout.obstacles, ...SIDES.filter((q) => q !== pos).flatMap(boxes)] };
+    // on the watch screen the spot round the watcher's own is kept clear of every seat
+    const kept = watching && taken ? [taken] : [];
+    const out = {} as Record<SeatPos | "watcher", Layout>;
+    for (const pos of SIDES) out[pos] = { ...layout, obstacles: [...layout.obstacles, ...kept, ...SIDES.filter((q) => q !== pos).flatMap(boxes)] };
+    out.watcher = { ...layout, obstacles: [...layout.obstacles, ...SIDES.flatMap(boxes)] };
     return out;
-  }, [layout, zones, size.base, strays, taken]);
-  const roam = rooms?.bottom ?? null;
+  }, [layout, zones, size.base, strays, taken, watching]);
+  useEffect(() => {
+    if (!watching || !layout || !zones) return;
+    const room = { ...layout, obstacles: [...layout.obstacles, ...SIDES.flatMap((pos) => zones[pos].spots.map((s) => figureBox(s, zones[pos].size ?? size.base, false)))] };
+    const s = watcherStart(root.current?.parentElement, myPx, room);
+    setStart((was) => (was && s && was.x === s.x && was.y === s.y ? was : s));
+  }, [watching, layout, zones, myPx, size.base]);
+  const roam = (watching ? rooms?.watcher : rooms?.bottom) ?? null;
 
   const seatPx = (p: StatePlayer) => zones?.[SIDES[(p.seat - state.you + 4) % 4]].size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max);
   // where another seat's person parked its companion, on this screen: the
@@ -1454,7 +1485,7 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
   tapState.current.px = myPx;
   useEffect(() => {
     const felt = root.current?.parentElement;
-    if (!on || !felt || watch) return;
+    if (!on || !felt) return;
     const tap = (e: Event) => {
       const at = tapState.current;
       const target = e.target as Element | null;
@@ -1473,7 +1504,7 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
       at.last = now;
       countWalk();
       setGoal({ spot, n: ++at.n });
-      sendHomeNow.current(toShared(at.layout, { x: p.x - f.x, y: p.y - f.y }));
+      if (!watching) sendHomeNow.current(toShared(at.layout, { x: p.x - f.x, y: p.y - f.y }));
     };
     // whether a panel was open as the tap began, before the tap closes it
     let panelAtDown = false;
@@ -1483,6 +1514,23 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
     return () => { document.removeEventListener("pointerdown", down, true); felt.removeEventListener("click", tap); };
   }, [on, size.base, watching]);
 
+  const cheer = watch?.cheer ?? null;
+  const cheered = useRef({ seen: cheer, last: -Infinity });
+  useEffect(() => {
+    const c = cheered.current;
+    if (cheer === c.seen) return;
+    c.seen = cheer;
+    if (cheer === null || quiet) return;
+    const now = Date.now();
+    if (now - c.last < WATCHER_CHEER_GAP_MS) return;
+    c.last = now;
+    setPoses((p) => ({ ...p, [WATCHER]: "cheer" }));
+  }, [cheer, quiet]);
+  const viewer = account.status === "in" ? account.user : null;
+  const watcher: StatePlayer | null = watching ? {
+    seat: WATCHER, name: viewer?.name ?? "", is_bot: false, look: viewer?.look ?? null, connected: true, team: ours,
+    cards_left: 0, is_banker: false, takeover_in: null, controller: "human", reserved_for: null, reserved_secs: null,
+  } : null;
   const figures = on && !!layout && !!zones;
   useEffect(() => { drawn.current = figures; }, [figures]);
   if (!on) return null;
@@ -1536,6 +1584,13 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
                   onStray={stepped(pos, you && home ? myPx : zone.size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max))} />
         );
       }) : null}
+      {watcher && layout && zones && start && rooms ? (
+        <Walker key={WATCHER} player={watcher} team="us" px={myPx} pos="bottom" zone={mine ?? { home: start, spots: [start] }}
+                layout={layout} roam={rooms.watcher} pose={poses[WATCHER] ?? "idle"} up={null} you goal={goal} tapped={home}
+                wins={0} dealing={false} ready={false} arrives={drawn.current}
+                watch={played ? { pos: SIDES[(played.seat - state.you + 4) % 4], key: played.key } : null}
+                onEnd={end(WATCHER)} onUpEnd={noUp} onGoal={takeGoal} onTapped={takeHome} />
+      ) : null}
       {material ? <canvas className="tc-flair" data-depth="front" ref={flairFront} /> : null}
     </div>
   );

@@ -561,10 +561,13 @@ its toast while the player's Show companions at the table is on; with it off the
 Companions come along (Jerry 2026-11-27: "Do each companion is by hand and spectate brings theirs"). On the watch
 screen each person's companion stands at their seat as at the table, in the look they wore as that round began; a
 "Player N" seat of a replay is the default red Tractor, so a look never tells who a masked player is, and a bot has
-none. Nobody there is tagged You, a tap on the felt walks nobody, and hops are skipped at 2× and on a step back or a
-turn to another seat. The watcher's own companion stands in a gallery spot at the left end of the watcher's row,
-tagged You (你), and cheers a trick worth 10 points or more as it plays, at most once each 4 s; it is drawn on the
-watcher's screen only, never on the players' felt. Me → Settings → Show companions at the table off, or the
+none. No player's companion is tagged You or takes a tap, and hops are skipped at 2× and on a step back or a
+turn to another seat. The watcher's own companion (Jerry 2026-11-27: "can it follow same movements as in game") moves
+as yours does at the table: it starts just left of the watcher's controls inside the safe area (never under the
+Dynamic Island), a tap on the felt walks it there at the table's pace, it wanders, fidgets and steps aside when
+covered, a tap on it plays its special, and under Reduce Motion it stands still. It is tagged You (你) and cheers a
+trick worth 10 points or more as it plays, at most once each 4 s; it is drawn on the watcher's screen only, never on
+the players' felt. Me → Settings → Show companions at the table off, or the
 Collection off for the account, draws none of them. No surface, message type or string is added. The watch screen is the table (`watch/WatchScreen.tsx` draws the table's own seats,
 trick and hand read-only), turned landscape as a game is: four tabs (team dot, crown, name, cards left; the
 selected one filled) in table order from the seat it lands behind, the banker; a tab turns the table to that

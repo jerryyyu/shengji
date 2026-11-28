@@ -24,6 +24,8 @@ const TAP_MS: readonly [number, number] = [1200, 3000];
 const TRAIL_STEP_MS = 520;
 /** How often a store character strolls across the stage by itself. */
 export const STAGE_STROLL_MS = 6500;
+/** How soon after it is selected the first stroll comes. */
+const FIRST_STROLL_MS = 2200;
 const OWNER = "stage";
 
 export interface StageRefs {
@@ -127,11 +129,18 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
   const calm = useRef(false);
   calm.current = pose === "idle" && !paused && flight.current === null;
   useCue(material !== null, calm, () => { if (material) emit("cue", (s) => cuePieces(material, s)); });
+  const stroll = useRef(walkTo);
+  stroll.current = walkTo;
   useEffect(() => {
     if (!material) return;
-    const timer = window.setInterval(() => { if (calm.current) walkTo(at.current > 0 ? -size * 1.1 : size * 1.1, false); }, STAGE_STROLL_MS);
+    // the first comes soon after it is selected; a stroll due mid-move waits for the figure to be at rest
+    let last = performance.now() - STAGE_STROLL_MS + FIRST_STROLL_MS;
+    const timer = window.setInterval(() => {
+      if (!calm.current || performance.now() - last < STAGE_STROLL_MS) return;
+      last = performance.now();
+      stroll.current(at.current > 0 ? -size * 1.1 : size * 1.1, false);
+    }, 400);
     return () => window.clearInterval(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [material, size]);
   // its special: the charge is the stage's as it is the table's, and a store character's accent rides on it
   useEffect(() => {

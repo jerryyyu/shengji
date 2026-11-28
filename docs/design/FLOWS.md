@@ -669,7 +669,7 @@ keeps the table on screen.
   failed restore the grid's. A transaction the server has not settled stays with the App Store and is delivered
   again when the Collection opens or the account signs in.
 - **The store's characters**, each in its own art with four colours and its own signature reaction: on sale, the
-  Spring Lamb 小羊 (a run-up, a leap and a horn butt in one big star and spring petals) and the Baby Panda 熊猫宝宝 / 熊貓寶寶
+  Spring Lamb 小羊 (the horn butt: it crouches and backs off, charges and butts head-down in one big star, its spring petals fanning out ahead of its horns, and bounces back, 1.5 s) and the Baby Panda 熊猫宝宝 / 熊貓寶寶
   (the bamboo bite); coming, shown as Soon tiles and, selected, on the stage in their idle art with no look id, so they cannot be put
   in use or bought, the Jade Rabbit 玉兔 (breaks a mooncake and holds half out), the Lucky Cat 招财猫 / 招財貓 (beckons
   and holds a big card up over its head that turns to a suit in a flash, a new suit each time and the joker about one
@@ -679,6 +679,46 @@ keeps the table on screen.
   at the table: all seven now paint inside it, and the Lion's dance runs 2.5 s. The stage plays each reaction to its end. At the
   table they are drawn as the free companions are: still drawings on their team's pads that walk, hop, cheer and
   grow.
+- **Character is every companion's; material is a store character's** (Jerry 2026-11-27: "i just want the premium
+  companions to have that \"premium\" feel to make it worth the money- how about like trail of petals when walking";
+  then "yea for TFT- we can apply to free companions too"; "The new premium animations are good - can we ship it").
+  **Every companion**, free or bought, has its own gait at the one walking pace (the Tractor rolls, the Bun squishes,
+  the Chick takes quick little steps, the Sparrow flutter-hops, the Lamb prances, the Panda waddles: a whole number of
+  steps fitted to the walk, so the pace never changes; a quick step aside keeps the plain hop), a habit of its own as
+  one of its fidgets (an engine rumble, a deep breath, a peck, a head tilt, a wool shake, a slow rock; the sway where
+  the habit has no room), and its own way in, once, as it is first drawn at a table (the fullest that stays clear
+  where it stands; never while the hand is dealt, where it is simply there). Each is a transform of a box the figure
+  already has. **A store character** adds its material on top, and nothing else changes for it: the turn, the watch,
+  the droop, the step aside and the pace are the same for everyone, so a bought figure tells nobody more about the
+  game. Its pieces are its own (the Lamb's blossom petals, the Panda's bamboo leaves, each colour's own tints), and no
+  two store characters share a mark or a cue: a **trail** of two or three pieces as each hop lands (one for another
+  seat's figure), behind it only (Jerry 2026-11-27: "For walking trail, the particles shouldn't be in front": every
+  piece starts and lands behind the figure's middle along the way it walks, and the trail is drawn on a layer under
+  the figures), part gold from team level 6, where the figures stop growing; an **idle cue** every 5 to 8 s at rest
+  (a gold glint on the Lamb's horn, an ink ripple under the Panda); a **burst** with its mark as a big play's jump
+  leaves the ground (a turning blossom ring, a double ink ripple) and one piece falling beside it when the big trick
+  is lost; a **shower** with its special once a won round's sheet has closed; an **entrance** with its way in (petals
+  spiral in round it, ink blooms open under it); and a small **accent** on its special (three petals ahead of the
+  horn butt, a leaf fleck off the stalk at each bite), which never takes the special's place. Pieces keep off the
+  figure (Jerry 2026-11-27: "when particles bunch up like lamb special, it's harder to see"): a burst starts on a
+  ring outside it and flies out in two lobes clear of its jump, a shower falls either side of it, an accent fans away
+  from the body, and pieces leave one at a time. They are painted on two canvases, one under the figures and one
+  over, by a loop that runs only while a piece is alive; your own figure holds 18 trail pieces at most and another
+  seat's 9, a burst 11 and 5, a shower 9 and 4, an entrance 9 and 4, a cue 2, and one felt 64; a device that drops
+  frames steps these down for the session (half, then the mark and the glint only) and never back up. Nothing starts
+  while the hand is dealt (what was in the air is taken off) or on a hidden page; with cards in play the trail and
+  the cue are fainter; the watch screen's figures keep their gait and habit and bring no pieces. Under Reduce Motion
+  nothing moves, and a store character has three still pieces at its feet. The Lamb's horn butt was hard to see at
+  table size (Jerry 2026-11-27: "The lamb special doesn't move that much so it's hard to see"), and the room a
+  special keeps is a few units past the figure, so the charge is the table's: its figure backs off, lunges up to half
+  its width the way it faces, as far as stays clear, and comes home, while the drawing acts; the Panda's bites nod
+  further and tug the stalk. A shared special plays the same on every screen.
+- **The Collection shows it with no words**: a store character's tile, for sale or owned, wears a foil edge with a
+  slow sheen (still under Reduce Motion), and the stage plays the layer live. Every companion comes onto the stage its
+  own way as it is selected, and a tap on the stage's felt walks it there in its own gait (a tap on the figure is
+  still its special). A store character also strolls across the stage by itself every 6.5 s while it stands at rest
+  on screen, so its trail shows, with its cue between strolls, its burst on Big play and its accent on its special.
+  No string, control or surface is added.
 - **Show companions at the table** (Jerry 2026-11-26, finding 2: one labelled switch, on by default) replaces Team ·
   Individual · Off. It is stored where the mode was (the account's `companions`, a guest's device), so an older
   client keeps working: off is off, and an older Team or Individual reads as on. It is a row of Me's settings
@@ -750,7 +790,7 @@ keeps the table on screen.
   sooner is the plain cheer, and no droop), and none starts behind the round-end sheet. A kitty taken on the last
   trick plays the takers' special once the sheet has closed, with a droop for the other team when it lost the
   round. Each is a transform of a box the figure already has, and none loops. A companion sleeps while its person is away, and
-  between moves fidgets once every 6 to 10 s (its clocks, for walks and fidgets, run on through the hops and specials: one due mid-move waits for it to end): a sway, a blink, a small hop, in turn. Nothing moves while the page
+  between moves fidgets once every 6 to 10 s (its clocks, for walks and fidgets, run on through the hops and specials: one due mid-move waits for it to end): a sway, a blink, a small hop and its own habit, in turn. Nothing moves while the page
   is hidden or under Reduce Motion (each stands on its home; ready is the larger size alone, watching the turn
   held, a big play the cheer drawn still, the droop held for a second, a tractor's hops nothing). A bot, and a seat its owner left, has none. They
   sit under the cards and controls.

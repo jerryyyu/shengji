@@ -159,6 +159,29 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
+        <Section title="Purchases">
+          <p>
+            In the iOS app you can buy companion looks through Apple; buying one needs an Apple or
+            Google sign-in. When you buy or restore a look, the app sends our server Apple’s signed
+            record of the purchase, and the server checks Apple’s signature before using it. For each
+            purchase we store the account that holds it, the product, Apple’s transaction ids, the
+            purchase date, the App Store country, whether it was a test purchase, and when we checked
+            it. We keep it with your account so the look stays yours on every device you sign in on.
+          </p>
+          <p>
+            An account signed in with Apple or Google, where the store is offered, gets a random
+            purchase code, which the app gives Apple with a purchase so that Apple’s record names the
+            account that paid. Apple tells our server about refunds: a
+            refunded purchase is kept, marked with the refund date, and its look is removed from the
+            account. A purchase never gives us your card or other payment details.
+          </p>
+          <p>
+            If you delete your account, its purchase records stay with no account attached, so a
+            purchase can be restored onto a new account from the same Apple ID. Its purchase code is
+            kept, marked deleted, along with the deleted account’s internal number.
+          </p>
+        </Section>
+
         <Section title="Usage events">
           <p>
             To find where the app is confusing or slow, it sends our server short usage events: which

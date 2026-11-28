@@ -16,11 +16,16 @@ describe("the terms of use page", () => {
     act(() => root.render(<TermsPage />));
     expect(host.querySelector("h1")?.textContent).toBe("Terms of use");
     const headings = [...host.querySelectorAll("h2")].map((h) => h.textContent);
-    expect(headings).toEqual(["The game", "Guests and accounts", "How to behave", "What we do about it",
+    expect(headings).toEqual(["The game", "Guests and accounts", "Purchases",
+                              "How to behave", "What we do about it",
                               "Reporting a player", "Ratings and the leaderboard", "No guarantees",
                               "Changes to these terms", "Contact"]);
     const text = host.textContent ?? "";
-    expect(text).toContain("Last updated 2026-11-17");
+    expect(text).toContain("Last updated 2026-11-27");
+    expect(text).toContain("Some companion looks can be bought in the iOS app through Apple. There are no ads.");
+    expect(text).toContain("If Apple refunds a purchase, its look is removed.");
+    expect(text).toContain("choose Restore purchases");
+    expect(text).not.toContain("There are no purchases");
     expect(text).toContain("You must be 13 or older to play.");
     expect(text).toContain("zero tolerance for objectionable content");
     expect(text).toContain("within 24 hours");

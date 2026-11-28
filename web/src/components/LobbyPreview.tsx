@@ -87,18 +87,27 @@ export const STILL: PreviewState = { trick: TRICKS.length - 1, played: 4, phase:
  *  (1.12 as it turns over, 1.07 lifted as it wins) and the winner's lift (14). */
 const CARD_REACH = 115;
 
+/** The longest piece of a straight leg boxed on its own, in stage units. */
+const LEG_STEP = 40;
+
 /** Every place a played card passes, in stage units: for each card of each trick, the box round each leg of
- *  its path (its hand to its play, its play to the winner's, and on to the winner's hand), however the two
- *  easings bow the flight between them. */
+ *  its path. Its hand to its play bows (x and y ease differently), so that leg is boxed whole; its play to
+ *  the winner's and on to the winner's hand ease x and y alike, so those go straight and are boxed piece by
+ *  piece along the line, which keeps a diagonal leg's empty corners free. */
 export const CARD_PATHS: Box[] = TRICKS.flatMap((trick) => trick.order.flatMap((seat) => trick.cards[seat].map((_, i, all) => {
   const s = SEATS[seat], w = SEATS[trick.winner];
   const off = (i - (all.length - 1) / 2) * PAIR_GAP;
   const rad = (s.play.r * Math.PI) / 180;
   const stops = [s.pile, { x: s.play.x + off * Math.cos(rad), y: s.play.y + off * Math.sin(rad) }, w.play, w.pile];
-  return stops.slice(1).map((to, k) => {
+  const box = (a: { x: number; y: number }, b: { x: number; y: number }): Box => ({
+    x0: Math.min(a.x, b.x) - CARD_REACH, y0: Math.min(a.y, b.y) - CARD_REACH,
+    x1: Math.max(a.x, b.x) + CARD_REACH, y1: Math.max(a.y, b.y) + CARD_REACH });
+  return stops.slice(1).flatMap((to, k) => {
     const from = stops[k];
-    return { x0: Math.min(from.x, to.x) - CARD_REACH, y0: Math.min(from.y, to.y) - CARD_REACH,
-      x1: Math.max(from.x, to.x) + CARD_REACH, y1: Math.max(from.y, to.y) + CARD_REACH };
+    if (k === 0) return [box(from, to)];
+    const n = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / LEG_STEP));
+    const at = (j: number) => ({ x: from.x + ((to.x - from.x) * j) / n, y: from.y + ((to.y - from.y) * j) / n });
+    return Array.from({ length: n }, (_, j) => box(at(j), at(j + 1)));
   });
 }).flat()));
 

@@ -8,6 +8,7 @@
 // loop, and after a tap aimed at the middle cards, it touches no card and no
 // text, on a phone, an iPad and a desktop.
 //   node e2e/figures.mjs [look-regex]   ("home" runs the home felt alone)
+import { webkit } from "playwright-core";
 import { Report, launch, open, scenario, sleep, until } from "./lib.mjs";
 import { base, fakeSocketScript, pl } from "./fake.mjs";
 
@@ -131,6 +132,48 @@ const lungeTravel = (page) => page.evaluate(() => {
 });
 const figureSize = (page) => page.evaluate(() => Number(document.querySelector(".home-cmp svg.cmp")?.getAttribute("width") ?? 0));
 
+/** Where the home figure is drawn now: its middle, in px from the felt's middle. */
+const drawnAt = (page) => page.evaluate(() => {
+  const f = document.querySelector(".home-cmp").getBoundingClientRect(), w = document.querySelector(".home-cmp .char-walk").getBoundingClientRect();
+  return w.left + w.width / 2 - (f.left + f.width / 2);
+});
+
+/** Touch taps on the felt, as a finger lands them, in Chromium and WebKit at two iPhones and an iPad: a tap
+ *  anywhere on the felt (above the cards, beside them, on the figure's own strip) is the felt's, and walks
+ *  the figure toward it; a tap on the figure plays its special. */
+async function homeTouch(opts, browsers) {
+  // left and right in turn, so each tap asks it to walk the other way
+  const taps = [["high on the left", 0.08, 0.25], ["high on the right", 0.92, 0.3], ["beside the cards on the left", 0.3, 0.7], ["on its strip at the right", 0.97, 0.94]];
+  for (const [engine, b] of browsers) {
+    for (const device of ["phone-port", "phone-port-max", "ipad"]) {
+      const page = await open(b, device, { fakeSocket: fakeSocketScript([]), ...opts });
+      await scenario(rep, `home felt: touch taps walk it (${engine} ${device})`, page, async () => {
+        await until(page, () => document.querySelector(".home-cmp svg.cmp") !== null, { timeout: 8000 });
+        await sleep(400);
+        const f = await page.locator(".lobby-preview").boundingBox();
+        const bad = [];
+        for (const [where, sx, sy] of taps) {
+          const x = f.x + f.width * sx, y = f.y + f.height * sy;
+          const hit = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest(".home-cmp") !== null, [x, y]);
+          const before = await drawnAt(page);
+          await page.touchscreen.tap(x, y);
+          await sleep(1700);
+          const after = await drawnAt(page);
+          const want = Math.sign(x - (f.x + f.width / 2) - before);
+          if (!hit || Math.sign(after - before) !== want || Math.abs(after - before) < 8) bad.push(`${where}: felt hit ${hit}, ${Math.round(before)} -> ${Math.round(after)}`);
+        }
+        await rep.check(`${engine} ${device}: home felt: a touch tap anywhere on the felt walks the figure toward it`, bad.length ? bad.join(" | ") : null, page);
+        const fig = await page.locator(".home-cmp .coll-figure").boundingBox();
+        await page.touchscreen.tap(fig.x + fig.width / 2, fig.y + fig.height / 2);
+        await until(page, () => document.querySelector(".home-cmp svg.cmp")?.getAttribute("data-pose") === "react", { timeout: 3000 }).catch(() => {});
+        const pose = await page.evaluate(() => document.querySelector(".home-cmp svg.cmp")?.getAttribute("data-pose"));
+        await rep.check(`${engine} ${device}: home felt: a touch tap on the Lamb plays its special`, pose === "react" ? null : `pose ${pose}`, page);
+      });
+      await page.context().close();
+    }
+  }
+}
+
 /** The home felt's own figure at three sizes: on the felt, and clear of cards and text all loop long. */
 async function homeFelt(opts) {
   wearing = "lamb/newyear";
@@ -202,8 +245,8 @@ async function homeFelt(opts) {
       gone && back && bad.seen >= 20 && !bad.length ? null : `gone ${gone}; back ${back}; drawn in ${bad.seen} samples; ${bad.slice(0, 3).join(" | ")}`, rs);
   });
   await rs.context().close();
-  // the Lamb's special facing each way, its step back and its lunge sampled: at rest at its strip's left end
-  // facing right (the step back is toward the hand), then mid-strip facing left (the lunge is toward the hand)
+  // the Lamb's special facing each way, its step back and its lunge sampled: at rest mid-strip facing right
+  // (the step back is toward the hand), then mid-strip facing left (the lunge is toward the hand)
   const sp = await open(browser, "phone-port", { fakeSocket: fakeSocketScript([]), ...opts });
   await scenario(rep, "home felt: the Lamb's special both ways", sp, async () => {
     await until(sp, () => document.querySelector(".home-cmp svg.cmp") !== null, { timeout: 8000 });
@@ -270,7 +313,11 @@ try {
       await table.context().close();
     });
   }
-  if (home) await homeFelt(opts);
+  if (home) {
+    await homeFelt(opts);
+    const wk = await webkit.launch();
+    try { await homeTouch(opts, [["chromium", browser], ["webkit", wk]]); } finally { await wk.close(); }
+  }
 } finally {
   await browser.close();
 }

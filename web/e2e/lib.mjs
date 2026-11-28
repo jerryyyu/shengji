@@ -26,6 +26,7 @@ export const DEVICES = {
   // the page's vh lengths are rewritten to that height, dvh and svh keep the page's
   "phone-land-safari-short": { w: 844, h: 326, touch: true, kb: 222, safe: { t: 0, r: 59, b: 21, l: 59 }, vh: 390 },
   "phone-port": { w: 390, h: 844, touch: true, kb: 336 },     // iPhone 14 Pro, lobby
+  "phone-port-max": { w: 430, h: 932, touch: true, kb: 346 }, // iPhone 14 Pro Max, lobby
   "phone-port-se": { w: 375, h: 667, touch: true, kb: 260 },
   ipad: { w: 1024, h: 768, touch: true, kb: 400 },
   // the iPads the App Store shows: 13" either way up, 11" and mini sideways

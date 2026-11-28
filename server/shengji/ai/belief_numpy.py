@@ -477,9 +477,9 @@ class BeliefProposal:
         if self.prep_seconds > PREP_SECONDS:
             raise BeliefPreparationTimeout(f"belief preparation took {self.prep_seconds:.3f}s")
 
-    def _refill(self) -> None:
+    def _draw_worlds(self) -> np.ndarray:
         from ..train.belief_seq import sample_worlds, sample_worlds_capacity
-        inp, rnd, seat = self.inp, self.rnd, self.seat
+        inp = self.inp
         draw = sample_worlds_capacity if self.capacity else sample_worlds
         W = None
         if self.native and not self.capacity:
@@ -489,6 +489,11 @@ class BeliefProposal:
                                          self.batch, self.rng)
         if W is None:
             W = draw(self.Q, inp["n_c"], self.M, inp["sizes"], self.batch, self.rng)
+        return W
+
+    def _refill(self) -> None:
+        inp, rnd, seat = self.inp, self.rnd, self.seat
+        W = self._draw_worlds()
         codes = _codes()
         idx = np.arange(N_CARDS)
         K = inp["K"]
@@ -511,6 +516,53 @@ class BeliefProposal:
             self._refill()
         self.drawn += 1
         return self.queue.pop()
+
+
+class SuitLengthProposal(BeliefProposal):
+    """Offline proposal with a joint length model over unknown copies.
+
+    draw_lengths receives the decision features, the draw mask, the number of
+    worlds and the generator. Its integer output is indexed by world,
+    effective suit (card feature order), and relative receiver including kitty.
+    Public pins are restored by the same hand builder as the plain proposal.
+    """
+
+    def __init__(self, model, rnd, seat, refusals=(), *, draw_lengths,
+                 seed, batch, forbidden=None):
+        super().__init__(model, rnd, seat, refusals, seed=seed, batch=batch,
+                         forbidden=forbidden)
+        self.draw_lengths = draw_lengths
+
+    def _draw_worlds(self) -> np.ndarray:
+        return draw_length_worlds(self.inp, self.Q, self.M, self.draw_lengths, self.batch, self.rng)
+
+
+def draw_length_worlds(inp, probabilities, mask, draw_lengths, batch, rng):
+    """Fill a joint draw's residual quotas with individual hidden copies."""
+    from ..train.belief_seq import sample_worlds
+
+    suit = inp["card_feat"][:, 1:6].argmax(axis=1)
+    lengths = np.asarray(draw_lengths(inp, mask, batch, rng))
+    if (lengths.shape != (batch, 5, N_RECV)
+            or not np.issubdtype(lengths.dtype, np.integer)
+            or (lengths < 0).any() or (lengths > N_CARDS * 2).any()):
+        raise BeliefNumpyError("invalid residual suit lengths")
+    lengths = lengths.astype(np.int64, copy=False)
+    copies = inp["n_c"]
+    suit_totals = np.bincount(suit, weights=copies, minlength=5)
+    if ((lengths.sum(axis=1) != inp["sizes"]).any()
+            or (lengths.sum(axis=2) != suit_totals).any()):
+        raise BeliefNumpyError("residual suit lengths disagree with available slots or cards")
+    worlds = np.zeros((batch, N_CARDS, N_RECV), dtype=np.int16)
+    for group in range(5):
+        if suit_totals[group] == 0:
+            continue
+        counts = np.where(suit == group, copies, 0)
+        quotas, indices = np.unique(lengths[:, group], axis=0, return_inverse=True)
+        for index, quota in enumerate(quotas):
+            rows = np.flatnonzero(indices == index)
+            worlds[rows] += sample_worlds(probabilities, counts, mask, quota, len(rows), rng)
+    return worlds
 
 
 # ------------------------------------------------------------------ belief log

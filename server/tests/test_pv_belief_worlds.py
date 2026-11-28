@@ -308,3 +308,243 @@ def _r49_env():
     release-49 recipe the identities in this module are derived from)."""
     from test_release49_fly_config import fly_env
     return fly_env()
+
+
+@pytest.mark.parametrize("offset", [0, 1])
+def test_joint_lengths_reach_returned_hands_and_kitty(offset):
+    from shengji.rl.encode import CARD_INDEX
+    from shengji.train.belief_history import EFF
+    from shengji.train.belief_seq import sample_worlds
+    from test_world_history_legal import started
+
+    rnd, _ = started(7)
+    seat = (rnd.banker + offset) % 4
+    expected = []
+
+    class Uniform:
+        def marginals(self, inp):
+            return np.ones_like(inp["M"], dtype=float)
+
+    def length_draw(inp, mask, batch, rng):
+        # Generate feasible test quotas using only information available to the actor.
+        seed_worlds = sample_worlds(Uniform().marginals(inp), inp["n_c"], mask,
+                                    inp["sizes"], batch, rng)
+        suit = inp["card_feat"][:, 1:6].argmax(axis=1)
+        quotas = np.stack([seed_worlds[:, suit == s].sum(1) for s in range(5)], axis=1)
+        expected.extend(quotas)
+        return quotas
+
+    proposal = bn.SuitLengthProposal(Uniform(), rnd, seat, draw_lengths=length_draw,
+                                     seed=33, batch=4)
+    for row in range(5):
+        hands, kitty = proposal(rnd, seat, None)
+        counts = np.zeros_like(proposal.inp["K"])
+        for rel in (1, 2, 3):
+            for code in hands[(seat + rel) % 4]:
+                counts[CARD_INDEX[code], rel - 1] += 1
+        if offset:
+            for code in kitty:
+                counts[CARD_INDEX[code], 3] += 1
+        else:
+            assert kitty == rnd.buried
+        residual = counts - proposal.inp["K"]
+        assert (residual >= 0).all()
+        assert not residual[~proposal.M].any()
+        np.testing.assert_array_equal(residual.sum(1), proposal.inp["n_c"])
+        groups = np.array([EFF.index(rnd.ordering.eff_suit(c)) for c in bn._codes()])
+        actual = np.stack([residual[groups == s].sum(0) for s in range(5)])
+        np.testing.assert_array_equal(actual, expected[row])
+    assert not np.array_equal(expected[0], expected[1])
+
+    proposal.queue.clear()
+    proposal.draw_lengths = lambda *args: np.zeros((4, 5, 4), dtype=int)
+    with pytest.raises(bn.BeliefNumpyError, match="available slots or cards"):
+        proposal(rnd, seat, None)
+    assert not proposal.queue
+
+    # Balanced quotas can still require a receiver that the draw mask forbids.
+    from shengji.train.belief_seq import BeliefSeqError
+    group, receiver = np.argwhere(expected[0] > 0)[0]
+    proposal.M[groups == group, receiver] = False
+    proposal.draw_lengths = lambda *args: np.stack(expected[:4])
+    with pytest.raises(BeliefSeqError, match="infeasible state"):
+        proposal(rnd, seat, None)
+    assert not proposal.queue
+
+
+def test_learned_length_scores_change_hands_at_the_proposal_boundary():
+    torch = pytest.importorskip("torch")
+    from collections import Counter
+    from shengji.train.belief_lengths import build_length_head
+    from test_world_history_legal import started
+
+    class Uniform:
+        def marginals(self, inp):
+            return np.ones_like(inp["M"], dtype=float)
+
+    rnd, _ = started(7)
+    seat = (rnd.banker + 1) % 4
+    head = build_length_head(width=8)
+    totals = []
+    for sign in (-1, 1):
+        with torch.no_grad():
+            head.output[-1].weight.zero_()
+            head.output[-1].bias.copy_(sign * 100 * torch.arange(26))
+        proposal = bn.SuitLengthProposal(Uniform(), rnd, seat, seed=13, batch=3,
+                                         draw_lengths=head.draw_lengths)
+        hands, kitty = proposal(rnd, seat, None)
+        assert len(kitty) == len(rnd.buried)
+        assert all(len(cards) == len(rnd.hands[s]) for s, cards in hands.items())
+        totals.append([Counter(map(rnd.ordering.eff_suit, hand)) for hand in hands.values()])
+    assert totals[0] != totals[1]
+
+
+def test_suit_length_bounds_match_all_feasible_completions():
+    from itertools import product
+    from shengji.train.belief_lengths import _allocation_steps
+
+    rng = np.random.default_rng(20)
+    for _ in range(30):
+        suits = rng.integers(0, 5, size=5)
+        card_feat = np.pad(np.eye(5)[suits], ((0, 0), (1, 0)))
+        masks = rng.random((5, 4)) < .65
+        holders = rng.integers(0, 4, size=5)
+        masks[np.arange(5), holders] = True
+        copies = np.array([2, 1, 1, 1, 1])
+        owners = np.repeat(np.arange(5), copies)
+        sizes = np.bincount(holders[owners], minlength=4)
+        assignments = np.array([r for r in product(*(np.flatnonzero(masks[c]) for c in owners))
+                                if np.array_equal(np.bincount(r, minlength=4), sizes)])
+        steps = _allocation_steps(card_feat, masks, copies, sizes)
+        step = next(steps)
+        while True:
+            totals = (assignments[:, step.cards[owners]] == step.receiver).sum(1)
+            np.testing.assert_array_equal(step.choices, np.unique(totals))
+            k = rng.choice(step.choices)
+            assignments = assignments[totals == k]
+            try:
+                step = steps.send(k)
+            except StopIteration:
+                break
+
+    with pytest.raises(ValueError, match="no feasible suit length"):
+        next(_allocation_steps(np.eye(1, 6, 1), [[True, False, False, False]],
+                               [2], [1, 1, 0, 0]))
+
+
+def test_paired_void_cli_reads_only_held_out_decisions(package, tmp_path, capsys):
+    import hashlib
+    from shengji.train import belief_history as bh
+    from shengji.train import belief_labels as bl
+    from shengji.train import belief_length_eval as evaluator
+    from shengji.train import belief_lengths as fitter
+    from test_belief_labels import synthetic_cluster
+
+    hist = tmp_path / "hist"
+    hist.mkdir()
+    files, histories, keys = {}, {}, {}
+    for split, seed in [("train", 1003), ("test", 1017), ("other", 1018)]:
+        shard = tmp_path / (split + ".jsonl")
+        shard.write_text("".join(json.dumps(r) + "\n" for r in synthetic_cluster(seed)))
+        rows = bl.extract_cluster(shard, store_index=0, cluster_index=0, calib=0, test=0,
+                                  windows=[], sampler_worlds=0, sampler_splits=())
+        keys[seed] = rows["deal_key"]
+        name = split + ".npz"
+        path = tmp_path / name
+        np.savez(path, **{k: rows[k][:3] for k in bl.ARRAY_KEYS})
+        history = bh.chunk_history(str(path), [str(shard)])
+        np.savez(hist / name, **history)
+        files[split] = {"file": name, "rows": 3, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        histories[name] = hashlib.sha256((hist / name).read_bytes()).hexdigest()
+
+    def manifests(extra=False):
+        chunks = [{"files": files}]
+        if extra:
+            chunks.append({"files": {"test": files["other"]}})
+        data = json.dumps({"chunks": chunks}).encode()
+        (tmp_path / "manifest.json").write_bytes(data)
+        (hist / "manifest.json").write_text(json.dumps({
+            "schema": bh.SCHEMA, "files": histories,
+            "source_extract_manifest_sha256": hashlib.sha256(data).hexdigest()}))
+
+    manifests()
+    ckpt = str(tmp_path / "head.pt")
+    assert fitter.main(["--extract", str(tmp_path), "--out", ckpt, "--steps", "1",
+                        "--seed", "15", "--width", "8"]) == 0
+    capsys.readouterr()
+    args = ["--extract", str(tmp_path), "--length-checkpoint", ckpt, "--seed", "3",
+            "--belief-package", package["path"], "--belief-sha256", package["sha256"]]
+    assert evaluator.main(args) is None
+    result = json.loads(capsys.readouterr().out)
+    assert (result["worlds"], result["decisions"], result["deals"]) == (64, 3, 1)
+    for role in ("banker", "other_seats", "kitty"):
+        joint, plain = (result["arms"][a][role] for a in ("joint", "plain"))
+        assert joint["candidate_pairs"] == plain["candidate_pairs"] > 0
+        assert joint["true_voids"] == plain["true_voids"]
+        assert 0 <= joint["sampled_void_ece"] <= 1
+    evaluator.main([*args, "--ll-max-draws", "1", "--ll-replicates", "2"])
+    scored = json.loads(capsys.readouterr().out)
+    assert scored["arms"] == result["arms"]
+    loss = scored["nonbanker_marginal_log_loss"]
+    assert loss["hidden_copies"] > 0 and loss["projected_baseline_nats_per_copy"] > 0
+    assert loss["unresolved_copy_observations"] > 0
+    assert loss["joint_minus_baseline_nats_per_copy"] is None
+    assert 0 < loss["worlds_drawn"] <= loss["maximum_worlds"] == 2 * loss["scored_decisions"]
+    manifests(extra=True)
+    cohort = tmp_path / "cohort.json"
+    member = {"seed": 1017, "deal_key": keys[1017], "rows": 3}
+    def select(*members):
+        cohort.write_text(json.dumps({
+            "deals": members, "belief_sha256": package["sha256"],
+            "source": {"extract_manifest_sha256": hashlib.sha256(
+                (tmp_path / "manifest.json").read_bytes()).hexdigest()},
+        }))
+        evaluator.main([*args, "--cohort", str(cohort), "--ll-max-draws", "1", "--ll-replicates", "2"])
+        return json.loads(capsys.readouterr().out)
+    assert select(member) == scored
+    from scripts.time_belief_length_fit_eval import main as time_pilot
+    out = tmp_path / "timed"
+    pilot_args = ["--train-extract", str(tmp_path), "--test-extract", str(tmp_path),
+                  "--cohort", str(cohort), "--cohort-sha256", hashlib.sha256(cohort.read_bytes()).hexdigest(),
+                  "--belief-package", package["path"], "--belief-sha256", package["sha256"],
+                  "--output-dir", str(out)]
+    time_pilot(pilot_args)
+    timed = json.loads((out / "timing.json").read_text())
+    assert 0 < timed["fit_process_seconds"] < timed["fit_eval_process_seconds"]
+    assert timed["timing"]["decisions"] == 3 and timed["timing"]["worlds_drawn"] > 0
+    assert (out / "length.pt").is_file()
+    with pytest.raises(FileExistsError):
+        time_pilot(pilot_args)
+    with pytest.raises(ValueError, match="wrong timing cohort"):
+        time_pilot([*pilot_args, "--cohort-sha256", "bad"])
+
+    evaluator.main([*args, "--cohort", str(cohort), "--ll-max-draws", "1", "--ll-replicates", "2",
+                    "--timing-only"])
+    timing = json.loads(capsys.readouterr().out)
+    assert 0 < timing.pop("log_loss_seconds") <= timing.pop("evaluation_seconds")
+    counters = ("scored_decisions", "worlds_drawn", "maximum_worlds", "unresolved_copy_observations",
+                "draw_limit_per_row_per_replicate", "replicates")
+    assert timing == {"decisions": scored["decisions"], "deals": scored["deals"],
+                      "worlds_per_void_arm": scored["worlds"], **{k: loss[k] for k in counters}}
+    with pytest.raises(SystemExit):
+        evaluator.main([*args, "--timing-only", "--ll-max-draws", "1"])
+    with pytest.raises(SystemExit):
+        evaluator.main([*args, "--cohort", str(cohort), "--timing-only"])
+    with pytest.raises(ValueError, match="seed and extracted deal disagree"):
+        select(dict(member, deal_key=keys[1018]))
+    with pytest.raises(ValueError, match="missing rows"):
+        select(dict(member, rows=4))
+    with pytest.raises(ValueError, match="extra rows"):
+        select(dict(member, rows=2))
+    with pytest.raises(ValueError, match="duplicate seed or deal"):
+        select(member, member)
+    cohort.write_text(json.dumps({"deals": [member], "source": {"extract_manifest_sha256": "bad"}}))
+    with pytest.raises(ValueError, match="different extract manifest"):
+        evaluator.main([*args, "--cohort", str(cohort)])
+    cohort.write_text(json.dumps({"deals": [member], "belief_sha256": "bad"}))
+    with pytest.raises(ValueError, match="different belief package"):
+        evaluator.main([*args, "--cohort", str(cohort)])
+    files["test"] = files["train"]
+    manifests()
+    with pytest.raises(ValueError, match="training exposure"):
+        evaluator.main(args)

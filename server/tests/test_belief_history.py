@@ -505,3 +505,217 @@ def test_prepare_belief_partitions_preserve_full_training_rows(tmp_path, capsys)
     with pytest.raises(SystemExit):
         main(common + ['--out', str(invalid), '--cluster-stride', '2', '--cluster-offset', '2'])
     assert not invalid.exists()
+
+
+def test_joint_length_loss_from_residualized_history_rows(chunk):
+    torch = pytest.importorskip("torch")
+    from shengji.train import belief_seq as bs
+    from shengji.train.belief_lengths import build_length_head
+
+    part = {k: np.copy(chunk["rows"][k]) for k in bs.ROW_KEYS}
+    bs.residualize(part)
+    part.update({k: chunk["hist"][k] for k in ("row_round", "row_ply", "row_seat")})
+    part["_rounds"] = chunk["hist"]
+    # Reverse the local round table so indexing features by row would be wrong.
+    rounds = np.unique(part["row_round"])[::-1]
+    rows = np.array([np.flatnonzero(part["row_round"] == r)[0] for r in rounds])
+    batch = bs.make_batch(part, rounds, rows)
+    head = build_length_head(width=8)
+    loss = head.loss(batch)
+    loss.backward()
+    assert torch.isfinite(loss) and loss.item() > 0
+    assert head.output[-1].bias.grad.abs().sum().item() > 0
+
+
+def test_joint_length_support_matches_complete_allocations():
+    from itertools import product
+    from shengji.train.belief_lengths import _allocation_steps
+
+    # Overlapping allowed receivers, a duplicate, and a single permitted holder.
+    possible = [(0, 1), (0, 1), (1, 2), (0, 2), (2,)]
+    capacities = [2, 1, 2, 0]
+    suits = [0, 0, 1, 1, 2]
+    valid = set()
+    for assignment in product(*possible):
+        if np.bincount(assignment, minlength=4).tolist() == capacities:
+            table = np.zeros((5, 4), int)
+            np.add.at(table, (suits, assignment), 1)
+            valid.add(tuple(table.ravel()))
+
+    mask = np.zeros((4, 4), bool)
+    for i, receivers in enumerate([possible[0], *possible[2:]]):
+        mask[i, list(receivers)] = True
+    feat = np.zeros((4, 11))
+    feat[np.arange(4), [1, 2, 2, 3]] = 1
+
+    def completions(prefix):
+        steps = _allocation_steps(feat, mask, [2, 1, 1, 1], capacities)
+        try:
+            step = next(steps)
+            for k in prefix:
+                step = steps.send(k)
+        except StopIteration as done:
+            return {tuple(done.value.ravel())}
+        return set().union(*(completions([*prefix, k]) for k in step.choices))
+
+    assert len(valid) > 1
+    assert completions([]) == valid
+
+
+def test_length_fit_cli_trains_excluding_reserved_deals_and_reloads_for_search(chunk, tmp_path):
+    torch = pytest.importorskip("torch")
+    from shengji.ai.belief_numpy import SuitLengthProposal
+    from shengji.train import belief_lengths as lengths
+    from shengji.train import belief_seq as bs
+    from test_world_history_legal import started
+
+    # A real extract manifest with two deals; hold one entire deal out of the fit.
+    rows = chunk["rows"]
+    name = "train-x.npz"
+    (tmp_path / "hist").mkdir()
+    np.savez(tmp_path / name, **rows)
+    np.savez(tmp_path / "hist" / name, **chunk["hist"])
+
+    def sha(path):
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"chunks": [{"files": {"train": {
+        "file": name, "rows": len(rows["X"]), "sha256": sha(tmp_path / name)}}}]}))
+    (tmp_path / "hist" / "manifest.json").write_text(json.dumps({
+        "schema": bs.HIST_SCHEMA, "source_extract_manifest_sha256": sha(manifest),
+        "files": {name: sha(tmp_path / "hist" / name)}}))
+    excluded = int(rows["seed"][0])
+    allowed = bs.seed_keep(rows, [(excluded, excluded + 1)])
+    assert allowed.any() and not allowed.all()
+
+    out = tmp_path / "lengths.pt"
+    argv = ["--extract", str(tmp_path), "--out", str(out), "--steps", "1",
+            "--seed", "77", "--width", "8", "--rounds-per-batch", "100",
+            "--exclude-seed-window", f"{excluded}:{excluded + 1}"]
+    assert lengths.main(argv) == 0
+    model, training = lengths.load_length_checkpoint(out)
+    assert training["rows"] == int(allowed.sum())
+    assert training["deals"] == sorted(set(map(int, rows["deal"][allowed])))
+    torch.manual_seed(77)
+    initial = lengths.build_length_head(8)
+    assert not torch.equal(model.output[-1].weight, initial.output[-1].weight)
+
+    class Uniform:
+        def marginals(self, inp):
+            return np.ones_like(inp["M"], dtype=float)
+
+    rnd, _ = started(7)
+    seat = (rnd.banker + 1) % 4
+    propose = SuitLengthProposal(Uniform(), rnd, seat, seed=9, batch=2,
+                                 draw_lengths=model.draw_lengths)
+    hands, kitty = propose(rnd, seat, None)
+    assert len(kitty) == len(rnd.buried)
+    assert all(len(cards) == len(rnd.hands[s]) for s, cards in hands.items())
+
+    original = out.read_bytes()
+    with pytest.raises(FileExistsError):
+        lengths.main(argv)
+    assert out.read_bytes() == original
+    other = tmp_path / "incomplete.pt"
+    with pytest.raises(ValueError, match="1 of 2 requested steps"):
+        lengths.main([*argv, "--steps", "2", "--out", str(other)])
+    assert not other.exists()
+
+
+def test_heldout_void_reader_uses_live_public_inputs(chunk):
+    from shengji.ai.belief_numpy import decision_inputs
+    from shengji.train import belief_seq as bs
+    from shengji.train.belief_length_eval import decision
+
+    part = {k: np.copy(chunk["rows"][k]) for k in bs.ROW_KEYS}
+    bs.residualize(part)
+    part.update({k: chunk["hist"][k] for k in ("row_round", "row_ply", "row_seat")})
+    part["_rounds"] = chunk["hist"]
+    index = 0
+    roles = set()
+    for records in chunk["records"]:
+        for d in bl.iter_decisions(records):
+            offline = decision(part, index)
+            live = decision_inputs(d.rnd, d.seat, d.refusals)
+            for key in live:
+                np.testing.assert_array_equal(offline[key], live[key], err_msg=key)
+            roles.add(d.seat == d.rnd.banker)
+            index += 1
+    assert roles == {False, True}
+
+
+def test_paired_void_counts_bin_edges_and_empty_denominators():
+    from shengji.train.belief_length_eval import VoidCounts
+
+    counts = VoidCounts()
+    assert counts.report()["miss_rate"] is None
+    for p, actual in [(0, True), (0, False), (.5, False), (1, True)]:
+        counts.add(p, actual)
+    assert counts.report() == {"candidate_pairs": 4, "true_voids": 2,
+                               "missed_voids": 1, "miss_rate": .5, "sampled_void_ece": .375}
+
+
+def test_first_hit_loss_matches_geometric_log_series():
+    from itertools import product
+    from shengji.train.belief_length_loss import first_hit_loss
+
+    truth = np.array([[1, 0, 0, 0]])
+    expected = 0.
+    censored = 0.
+    # Enumerate iid draws at p=1/2, including sequences whose first hit is past the cap.
+    for draws in product((0, 1), repeat=4):
+        worlds = iter(np.eye(4, dtype=int)[[r]] for r in draws)
+        value, missing = first_hit_loss(truth, lambda: next(worlds), np.random.default_rng(2), 4)
+        expected += value / 16
+        censored += missing / 16
+    assert expected == pytest.approx(sum(.5**k / k for k in range(1, 5)))
+    assert censored == 1 / 16
+
+
+def test_first_hit_selects_one_of_two_identical_copies():
+    from shengji.train.belief_length_loss import first_hit_loss
+
+    class Tickets:
+        def __init__(self):
+            self.values = iter((0.25, 0.75))
+
+        def random(self, size):
+            return np.full(size, next(self.values))
+
+    truth = np.array([[0, 2, 0, 0]])
+    split = np.array([[1, 1, 0, 0]])
+    # Both true copies have receiver 1. The first ticket misses, the second hits.
+    assert first_hit_loss(truth, lambda: split, Tickets(), 2) == (2., 0)
+
+
+def test_marginal_loss_compares_projected_baseline_and_withholds_censored_score():
+    from shengji.train.belief_length_loss import MarginalLoss
+
+    inp = {"card_feat": np.zeros((54, 11)), "M": np.zeros((54, 4), bool),
+           "sizes": np.array([1, 1, 0, 0]), "n_c": np.zeros(54, dtype=int)}
+    inp["card_feat"][:, 1] = 1
+    inp["card_feat"][1, 1:3] = [0, 1]
+    inp["M"][:2, :2] = True
+    inp["n_c"][:2] = 1
+    truth = np.zeros((54, 4), dtype=int)
+    truth[0, 0] = truth[1, 1] = 1
+    q = inp["M"].astype(float) / 2
+
+    class Fixed:
+        def draw_lengths(self, inp, mask, batch, rng):
+            table = np.zeros((batch, 5, 4), dtype=int)
+            table[:, 0, 0] = table[:, 1, 1] = 1
+            return table
+
+    loss = MarginalLoss(2, 3)
+    loss.add(inp, q, truth, Fixed(), np.random.SeedSequence(202))
+    report = loss.report()
+    assert report["joint_minus_baseline_nats_per_copy"] == pytest.approx(-np.log(2))
+    assert report["monte_carlo_standard_error"] == 0
+    assert report["unresolved_copy_observations"] == 0
+    loss.add(inp, q, truth[:, [1, 0, 2, 3]], Fixed(), np.random.SeedSequence(203))
+    report = loss.report()
+    assert report["hidden_copies"] == 4 and report["unresolved_copy_observations"] == 4
+    assert report["joint_minus_baseline_nats_per_copy"] is None
+    assert report["monte_carlo_standard_error"] is None

@@ -59,7 +59,7 @@ export const ARRIVES: Record<CompanionKind, readonly Beat[]> = {
   panda: [{ name: "waddle", ms: 900, easing: "ease-out", frames: [f(0, -5, 0.9, 0.9, 0, 0), f(0, 5, 1, 1, 0.3, 1), f(0, -4, 1, 1, 0.62), f(0, 0, 1, 1)] }, FADE],
 };
 
-// ---- material: a store character's own ----
+// Material: a store character's own.
 
 /** What a piece is drawn as. */
 export type Shape = "petal" | "leaf" | "spark" | "blossom" | "ripple" | "ink";

@@ -453,11 +453,13 @@ export const TAP_THROTTLE_MS = 500;
  *  played as a special once any level-up has ended. Every move is a Web
  *  Animation of a transform. Under Reduce Motion it stands on its home;
  *  while the page is hidden it rests. */
-function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal, tapped, wins, poke = 0, dealing, ready, watch, flair = null, gold = false, onEnd, onUpEnd, onGoal, onTapped, onStray, onSpecial }: {
+function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal, tapped, wins, poke = 0, dealing, ready, watch, flair = null, gold = false, arrives = false, onEnd, onUpEnd, onGoal, onTapped, onStray, onSpecial }: {
   /** The felt's layer of pieces, for a store character's material; null where none is painted. */
   flair?: FlairLayer | null;
   /** Its team stands at the level from which a trail's pieces turn part gold. */
   gold?: boolean;
+  /** It is drawn onto a table already shown (its person sat down), so it comes in its own way; a table opened or reconnected into draws everyone settled. */
+  arrives?: boolean;
   player: StatePlayer; team: Team; px: number; pos: SeatPos; dealing: boolean;
   ready: boolean; watch: { pos: SeatPos; key: string } | null;
   zone: Zone; layout: Layout; roam: Layout; pose: TableMove; up: LevelUp | null; you: boolean; goal: { spot: Spot; n: number } | null;
@@ -774,13 +776,15 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
   const restful = useRef(false);
   restful.current = idle && walking.current.length === 0 && !away;
   useCue(placed && !!material, restful, () => emit("cue", cuePieces));
-  // its way in, once, as it is first drawn at this table: never while the
-  // hand is dealt, on a hidden page or under Reduce Motion
+  // its way in, once, as it is drawn onto a table already shown: never as
+  // the table itself is first drawn, while the hand is dealt, on a hidden
+  // page or under Reduce Motion
   const entered = useRef(false);
+  const comes = useRef(arrives);
   useEffect(() => {
     if (!placed || entered.current) return;
     entered.current = true;
-    if (dealing || away || prefersReducedMotion() || document.visibilityState === "hidden") return;
+    if (!comes.current || dealing || away || prefersReducedMotion() || document.visibilityState === "hidden") return;
     const beat = pickBeat(ARRIVES[kind], cur.current, px, you, roamNow.current);
     const run = beat ? play(box.current, beat) : null;
     emit("entrance", (m, s) => entrancePieces(m, s, you ? 8 : 4));
@@ -1252,6 +1256,8 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
   const [strays, setStrays] = useState<Partial<Record<SeatPos, { spot: Spot; px: number }>>>({});
   const prev = useRef<GameState | null>(null);
   const root = useRef<HTMLDivElement | null>(null);
+  // whether the table's figures have been drawn once: one drawn after that comes in its own way
+  const drawn = useRef(false);
   const flairBack = useRef<HTMLCanvasElement | null>(null);
   const flairFront = useRef<HTMLCanvasElement | null>(null);
   const quiet = watch?.quiet ?? false;
@@ -1453,6 +1459,8 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
     return () => { document.removeEventListener("pointerdown", down, true); felt.removeEventListener("click", tap); };
   }, [on, size.base, watching]);
 
+  const figures = on && !!layout && !!zones;
+  useEffect(() => { drawn.current = figures; }, [figures]);
   if (!on) return null;
   const end = (seat: number) => () => setPoses((p) => ({ ...p, [seat]: "idle" }));
   // a tap's goal is cleared once yours has taken it, so no later render replays it
@@ -1498,7 +1506,7 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
                   tapped={you ? home : watching ? null : remoteHome(p)} poke={pokes[p.seat] ?? 0}
                   onSpecial={you ? () => share.current?.({ type: "companion", act: "special" }) : undefined}
                   wins={watching ? 0 : specials[p.team]} dealing={state.phase === "deal"} ready={you && ready}
-                  flair={flair} gold={levelIndex(levels[p.team]) >= GOLD_LEVEL}
+                  flair={flair} gold={levelIndex(levels[p.team]) >= GOLD_LEVEL} arrives={drawn.current}
                   watch={played ? { pos: SIDES[(played.seat - state.you + 4) % 4], key: played.key } : null} onEnd={end(p.seat)} onUpEnd={done(p.seat)}
                   onGoal={you ? takeGoal : takeRemoteGoal(p.seat)} onTapped={you ? takeHome : takeRemoteHome(p.seat)}
                   onStray={stepped(pos, you && home ? myPx : zone.size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max))} />

@@ -523,21 +523,24 @@ describe("how much a figure does", () => {
 describe("character and material at the table", () => {
   let spawn: ReturnType<typeof vi.spyOn>;
   let rest: ReturnType<typeof vi.spyOn>;
+  let sized: ReturnType<typeof vi.spyOn>;
   let ctx: unknown;
   const realCtx = HTMLCanvasElement.prototype.getContext;
   beforeEach(() => {
     spawn = vi.spyOn(FlairLayer.prototype, "spawn");
     rest = vi.spyOn(FlairLayer.prototype, "rest");
+    sized = vi.spyOn(FlairLayer.prototype, "resize");
     HTMLCanvasElement.prototype.getContext = (() => null) as unknown as typeof realCtx;
     ctx = null;
   });
-  afterEach(() => { spawn.mockRestore(); rest.mockRestore(); HTMLCanvasElement.prototype.getContext = realCtx; void ctx; });
+  afterEach(() => { spawn.mockRestore(); rest.mockRestore(); sized.mockRestore(); HTMLCanvasElement.prototype.getContext = realCtx; void ctx; });
   /** Yours a Lamb, the left seat a Panda, the other two free. */
   const paid = (over: Partial<GameState> = {}) => state({ players: [player(0, { look: "lamb/newyear" }), player(1, { look: "panda/classic" }), player(2), player(3)], ...over });
   const calls = (tag: string, owner?: string) => (spawn.mock.calls as unknown as [string, boolean, string, Piece[]][])
     .map((c, i) => ({ owner: c[0], own: c[1], tag: c[2], pieces: c[3], started: spawn.mock.results[i]?.value as number }))
     .filter((c) => c.tag === tag && (owner === undefined || c.owner === owner));
-  const layer = () => spawn.mock.instances[0] as unknown as FlairLayer;
+  /** The felt's layer, from its first sizing to the felt. */
+  const layer = () => sized.mock.instances[0] as unknown as FlairLayer;
   const click = (x: number, y: number) => act(() => { host.querySelector(".felt")!.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: x, clientY: y })); });
 
   it("a table of free companions draws no canvas; a store character brings one under the figures and one over them", async () => {
@@ -563,20 +566,35 @@ describe("character and material at the table", () => {
     expect(spawn).not.toHaveBeenCalled();
   });
 
-  it("each companion comes in its own way as it is first drawn; a store character brings its entrance, your own the fuller one", async () => {
+  /** The table before its other three people sit down: bots, who have no companion. */
+  const alone = (over: Partial<GameState> = {}) => state({ players: [player(0, { look: "lamb/newyear" }),
+    ...[1, 2, 3].map((s) => player(s, { is_bot: true, look: null }))], ...over });
+  const arrive = (seat: number) => anims.filter((a) => a.seat === String(seat) && a.box === "tc-move" && isArrive(a));
+
+  it("a table opened or reconnected into draws everyone settled: no way in, no entrance", async () => {
     await render(paid());
-    const arrive = (seat: number) => anims.filter((a) => a.seat === String(seat) && a.box === "tc-move" && isArrive(a));
-    for (const seat of [0, 1, 2, 3]) expect(arrive(seat), `seat ${seat}`).toHaveLength(1);
-    expect(new Set([0, 1, 2, 3].map((s) => text(arrive(s)[0]))).size).toBe(4);
-    expect(calls("entrance").map((c) => [c.owner, c.own])).toEqual([["0", true], ["1", false]]);
-    expect(calls("entrance", "0")[0].pieces.length).toBeLessThanOrEqual(9);
+    await advance(3000);
+    expect(anims.filter(isArrive)).toHaveLength(0);
+    expect(calls("entrance")).toHaveLength(0);
+  });
+
+  it("a person who sits down at a table already shown: their companion comes in its own way, a store character with its entrance at another seat's share", async () => {
+    await render(alone());
+    await advance(1000);
+    await render(paid());
+    expect(arrive(0)).toHaveLength(0);
+    for (const seat of [1, 2, 3]) expect(arrive(seat), `seat ${seat}`).toHaveLength(1);
+    expect(new Set([1, 2, 3].map((s) => text(arrive(s)[0]))).size).toBe(3);
+    expect(calls("entrance").map((c) => [c.owner, c.own])).toEqual([["1", false]]);
     expect(calls("entrance", "1")[0].pieces.length).toBeLessThanOrEqual(4);
     // once: a later frame plays none
     await render(paid({ turn: 2 }));
-    expect([0, 1, 2, 3].flatMap(arrive)).toHaveLength(4);
+    expect([1, 2, 3].flatMap(arrive)).toHaveLength(3);
   });
 
-  it("a figure first drawn while the hand is dealt comes in with no move and no pieces, then or later", async () => {
+  it("a figure first drawn while the hand is dealt is simply there: no move and no pieces, then or later", async () => {
+    await render(alone());
+    await advance(1000);
     await render(paid({ phase: "deal" } as Partial<GameState>));
     expect(anims.filter(isArrive)).toHaveLength(0);
     expect(calls("entrance")).toHaveLength(0);

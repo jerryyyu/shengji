@@ -35,9 +35,10 @@ export interface StageRefs {
 
 /** The stage's walks and pieces for `kind` drawn `size` px wide, in `pose`
  *  (`poseKey` tells one play of a pose from the next), `paused` while off
- *  screen. `onFelt` is the felt's tap; `big()` is Big play's burst;
+ *  screen; `arrives` when it was selected onto a page already shown (the
+ *  page's first figure is drawn settled). `onFelt` is the felt's tap; `big()` is Big play's burst;
  *  `material` says whether its two canvases are drawn. */
-export function useStageFlair(kind: string, colour: string, size: number, pose: Pose, poseKey: number, paused: boolean, refs: StageRefs) {
+export function useStageFlair(kind: string, colour: string, size: number, pose: Pose, poseKey: number, paused: boolean, refs: StageRefs, arrives: boolean) {
   const material = materialOf(kind);
   const [box, setBox] = useState<{ w: number; h: number } | undefined>(undefined);
   useLayoutEffect(() => {
@@ -118,7 +119,7 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
     if (entered.current || (material && !layer)) return;
     entered.current = true;
     const el = refs.move.current;
-    if (!el || typeof el.animate !== "function" || still()) return;
+    if (!arrives || !el || typeof el.animate !== "function" || still()) return;
     const beat: Beat | undefined = (ARRIVES as Record<string, readonly Beat[] | undefined>)[kind]?.[0];
     const a = beat ? el.animate(beat.frames, { duration: beat.ms, easing: beat.easing }) : null;
     if (material) emit("entrance", (s) => entrancePieces(material, s, 8));

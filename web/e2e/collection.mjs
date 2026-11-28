@@ -302,6 +302,8 @@ try {
       });
       await rep.check(`${device} the Lamb's trail is drawn under the figure and its burst over it`,
         drawn.back === 0 && drawn.figures > drawn.back && drawn.front > drawn.figures ? null : JSON.stringify(drawn), page);
+      // a wide layout does not scroll back up to the stage, and a stage out of view rests
+      await page.evaluate(() => { document.querySelector(".coll-page").scrollTop = 0; });
       // it strolls by itself within a few seconds, and pieces are painted behind it as it goes
       const strolled = await page.evaluate(() => new Promise((done) => {
         const walk = document.querySelector(".char-stage .char-walk"), back = document.querySelector('.char-stage canvas[data-depth="back"]');

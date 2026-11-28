@@ -686,8 +686,9 @@ keeps the table on screen.
   the Chick takes quick little steps, the Sparrow flutter-hops, the Lamb prances, the Panda waddles: a whole number of
   steps fitted to the walk, so the pace never changes; a quick step aside keeps the plain hop), a habit of its own as
   one of its fidgets (an engine rumble, a deep breath, a peck, a head tilt, a wool shake, a slow rock; the sway where
-  the habit has no room), and its own way in, once, as it is first drawn at a table (the fullest that stays clear
-  where it stands; never while the hand is dealt, where it is simply there). Each is a transform of a box the figure
+  the habit has no room), and its own way in, once, as it is drawn onto a table already shown, its person sitting down (the fullest that
+  stays clear where it stands; a table opened or reconnected into draws everyone settled, and a figure first drawn
+  while the hand is dealt is simply there). Each is a transform of a box the figure
   already has. **A store character** adds its material on top, and nothing else changes for it: the turn, the watch,
   the droop, the step aside and the pace are the same for everyone, so a bought figure tells nobody more about the
   game. Its pieces are its own (the Lamb's blossom petals, the Panda's bamboo leaves, each colour's own tints), and no
@@ -715,7 +716,7 @@ keeps the table on screen.
   further and tug the stalk. A shared special plays the same on every screen.
 - **The Collection shows it with no words**: a store character's tile, for sale or owned, wears a foil edge with a
   slow sheen (still under Reduce Motion), and the stage plays the layer live. Every companion comes onto the stage its
-  own way as it is selected, and a tap on the stage's felt walks it there in its own gait (a tap on the figure is
+  own way as it is selected (the page's first figure is drawn settled), and a tap on the stage's felt walks it there in its own gait (a tap on the figure is
   still its special). A store character also strolls across the stage by itself every 6.5 s while it stands at rest
   on screen, so its trail shows, with its cue between strolls, its burst on Big play and its accent on its special.
   No string, control or surface is added.

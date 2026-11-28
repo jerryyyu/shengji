@@ -203,7 +203,9 @@ export function UseButton({ ownership, onUse, price }: {
  *  row of chips under it plays Hop, Cheer, Big play or the special once,
  *  then the cycle resumes. Under Reduce Motion it stands still, and a tap or
  *  a chip shows that pose drawn still. */
-export function Stage({ kind, colour, size, label, cheer = 0, moves = false }: {
+export function Stage({ kind, colour, size, label, cheer = 0, moves = false, arrives = false }: {
+  /** It was selected onto a page already shown, so it comes in its own way; the page's first figure is drawn settled. */
+  arrives?: boolean;
   kind: DrawnKind; colour: DrawnColour; size: number; label: string;
   /** The row of move chips under the felt, each playing its move once before the cycle resumes. */
   moves?: boolean;
@@ -221,7 +223,7 @@ export function Stage({ kind, colour, size, label, cheer = 0, moves = false }: {
   const live = useLivePose(kind, PAGE_CYCLE, felt);
   const { play } = live;
   const flair = useStageFlair(kind, colour, size, live.pose, live.key, live.paused,
-    { felt, walk: walkBox, face: faceBox, move: moveBox, back: flairBack, front: flairFront });
+    { felt, walk: walkBox, face: faceBox, move: moveBox, back: flairBack, front: flairFront }, arrives);
   useEffect(() => () => beat.current?.stop(), []);
   // the table's big play: the box jumps while the figure holds the cheer
   const playBeat = (b: StageBeat) => {
@@ -293,7 +295,9 @@ export function stageSize(phone: boolean, short: boolean): number {
  *  store character not owned `price` (Buy, Sign in to buy). A tap on a colour
  *  only shows it; the button puts it in use. "New" marks the colours in `fresh`. */
 export default function CharacterPage({ kind, shown, entries, inUse, user, phone, short = false, strip, fresh, onShow, onUse, price,
-  status = "", cheer = 0 }: {
+  status = "", cheer = 0, arrives = false }: {
+  /** It was selected onto a page already shown (`Stage`). */
+  arrives?: boolean;
   kind: CompanionKind; shown: string; entries: readonly LookEntry[]; inUse: string; user: AuthUser | null; phone: boolean;
   /** A short screen (`SHORT_SCREEN`): a smaller stage, so its colours and button fit above the tab bar. */
   short?: boolean;
@@ -308,7 +312,7 @@ export default function CharacterPage({ kind, shown, entries, inUse, user, phone
   const { colour } = parseLook(entry.id);
   return (
     <div className="char-page">
-      <Stage kind={kind} colour={colour} size={stageSize(phone, short)} label={lookName(t, entry.id)} cheer={cheer} moves />
+      <Stage kind={kind} colour={colour} size={stageSize(phone, short)} label={lookName(t, entry.id)} cheer={cheer} moves arrives={arrives} />
       {strip}
       <Swatches entries={entries} shown={entry.id} inUse={inUse} user={user} size={56} className="char-swatches" fresh={fresh} onPick={onShow} />
       <p className="coll-status" role="status">

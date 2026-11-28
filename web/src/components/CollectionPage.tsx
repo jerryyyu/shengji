@@ -291,14 +291,14 @@ export default function CollectionPage() {
     const colour = isSoon(selected) ? soonColour(selected) : COMPANIONS[selected][0];
     stage = (
       <div className="char-page">
-        <Stage key={selected} kind={selected} colour={colour} size={stageSize(phone, short)} label={kindName(t, selected)} />
+        <Stage key={selected} kind={selected} colour={colour} size={stageSize(phone, short)} label={kindName(t, selected)} arrives={swaps > 0} />
         <p className="coll-status" role="status">{t("home.comingSoon")}</p>
       </div>
     );
   } else if (isSoon(selected)) {
     stage = (
       <div className="char-page">
-        <Stage key={selected} kind={selected} colour={soonColour(selected)} size={stageSize(phone, short)} label={kindName(t, selected)} />
+        <Stage key={selected} kind={selected} colour={soonColour(selected)} size={stageSize(phone, short)} label={kindName(t, selected)} arrives={swaps > 0} />
         <p className="coll-status" role="status">{kindName(t, selected)}</p>
         <div className="coll-use-row">
           <button type="button" className="btn big coll-use done" disabled>{t("home.soon")}</button>
@@ -315,7 +315,7 @@ export default function CollectionPage() {
     stage = (
       <CharacterPage key={kind} kind={kind} shown={shown} entries={entriesOf(kind)} inUse={inUse} user={user} phone={phone} short={short}
                      fresh={fresh} onShow={show} onUse={use} price={price}
-                     status={bought && bought.product === product ? bought.text : ""} cheer={cheer} />
+                     status={bought && bought.product === product ? bought.text : ""} cheer={cheer} arrives={swaps > 0} />
     );
   }
 

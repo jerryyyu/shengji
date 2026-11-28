@@ -77,7 +77,10 @@ export interface Material {
   /** Each colourway's two tints; the first is drawn for a colour not listed. */
   tints: Record<string, readonly [string, string]>;
   mark: "blossom" | "ripple";
+  /** The mark's ink for a colour not listed in `markInks`. */
   markInk: string;
+  /** Each colourway's mark ink, so the mark follows the colourway as the trail does. */
+  markInks?: Record<string, string>;
   /** The idle cue: a glint at a point of the figure (shares of its box), or its mark under its feet. */
   cue: { type: "spark"; at: readonly [number, number]; ink: string } | { type: "mark" };
   /** The special's accent: where it starts (shares of the figure's box), the way it opens (deg, 0 the way it faces), its spread, and when (ms). */
@@ -85,11 +88,11 @@ export interface Material {
 }
 /** The store characters' materials. A free companion has none. */
 export const MATERIALS: Partial<Record<CompanionKind, Material>> = {
-  lamb: { shape: "petal", size: [11, 8], mark: "blossom", markInk: "#f2c14e", cue: { type: "spark", at: [0.83, 0.13], ink: "#fff3c0" },
-    tints: { newyear: ["#ffb7c5", "#ff8fa8"], jade: ["#f1fbf3", "#bfe3cf"], ink: ["#f6f4ee", "#c9ccd1"], lacquer: ["#ffa093", "#e4504a"] },
+  lamb: { shape: "petal", size: [11, 8], mark: "blossom", markInk: "#f2c14e", markInks: { newyear: "#f2c14e", lacquer: "#f2c14e", jade: "#5cc28f", ink: "#cfd4da" }, cue: { type: "spark", at: [0.83, 0.13], ink: "#fff3c0" },
+    tints: { newyear: ["#ffb7c5", "#ff8fa8"], jade: ["#f1fbf3", "#bfe3cf"], ink: ["#f4f2ec", "#5b6168"], lacquer: ["#ffa093", "#e4504a"] },
     accent: { at: [0.97, 0.5], deg: -25, spread: 80, n: 3, times: [690] } },
-  panda: { shape: "leaf", size: [15, 6], mark: "ripple", markInk: "#0c1712", cue: { type: "mark" },
-    tints: { classic: ["#a3e38f", "#4fa862"], russet: ["#a3e38f", "#4fa862"], ink: ["#b9c4b8", "#6f8273"], gilded: ["#bfeed9", "#4fae93"] },
+  panda: { shape: "leaf", size: [15, 6], mark: "ripple", markInk: "#0c1712", markInks: { classic: "#164a2c", russet: "#164a2c", ink: "#232f2c", gilded: "#0f4a3c" }, cue: { type: "mark" },
+    tints: { classic: ["#a3e38f", "#4fa862"], russet: ["#a3e38f", "#4fa862"], ink: ["#d6ddd5", "#4d5c52"], gilded: ["#bfeed9", "#4fae93"] },
     accent: { at: [1, 0.58], deg: 20, spread: 0, n: 1, times: [780, 1200] } },
 };
 export const materialOf = (kind: string): Material | null => (MATERIALS as Record<string, Material | undefined>)[kind] ?? null;
@@ -116,6 +119,8 @@ export const grow = (px: number) => Math.min(2.4, Math.max(1, px / 52));
 const flyOf = (s: Stance) => s.fly ?? s.px;
 const tintOf = (m: Material, s: Stance, i: number): readonly [string, string] =>
   (s.gold && i % 3 === 2 ? GOLD : m.tints[s.colour] ?? Object.values(m.tints)[0]);
+/** The ink a figure's mark is drawn in: its colourway's, or the material's own for a colour not listed. */
+export const markInkOf = (m: Material, colour: string): string => m.markInks?.[colour] ?? m.markInk;
 
 /** The trail's pieces as one hop lands, walking along `u` (a unit vector):
  *  `n` of them, each starting and landing behind the figure's middle along
@@ -141,12 +146,12 @@ export function trailPieces(m: Material, s: Stance, u: Spot, n: number, first: n
  *  blossom ring opens and turns behind it; the Panda's ink ripple spreads
  *  flat under its feet, twice. */
 export function markPieces(m: Material, s: Stance, delay: number, scale = 1, twice = true): Piece[] {
-  const w = s.px * 1.2 * scale;
+  const w = s.px * 1.2 * scale, ink = markInkOf(m, s.colour);
   if (m.mark === "blossom") {
     const y = s.y - s.px * 0.45;
-    return [{ shape: "blossom", depth: "back", w, h: w, c1: m.markInk, c2: m.markInk, ms: 750, delay, keys: [key(0, s.x, y, 0, 0.6, 0.85), key(1, s.x, y, 70, 1.5, 0)] }];
+    return [{ shape: "blossom", depth: "back", w, h: w, c1: ink, c2: ink, ms: 750, delay, keys: [key(0, s.x, y, 0, 0.6, 0.85), key(1, s.x, y, 70, 1.5, 0)] }];
   }
-  const ring = (d: number): Piece => ({ shape: "ripple", depth: "back", w, h: w, c1: m.markInk, c2: m.markInk, ms: 900, delay: d,
+  const ring = (d: number): Piece => ({ shape: "ripple", depth: "back", w, h: w, c1: ink, c2: ink, ms: 900, delay: d,
     keys: [key(0, s.x, s.y - 2, 0, 0.3, 0.6, 0.11), key(1, s.x, s.y - 2, 0, 1.7, 0, 0.62)] });
   return twice ? [ring(delay), ring(delay + 220)] : [ring(delay)];
 }
@@ -200,7 +205,7 @@ export function entrancePieces(m: Material, s: Stance, n: number, rand: () => nu
   if (m.mark === "ripple") {
     const blots: readonly (readonly [number, number, number])[] = [[0, 0, 0], [-0.3, 0.12, 110], [0.28, -0.1, 200]];
     for (const [dx, dy, delay] of blots.slice(0, Math.min(3, Math.max(1, Math.round(n / 3))))) {
-      out.push({ shape: "ink", depth: "back", w: s.px * 1.2, h: s.px * 1.2, c1: m.markInk, c2: m.markInk, ms: 760, delay,
+      out.push({ shape: "ink", depth: "back", w: s.px * 1.2, h: s.px * 1.2, c1: markInkOf(m, s.colour), c2: markInkOf(m, s.colour), ms: 760, delay,
         keys: [key(0, cx + dx * s.px, cy + dy * s.px, 0, 0.15, 0.55), key(1, cx + dx * s.px, cy + dy * s.px, 0, 1.25, 0)] });
     }
     return [...out, ...burstPieces(m, s, Math.max(0, n - out.length - 2), 420, rand).filter((p) => p.shape !== "ripple")];

@@ -2,7 +2,7 @@
 // a store character's material (its pieces, where they may go, and the
 // layer that paints and counts them).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ARRIVES, GAITS, GOLD, LUNGERS, MATERIALS, PLAIN_GAIT, QUIRKS, accentPieces, burstPieces, cuePieces, droopPiece, entrancePieces, gaitFrames, materialOf,
+import { ARRIVES, GAITS, GOLD, LUNGERS, MATERIALS, PLAIN_GAIT, QUIRKS, accentPieces, burstPieces, cuePieces, droopPiece, entrancePieces, gaitFrames, markInkOf, materialOf,
   restPieces, showerPieces, trailPieces, walkAt } from "./flair";
 import type { Piece, Stance } from "./flair";
 import { CAPS, FlairLayer, MINIMAL_SHAPES, RECOVER_WINDOWS, SLOW_HALF, SLOW_MINIMAL, TIER_WINDOW, TierSampler, stateAt } from "./flairLayer";
@@ -61,6 +61,33 @@ describe("a store character's material", () => {
     for (const k of FREE_KINDS) expect(materialOf(k), k).toBeNull();
     expect(Object.keys(MATERIALS).sort()).toEqual([...paid].sort());
     for (const k of LUNGERS) expect(paid).toContain(k);
+  });
+
+  it("a mark is drawn in its colourway's ink, and in the material's own for a colour not listed", () => {
+    const MARKS = new Set(["blossom", "ripple", "ink"]);
+    const marksOf = (k: string, colour: string) => {
+      const m = materialOf(k)!, s = stance({ colour });
+      return [...cuePieces(m, s), ...burstPieces(m, s, 7, 0, seeded()), ...showerPieces(m, s, 4, seeded()), ...entrancePieces(m, s, 8, seeded())]
+        .filter((p) => MARKS.has(p.shape));
+    };
+    for (const k of paid) {
+      const m = materialOf(k)!;
+      for (const colour of COMPANIONS[k]) {
+        const ink = m.markInks?.[colour];
+        expect(ink, `${k}/${colour}`).toMatch(/^#[0-9a-f]{6}$/);
+        const pieces = marksOf(k, colour);
+        expect(pieces.length, `${k}/${colour}`).toBeGreaterThan(0);
+        for (const p of pieces) expect([p.c1, p.c2], `${k}/${colour}/${p.shape}`).toEqual([ink, ink]);
+      }
+      for (const p of marksOf(k, "unknown")) expect([p.c1, p.c2], k).toEqual([m.markInk, m.markInk]);
+    }
+    expect(markInkOf(materialOf("panda")!, "classic")).not.toBe("#0c1712");
+    expect(markInkOf(materialOf("lamb")!, "jade")).not.toBe(materialOf("lamb")!.markInk);
+  });
+
+  it("the Ink Panda's leaves and the Ink Lamb's petals are a pale piece with a dark edge", () => {
+    expect(materialOf("panda")!.tints.ink).toEqual(["#d6ddd5", "#4d5c52"]);
+    expect(materialOf("lamb")!.tints.ink).toEqual(["#f4f2ec", "#5b6168"]);
   });
 
   it("no two store characters share a mark or a cue", () => {

@@ -245,10 +245,12 @@ def _room_by_id(table: str | None) -> Any | None:
 def admissible(token: str, epoch: int, table: str, follow: bool, seq: int = 0) -> bool:
     """Whether read ``seq`` of Watch session ``epoch`` may count ``token``
     at ``table``: never from a session older than one admitted, nor from a
-    session that has left, nor a read of the session sent before the one
-    that admitted it (a pick overtaken by a later Next); and a follow never
-    moves the token, so one of a table the token has since moved from (Next,
-    its answer still on its way) is answered without counting there."""
+    session that has left. Within the session the read numbered highest
+    wins, a pick or a follow alike: the client sends one read at a time, so
+    its latest read is of the table it draws (a follow after a Next whose
+    answer was lost takes the token back), and a read sent before the one
+    that admitted it counts nowhere. Reads that carry no number (``seq`` 0
+    on both) keep the older rule: a follow never moves the token."""
     early = _early.get(token)
     if early is not None and epoch <= early[0]:
         return False
@@ -257,6 +259,8 @@ def admissible(token: str, epoch: int, table: str, follow: bool, seq: int = 0) -
         return True
     if epoch < lease.epoch or lease.left or seq < lease.seq:
         return False
+    if seq > lease.seq:
+        return True
     return not follow or lease.table in (None, table)
 
 

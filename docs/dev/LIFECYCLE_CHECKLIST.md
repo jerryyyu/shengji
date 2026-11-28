@@ -83,9 +83,11 @@ link never detaches a newer one.
 - `web/src/nearbyChaosPage.test.ts`: the seed-30050 replays (#1770), `KeptToken`.
 - A watcher's kept token (`test_spectate.py`): a leave or read from an older
   Watch session changes nothing
-  (`test_a_leave_from_an_older_session_changes_nothing`), a follow of the
-  table Next moved from counts nowhere
-  (`test_a_follow_of_the_table_next_moved_from_counts_nowhere`), one token
+  (`test_a_leave_from_an_older_session_changes_nothing`), a follow numbered
+  below the Next that moved the token counts nowhere
+  (`test_a_follow_numbered_below_the_next_that_moved_the_token_counts_nowhere`), a
+  follow after a Next whose answer was lost takes the token back
+  (`test_a_follow_after_a_next_whose_answer_was_lost_takes_the_token_back`), one token
   counts at one table, and a rate-limited reopen with a late first answer
   counts nothing (`test_a_late_answer_after_leave_and_a_rate_limited_reopen_count_nothing`;
   in the browser, `e2e/watch.mjs` `watch-count-*`); a read finishing after a

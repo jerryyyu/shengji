@@ -54,16 +54,17 @@ function doc(k) {
 
 /** The server's watcher leases (spectate.py `admissible`, `admit`,
  *  `release`) for the stubbed feeds: a token counts at one table at most, a
- *  follow never moves it, a read or leave of an older Watch session than one
- *  admitted changes nothing, and nor does a read of the session sent before
- *  the one that counted it (`q`). */
+ *  read or leave of an older Watch session than one admitted changes
+ *  nothing, and within the session the read numbered highest (`q`) wins, a
+ *  pick or a follow alike. */
 function leases() {
   const at = new Map();
   return {
     read(token, epoch, table, follow, seq = 0) {
       const l = at.get(token);
       const ok = !l || epoch > l.epoch
-        || (epoch === l.epoch && !l.left && seq >= l.seq && (!follow || l.table === null || l.table === table));
+        || (epoch === l.epoch && !l.left
+            && (seq > l.seq || (seq === l.seq && (!follow || l.table === null || l.table === table))));
       if (ok) at.set(token, { table, epoch, seq, left: false });
       return ok;
     },

@@ -377,20 +377,37 @@ def test_a_leave_from_an_older_session_changes_nothing(feed):
     assert _counts(t) == [0]
 
 
-def test_a_follow_of_the_table_next_moved_from_counts_nowhere(feed):
+def test_a_follow_numbered_below_the_next_that_moved_the_token_counts_nowhere(feed):
     srv, spectate, client = feed
     a, b = _live(srv, "LV1", "aa"), _live(srv, "LV2", "bb")
-    first = _watch(client, mode="ranked", w=W, e=1).json()["table"]
+    first = _watch(client, mode="ranked", w=W, e=1, q=1).json()["table"]
     other = "aa" if first == "bb" else "bb"
-    # Next lands on the other table while the screen, still drawing the
-    # first, follows it once more
-    assert _watch(client, mode="ranked", skip=first, w=W, e=1).json()["table"] == other
-    follow = client.get(f"/api/watch/{first}", params={"w": W, "e": 1, "after": 0})
+    # Next (read 3) lands on the other table; a follow of the first sent
+    # before it (read 2) reaches the server after it
+    assert _watch(client, mode="ranked", skip=first, w=W, e=1, q=3).json()["table"] == other
+    follow = client.get(f"/api/watch/{first}", params={"w": W, "e": 1, "q": 2, "after": 0})
     assert follow.status_code == 200
     assert _counts(a, b) == ([1, 0] if other == "aa" else [0, 1])
     # the screen closes: nothing counts anywhere
     _leave(client, e=1)
     assert _counts(a, b) == [0, 0]
+
+
+def test_a_follow_after_a_next_whose_answer_was_lost_takes_the_token_back(feed):
+    srv, spectate, client = feed
+    a, b = _live(srv, "LV1", "aa"), _live(srv, "LV2", "bb")
+    first = _watch(client, mode="ranked", w=W, e=1, q=1).json()["table"]
+    other = "aa" if first == "bb" else "bb"
+    # Next (read 2) is admitted at the other table, and its answer never
+    # reaches the screen, which still draws the first and follows it (read 3)
+    _watch(client, mode="ranked", skip=first, w=W, e=1, q=2)
+    assert _counts(a, b) == ([1, 0] if other == "aa" else [0, 1])
+    client.get(f"/api/watch/{first}", params={"w": W, "e": 1, "q": 3, "after": 0})
+    assert _counts(a, b) == ([1, 0] if first == "aa" else [0, 1])
+    # reads without numbers keep the older rule: a follow does not move the token
+    _watch(client, mode="ranked", skip=first, w="u" * 32, e=1)
+    client.get(f"/api/watch/{first}", params={"w": "u" * 32, "e": 1, "after": 0})
+    assert "u" * 32 in (a if other == "aa" else b).room.watch.watchers
 
 
 def test_picks_overtaken_by_later_nexts_count_nowhere_whatever_order_they_settle_in(feed, monkeypatch):

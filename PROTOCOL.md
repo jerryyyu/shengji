@@ -797,9 +797,11 @@ account may watch any live table's last finished round.
   admitted, from a session that has left, or numbered below the read that
   counted the token (a pick overtaken by a later Next), is answered and
   counted nowhere;
-  a follow never moves the token, so a follow of a table the token has since
-  moved from (a Next whose answer is on its way) is answered and not counted
-  there. Each admission acts on the token only while it still holds it: a
+  within the session the read numbered highest wins, a pick or a follow
+  alike (the client sends one read at a time, so its latest read is of the
+  table it draws, and a follow after a Next whose answer was lost takes the
+  token back); reads without a number keep the older rule that a follow
+  never moves the token. Each admission acts on the token only while it still holds it: a
   read that finishes after a newer one was admitted neither clears nor
   announces it. A full table feeds only its watchers, whether or not a read
   may renew a lease. A table counts at most 50 watchers, each until 90 s pass without a

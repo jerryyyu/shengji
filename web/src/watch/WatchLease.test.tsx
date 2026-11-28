@@ -1,10 +1,13 @@
 // Where the server counts the watcher against what the watch screen draws.
 // The stubbed feed keeps the server's lease rules (spectate.py `admissible`,
 // `admit`, `release`) and answers each read only when the test says, with a
-// 200 or a 429, counting the watcher as it answers. After every sequence
-// settles, the table drawn is the one table that counts the watcher, and no
-// two reads are ever on their way at once.
-import { act } from "react";
+// 200 or a 429, or answering but losing the answer on its way back, counting
+// the watcher as it answers. After every sequence settles, the table drawn is
+// the one table that counts the watcher, and no two reads of one session are
+// ever on their way at once. Every scenario runs plain and under StrictMode,
+// as the app's root renders it (its first mount is set up, cleaned up and
+// set up again).
+import { StrictMode, act } from "react";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -38,7 +41,8 @@ class Leases {
   left = false;
   read(epoch: number, seq: number, table: string, follow: boolean): boolean {
     const ok = epoch > this.epoch
-      || (epoch === this.epoch && !this.left && seq >= this.seq && (!follow || this.table === null || this.table === table));
+      || (epoch === this.epoch && !this.left
+          && (seq > this.seq || (seq === this.seq && (!follow || this.table === null || this.table === table))));
     if (ok) Object.assign(this, { table, epoch, seq, left: false });
     return ok;
   }
@@ -47,7 +51,8 @@ class Leases {
   }
 }
 
-interface Pending { url: string; answer: (status: 200 | 429) => void }
+type Outcome = 200 | 429 | "lost";
+interface Pending { url: string; answer: (status: Outcome) => void }
 
 let L: Leases;
 let pending: Pending[];
@@ -66,9 +71,11 @@ beforeEach(() => {
     L.leave(Number(new URL(url, "http://x").searchParams.get("e")));
     return true;
   } });
-  vi.stubGlobal("fetch", vi.fn((url: string) => new Promise<Response>((resolve) => {
-    const answer = (status: 200 | 429) => {
-      if (status === 429) { resolve(new Response("{}", { status: 429 })); return; }
+  vi.stubGlobal("fetch", vi.fn((url: string) => new Promise<Response>((resolveOk, reject) => {
+    const answer = (status: Outcome) => {
+      if (status === 429) { resolveOk(new Response("{}", { status: 429 })); return; }
+      // "lost": the server counts and answers, and the answer never arrives
+      const resolve = status === "lost" ? () => reject(new TypeError("network")) : resolveOk;
       // counted as the server answers: a read held on its way arrives late
       const u = new URL(url, "http://x");
       const w = u.searchParams.get("w")!, e = Number(u.searchParams.get("e")), q = Number(u.searchParams.get("q"));
@@ -84,7 +91,8 @@ beforeEach(() => {
       }
     };
     pending.push({ url, answer });
-    most = Math.max(most, pending.length);
+    const e = new URL(url, "http://x").searchParams.get("e");
+    most = Math.max(most, pending.filter((p) => new URL(p.url, "http://x").searchParams.get("e") === e).length);
   })));
 });
 afterEach(() => {
@@ -95,7 +103,7 @@ afterEach(() => {
 });
 
 const flush = async () => { for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve(); }); };
-async function answer(status: 200 | 429 = 200, which: "oldest" | "newest" = "oldest") {
+async function answer(status: Outcome = 200, which: "oldest" | "newest" = "oldest") {
   const p = which === "oldest" ? pending.shift() : pending.pop();
   if (!p) return false;
   await act(async () => { p.answer(status); });
@@ -111,7 +119,7 @@ async function mount() {
   document.body.appendChild(host);
   const root = createRoot(host);
   roots.push({ root, host });
-  await act(async () => { root.render(<WatchScreen mode="ranked" />); });
+  await act(async () => { root.render(strict ? <StrictMode><WatchScreen mode="ranked" /></StrictMode> : <WatchScreen mode="ranked" />); });
   await flush();
   return host;
 }
@@ -152,13 +160,39 @@ function expectDrawnHoldsTheLease(h: HTMLElement | null) {
 }
 async function opened() {
   const h = await mount();
-  await answer(200);
+  while (!drawn(h) && await answer(200)) { /* a StrictMode first mount's pick, then the live one */ }
   expect(drawn(h)).toBe("aaa111");
   await act(async () => { btn(h, "Pause")!.click(); });
   return h;
 }
 
-describe("the table drawn is the table counted", () => {
+let strict = false;
+
+describe.each([false, true])("the table drawn is the table counted (StrictMode %s)", (inStrict) => {
+  beforeEach(() => { strict = inStrict; });
+
+  it("mounts, and in StrictMode cleans up and mounts again: a live table drawn and counted", async () => {
+    const h = await mount();
+    await settle();
+    expect(drawn(h)).toBe("aaa111");
+    expect(h.querySelector(".watch-tabs")).not.toBeNull();
+    await wait(FOLLOW_MS);
+    await settle();
+    expectDrawnHoldsTheLease(h);
+  });
+
+  it("a Next admitted twice whose answers are lost: the table on screen takes the count back", async () => {
+    const h = await opened();
+    await next(h);
+    await answer("lost");                  // bbb222 counted, its answer lost
+    await wait(RETRY_MS);
+    await answer("lost");                  // its retry too
+    expect(L.table).toBe("bbb222");
+    await settle();
+    expect(drawn(h)).toBe("aaa111");
+    expectDrawnHoldsTheLease(h);
+  });
+
   it("a follow due while Next is on its way waits: the pick's table is drawn and counted", async () => {
     const h = await opened();
     await next(h);                         // the pick is on its way
@@ -212,12 +246,12 @@ describe("the table drawn is the table counted", () => {
   it("closed while its first pick is held, reopened into two refusals: nothing counts", async () => {
     await mount();
     unmount();
-    const h = await mount();               // its pick waits for nothing: the first screen's is its own
-    const firstScreens = pending.shift()!;
-    await answer(429);
+    const firstScreens = pending.splice(0);
+    const h = await mount();
+    while (await answer(429)) { /* its pick */ }
     await wait(RETRY_MS);
-    await answer(429);                     // the toast; the screen closes
-    await act(async () => { firstScreens.answer(200); });
+    while (await answer(429)) { /* and its retry: the toast; the screen closes */ }
+    for (const p of firstScreens) await act(async () => { p.answer(200); });
     await flush();
     unmount();
     await settle();
@@ -228,14 +262,14 @@ describe("the table drawn is the table counted", () => {
   it("closed while its first pick is held, reopened at the same table: it counts once, there", async () => {
     await mount();
     unmount();
+    const firstScreens = pending.splice(0);
     const h = await mount();
-    const firstScreens = pending.shift()!;
-    await answer(200);
-    await act(async () => { firstScreens.answer(200); });
+    await settle();
+    for (const p of firstScreens) await act(async () => { p.answer(200); });
     await flush();
     await settle();
     expect(drawn(h)).toBe("aaa111");
-    expect(L.table).toBe("aaa111");
+    expectDrawnHoldsTheLease(h);
   });
 
   it("any interleaving of Next, the follow timer, answers and refusals settles on the table drawn", async () => {
@@ -249,11 +283,12 @@ describe("the table drawn is the table counted", () => {
       forgetWatcherToken();
       const h = await opened();
       for (let step = 0; step < 24; step++) {
-        const a = rand(5);
+        const a = rand(6);
         if (a === 0) await next(h);
         else if (a === 1) await wait(rand(FOLLOW_MS + 1));
         else if (a === 2) await answer(200);
         else if (a === 3) await answer(429);
+        else if (a === 4) await answer("lost");
         else await wait(RETRY_MS);
         expect(most, `seed ${seed} step ${step}`).toBeLessThanOrEqual(1);
       }

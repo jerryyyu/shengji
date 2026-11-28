@@ -10,11 +10,6 @@
     "why": "QA1-10: a long declarer name runs the declared tag off the left edge (the phone table at 667 and 700 px wide)"
   },
   {
-    "suite": "matrix",
-    "match": "desktop_.*\"pair\":\"(oppName\\+trickCards|oppCards\\+trickCards|oppCards\\+trickTag|declareTag\\+oppCards)\"",
-    "why": "QA1-11: desktop: a 20-character name's pill and count reach the side trick slot"
-  },
-  {
     "suite": "client",
     "match": "chat-phone-port-safari: panel, field, Send and Close above the keyboard",
     "why": "QA1-5: the turned table's chat panel stays behind Mobile Safari's keyboard"

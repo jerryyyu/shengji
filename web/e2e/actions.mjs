@@ -44,11 +44,24 @@ const STATES = [
   ["bury_other", base({ phase: "bury", banker: 1, turn: 1, trick: null, attacker_points: 0 }, { banker: 1 })],
 ].filter(([id]) => !onlyState || onlyState.test(id));
 
+/** Whether your row is the phone's declare row scrolled sideways: the phone, the deal or the declare
+ *  window, horizontal scrolling on (overflow-x auto or scroll) and the controls really wider than the
+ *  row. Only then may a declare control sit past a side edge until scrolled. One predicate for the row
+ *  checks and the lint, so neither excuses a control the player cannot scroll to. */
+function phoneDeclareRowScrolls(page) {
+  return page.evaluate(() => {
+    const bar = document.querySelector(".you-row .action-bar");
+    if (!bar || !document.documentElement.classList.contains("phone-landscape")) return false;
+    if (!document.querySelector(".table-screen.phase-deal, .table-screen.phase-declare")) return false;
+    return ["auto", "scroll"].includes(getComputedStyle(bar).overflowX) && bar.scrollWidth > bar.clientWidth + 1;
+  });
+}
+
 /** The action's centre against the table's: Play or Bury (Clear, the points and the
  *  timer stand beside it), otherwise the whole bar; and the row's parts clear of the
  *  hand's cards, the seats and the trick. */
-function rowChecks(page) {
-  return page.evaluate(() => {
+function rowChecks(page, scrolls) {
+  return page.evaluate((scrolls) => {
     const out = [];
     const shown = (el) => {
       if (!el) return false;
@@ -75,7 +88,9 @@ function rowChecks(page) {
       const l = Math.min(b.left, ...rs.map((r) => r.left)), rr = Math.max(b.right, ...rs.map((r) => r.right));
       anchor = { left: l, right: rr, width: rr - l };
     }
-    if (anchor) {
+    // the phone's declare row scrolled sideways ("safe center") starts at its left edge, its far controls
+    // off the screen until scrolled: only centring and initial visibility are relaxed then
+    if (anchor && !scrolls) {
       const dx = anchor.left + anchor.width / 2 - mid;
       if (Math.abs(dx) > 8) out.push(`the action's centre is ${Math.round(dx)}px off the table's centre (${Math.round(anchor.left)}..${Math.round(anchor.right)} vs ${Math.round(mid)})`);
     }
@@ -83,7 +98,9 @@ function rowChecks(page) {
     for (const p of parts) {
       if (!p.matches(".btn")) continue;
       const r = p.getBoundingClientRect();
-      if (r.left < 0 || r.right > innerWidth || r.top < 0 || r.bottom > innerHeight) { out.push(`"${p.textContent.trim()}" leaves the screen (${Math.round(r.left)}..${Math.round(r.right)})`); continue; }
+      const off = r.left < 0 || r.right > innerWidth || r.top < 0 || r.bottom > innerHeight;
+      if (off && scrolls && bar.contains(p) && r.top >= 0 && r.bottom <= innerHeight) continue;
+      if (off) { out.push(`"${p.textContent.trim()}" leaves the screen (${Math.round(r.left)}..${Math.round(r.right)})`); continue; }
       const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
       const takes = hit && (p.contains(hit) || hit.contains(p));
       if (!takes) out.push(`"${p.textContent.trim()}" is covered at its centre by ${hit ? hit.className || hit.tagName : "nothing"}`);
@@ -111,7 +128,7 @@ function rowChecks(page) {
       }
     }
     return out;
-  });
+  }, scrolls);
 }
 
 /** A guest the server shows the Collection to, so the table draws companions. */
@@ -139,7 +156,55 @@ function companionClear(page) {
   });
 }
 
-const devices = ["desktop", "desktop-1440", "desktop-1920", "desktop-1280x700", "ipad", "ipad11-land", "ipad11-port", "ipad-mini-land", "ipad-mini-port", "ipad13-land", "phone-land"]
+/** The row checks and the lint, with one exemption: on the phone's scrolled declare row a declare
+ *  control's sideways cut. */
+async function rowAndLint(page) {
+  const scrolls = await phoneDeclareRowScrolls(page);
+  const linted = (await lint(page)).filter((v) => !(scrolls && v && v.cut && /^action#/.test(v.id) && /^(left|right) \d+(, (left|right) \d+)?$/.test(v.cut)));
+  return [...await rowChecks(page, scrolls), ...linted];
+}
+
+/** A negative control: the last declare option pushed past the screen's right edge, on a row that does
+ *  not scroll, must fail the row checks. Returns a violation when it passes. */
+async function offscreenOptionFails(page) {
+  const moved = await page.evaluate(() => {
+    const el = [...document.querySelectorAll(".you-row .action-bar .btn.gold")].pop();
+    if (!el) return false;
+    el.dataset.qaMoved = el.style.marginLeft;
+    el.style.marginLeft = `${innerWidth * 2}px`;
+    return el.getBoundingClientRect().left > innerWidth;
+  });
+  if (!moved) return ["the negative control could not move the last declare option off the screen"];
+  await sleep(50);
+  const bad = await rowAndLint(page);
+  await page.evaluate(() => {
+    const el = [...document.querySelectorAll(".you-row .action-bar .btn.gold")].pop();
+    el.style.marginLeft = el.dataset.qaMoved ?? ""; delete el.dataset.qaMoved;
+  });
+  return bad.length ? [] : ["an offscreen declare option passed the row checks"];
+}
+
+/** The last declare option (Pass, in the declare window, stands after it), scrolled into view if its row overflows, takes a tap and sends that declaration. */
+async function lastOptionDelivers(page, ids) {
+  const btn = page.locator(".you-row .action-bar .btn.gold").last();
+  if (!(await btn.count())) return ["no declare option is drawn"];
+  await btn.scrollIntoViewIfNeeded();
+  const out = await page.evaluate(() => {
+    const el = [...document.querySelectorAll(".you-row .action-bar .btn.gold")].pop();
+    const r = el.getBoundingClientRect();
+    if (r.left < 0 || r.right > innerWidth) return [`the last declare option is off the screen after scrolling (${Math.round(r.left)}..${Math.round(r.right)})`];
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return hit && (el.contains(hit) || hit.contains(el)) ? [] : [`the last declare option is covered at its centre by ${hit ? hit.className || hit.tagName : "nothing"}`];
+  });
+  if (out.length) return out;
+  const n = await page.evaluate(() => window.__fake.sent.length);
+  await btn.click();
+  await sleep(150);
+  const sent = await page.evaluate((k) => window.__fake.sent.slice(k).filter((m) => m.type === "declare").map((m) => m.card_ids), n);
+  return sent.length === 1 && JSON.stringify(sent[0]) === JSON.stringify(ids) ? [] : [`the last declare option sent ${JSON.stringify(sent)}, not ${JSON.stringify(ids)}`];
+}
+
+const devices = ["desktop", "desktop-1440", "desktop-1920", "desktop-1280x700", "ipad", "ipad11-land", "ipad11-port", "ipad-mini-land", "ipad-mini-port", "ipad13-land", "phone-land", "phone-land-se"]
   .filter((d) => !onlyDev || onlyDev.test(d));
 const rep = new Report("actions", { partial: !!(onlyDev || onlyState) });
 const browser = await launch();
@@ -151,8 +216,6 @@ async function runDevice(device) {
       setup: pass === "companions" ? companions : null });
     await page.waitForSelector(".table-screen", { timeout: 10000 });
     for (const [id, frame, act] of STATES) {
-      // the phone's declare row scrolls sideways when it is wider than the screen
-      if (id === "declare_ten" && /^phone-/.test(device)) continue;
       // a clean slate: the last state's choice and hint go with a frame from another phase
       await push(page, base({ ...dealt }, { banker: null }));
       await sleep(60);
@@ -160,8 +223,10 @@ async function runDevice(device) {
       await sleep(250);
       if (act) { await act(page); await sleep(250); }
       const name = `${device}_${pass === "off" ? "" : pass === "on" ? "coach_" : "companions_"}${id}`;
-      await rep.check(name, [...await rowChecks(page), ...await lint(page), ...(pass === "companions" ? await companionClear(page) : [])], page);
+      await rep.check(name, [...await rowAndLint(page), ...(pass === "companions" ? await companionClear(page) : [])], page);
       if (SHOTS && SHOTS.test(name)) await shot(page, name);
+      if (id === "deal_ten" && device === "desktop") await rep.check(`${name}_offscreen_option_fails`, await offscreenOptionFails(page), page);
+      if (/^(deal|declare)_ten$/.test(id)) await rep.check(`${name}_last_option`, await lastOptionDelivers(page, OPTS10[OPTS10.length - 1]), page);
       if (page.qa.errors.length) await rep.check(`${name}_pageerror`, page.qa.errors.splice(0));
     }
     await page.context().close();

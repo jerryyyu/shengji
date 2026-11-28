@@ -82,9 +82,10 @@ final class Listeners {
     private func onQueue() -> Bool { DispatchQueue.getSpecific(key: key) == 1 }
     func add(_ id: Int) { if !onQueue() { offQueue += 1 }; list.append(id) }
     func remove(_ id: Int) { if !onQueue() { offQueue += 1 }; list.removeAll { $0 == id } }
+    // Only counts: reading `list` here off the queue (the direct race below)
+    // would race its mutation and can crash the check instead of failing it.
     func notify(_ payload: [String: Any]) {
         if !onQueue() { offQueue += 1 }
-        _ = list.count
         if payload["transactionId"] != nil { delivered += 1 }
     }
 }

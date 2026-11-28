@@ -3,10 +3,11 @@
 // Collection stage's walks and at-rest moments, kept calm (a stroll and its
 // habit, a store character's trail and cue; no burst or shower comes by
 // itself). A tap on it hops it, or plays a store character's special; a tap
-// on the felt walks it there, and it walks back to its spot after a moment.
-// It keeps to a strip of the felt's foot that no card ever crosses and no
-// win tag covers, measured off the felt once and again as it is resized,
-// never per frame. Nothing moves while the felt is out of view or the page
+// anywhere on the felt walks it toward the tap, as far as its strip goes,
+// and it walks back to its spot (the strip's middle) after a moment. It
+// keeps to a strip of the felt's foot that no card ever crosses and no win
+// tag covers, long enough to walk along, measured off the felt once and
+// again as it is resized, never per frame. Nothing moves while the felt is out of view or the page
 // is hidden, and under Reduce Motion it stands still. Shown as the table
 // shows companions: with the Collection on and companions not switched off.
 import { useLayoutEffect, useRef, useState } from "react";
@@ -37,33 +38,48 @@ const MOST = 0.15, LEAST = 0.08;
 /** How far over its box a figure reaches as it hops, walks and fidgets, as a share of its size. */
 const REACH = 0.2;
 
-/** The largest figure that fits the felt's foot clear of every box in `away`, and the free span of that strip
- *  nearest your hand on its right (the felt's middle), else the widest; null when none fits. */
+/** How far a figure's middle should be able to walk along its span, in figures: a smaller figure with this
+ *  much room is preferred to a larger one pinned between the hand and the felt's edge, so a tap anywhere on
+ *  the felt visibly walks it toward the tap. */
+const WALK = 1.5;
+
+/** The largest figure that fits the felt's foot clear of every box in `away` with room to walk (`WALK`), else
+ *  the largest that fits at all; the free span of that strip nearest your hand on its right (the felt's
+ *  middle), else the widest; its spot that span's middle. Null when none fits. */
 export function placeFigure(w: number, h: number, away: readonly Box[]): Place | null {
+  let fallback: Place | null = null;
+  for (let size = Math.round(w * MOST); size >= Math.round(w * LEAST); size -= 2) {
+    const p = placeAt(w, h, away, size);
+    if (!p) continue;
+    if (p.range[1] - p.range[0] >= WALK * size) return p;
+    fallback ??= p;
+  }
+  return fallback;
+}
+
+/** Where a figure `size` px wide stands on the felt's foot, or null when it has no room there. */
+function placeAt(w: number, h: number, away: readonly Box[], size: number): Place | null {
   const gap = Math.max(3, Math.round(w * 0.01));
   const foot = Math.max(4, Math.round(h * 0.03));
-  for (let size = Math.round(w * MOST); size >= Math.round(w * LEAST); size -= 2) {
-    const top = h - foot - size * (1 + REACH), bottom = h - foot;
-    if (top < 0) continue;
-    // the figure's middle may not come within half a figure and a gap of a box in its strip
-    const blocked = away.filter((b) => b.y1 > top && b.y0 < bottom)
-      .map((b) => [b.x0 - size / 2 - gap, b.x1 + size / 2 + gap] as const).sort((a, b) => a[0] - b[0]);
-    const free: [number, number][] = [];
-    let from = size / 2 + gap;
-    const end = w - size / 2 - gap;
-    for (const [a, b] of blocked) {
-      if (a > from) free.push([from, Math.min(a, end)]);
-      from = Math.max(from, b);
-    }
-    if (from < end) free.push([from, end]);
-    const fits = free.map(([a, b]) => [Math.ceil(a), Math.floor(b)] as const).filter(([a, b]) => b - a >= size * 0.5);
-    if (!fits.length) continue;
-    const right = fits.filter(([a]) => a >= w / 2);
-    const [lo, hi] = right.length ? right[0] : fits.reduce((p, q) => (q[1] - q[0] > p[1] - p[0] ? q : p));
-    const mid = Math.round(w / 2);
-    return { size, rest: lo - mid, range: [lo - mid, hi - mid] };
+  const top = h - foot - size * (1 + REACH), bottom = h - foot;
+  if (top < 0) return null;
+  // the figure's middle may not come within half a figure and a gap of a box in its strip
+  const blocked = away.filter((b) => b.y1 > top && b.y0 < bottom)
+    .map((b) => [b.x0 - size / 2 - gap, b.x1 + size / 2 + gap] as const).sort((a, b) => a[0] - b[0]);
+  const free: [number, number][] = [];
+  let from = size / 2 + gap;
+  const end = w - size / 2 - gap;
+  for (const [a, b] of blocked) {
+    if (a > from) free.push([from, Math.min(a, end)]);
+    from = Math.max(from, b);
   }
-  return null;
+  if (from < end) free.push([from, end]);
+  const fits = free.map(([a, b]) => [Math.ceil(a), Math.floor(b)] as const).filter(([a, b]) => b - a >= size * 0.5);
+  if (!fits.length) return null;
+  const right = fits.filter(([a]) => a >= w / 2);
+  const [lo, hi] = right.length ? right[0] : fits.reduce((p, q) => (q[1] - q[0] > p[1] - p[0] ? q : p));
+  const mid = Math.round(w / 2);
+  return { size, rest: Math.round((lo + hi) / 2) - mid, range: [lo - mid, hi - mid] };
 }
 
 /** The figure on its felt: `away` measures the felt's boxes to keep clear of (its cards' paths, its tags). */

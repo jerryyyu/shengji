@@ -1,6 +1,7 @@
 // Your own companion on the home felt: drawn as the table draws it, none
 // where the table draws none, a tap on it hops it, a tap on the felt walks
-// it there and back to its spot, it keeps clear of the felt's cards, and
+// it toward the tap and back to its spot, it keeps clear of the felt's cards
+// with room to walk, and
 // nothing moves while the page is hidden.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -85,9 +86,9 @@ describe("the home felt's companion", () => {
     // at rest the table's figure draws no frames: its idle is still
     expect(svg?.classList.contains("cmp-rest")).toBe(true);
     expect(host.querySelector<HTMLElement>(".char-walk")?.style.transform).toBe(at(spot.rest));
-    // its middle keeps half a figure off the hand's box, on the hand's right
+    // its middle keeps half a figure off the hand's box, on the hand's right, and its spot is its strip's middle
     expect(spot.range[0] + FELT.w / 2 - spot.size / 2).toBeGreaterThanOrEqual(HAND.x1);
-    expect(spot.rest).toBe(spot.range[0]);
+    expect(spot.rest).toBe(Math.round((spot.range[0] + spot.range[1] + FELT.w) / 2) - Math.round(FELT.w / 2));
   });
 
   it("is not drawn with companions switched off, or with the Collection off for this account", async () => {
@@ -121,6 +122,13 @@ describe("the home felt's companion", () => {
     await tick(1000);
     expect(walks()).toHaveLength(2);
     expect(walks()[1]).toEqual([at(spot.range[1]), at(spot.rest)]);
+  });
+
+  it("walks toward a tap on either side of it: left of its strip to the strip's left end", async () => {
+    await draw();
+    await act(async () => { host.querySelector<HTMLElement>(".home-cmp")!.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 4 })); });
+    expect(walks()).toEqual([[at(spot.rest), at(spot.range[0])]]);
+    expect(spot.range[0]).toBeLessThan(spot.rest);
   });
 
   it("a tap aimed at the middle cards stops at the strip's end, never over the hand", async () => {
@@ -190,6 +198,16 @@ describe("placeFigure", () => {
     const top = FELT.h - 6 - p.size * 1.2;
     expect(top).toBeGreaterThan(0);
     expect(p.range[1] + FELT.w / 2 + p.size / 2).toBeLessThanOrEqual(FELT.w);
+    // a large figure would stand pinned between the hand and a hand above it on the right (its head reaches
+    // that one); a smaller one clears it and has room to walk 1.5 figures, so it is the one drawn
+    const pinned = [{ x0: 0, y0: 100, x1: 200, y1: 200 }, { x0: 300, y0: 0, x1: 350, y1: 150 }];
+    const c = placeFigure(FELT.w, FELT.h, pinned)!;
+    expect(c.size).toBeLessThan(Math.round(FELT.w * 0.15));
+    expect(c.range[1] - c.range[0]).toBeGreaterThanOrEqual(1.5 * c.size);
+    // where no size has that room, the largest that fits at all
+    const tight = placeFigure(FELT.w, FELT.h, [{ x0: 0, y0: 100, x1: 280, y1: 200 }])!;
+    expect(tight.size).toBe(39);
+    expect(tight.range[1] - tight.range[0]).toBeLessThan(1.5 * tight.size);
     // a felt whose whole foot is covered has no room for it
     expect(placeFigure(FELT.w, FELT.h, [{ x0: 0, y0: 20, x1: FELT.w, y1: FELT.h }])).toBeNull();
   });

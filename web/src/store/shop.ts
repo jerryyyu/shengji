@@ -82,15 +82,13 @@ function deliver(t: SignedTransaction): Promise<string[] | null> {
     try {
       const user = await verifyPurchase(t.jws, storefront);
       if (t.transactionId) await storeFinish(t.transactionId).catch(() => {});
-      // a received purchase has its outcome: granted, so the owned state says it
-      if (deliveries.has(t.productId)) setDelivery(t.productId, null);
+      // the received purchase this transaction is has its outcome: granted, so the owned state says it
+      settleDelivery(t, null);
       return user.products ?? [];
     } catch (err) {
       if (t.transactionId && isPermanent(err)) await storeFinish(t.transactionId).catch(() => {});
-      // a received purchase refused for any reason but a passing one has its outcome
-      if (deliveries.get(t.productId)?.state === "received" && !isTransient(err)) {
-        setDelivery(t.productId, { state: "refused", err });
-      }
+      // refused for any reason but a passing one: the received purchase it is has its outcome
+      if (!isTransient(err)) settleDelivery(t, err);
       throw err;
     } finally {
       await refreshAccount().catch(() => null);
@@ -106,39 +104,62 @@ function isTransient(err: unknown): boolean {
 }
 
 /** What became of a purchase Apple charged for while the server could not
- *  be reached, by product: still being handed over (`received`), or refused
- *  for good or for a reason a retry cannot pass (`refused`). A grant removes
- *  it: the account then owns the product. It lasts the session, so a tile
- *  change does not drop it, and a new Buy of the product starts it over. */
+ *  be reached: still being handed over (`received`), or refused for good or
+ *  for a reason a retry cannot pass (`refused`). Each belongs to the paying
+ *  account and the product (`deliveryKey`) and to its one transaction
+ *  (`transaction`: the App Store's id, else the signed transaction), so
+ *  another transaction's answer, an older one of the same product among
+ *  them, never settles it. A grant removes it: the account then owns the
+ *  product. It lasts the session, so a tile change does not drop it; a new
+ *  Buy of the product, or another account, starts over. */
 export type Delivery = { state: "received" } | { state: "refused"; err: unknown };
-const deliveries = new Map<string, Delivery>();
+type Entry = { transaction: string; delivery: Delivery };
+const deliveries = new Map<string, Entry>();
+// the account (`useShop`'s) the received purchases were last kept for
+let deliveriesFor: string | null | undefined;
 const deliveryListeners = new Set<() => void>();
-function setDelivery(product: string, d: Delivery | null) {
-  if (d) deliveries.set(product, d);
-  else deliveries.delete(product);
-  deliveryListeners.forEach((f) => f());
-}
+const deliveryKey = (payer: string, product: string) => `${payer}|${product}`;
+const transactionOf = (t: SignedTransaction) => t.transactionId || t.jws;
+const notifyDeliveries = () => deliveryListeners.forEach((f) => f());
 const subscribeDeliveries = (f: () => void) => {
   deliveryListeners.add(f);
   return () => { deliveryListeners.delete(f); };
 };
-const awaitingDelivery = () => [...deliveries.values()].some((d) => d.state === "received");
+const awaitingDelivery = () => [...deliveries.values()].some((e) => e.delivery.state === "received");
+const payerOf = (u: AuthUser | null | undefined) => (u && isPayerToken(u.store_token) ? u.store_token : null);
 
-/** The outcome of `product`'s received purchase, if any; see `Delivery`. */
+/** The answer to `t` settles the received purchase it is, if any: removed
+ *  on a grant (`err` null), else refused with `err`. */
+function settleDelivery(t: SignedTransaction, err: unknown) {
+  const id = transactionOf(t);
+  for (const [key, e] of deliveries) {
+    if (e.transaction !== id || e.delivery.state !== "received") continue;
+    if (err === null) deliveries.delete(key);
+    else deliveries.set(key, { transaction: id, delivery: { state: "refused", err } });
+    notifyDeliveries();
+  }
+}
+
+/** The outcome of the signed-in account's received purchase of `product`, if any. */
 export function useDelivery(product: string | null | undefined): Delivery | undefined {
-  return useSyncExternalStore(subscribeDeliveries, () => (product ? deliveries.get(product) : undefined));
+  const account = useAuth();
+  const payer = payerOf(account.status === "in" ? account.user : null);
+  return useSyncExternalStore(subscribeDeliveries,
+    () => (product && payer ? deliveries.get(deliveryKey(payer, product))?.delivery : undefined));
 }
 
-/** Forget `product`'s outcome once it has been shown (the sign-in flow it opened). */
+/** Forget the signed-in account's outcome for `product` (shown, or a new Buy of it). */
 export function clearDelivery(product: string): void {
-  if (deliveries.has(product)) setDelivery(product, null);
+  const payer = payerOf(signedIn());
+  if (payer && deliveries.delete(deliveryKey(payer, product))) notifyDeliveries();
 }
 
-/** Forget every received purchase's outcome (a new session of the page's
- *  module, as in tests). */
+/** Forget every received purchase's outcome: another account signed in (or
+ *  a test's new session). */
 export function forgetDeliveries(): void {
+  if (deliveries.size === 0) return;
   deliveries.clear();
-  deliveryListeners.forEach((f) => f());
+  notifyDeliveries();
 }
 
 /** Hand the server every transaction the App Store still holds unfinished.
@@ -162,8 +183,9 @@ export const RETRY_MAX_MS = 30000;
 // The shown store hands the App Store's unfinished transactions over again
 // while a received purchase has no outcome.
 const awaitingListeners = new Set<() => void>();
-function awaitDelivery(product: string) {
-  setDelivery(product, { state: "received" });
+function awaitDelivery(payer: string, product: string, t: SignedTransaction) {
+  deliveries.set(deliveryKey(payer, product), { transaction: transactionOf(t), delivery: { state: "received" } });
+  notifyDeliveries();
   awaitingListeners.forEach((f) => f());
 }
 
@@ -197,7 +219,7 @@ export async function buy(product: string): Promise<BuyOutcome> {
     if (!same()) return "none";
     if (isTransient(err)) {
       // Apple charged; the transaction stays unfinished and is handed over again
-      awaitDelivery(product);
+      awaitDelivery(payer.store_token, product, { jws, productId, ...(transactionId ? { transactionId } : {}) });
       throw Object.assign(err instanceof Error ? err : new Error("verify"), { received: true });
     }
     throw err;
@@ -287,6 +309,13 @@ export function useShop(): ShopState {
   // opening, and in place when a device account signs in (same store access,
   // new identity and token), so an approved purchase lands without leaving
   // the page.
+  // received purchases belong to the account that bought them: another
+  // account signed in starts over
+  const who = user ? `${user.email ?? ""}|${user.store_token ?? ""}` : null;
+  useEffect(() => {
+    if (deliveriesFor !== undefined && deliveriesFor !== who) forgetDeliveries();
+    deliveriesFor = who;
+  }, [who]);
   const eligible = state.shown && !!user && user.linked !== false;
   const payer = eligible ? `${user?.email ?? ""}|${user?.store_token ?? ""}` : null;
   useEffect(() => {

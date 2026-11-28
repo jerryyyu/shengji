@@ -159,6 +159,27 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
+        <Section title="Purchases">
+          <p>
+            In the iOS app you can buy companion looks through Apple; buying one needs an Apple or
+            Google sign-in. When you buy or restore a look, the app sends our server Apple’s signed
+            record of the purchase, and the server checks Apple’s signature before using it. For each
+            purchase we store the account that holds it, the product, Apple’s transaction ids, the
+            purchase date, the App Store country, whether it was a test purchase, and when we checked
+            it. We keep it with your account so the look stays yours on every device you sign in on.
+          </p>
+          <p>
+            Each account also has a random purchase code, which the app gives Apple with a purchase so
+            that Apple’s record names the account that paid. Apple tells our server about refunds: a
+            refunded purchase is kept, marked with the refund date, and its look is removed from the
+            account. A purchase never gives us your card or other payment details.
+          </p>
+          <p>
+            If you delete your account, its purchase records and purchase code stay, no longer linked
+            to an account, so a purchase can be restored onto a new account from the same Apple ID.
+          </p>
+        </Section>
+
         <Section title="Usage events">
           <p>
             To find where the app is confusing or slow, it sends our server short usage events: which
@@ -267,8 +288,10 @@ export default function PrivacyPage() {
 
         <Section title="Children">
           <p>
-            Sheng Ji is not directed at children under 13, and we do not knowingly collect personal
-            information from them. If you think a child under 13 has signed in, tell us through the{" "}
+            Anyone can play Sheng Ji. The game asks no one’s age, and we do not knowingly collect
+            personal information from children under 13. Children should have a parent or guardian’s
+            permission before signing in, chatting or buying. If you think a child under 13 has signed
+            in, tell us through the{" "}
             <SupportLink /> and we will delete the account.
           </p>
         </Section>

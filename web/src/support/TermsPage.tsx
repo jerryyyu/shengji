@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import InfoHead from "./InfoHead";
 import { followInfoLink } from "./route";
 
-export const TERMS_UPDATED = "2026-11-17";
+export const TERMS_UPDATED = "2026-11-27";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -36,16 +36,27 @@ export default function TermsPage() {
           <p>
             Sheng Ji is a free four-player card game. You can play with friends, with strangers through
             the queue, or against the game’s own computer players, and you can chat with the people at
-            your table. There are no purchases and no ads.
+            your table. Some companion looks can be bought in the iOS app through Apple. There are no
+            ads.
           </p>
         </Section>
 
         <Section title="Guests and accounts">
           <p>
-            You must be 13 or older to play. You can play as a guest under a name you choose, or sign in
+            Anyone can play. Children should have a parent or guardian’s permission before signing in,
+            chatting or buying. You can play as a guest under a name you choose, or sign in
             with Google or Apple to keep your games and get a rating. Keep your sign-in to yourself; you
             are responsible for what is done with your account. The <PrivacyLink /> says what we keep
             and why.
+          </p>
+        </Section>
+
+        <Section title="Purchases">
+          <p>
+            Companion looks are sold in the iOS app through Apple, and Apple’s terms and refund rules
+            apply to them; to buy one, sign in with Apple or Google. A look you buy belongs to the
+            account you bought it with: sign in to that account on another device, or choose Restore
+            purchases, to get it back. If Apple refunds a purchase, its look is removed.
           </p>
         </Section>
 

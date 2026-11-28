@@ -17,12 +17,16 @@ describe("the privacy page", () => {
     const headings = [...host.querySelectorAll("h2")].map((h) => h.textContent);
     expect(headings).toEqual(["Playing as a guest", "Accounts in the iOS app", "Game records", "Table chat",
                               "Signing in with Google or Apple", "Saved games", "Ratings and the leaderboard",
-                              "Usage events", "Reporting a player", "Blocking a player", "Support messages",
+                              "Purchases", "Usage events", "Reporting a player", "Blocking a player", "Support messages",
                               "IP addresses and server logs", "Where it is kept", "Deleting your account",
                               "Children", "Automated play", "Contact"]);
     const text = host.textContent ?? "";
     expect(text).toContain("Last updated 2026-11-27");
     expect(text).toContain("whether a script is driving the page");
+    expect(text).toContain("checks Apple’s signature before using it");
+    expect(text).toContain("Apple’s transaction ids, the purchase date, the App Store country");
+    expect(text).toContain("a refunded purchase is kept, marked with the refund date, and its look is removed");
+    expect(text).toContain("A purchase never gives us your card or other payment details");
     expect(text).toContain("it carries a random code for your device so we can count");
     expect(text).toContain("We store only a scrambled version of it");
     expect(text).toContain("groups those events across visits");
@@ -53,7 +57,8 @@ describe("the privacy page", () => {
     expect(text).toContain("we store the pair of accounts and the");
     expect(text).toContain("the blocks you made, or others made of you");
     expect(text).not.toContain("Muting a player");
-    expect(text).toContain("not directed at children under 13");
+    expect(text).toContain("we do not knowingly collect personal information from children under 13");
+    expect(text).not.toContain("not directed at children under 13");
     expect(text).not.toContain("no ratings or leaderboards");
     expect(text).not.toContain("don’t use analytics");
     expect(text).not.toContain("My games");

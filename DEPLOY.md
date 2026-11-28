@@ -1697,6 +1697,21 @@ or on within that reconnect, with no reload: a page on the Collection tab goes t
 figures, and every avatar is as it was before companions. A page offline or in a Nearby game keeps what it had until it is
 online again. The looks people chose stay on their accounts for the next time it is on.
 
+### Store: test accounts and gifts
+
+`STORE_ACCOUNTS` (comma-separated account ids) turns the Shop on for those accounts before `STORE_ENABLED=1`.
+`STORE_COMP_ACCOUNTS` (comma-separated account ids, digits only: `<id>,<id>`) gives those accounts every
+sold companion as a gift. Every ownership read counts it (the Collection's Yours, Use, the seat look, invite
+cards, spectate, the leaderboard), the Collection's line says Gift, and no Buy is shown. It writes no entitlement
+row, so purchases, refunds and restores are unaffected. Taking an id out takes the gift away, and a gifted look
+in use then shows the default look. The ids stay in the secret, never in the repo. Setting either secret
+restarts the machine, so it is a deploy decision (Jerry's), made at `/healthz` rooms 0:
+
+```bash
+fly secrets set STORE_COMP_ACCOUNTS=<id>,<id> -a shengji   # gift every sold companion to these accounts
+fly secrets unset STORE_COMP_ACCOUNTS -a shengji           # take every gift away
+```
+
 ### Option B: any VPS with Docker
 
 ```bash

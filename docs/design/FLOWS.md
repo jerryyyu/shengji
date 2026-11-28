@@ -632,7 +632,8 @@ keeps the table on screen.
   owned look was got (Jerry 2026-11-27: "It should say how we got the skin like 'achieved through x ranked wins' or
   'purchased on x date'"): a Tractor colour won, the count that unlocked it ("Unlocked with 25 ranked rounds won",
   赢 25 局排位解锁); a store companion, the date it was bought in the viewer's own date format ("Purchased 27 Nov
-  2026", 2026年11月27日购买; `/api/me` `purchased_on`, a date only). A look free from the start names what is
+  2026", 2026年11月27日购买; `/api/me` `purchased_on`, a date only); one given to the account (`STORE_COMP_ACCOUNTS`,
+  `/api/me` `gifts`) and not bought says "Gift" (赠送, 贈送), one word. A look free from the start names what is
   shown ("Bun · Taro"), with no "Free": every free look in Yours is free, so the word adds nothing. A look worn from
   before its count was reached names it too. A locked look's line stays what unlocks it. Then **Yours** (the page has no switch; Show companions at the table is in Me's settings), the free companions and the ones bought, as tiles idling on felt
   with their names and a tick on the one in use, ordered by last use (Jerry 2026-11-27: "for yours, can we order by

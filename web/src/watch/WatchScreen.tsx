@@ -26,7 +26,6 @@ import { watch } from "./store";
 import { watchUsage } from "./usage";
 import type { WatchBy } from "../telemetry";
 import TableCompanions, { CHEER_POINTS } from "../companion/TableCompanions";
-import WatcherCompanion from "./WatcherCompanion";
 import "./watch.css";
 
 /** How often a caught-up watcher asks whether the round in play finished. */
@@ -473,7 +472,7 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
         </div>
       </div>
       <div className="felt">
-        <TableCompanions state={state} watch={{ quiet }} />
+        <TableCompanions state={state} watch={{ quiet, cheer: big }} />
         {opponents.map((p) => (
           <div key={p.seat} className="watch-seat" onClick={() => setSeat(p.seat)}>
             <OpponentPanel player={p} state={state} readOnly />
@@ -484,7 +483,6 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
                    declaration={null} handRects={handRects} />
         <div className="you-area">
           <div className="watch-tabs-row">
-            <WatcherCompanion cheer={big} quiet={quiet} />
             <div className="watch-controls">
               <button type="button" className="watch-ctl" aria-label={t("watch.back")}
                       disabled={at === 0} onClick={() => goTo(backTrick(beats, at))}><Icon d={ICON.back} /></button>

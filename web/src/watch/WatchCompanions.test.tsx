@@ -1,6 +1,6 @@
 // Companions on the watch screen: each person's look at their seat as the
 // feed sends it (a masked seat's is the default Tractor, a bot has none), the
-// watcher's own in the gallery spot by the row, and none at all with the
+// watcher's own on the felt as yours stands at the table, and none at all with the
 // Collection off or Show companions at the table off.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -9,8 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fixture from "../replay/server-round-finished.fixture.json";
 import { TABLES } from "../companion/seatZones.fixtures";
 import type { Rect } from "../companion/seatZones";
-import WatchScreen from "./WatchScreen";
-import WatcherCompanion, { OWN_CHEER_GAP_MS } from "./WatcherCompanion";
+import WatchScreen, { load, watchState } from "./WatchScreen";
+import TableCompanions, { WATCHER, WATCHER_CHEER_GAP_MS } from "../companion/TableCompanions";
 
 const collection = vi.hoisted(() => ({ on: true }));
 vi.mock("../companion/feature", () => ({ useCollection: () => collection.on }));
@@ -40,6 +40,7 @@ const m = TABLES["phone-land-w2"];
 const rects: Record<string, Rect> = {
   felt: { x: 0, y: 0, ...m.felt }, "pos-left": m.plates.left!, "pos-top": m.plates.top!, "pos-right": m.plates.right!,
   "watch-tabs-row": m.row!, hand: m.hand!, "hand-slot": m.firstCard,
+  "watch-controls": { x: m.row!.x + 160, y: m.row!.y, w: 160, h: m.row!.h },
 };
 let spy: ReturnType<typeof vi.spyOn>;
 let root: Root;
@@ -74,14 +75,16 @@ async function open() {
 }
 const figures = () => [...host.querySelectorAll<HTMLElement>(".table-companions .tc-seat")]
   .map((s) => [Number(s.dataset.seat), s.querySelector("svg")?.getAttribute("data-look") ?? s.querySelector("[data-look]")?.getAttribute("data-look") ?? "?"]);
-const seats = () => figures().map(([s]) => s).sort();
+const seats = () => figures().map(([s]) => s).filter((s) => s !== WATCHER).sort();
+const own = () => host.querySelector<HTMLElement>(`.table-companions .tc-seat[data-seat="${WATCHER}"]`);
 
 describe("the players' companions", () => {
   it("stand at the people's seats, each in its look; the bots have none", async () => {
     await open();
     expect(seats()).toEqual([0, 2]);
-    // nobody at the table is you: no seat is tagged
-    expect(host.querySelector(".table-companions .tc-you")).toBeNull();
+    // nobody at the table is you: no seat is tagged, only the watcher's own
+    const tags = [...host.querySelectorAll(".table-companions .tc-you")].map((t) => t.closest(".tc-seat")?.getAttribute("data-seat"));
+    expect(tags).toEqual([String(WATCHER)]);
   });
 
   it("draw a masked seat as the default Tractor and a listed one in its own look", async () => {
@@ -103,38 +106,46 @@ describe("the players' companions", () => {
 });
 
 describe("the watcher's own companion", () => {
-  it("stands in the gallery spot in the watcher's row, tagged You, never on the felt", async () => {
+  it("stands on the felt, tagged You, a tap away from walking, left of the watcher's controls", async () => {
     await open();
-    const own = host.querySelector(".watch-tabs-row > .watch-own")!;
-    expect(own).not.toBeNull();
-    expect(own.querySelector(".tc-you")!.textContent).toBe("You");
-    expect(own.closest(".table-companions")).toBeNull();
+    const fig = own()!;
+    expect(fig).not.toBeNull();
+    expect(fig.querySelector(".tc-you")!.textContent).toBe("You");
+    // it takes taps (its special) as yours does; the players' figures take none
+    expect(fig.querySelector(".tc-walk")!.classList.contains("tc-mine")).toBe(true);
+    expect(host.querySelectorAll(".table-companions .tc-mine")).toHaveLength(1);
+    expect(host.querySelector(".watch-own")).toBeNull();
   });
 
   it("cheers a big trick, at most once per gap, and keeps still when quiet", async () => {
-    const cheers = () => Number(host.querySelector(".watch-own")!.getAttribute("data-cheers"));
-    const draw = (cheer: number | null, quiet = false) =>
-      act(async () => { root.render(<WatcherCompanion cheer={cheer} quiet={quiet} />); });
+    const loaded = load(feed as never)!;
+    const beat = loaded.beats[loaded.beats.length - 2];
+    const state = watchState(loaded, beat, loaded.doc.seat ?? 0, []);
+    const cheers: string[] = [];
+    const draw = async (cheer: number | null, quiet = false) => {
+      await act(async () => {
+        root.render(<div className="felt"><div className="watch-controls" />
+          <TableCompanions state={state} watch={{ quiet, cheer }} /></div>);
+      });
+      await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+      const move = own()?.querySelector(".tc-move")?.getAttribute("data-move") ?? "none";
+      cheers.push(move);
+    };
     const now = vi.spyOn(Date, "now");
     try {
       now.mockReturnValue(100_000);
       await draw(null);
-      expect(cheers()).toBe(0);
       await draw(5);
-      expect(cheers()).toBe(1);
-      expect(host.querySelector(".watch-own svg")!.getAttribute("data-pose")).toBe("cheer");
       await draw(5);                                   // the same trick again: nothing new
-      now.mockReturnValue(100_000 + OWN_CHEER_GAP_MS - 1);
+      now.mockReturnValue(100_000 + WATCHER_CHEER_GAP_MS - 1);
       await draw(9);                                   // another big trick inside the gap
-      expect(cheers()).toBe(1);
-      now.mockReturnValue(100_000 + 3 * OWN_CHEER_GAP_MS);
+      now.mockReturnValue(100_000 + 3 * WATCHER_CHEER_GAP_MS);
       await draw(12, true);                            // fast play, a step back or a turn
-      expect(cheers()).toBe(1);
       await draw(14);
-      expect(cheers()).toBe(2);
     } finally {
       now.mockRestore();
     }
+    expect(cheers).toEqual(["idle", "cheer", "cheer", "cheer", "cheer", "cheer"]);
   });
 });
 

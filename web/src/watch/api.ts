@@ -59,18 +59,33 @@ export function watcherToken(): string {
 /** Forget the page's copy (tests: a fresh tab reads storage again). */
 export function forgetWatcherToken(): void {
   token = null;
+  epoch = 0;
 }
 
-/** How many watch reads this page has sent: each one counts this watcher
- *  where it lands, so an answer arriving after its screen closed is left
- *  again only when no later read has moved or renewed the count. */
-let sent = 0;
-export function watchReads(): number {
-  return sent;
+/** The Watch session: a count, kept for the tab or app session, that goes
+ *  up each time the watch screen opens. Every read and leave carries it, and
+ *  the server lets a leave end only the session it names or an older one, so
+ *  a late leave from a closed screen never ends a watch opened since. */
+const EPOCH_KEY = "shengji.watch.epoch";
+let epoch = 0;
+
+export function nextWatchSession(): number {
+  let stored = 0;
+  try {
+    stored = Number(window.sessionStorage.getItem(EPOCH_KEY)) || 0;
+  } catch {
+    /* storage off: this page's own count */
+  }
+  epoch = Math.max(epoch, stored) + 1;
+  try {
+    window.sessionStorage.setItem(EPOCH_KEY, String(epoch));
+  } catch {
+    /* storage off */
+  }
+  return epoch;
 }
 
 async function getDoc(path: string): Promise<WatchFetch> {
-  sent++;
   let resp: Response;
   try {
     resp = await fetch(path, { credentials: "same-origin" });
@@ -88,24 +103,25 @@ async function getDoc(path: string): Promise<WatchFetch> {
 }
 
 /** A table to watch: `mode` first; never `skip` (Next table). */
-export function fetchWatch(mode: string, skip: string | null): Promise<WatchFetch> {
-  const q = new URLSearchParams({ mode, w: watcherToken() });
+export function fetchWatch(mode: string, skip: string | null, session: number): Promise<WatchFetch> {
+  const q = new URLSearchParams({ mode, w: watcherToken(), e: String(session) });
   if (skip) q.set("skip", skip);
   return getDoc(`/api/watch?${q.toString()}`);
 }
 
 /** The table being watched: its round after `after` once that round is finished. */
-export function followWatch(table: string, after: number): Promise<WatchFetch> {
-  const q = new URLSearchParams({ after: String(after), w: watcherToken() });
+export function followWatch(table: string, after: number, session: number): Promise<WatchFetch> {
+  const q = new URLSearchParams({ after: String(after), w: watcherToken(), e: String(session) });
   return getDoc(`/api/watch/${encodeURIComponent(table)}?${q.toString()}`);
 }
 
-/** This watcher left `table` (its screen closed, or the page went away): it
- *  stops counting there now. Sent as a beacon, so it survives the page
+/** Watch session `session` left (its screen closed, or the page went
+ *  away): this watcher stops counting wherever the server counts it, unless
+ *  a newer session holds it. Sent as a beacon, so it survives the page
  *  closing; the server's lease is the fallback when even that is lost. */
-export function leaveWatch(table: string, watcher: string): void {
-  const q = new URLSearchParams({ w: watcher });
-  const url = `/api/watch/${encodeURIComponent(table)}/leave?${q.toString()}`;
+export function leaveWatch(session: number): void {
+  const q = new URLSearchParams({ w: watcherToken(), e: String(session) });
+  const url = `/api/watch/leave?${q.toString()}`;
   try {
     if (typeof navigator.sendBeacon === "function" && navigator.sendBeacon(url)) return;
   } catch {

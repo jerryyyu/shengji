@@ -52,6 +52,30 @@ function doc(k) {
     waiting: false, round: 1, seat: banker, players: NAMES, finished: true, events: ev };
 }
 
+/** The server's watcher leases (spectate.py `admissible`, `admit`,
+ *  `release`) for the stubbed feeds: a token counts at one table at most, a
+ *  follow never moves it, and a read or leave of an older Watch session than
+ *  one admitted changes nothing. */
+function leases() {
+  const at = new Map();
+  return {
+    read(token, epoch, table, follow) {
+      const l = at.get(token);
+      const ok = !l || epoch > l.epoch
+        || (epoch === l.epoch && !l.left && (!follow || l.table === null || l.table === table));
+      if (ok) at.set(token, { table, epoch, left: false });
+      return ok;
+    },
+    leave(token, epoch) {
+      const l = at.get(token);
+      if (!l || epoch >= l.epoch) at.set(token, { table: null, epoch, left: true });
+    },
+    count(table) { return [...at.values()].filter((l) => l.table === table).length; },
+    total() { return [...at.values()].filter((l) => l.table !== null).length; },
+  };
+}
+const epochOf = (u) => Number(u.searchParams.get("e")) || 0;
+
 const presence = { type: "presence", tables: 1, playing: 1, waiting: 0, ranked: 1, casual: 0, watch: 1, rerun: true };
 
 /** Every overlap of a trick card or a trick label with what must stay clear of it. */
@@ -307,21 +331,20 @@ for (const device of ["phone-land", "phone-land-se", "ipad11-land"]) {
 }
 // Next table and the watcher count against a stub that keeps the server's
 // rules: Next goes on from the skipped table in a fixed order and wraps
-// (staying put only with one table), a request with no token mints one, a
-// leave drops that token. Two tables: Next reaches the other and comes back,
+// (staying put only with one table), a request with no token mints one, and
+// the stubbed leases count. Two tables: Next reaches the other and comes back,
 // and the bottom seat is each table's banker every time; one table: Next keeps
 // the round where it was. Then watch, leave, watch again: a count of 1.
 for (const tables of [["a1b2c3d4", "e5f6a7b8"], ["a1b2c3d4"]]) {
   const device = "phone-land";
   const name = `watch-next-${tables.length}-tables-${device}`;
   if (only && !only.test(name)) continue;
-  const counted = new Map(tables.map((t) => [t, new Set()]));
+  const L = leases();
   let minted = 0;
-  const docOf = (table, w) => {
-    for (const set of counted.values()) set.delete(w);
-    counted.get(table).add(w);
+  const docOf = (table, w, e, follow) => {
+    L.read(w, e, table, follow);
     const i = tables.indexOf(table);
-    return { ...doc(0), table, watcher: w, round: 1 + i, live_round: 2 + i, watchers: counted.get(table).size };
+    return { ...doc(0), table, watcher: w, round: 1 + i, live_round: 2 + i, watchers: L.count(table) };
   };
   const page = await open(browser, device, {
     storage: { "shengji.coach": "off", "shengji.muted": "1", "shengji.name": "Jerry" },
@@ -330,17 +353,17 @@ for (const tables of [["a1b2c3d4", "e5f6a7b8"], ["a1b2c3d4"]]) {
       await p.route("**/api/**", (r) => r.fulfill({ status: 404, json: {} }));
       await p.route("**/api/watch/**", (r) => {
         const u = new URL(r.request().url());
-        const [, , , table, act] = u.pathname.split("/");
         const w = u.searchParams.get("w");
-        if (act === "leave") { counted.get(table)?.delete(w); return r.fulfill({ status: 204, body: "" }); }
-        return r.fulfill({ json: { ...docOf(table, w), waiting: true, events: undefined } });
+        if (u.pathname.endsWith("/leave")) { L.leave(w, epochOf(u)); return r.fulfill({ status: 204, body: "" }); }
+        const table = decodeURIComponent(u.pathname.split("/")[3]);
+        return r.fulfill({ json: { ...docOf(table, w, epochOf(u), true), waiting: true, events: undefined } });
       });
       await p.route("**/api/watch?**", (r) => {
         const u = new URL(r.request().url());
         const skip = u.searchParams.get("skip");
         const w = u.searchParams.get("w") || `${String(++minted).padStart(4, "0")}${"c".repeat(28)}`;
         const table = skip && tables.includes(skip) ? tables[(tables.indexOf(skip) + 1) % tables.length] : tables[0];
-        return r.fulfill({ json: docOf(table, w) });
+        return r.fulfill({ json: docOf(table, w, epochOf(u), false) });
       });
     },
   });
@@ -395,7 +418,7 @@ for (const tables of [["a1b2c3d4", "e5f6a7b8"], ["a1b2c3d4"]]) {
     await page.click(".watch-screen [role=menu] .leave");
     await page.waitForSelector(".play-presence-watch");
     await sleep(300);
-    const left = [...counted.values()].reduce((n, s) => n + s.size, 0);
+    const left = L.total();
     await page.click(".play-presence-watch");
     await page.waitForSelector(".watch-tabs");
     await rep.check(`${name}: leaving stops the count, and watching again counts 1`,
@@ -405,17 +428,18 @@ for (const tables of [["a1b2c3d4", "e5f6a7b8"], ["a1b2c3d4"]]) {
   });
   await page.context().close();
 }
-// The count against a stub that counts by token as the server answers (and
-// mints one for a read with none): Leave from the loading screen while the
-// first pick's answer is held, the answer then lands, and the table counts
-// nobody; a fresh tab left and opened again before that answer counts one;
-// and a replay's end that finds a live table, left during the round end card,
+// The count against the stubbed leases (and a stub that mints a token for a
+// read with none): Leave from the loading screen while the first pick's
+// answer is held, the answer then lands, and the table counts nobody; a fresh
+// tab left and opened again before that answer counts one; the same, with the
+// reopened screen's pick and its retry refused (429), counts nobody; and a
+// replay's end that finds a live table, left during the round end card,
 // counts nobody.
-for (const how of ["loading", "reopen", "replay-end"]) {
+for (const how of ["loading", "reopen", "reopen-429", "replay-end"]) {
   const device = "phone-land";
   const name = `watch-count-${how}-${device}`;
   if (only && !only.test(name)) continue;
-  const counted = new Set();
+  const L = leases();
   let minted = 0, reads = 0;
   let release = null;
   const held = new Promise((r) => { release = r; });
@@ -427,18 +451,19 @@ for (const how of ["loading", "reopen", "replay-end"]) {
       await p.route("**/api/watch/**", (r) => {
         const u = new URL(r.request().url());
         const w = u.searchParams.get("w");
-        if (u.pathname.endsWith("/leave")) { counted.delete(w); return r.fulfill({ status: 204, body: "" }); }
-        counted.add(w);
-        return r.fulfill({ json: { ...doc(0), watcher: w, waiting: true, events: undefined, watchers: counted.size } });
+        if (u.pathname.endsWith("/leave")) { L.leave(w, epochOf(u)); return r.fulfill({ status: 204, body: "" }); }
+        L.read(w, epochOf(u), "a1b2c3d4", true);
+        return r.fulfill({ json: { ...doc(0), watcher: w, waiting: true, events: undefined, watchers: L.count("a1b2c3d4") } });
       });
       await p.route("**/api/watch?**", async (r) => {
         const u = new URL(r.request().url());
         const w = u.searchParams.get("w") || `${String(++minted).padStart(4, "0")}${"c".repeat(28)}`;
         const n = ++reads;
         if (how === "replay-end" && n === 1) return r.fulfill({ json: { ...doc(0), rerun: true, live_round: null, watcher: w } });
-        counted.add(w);                    // counted as the server answers
+        if (how === "reopen-429" && n > 1) return r.fulfill({ status: 429, json: {} });
+        L.read(w, epochOf(u), "a1b2c3d4", false);      // counted as the server answers
         if (how !== "replay-end" && n === 1) await held;
-        await r.fulfill({ json: { ...doc(0), watcher: w, watchers: counted.size } }).catch(() => {});
+        await r.fulfill({ json: { ...doc(0), watcher: w, watchers: L.count("a1b2c3d4") } }).catch(() => {});
       });
     },
   });
@@ -462,15 +487,21 @@ for (const how of ["loading", "reopen", "replay-end"]) {
     if (how === "reopen") {
       await page.click(".play-presence-watch");
       await page.waitForSelector(".watch-tabs");
+    } else if (how === "reopen-429") {
+      await page.click(".play-presence-watch");
+      // the pick and its retry are refused: the toast, and back on the Play tab
+      for (let i = 0; i < 40 && reads < 3; i++) await sleep(100);
+      await page.waitForSelector(".play-presence-watch:not(.watch-screen *)", { timeout: 4000 });
+      await sleep(300);
     }
     release();
     const want = how === "reopen" ? 1 : 0;
-    for (let i = 0; i < 20 && counted.size !== want; i++) await sleep(100);
+    for (let i = 0; i < 20 && L.total() !== want; i++) await sleep(100);
     await sleep(300);
     const eye = await page.evaluate(() => document.querySelector(".watch-count")?.textContent ?? "none");
     await rep.check(`${name}: the table counts ${want} for this one viewer`,
-      counted.size === want && minted === 0 && (how !== "reopen" || eye === "1") ? null
-        : `${counted.size} counted, eye ${eye}, ${minted} tokens minted for reads with none`, page);
+      L.total() === want && minted === 0 && (how !== "reopen" || eye === "1") && (how !== "reopen-429" || reads === 3) ? null
+        : `${L.total()} counted, eye ${eye}, ${reads} picks, ${minted} tokens minted for reads with none`, page);
   });
   await page.context().close();
 }

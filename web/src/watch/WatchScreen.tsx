@@ -16,7 +16,7 @@ import { codes } from "../codeJoin";
 import { rounds } from "../roundTelemetry";
 import { tapHandlers } from "../tap";
 import { showToast } from "../toast";
-import { fetchWatch, followWatch, leaveWatch, watchReads } from "./api";
+import { fetchWatch, followWatch, leaveWatch, nextWatchSession } from "./api";
 import type { WatchDoc, WatchFetch } from "./api";
 import {
   backTrick, beatMs, beatsOf, forwardTrick, handAt, liftedIds, nextSpeed, saveSpeed, savedSpeed, tabOrder,
@@ -241,25 +241,20 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   // table's watch and begins the next one's; the next round of the same
   // table keeps it
   const usageTable = useRef<string | null>(null);
-  // where the server counts this watcher: the live table of the latest-sent
-  // read answered so far (`n`, its `watchReads()`), set as each answer
-  // arrives, shown or not; told when the watch is left
-  const admitted = useRef<{ table: string; watcher: string; n: number } | null>(null);
+  // this screen's Watch session (`nextWatchSession`): every read and the
+  // leave carry it, and the server keeps the watcher's count by it
+  const session = useRef<number | null>(null);
+  if (session.current === null) session.current = nextWatchSession();
+  const sid = () => session.current ?? 0;
   // the screen is gone: an answer landing now is not shown
   const closed = useRef(false);
-  /** Every answer, as it arrives: a live table's answer records where the
-   *  watcher counts now (a rerun's moves nothing on the server). True once
-   *  the screen has closed: the answer is not shown, and the table it
-   *  counted at is left again, unless a later read (a watch opened since)
-   *  holds this watcher now. */
-  const received = (r: WatchFetch, n: number) => {
-    const live = r.ok && !r.doc.rerun ? { table: r.doc.table, watcher: r.doc.watcher, n } : null;
-    if (closed.current) {
-      if (live && n === watchReads()) leaveWatch(live.table, live.watcher);
-      return true;
-    }
-    if (live && n >= (admitted.current?.n ?? 0)) admitted.current = live;
-    return false;
+  /** True for an answer that landed after the screen closed: it is not
+   *  shown, and the session's leave is sent again, since the server may have
+   *  counted the watcher as it answered, after the first leave arrived. */
+  const late = (r: WatchFetch) => {
+    if (!closed.current) return false;
+    if (r.ok && !r.doc.rerun) leaveWatch(sid());
+    return true;
   };
   const show = (l: Loaded, why: WatchBy = "ended") => {
     dropNext();
@@ -290,10 +285,8 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     if (retry.current !== null) window.clearTimeout(retry.current);
     retry.current = null;
     const read = (again: boolean) => {
-      const req = fetchWatch(mode, skip);
-      const n = watchReads();
-      void req.then((r) => {
-        if (received(r, n)) return;
+      void fetchWatch(mode, skip, sid()).then((r) => {
+        if (late(r)) return;
         if (mine !== picks.current) return;
         const l = r.ok ? load(r.doc) : null;
         const failed = r.ok ? l === null : r.reason !== "none";
@@ -319,18 +312,31 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     };
     read(false);
   };
-  useEffect(() => { pick(null); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
-  // leaving (any way out unmounts this screen) or the page going away tells
-  // the server this watcher is gone from its table
   useEffect(() => {
-    const tell = () => {
-      const c = admitted.current;
-      if (c) leaveWatch(c.table, c.watcher);
-    };
-    window.addEventListener("pagehide", tell);
+    // mounted again after a close (React's development double mount): the
+    // session that closed has left, so this mount watches as a new one
+    if (closed.current) {
+      session.current = nextWatchSession();
+      closed.current = false;
+    }
+    pick(null);
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+  // leaving (any way out unmounts this screen) or the page going away tells
+  // the server this session left; a page shown again from the back-forward
+  // cache watches on as a new session
+  useEffect(() => {
+    const hide = () => leaveWatch(sid());
+    const back = (e: PageTransitionEvent) => { if (e.persisted) session.current = nextWatchSession(); };
+    window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", back);
     closed.current = false;
-    return () => { closed.current = true; window.removeEventListener("pagehide", tell); tell(); };
-  }, []);
+    return () => {
+      closed.current = true;
+      window.removeEventListener("pagehide", hide);
+      window.removeEventListener("pageshow", back);
+      leaveWatch(sid());
+    };
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => {
     dropNext();
     // a later answer to a pick is dropped, and none is tried again
@@ -364,10 +370,8 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     let on = true;
     const poll = window.setInterval(() => {
       if (document.visibilityState === "hidden" || table.current !== doc.table) return;
-      const req = followWatch(doc.table, next.current?.doc.round ?? doc.round ?? 0);
-      const n = watchReads();
-      void req.then((res) => {
-        if (received(res, n)) return;
+      void followWatch(doc.table, next.current?.doc.round ?? doc.round ?? 0, sid()).then((res) => {
+        if (late(res)) return;
         if (!on || table.current !== doc.table || !res.ok) return;
         if (res.doc.waiting) {
           setLive({ round: res.doc.live_round, code: res.doc.code, watchers: res.doc.watchers });
@@ -400,10 +404,9 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     };
     const ask = () => {
       if (next.current || table.current !== doc.table) return;
-      const r = doc.rerun ? fetchWatch(mode, null) : followWatch(doc.table, doc.round ?? 0);
-      const n = watchReads();
+      const r = doc.rerun ? fetchWatch(mode, null, sid()) : followWatch(doc.table, doc.round ?? 0, sid());
       void r.then((res) => {
-        if (received(res, n)) return;
+        if (late(res)) return;
         if (!on || table.current !== doc.table) return;
         if (res.ok && res.doc.waiting) {
           setLive({ round: res.doc.live_round, code: res.doc.code, watchers: res.doc.watchers });

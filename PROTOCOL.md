@@ -763,7 +763,7 @@ signed-in account whose id is in `SPECTATE_ACCOUNTS` (comma-separated account
 ids, a deployment secret); anyone else gets 404 from both endpoints. A listed
 account may watch any live table's last finished round.
 
-- `GET /api/watch?mode=&skip=&w=` picks a table and answers with its latest
+- `GET /api/watch?mode=&skip=&w=&e=` picks a table and answers with its latest
   finished round: `{table, watcher, mode, live_round, code, rerun, waiting,
   round, seat, players, finished, events}`. `events` are the saved games'
   allow-listed records with every card shown; `seat` is the banker. Each
@@ -781,18 +781,26 @@ account may watch any live table's last finished round.
   round, so successive Nexts visit every table in turn; `skip` itself when no
   other table can be watched (never the rerun in its place), and the first
   pick's rule when `skip` names no table.
-- `GET /api/watch/{table}?after=N&w=` follows that table: its round after `N`
+- `GET /api/watch/{table}?after=N&w=&e=` follows that table: its round after `N`
   once finished, else `{waiting: true, live_round}`. 404 once the table cannot
   be watched.
-- `w` is the watcher token (the first answer gives one when a read sends none); a table counts at most 50
-  watchers, each until 90 s pass without a read or until
-  `POST /api/watch/{table}/leave?w=` (204, whatever the table or token) says it
-  left. The web client makes its own token (32 hex) before its first read,
-  keeps it for the browser tab or app session and sends it with every read,
-  so a watch opened again is the same watcher; it sends that leave as a
-  beacon for the table its latest answered read counted it at when its watch
-  screen closes or the page goes away, and again for an answer that lands
-  after the close unless a later read was sent since.
+- `w` is the watcher token (the first answer gives one when a read sends
+  none) and `e` the reader's Watch session (default 0). The web client makes
+  its token (32 hex) before its first read and keeps it for the browser tab or
+  app session, and counts its sessions there, one more each time the watch
+  screen opens; every read and leave carries both. The server keeps where each
+  token counts and the highest session admitted for it (server-side only): a
+  token counts at one table at most, and a pick or a follow that counts it at
+  a table drops it from every other. A read from an older session than one
+  admitted, or from a session that has left, is answered and counted nowhere;
+  a follow never moves the token, so a follow of a table the token has since
+  moved from (a Next whose answer is on its way) is answered and not counted
+  there. A table counts at most 50 watchers, each until 90 s pass without a
+  read or until `POST /api/watch/leave?w=&e=` (204 whatever the token) ends
+  session `e`: the token stops counting wherever it counts unless a newer
+  session has been admitted since, and later reads of that session count
+  nowhere. A watch screen sends that leave as a beacon once as it closes (or
+  its page goes away), and again for an answer that lands after it closed.
   A pick at another table moves the token's count there. A full table is not picked,
   not followed by a new watcher and not counted in `watch`. 30 reads a minute per
   address. `code` is set only for a casual table seating joiners now.

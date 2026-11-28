@@ -81,3 +81,11 @@ link never detaches a newer one.
 - `web/src/offline/server/nearby/oneSeat.test.ts`: `seatedAt3`;
   `web/src/nearbyRestart.test.ts`: `forgetKeptSeat` (#1769).
 - `web/src/nearbyChaosPage.test.ts`: the seed-30050 replays (#1770), `KeptToken`.
+- A watcher's kept token (`test_spectate.py`): a leave or read from an older
+  Watch session changes nothing
+  (`test_a_leave_from_an_older_session_changes_nothing`), a follow of the
+  table Next moved from counts nowhere
+  (`test_a_follow_of_the_table_next_moved_from_counts_nowhere`), one token
+  counts at one table, and a rate-limited reopen with a late first answer
+  counts nothing (`test_a_late_answer_after_leave_and_a_rate_limited_reopen_count_nothing`;
+  in the browser, `e2e/watch.mjs` `watch-count-*`) (#2023).

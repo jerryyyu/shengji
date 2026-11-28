@@ -90,6 +90,7 @@ def feed(client, monkeypatch):
     monkeypatch.setattr(spectate, "_reruns", spectate.collections.deque(maxlen=spectate.KEEP_ROUNDS))
     monkeypatch.setattr(spectate, "_loaded", True)
     monkeypatch.setattr(spectate, "_DOCS", spectate.collections.OrderedDict())
+    monkeypatch.setattr(spectate, "_leases", {})
     spectate.LIMITER.reset()
     return srv, spectate, client
 
@@ -314,29 +315,111 @@ def test_next_table_with_the_only_table_stays_there_not_on_its_rerun(feed):
     assert gone["rerun"] is True
 
 
-def test_leaving_stops_the_count_and_a_stranger_token_changes_nothing(feed):
-    srv, spectate, client = feed
-    t = Table(srv, ranked=True)
+W = "a" * 32
+
+
+def _leave(client, w=W, e=1):
+    return client.post("/api/watch/leave", params={k: v for k, v in (("w", w), ("e", e)) if v is not None})
+
+
+def _counts(*tables):
+    from shengji.api import spectate
+    now = spectate.time.time()
+    return [t.room.watch.live_watchers(now) for t in tables]
+
+
+def _live(srv, code, tid, ranked=True):
+    t = Table(srv, code=code, ranked=ranked)
     t.play_round()
     t.deal()
-    st = t.room.watch
-    a = _watch(client).json()["watcher"]
+    t.room.watch.id = tid
+    return t
+
+
+def test_leaving_stops_the_count_and_a_stranger_token_changes_nothing(feed):
+    srv, spectate, client = feed
+    t = _live(srv, "LV1", "aa")
+    a = _watch(client, w=W, e=1).json()["watcher"]
     b = _watch(client).json()["watcher"]
-    assert st.live_watchers(spectate.time.time()) == 2
+    assert a == W and _counts(t) == [2]
     # reopening with the same token is the same watcher
-    assert _watch(client, w=a).json()["watcher"] == a
-    assert st.live_watchers(spectate.time.time()) == 2
-    assert client.post(f"/api/watch/{st.id}/leave", params={"w": a}).status_code == 204
-    assert st.live_watchers(spectate.time.time()) == 1 and a not in st.who
-    # an unknown token, a malformed one, an unknown table: nothing changes
-    assert client.post(f"/api/watch/{st.id}/leave", params={"w": "0" * 32}).status_code == 204
-    assert client.post(f"/api/watch/{st.id}/leave", params={"w": "x"}).status_code == 204
-    assert client.post("/api/watch/nosuch/leave", params={"w": b}).status_code == 204
-    assert client.post(f"/api/watch/{st.id}/leave").status_code == 204
-    assert st.live_watchers(spectate.time.time()) == 1
-    # rejoining after leaving counts once
-    assert _watch(client, w=a).json()["watcher"] == a
-    assert st.live_watchers(spectate.time.time()) == 2
+    assert _watch(client, w=W, e=2).json()["watcher"] == W
+    assert _counts(t) == [2]
+    assert _leave(client, e=2).status_code == 204
+    assert _counts(t) == [1] and W not in t.room.watch.who
+    # an unknown token, a malformed one, none: nothing changes
+    assert _leave(client, w="0" * 32).status_code == 204
+    assert _leave(client, w="x").status_code == 204
+    assert _leave(client, w=None).status_code == 204
+    assert _counts(t) == [1] and b in t.room.watch.watchers
+    # watching again (a new session) counts once
+    assert _watch(client, w=W, e=3).json()["watcher"] == W
+    assert _counts(t) == [2]
+
+
+def test_a_leave_from_an_older_session_changes_nothing(feed):
+    srv, spectate, client = feed
+    t = _live(srv, "LV1", "aa")
+    _watch(client, w=W, e=1)
+    _leave(client, e=1)
+    _watch(client, w=W, e=2)                 # the same table, watched again
+    assert _counts(t) == [1]
+    # the first screen's late answer sends its leave again: the reopened watch stays
+    assert _leave(client, e=1).status_code == 204
+    assert _counts(t) == [1]
+    # a read of the session that left counts nowhere, though it is answered
+    assert _watch(client, w=W, e=1).status_code == 200
+    assert client.get("/api/watch/aa", params={"w": W, "e": 1, "after": 0}).status_code == 200
+    _leave(client, e=2)
+    assert _counts(t) == [0]
+    assert client.get("/api/watch/aa", params={"w": W, "e": 2, "after": 0}).status_code == 200
+    assert _counts(t) == [0]
+
+
+def test_a_follow_of_the_table_next_moved_from_counts_nowhere(feed):
+    srv, spectate, client = feed
+    a, b = _live(srv, "LV1", "aa"), _live(srv, "LV2", "bb")
+    first = _watch(client, mode="ranked", w=W, e=1).json()["table"]
+    other = "aa" if first == "bb" else "bb"
+    # Next lands on the other table while the screen, still drawing the
+    # first, follows it once more
+    assert _watch(client, mode="ranked", skip=first, w=W, e=1).json()["table"] == other
+    follow = client.get(f"/api/watch/{first}", params={"w": W, "e": 1, "after": 0})
+    assert follow.status_code == 200
+    assert _counts(a, b) == ([1, 0] if other == "aa" else [0, 1])
+    # the screen closes: nothing counts anywhere
+    _leave(client, e=1)
+    assert _counts(a, b) == [0, 0]
+
+
+def test_one_token_counts_at_one_table_at_most(feed):
+    srv, spectate, client = feed
+    a, b = _live(srv, "LV1", "aa"), _live(srv, "LV2", "bb")
+    _watch(client, mode="ranked", w=W, e=1)
+    for table in ("aa", "bb", "aa"):
+        # a newer session's follow moves the token there, from wherever it was
+        client.get(f"/api/watch/{table}", params={"w": W, "e": 5 if table == "bb" else 9, "after": 0})
+        assert sum(_counts(a, b)) == 1
+    assert _counts(a, b) == [1, 0]
+
+
+def test_a_late_answer_after_leave_and_a_rate_limited_reopen_count_nothing(feed, monkeypatch):
+    srv, spectate, client = feed
+    t = _live(srv, "LV1", "aa")
+    _watch(client, w=W, e=1)                 # admitted; its answer is on its way
+    _leave(client, e=1)                      # the screen closed first
+    monkeypatch.setattr(spectate.LIMITER, "limit", 0)
+    # the reopened screen's pick and its retry are both refused
+    assert _watch(client, w=W, e=2).status_code == 429
+    assert _watch(client, w=W, e=2).status_code == 429
+    _leave(client, e=2)                      # that screen closes on the failure
+    _leave(client, e=1)                      # the first answer lands: its leave again
+    assert _counts(t) == [0]
+    # a leave that reaches the server before its own session's admission still holds
+    monkeypatch.setattr(spectate.LIMITER, "limit", 1000)
+    _leave(client, w="b" * 32, e=1)
+    _watch(client, w="b" * 32, e=1)
+    assert _counts(t) == [0]
 
 
 def test_every_watcher_up_to_the_cap_gets_the_live_table(feed, monkeypatch):

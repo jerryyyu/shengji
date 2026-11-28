@@ -597,25 +597,27 @@ describe("caught up", () => {
   });
 
   const wOf = (url: string) => new URL(url, "http://x").searchParams.get("w");
+  const eOf = (url: string) => new URL(url, "http://x").searchParams.get("e");
+  const leaveOf = (e: number) => `/api/watch/leave?w=${sessionStorage.getItem("shengji.watcher")}&e=${e}`;
 
-  it("opening the watch again is the same watcher, and leaving tells the server", async () => {
+  it("opening the watch again is the same watcher in a new session, and each close tells the server once", async () => {
     reply = (url) => url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined }
       : { ...feed, watcher: wOf(url) };
     await screen();
     // the token is made before the first read, and kept for the session
     const mine = sessionStorage.getItem("shengji.watcher")!;
     expect(mine).toMatch(/^[0-9a-f]{32}$/);
-    expect(wOf(urls[0])).toBe(mine);
+    expect([wOf(urls[0]), eOf(urls[0])]).toEqual([mine, "1"]);
     const first = roots.pop()!;
     act(() => first.root.unmount());
     first.host.remove();
-    expect(beacons).toEqual([`/api/watch/abc123/leave?w=${mine}`]);
+    expect(beacons).toEqual([leaveOf(1)]);
     urls.length = 0;
     await screen();
-    expect(wOf(urls[0])).toBe(mine);
-    // the page going away tells it too
+    expect([wOf(urls[0]), eOf(urls[0])]).toEqual([mine, "2"]);
+    // the page going away tells it too, in its own session
     window.dispatchEvent(new Event("pagehide"));
-    expect(beacons).toHaveLength(2);
+    expect(beacons).toEqual([leaveOf(1), leaveOf(2)]);
   });
 
   const close = () => {
@@ -629,7 +631,7 @@ describe("caught up", () => {
     return { gate, deliver: async () => { deliver!(); await flush(); } };
   };
 
-  it("an answer that lands after the screen closed is left again: one beacon for its table", async () => {
+  it("an answer that lands after the screen closed sends that session's leave again", async () => {
     const first = held();
     reply = async (url) => {
       if (url.startsWith("/api/watch/")) return { ...feed, waiting: true, events: undefined };
@@ -639,12 +641,12 @@ describe("caught up", () => {
     const h = await screen();
     expect(h.querySelector(".watch-tabs")).toBeNull();      // still loading: its Leave
     close();
-    expect(beacons).toEqual([]);
+    expect(beacons).toEqual([leaveOf(1)]);
     await first.deliver();
-    expect(beacons).toEqual([`/api/watch/abc123/leave?w=${feed.watcher}`]);
+    expect(beacons).toEqual([leaveOf(1), leaveOf(1)]);
   });
 
-  it("closing while Next's answer is on its way leaves the table that answer counted at", async () => {
+  it("closing while Next's answer is on its way: the leave names the session, whatever table it counts at", async () => {
     const b = held();
     reply = async (url) => {
       if (url.startsWith("/api/watch/")) return { ...feed, waiting: true, events: undefined };
@@ -653,29 +655,15 @@ describe("caught up", () => {
     };
     const h = await screen();
     await nextTable(h);
+    // a follow of the table still drawn, sent while Next's answer is on its way, is the same session
+    await act(async () => { vi.advanceTimersByTime(FOLLOW_MS); });
+    expect(urls.filter((u) => u.startsWith("/api/watch/abc123")).every((u) => eOf(u) === "1")).toBe(true);
     close();
-    expect(beacons).toEqual([`/api/watch/abc123/leave?w=${feed.watcher}`]);
     await b.deliver();
-    expect(beacons).toEqual([`/api/watch/abc123/leave?w=${feed.watcher}`, `/api/watch/bbb222/leave?w=${feed.watcher}`]);
+    expect(beacons).toEqual([leaveOf(1), leaveOf(1)]);
   });
 
-  it("a late answer to a closed screen leaves nothing once a newer watch has read since", async () => {
-    const first = held();
-    let reads = 0;
-    reply = async (url) => {
-      if (url.startsWith("/api/watch/")) return { ...feed, waiting: true, events: undefined };
-      if (reads++ === 0) await first.gate;
-      return feed;
-    };
-    await screen();
-    close();
-    const h = await screen();                               // the same table, watched again
-    expect(h.querySelector(".watch-tabs")).not.toBeNull();
-    await first.deliver();
-    expect(beacons).toEqual([]);
-  });
-
-  it("a fresh tab left and opened again before its first answer is one watcher throughout", async () => {
+  it("a fresh tab left and opened again before its first answer: one token, and the late leave is the old session's", async () => {
     const first = held();
     let reads = 0;
     reply = async (url) => {
@@ -687,18 +675,18 @@ describe("caught up", () => {
     };
     await screen();
     close();
-    await screen();
+    const h = await screen();
+    expect(h.querySelector(".watch-tabs")).not.toBeNull();
     await first.deliver();
     const picks = urls.filter((u) => u.startsWith("/api/watch?"));
-    expect(picks).toHaveLength(2);
+    expect(picks.map((u) => [wOf(u), eOf(u)])).toEqual([[wOf(picks[0]), "1"], [wOf(picks[0]), "2"]]);
     expect(wOf(picks[0])).toMatch(/^[0-9a-f]{32}$/);
-    expect(wOf(picks[1])).toBe(wOf(picks[0]));
     expect(sessionStorage.getItem("shengji.watcher")).toBe(wOf(picks[0]));
-    // the late answer leaves nothing: the watch opened since holds the token
-    expect(beacons).toEqual([]);
+    // the late answer's leave names session 1: the server keeps session 2's watch
+    expect(beacons).toEqual([leaveOf(1), leaveOf(1)]);
   });
 
-  it("a replay's end that finds a live table counts the watcher there, so leaving during the card tells it", async () => {
+  it("a replay's end that finds a live table, left during the card, tells the server", async () => {
     const rerun = { ...feed, table: "rerun", rerun: true, live_round: null, code: null };
     let picks = 0;
     reply = (url) => url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined }
@@ -708,7 +696,7 @@ describe("caught up", () => {
     expect(picks).toBe(2);
     expect(h.querySelector(".watch-round")!.textContent).toBe("Replay");
     close();
-    expect(beacons).toEqual([`/api/watch/abc123/leave?w=${feed.watcher}`]);
+    expect(beacons).toEqual([leaveOf(1)]);
   });
 
   it("a table that 404s and is found live again by the recovery pick plays on", async () => {
@@ -749,13 +737,11 @@ describe("caught up", () => {
     expect(h.querySelector(".watch-round")!.textContent).toContain("Round 4");
   });
 
-  it("a replay counts nobody, so leaving it tells nothing", async () => {
+  it("a replay's close sends its one leave too: the server knows what it counts", async () => {
     reply = () => ({ ...feed, table: "rerun", rerun: true, live_round: null, code: null });
     await screen();
-    const r = roots.pop()!;
-    act(() => r.root.unmount());
-    r.host.remove();
-    expect(beacons).toEqual([]);
+    close();
+    expect(beacons).toEqual([leaveOf(1)]);
   });
 
   it("a Next table that finds nothing keeps the table and its seat offer", async () => {

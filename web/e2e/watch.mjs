@@ -187,16 +187,16 @@ for (const device of ["phone-land", "ipad11-land"]) {
       const t0 = await page.evaluate(() => { window.__menu.states = []; return window.__menu.plays; });
       for (let i = 0; i < 40 && (await page.evaluate(() => window.__menu.plays)) < t0 + 3; i++) await sleep(250);
       const q = await page.evaluate(() => window.__menu);
-      const shown = await page.evaluate(() => document.querySelector(".watch-hud [role=menu]") !== null);
+      const shown = await page.evaluate(() => document.querySelector(".watch-screen [role=menu]") !== null);
       return q.plays < t0 + 3 ? `only ${q.plays - t0} plays arrived`
         : q.states.some((s) => s !== String(want)) || shown !== want ? `menu went ${q.states.join(" > ")} (shown ${shown})` : null;
     };
     await rep.check(`${name}: closed across plays with no tap`, await across(false), page);
     await page.tap('.watch-hud [aria-haspopup="menu"]');
-    await rep.check(`${name}: one tap opens it`, await page.evaluate(() => document.querySelector(".watch-hud [role=menu]") ? null : "not open"), page);
+    await rep.check(`${name}: one tap opens it`, await page.evaluate(() => document.querySelector(".watch-screen [role=menu]") ? null : "not open"), page);
     await rep.check(`${name}: open across plays`, await across(true), page);
     await page.tap('.watch-hud [aria-haspopup="menu"]');
-    await rep.check(`${name}: one tap closes it`, await page.evaluate(() => document.querySelector(".watch-hud [role=menu]") ? "still open" : null), page);
+    await rep.check(`${name}: one tap closes it`, await page.evaluate(() => document.querySelector(".watch-screen [role=menu]") ? "still open" : null), page);
     await rep.check(`${name}: closed across plays after the tap`, await across(false), page);
     if (SHOTS?.test(name)) await shot(page, name);
   });
@@ -257,7 +257,7 @@ for (const device of ["phone-land", "phone-land-se", "ipad11-land"]) {
       await page.tap('.watch-hud [aria-haspopup="menu"]');
       await sleep(250);
       await rep.check(`${name}: one tap on ⋯ opens the menu, on screen and on top`, await page.evaluate(() => {
-        const rows = [...document.querySelectorAll(".watch-hud [role=menu] [role=menuitem]")];
+        const rows = [...document.querySelectorAll(".watch-screen [role=menu] [role=menuitem]")];
         if (!rows.length) return "not open";
         return rows.map((r) => {
           const b = r.getBoundingClientRect();
@@ -295,7 +295,7 @@ for (const device of ["phone-land", "phone-land-se", "ipad11-land"]) {
       }
       await page.tap('.watch-hud [aria-haspopup="menu"]');
       await sleep(250);
-      await page.tap('.watch-hud [role=menu] .leave');
+      await page.tap('.watch-screen [role=menu] .leave');
       const back = await page.waitForSelector(".play-presence-watch", { timeout: 3000 }).then(() => true, () => false);
       await rep.check(`${name}: Leave lands on the Play tab`, back && !(await page.$(".watch-screen")) ? null : "still watching", page);
       if (SHOTS?.test(name)) await shot(page, name);

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMenuKeys } from "../useMenuKeys";
 import { usePresence } from "../usePresence";
+import { usePopLayer } from "../popLayer";
 import { OFFLINE } from "../offlineMode";
 import { COPIED_MS, shareInvite } from "../codes";
 import LeaveSheet from "./LeaveSheet";
@@ -51,6 +52,8 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
   // the row to focus after the next render
   const focusNext = useRef<"first" | "last" | null>(null);
   const presence = usePresence(open);
+  // drawn in the screen's pop-up layer, under `⋯` (popLayer.tsx)
+  const layer = usePopLayer(rootRef, presence.mounted);
 
   // the rows a keyboard can act on, in order
   const { items, onKeyDown: onMenuKey } = useMenuKeys(
@@ -70,7 +73,8 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) close();
+      const t = e.target as Node;
+      if (rootRef.current && !rootRef.current.contains(t) && !menuRef.current?.contains(t)) close();
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
@@ -135,10 +139,10 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
       >
         ⋯
       </button>
-      {presence.mounted ? (
+      {presence.mounted ? layer.portal(
         <div className={`hud-menu${presence.className ? ` ${presence.className}` : ""}`} role="menu"
              aria-label={t("table.more")} aria-hidden={!open || undefined} inert={!open || undefined}
-             ref={menuRef} onKeyDown={onMenuKey}>
+             ref={menuRef} onKeyDown={onMenuKey} style={layer.style}>
           {mode ? <div className={`hud-menu-mode ${mode.toLowerCase()}`} role="none">{t(mode === "Ranked" ? "table.modeRanked" : mode === "Unranked" ? "table.modeUnrankedRound" : "table.modeCasual")}</div> : null}
           {showCode ? (
             <div className="hud-menu-code" role="none">
@@ -165,7 +169,7 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
           <button className="hud-menu-row leave" role="menuitem" {...tapHandlers(askLeave)}>
             <span>{t("table.leaveGame")}</span>
           </button>
-        </div>
+        </div>,
       ) : null}
       {asking ? (
         <LeaveSheet context={{ kind: "game", ranked, guest, practice: offline }}

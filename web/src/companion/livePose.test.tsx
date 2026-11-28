@@ -239,7 +239,8 @@ describe("the stage's move chips", () => {
     const calls: Call[] = [];
     (Element.prototype as unknown as { animate: unknown }).animate = function (this: Element, frames: Keyframe[], o: KeyframeAnimationOptions) {
       const c: Call = { el: this, frames, o, cancelled: false };
-      calls.push(c);
+      // the figure's way in as it is selected (it fades up) is not one of the chips' moves
+      if (frames[0]?.opacity !== 0) calls.push(c);
       return { cancel() { c.cancelled = true; }, finished: Promise.resolve() } as unknown as Animation;
     };
     return calls;

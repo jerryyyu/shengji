@@ -6,6 +6,7 @@ import { DRAWINGS } from "../companion/kinds";
 import type { DrawnColour, DrawnKind } from "../companion/kinds";
 import { PAGE_CYCLE, useLivePose } from "../companion/livePose";
 import { playStageBeat, stageBeatMs, STAGE_BEATS } from "../companion/stageBeats";
+import { useStageFlair } from "../companion/stageFlair";
 import type { StageBeat } from "../companion/stageBeats";
 import { parseLook } from "../companion/look";
 import type { Colour, CompanionKind, LookEntry, UnlockCount } from "../companion/look";
@@ -213,8 +214,14 @@ export function Stage({ kind, colour, size, label, cheer = 0, moves = false }: {
   const felt = useRef<HTMLDivElement>(null);
   const moveBox = useRef<HTMLSpanElement>(null);
   const beat = useRef<{ stop: () => void } | null>(null);
+  const walkBox = useRef<HTMLSpanElement>(null);
+  const faceBox = useRef<HTMLSpanElement>(null);
+  const flairBack = useRef<HTMLCanvasElement>(null);
+  const flairFront = useRef<HTMLCanvasElement>(null);
   const live = useLivePose(kind, PAGE_CYCLE, felt);
   const { play } = live;
+  const flair = useStageFlair(kind, colour, size, live.pose, live.key, live.paused,
+    { felt, walk: walkBox, face: faceBox, move: moveBox, back: flairBack, front: flairFront });
   useEffect(() => () => beat.current?.stop(), []);
   // the table's big play: the box jumps while the figure holds the cheer
   const playBeat = (b: StageBeat) => {
@@ -224,6 +231,7 @@ export function Stage({ kind, colour, size, label, cheer = 0, moves = false }: {
     const top = felt.current?.getBoundingClientRect().top ?? 0;
     const at = moveBox.current?.getBoundingClientRect().top ?? top;
     beat.current = playStageBeat(moveBox.current, b, { px: size, up: Math.max(0, at - top) });
+    flair.big();
   };
   const playPose = (p: "hop" | "cheer" | "react") => {
     beat.current?.stop();
@@ -235,15 +243,21 @@ export function Stage({ kind, colour, size, label, cheer = 0, moves = false }: {
     if (cheer > 0) play("cheer");
   }, [cheer, play]);
   const stage = (
-    <div ref={felt} className={`coll-felt char-stage${live.paused ? " live-paused" : ""}`}>
+    <div ref={felt} className={`coll-felt char-stage${live.paused ? " live-paused" : ""}`} onClick={flair.onFelt}>
+      {flair.material ? <canvas className="char-flair" data-depth="back" ref={flairBack} aria-hidden="true" /> : null}
       <div className="char-figures" style={{ height: size }}>
-        <button type="button" className="coll-figure" aria-label={label} onClick={() => playPose("react")}>
-          <span className="char-box" ref={moveBox}>
-            <Companion key={live.key} kind={kind} colour={colour} size={size} state={live.pose}
-                       onPoseEnd={live.onPoseEnd} />
+        <span className="char-walk" ref={walkBox}>
+          <span className="char-face" ref={faceBox}>
+            <button type="button" className="coll-figure" aria-label={label} onClick={() => playPose("react")}>
+              <span className="char-box" ref={moveBox}>
+                <Companion key={live.key} kind={kind} colour={colour} size={size} state={live.pose}
+                           onPoseEnd={live.onPoseEnd} />
+              </span>
+            </button>
           </span>
-        </button>
+        </span>
       </div>
+      {flair.material ? <canvas className="char-flair" data-depth="front" ref={flairFront} aria-hidden="true" /> : null}
     </div>
   );
   if (!moves) return stage;

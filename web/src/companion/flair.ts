@@ -27,8 +27,8 @@ export const GAITS: Record<CompanionKind, Gait> = {
   tractor: { step: 520, steps: [[0, 0, 1, 1], [-2, -3, 1, 1, 0.5], [0, 0, 1, 1]] },
   bun: { step: 520, steps: [[0, 0, 1.08, 0.9], [-10, 0, 0.95, 1.07, 0.45], [0, 0, 1.08, 0.9]] },
   chick: { step: 260, steps: [[0, 0, 1, 1], [-8, 3, 1, 1, 0.45], [0, 0, 1, 1]] },
-  sparrow: { step: 520, steps: [[0, 0, 1, 1], [-15, -5, 0.97, 1.04, 0.45], [0, 0, 1.03, 0.96, 0.9], [0, 0, 1, 1]] },
-  lamb: { step: 520, steps: [[0, 0, 1, 1], [-14, 4, 0.98, 1.03, 0.45], [0, 0, 1.03, 0.97, 0.9], [0, 0, 1, 1]] },
+  sparrow: { step: 520, steps: [[0, 0, 1, 1], [-11, -5, 0.97, 1.04, 0.45], [0, 0, 1.03, 0.96, 0.9], [0, 0, 1, 1]] },
+  lamb: { step: 520, steps: [[0, 0, 1, 1], [-12, 4, 0.98, 1.03, 0.45], [0, 0, 1.03, 0.97, 0.9], [0, 0, 1, 1]] },
   panda: { step: 1040, steps: [[0, 0, 1, 1], [-4, -5, 1, 1, 0.25], [0, 0, 1, 1, 0.5], [-4, 5, 1, 1, 0.75], [0, 0, 1, 1]] },
 };
 /** A gait's keyframes for the face box, facing `dir`. */
@@ -48,13 +48,15 @@ export const QUIRKS: Record<CompanionKind, Beat> = {
 
 /** Each companion's way in, the fullest first: the table plays the first
  *  that stays clear where the figure stands. Each fades up as it comes. */
+/** The plainest way in, which fits wherever a figure can stand: it grows up from a little smaller. */
+const FADE: Beat = { name: "fade", ms: 420, easing: "ease-out", frames: [f(0, 0, 0.8, 0.8, 0, 0), f(0, 0, 1, 1, 1, 1)] };
 export const ARRIVES: Record<CompanionKind, readonly Beat[]> = {
-  tractor: [{ name: "rev", ms: 700, easing: "ease-out", frames: [f(0, 0, 0.6, 0.6, 0, 0), f(0, -4, 1.06, 0.95, 0.5, 1), f(0, 3, 0.98, 1.02, 0.75), f(0, 0, 1, 1)] }],
-  bun: [-60, -30, 0].map((y): Beat => ({ name: `plop${-y}`, ms: 620, easing: "ease-in", frames: [f(y, 0, 0.95, 1.05, 0, 0), f(0, 0, 1.16, 0.8, 0.6, 1), f(y / 10, 0, 0.97, 1.05, 0.8), f(0, 0, 1, 1)] })),
-  chick: [-12, 0].map((y): Beat => ({ name: `hatch${-y}`, ms: 520, easing: SPRING, frames: [f(0, 0, 1, 0.1, 0, 0), f(y, 0, 0.95, 1.1, 0.6, 1), f(0, 0, 1, 1)] })),
-  sparrow: [[-70, -14], [-35, -8], [0, 0]].map(([y, r]): Beat => ({ name: `swoop${-y}`, ms: 700, easing: "ease-out", frames: [f(y, r, 0.9, 0.9, 0, 0), f(0, -r / 3, 1, 1, 0.75, 1), f(0, 0, 1, 1)] })),
-  lamb: [[-26, -13], [-14, -7], [0, 0]].map(([a, b]): Beat => ({ name: `prance${-a}`, ms: 800, easing: "linear", frames: [f(0, 0, 0.8, 0.8, 0, 0), f(a, 0, 1, 1, 0.3, 1), f(0, 0, 1.04, 0.96, 0.55), f(b, 0, 1, 1, 0.78), f(0, 0, 1, 1)] })),
-  panda: [{ name: "waddle", ms: 900, easing: "ease-out", frames: [f(0, -5, 0.9, 0.9, 0, 0), f(0, 5, 1, 1, 0.3, 1), f(0, -4, 1, 1, 0.62), f(0, 0, 1, 1)] }],
+  tractor: [{ name: "rev", ms: 700, easing: "ease-out", frames: [f(0, 0, 0.6, 0.6, 0, 0), f(0, -4, 1.06, 0.95, 0.5, 1), f(0, 3, 0.98, 1.02, 0.75), f(0, 0, 1, 1)] }, FADE],
+  bun: [...[-60, -30].map((y): Beat => ({ name: `plop${-y}`, ms: 620, easing: "ease-in", frames: [f(y, 0, 0.95, 1.05, 0, 0), f(0, 0, 1.16, 0.8, 0.6, 1), f(y / 10, 0, 0.97, 1.05, 0.8), f(0, 0, 1, 1)] })), FADE],
+  chick: [{ name: "hatch", ms: 520, easing: SPRING, frames: [f(0, 0, 1, 0.1, 0, 0), f(-12, 0, 0.95, 1.1, 0.6, 1), f(0, 0, 1, 1)] }, FADE],
+  sparrow: [...[[-70, -14], [-35, -8]].map(([y, r]): Beat => ({ name: `swoop${-y}`, ms: 700, easing: "ease-out", frames: [f(y, r, 0.9, 0.9, 0, 0), f(0, -r / 3, 1, 1, 0.75, 1), f(0, 0, 1, 1)] })), FADE],
+  lamb: [...[[-26, -13], [-14, -7]].map(([a, b]): Beat => ({ name: `prance${-a}`, ms: 800, easing: "linear", frames: [f(0, 0, 0.8, 0.8, 0, 0), f(a, 0, 1, 1, 0.3, 1), f(0, 0, 1.04, 0.96, 0.55), f(b, 0, 1, 1, 0.78), f(0, 0, 1, 1)] })), FADE],
+  panda: [{ name: "waddle", ms: 900, easing: "ease-out", frames: [f(0, -5, 0.9, 0.9, 0, 0), f(0, 5, 1, 1, 0.3, 1), f(0, -4, 1, 1, 0.62), f(0, 0, 1, 1)] }, FADE],
 };
 
 // ---- material: a store character's own ----

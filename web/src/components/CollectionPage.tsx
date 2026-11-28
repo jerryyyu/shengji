@@ -22,6 +22,7 @@ import { showToast } from "../toast";
 import { telemetry, useScreen } from "../telemetry";
 import CharacterPage, { SHORT_SCREEN, Stage, Tick, kindName, stageSize } from "./CharacterPage";
 import { BuyFoot, RestoreRow } from "./StoreFoot";
+import { materialOf } from "../companion/flair";
 import "../companion/collection.css";
 
 type Selected = CompanionKind | SoonKind;
@@ -46,7 +47,7 @@ function Tile({ kind, colour, label, sub, gold, dim, worn, isNew, selected, arri
   const t = useT();
   const [hop, setHop] = useState(0);
   return (
-    <button type="button" className={`coll-tile${dim ? " dim" : ""}${arrive ? " arrive" : ""}${selected ? " selected" : ""}`}
+    <button type="button" className={`coll-tile${dim ? " dim" : ""}${arrive ? " arrive" : ""}${selected ? " selected" : ""}${materialOf(kind) ? " foil" : ""}`}
             aria-pressed={selected ? "true" : "false"} onClick={() => { setHop((n) => n + 1); onOpen(); }}
             onAnimationEnd={(e) => { if (e.currentTarget === e.target) onArrived?.(); }}>
       <span className="coll-tile-stage">

@@ -159,6 +159,9 @@ export class Seat {
   away = false;
   timeoutsInRow = 0;
   timeoutsInRound = 0;
+  /** Who held this seat before a newcomer took it mid-round, and that
+   *  round's number (server.py took_from); null otherwise. */
+  tookFrom: { name: string; isBot: boolean; roundNo: number } | null = null;
 
   constructor(name: string, isBot: boolean, token: string) {
     this.name = name;
@@ -544,6 +547,8 @@ export function stateFor(room: LocalRoom, seat: number, now = 0): Json {
     // a solo table never seats an open-table joiner
     joining: [],
     joined_round: false,
+    ...(room.seats[seat].tookFrom?.roundNo === game.roundNo && rnd.phase !== "round_end"
+      ? { took_seat: { name: room.seats[seat].tookFrom!.name, is_bot: room.seats[seat].tookFrom!.isBot } } : {}),
   };
 }
 
@@ -1695,6 +1700,9 @@ export class LocalConnection {
     seat.timeoutsInRow = 0;
     seat.timeoutsInRound = 0;
     seat.turnStarted = null;
+    const game = room.game;
+    seat.tookFrom = game && game.round && game.round.phase !== "round_end" && !game.gameOver
+      ? { name: took, isBot: !fromPerson, roundNo: game.roundNo } : null;
     room.joinedOnce = true;
     this.room = room;
     this.me = seat;

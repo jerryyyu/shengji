@@ -203,7 +203,8 @@ export class ReviewPrompt {
     }, null);
   }
 
-  /** Asks the shell for the sheet when this version has not been asked;
+  /** Asks the shell for the sheet when this version has not been asked and
+   *  this session has not gone wrong;
    *  only a request the shell made (`{requested: true}`) marks the version
    *  asked and is reported. One ask at a time: a call while one is in flight
    *  does nothing. */
@@ -214,8 +215,9 @@ export class ReviewPrompt {
     if (version === null || request === null) return false;
     this.asking = true;
     try {
-      const asked = await this.run((s) => ({ state: null, out: s.prompted === version }), true);
-      if (asked) return false;
+      // the session may have gone wrong since the win earned this ask
+      const skip = await this.run((s) => ({ state: null, out: s.prompted === version || s.troubled === s.session }), true);
+      if (skip) return false;
       let made = false;
       try {
         made = (await request() as { requested?: unknown } | undefined)?.requested === true;
@@ -315,7 +317,7 @@ export function watchTrouble(mark: () => void, now: () => number): () => void {
   const shown = () => { if (inView()) since = now(); };
   const check = () => { if (inView() && now() - since >= TROUBLE_GRACE_MS) mark(); };
   document.addEventListener("visibilitychange", shown);
-  const offLink = subscribeLink((ev) => { if (ev.kind === "down") check(); });
+  const offLink = subscribeLink((ev) => { if (ev.kind === "down" && !ev.identity) check(); });
   const offStall = subscribeStalled((on) => { if (on) check(); });
   return () => {
     document.removeEventListener("visibilitychange", shown);

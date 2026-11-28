@@ -16,12 +16,11 @@ export function useReviewPrompt(state: GameState, live: boolean, prompt: ReviewP
   const won = showing && seated && result.winner_team === me.team;
   const kind: WinKind = state.matched === true && !result?.unranked ? "ranked" : "casual";
   const was = useRef(showing);
-  // this round's seat was taken after its deal: marked while it is in play,
-  // cleared once its card goes
+  // this round's seat was taken after its deal: every frame of it in play
+  // says so, and the last one before its card decides
   const joined = useRef(false);
   if (!showing) {
-    if (was.current) joined.current = false;
-    if (state.joining_you === true || state.joined_round === true || state.took_seat !== undefined) joined.current = true;
+    joined.current = state.joining_you === true || state.joined_round === true || state.took_seat !== undefined;
   }
   const whole = !joined.current && result?.unranked !== "joined";
   const facts = useRef({ won: won && whole, live, kind });

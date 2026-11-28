@@ -1180,6 +1180,11 @@ describe("reconnecting fast once a drop is known", () => {
       FakeWS.last!.onopen?.();
       conn.reconnect();
       expect(events.at(-1)).toEqual({ kind: "down", cause: "replaced" });
+      // a working socket given up for a new identity says so
+      vi.advanceTimersByTime(0);
+      FakeWS.last!.onopen?.();
+      conn.reconnect("identity");
+      expect(events.at(-1)).toEqual({ kind: "down", cause: "replaced", identity: true });
     } finally { vi.useRealTimers(); }
   });
 });

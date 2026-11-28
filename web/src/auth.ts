@@ -722,7 +722,7 @@ class AuthStore {
       this.reopen = next;
       void next.then(() => { if (this.reopen === next) this.reopen = null; });
     }
-    conn.reconnect();
+    conn.reconnect("identity");
   }
 
   /** A socket replaced for a sign-in has not opened yet. */

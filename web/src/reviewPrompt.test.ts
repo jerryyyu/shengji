@@ -276,6 +276,18 @@ describe("a session that went wrong", () => {
     expect(await h.prompt.roundWon("casual")).toBe("ranked2");
   });
 
+  it("trouble between the win and its ask stops the ask; the win stays counted", async () => {
+    const h = harness();
+    await secondSession(h);
+    for (let i = 0; i < CASUAL_WINS - 1; i++) await h.prompt.roundWon("casual");
+    const trigger = await h.prompt.roundWon("casual");
+    expect(trigger).toBe("casual5");
+    await h.prompt.trouble();
+    expect(await h.prompt.ask(trigger!)).toBe(false);
+    expect(h.asked).toBe(0);
+    expect(await state(h)).toMatchObject({ casual: CASUAL_WINS, troubled: 2, prompted: null });
+  });
+
   it("trouble in the first session leaves the second free to ask", async () => {
     const h = harness();
     await h.prompt.touch();
@@ -336,6 +348,12 @@ describe("a session that went wrong", () => {
       clock += 1;
       noteLink({ kind: "down", cause: "no_pong" });
       expect(marks).toBe(1);
+    });
+
+    it("not a working socket given up to carry a sign-in or sign-out", () => {
+      clock += TROUBLE_GRACE_MS;
+      noteLink({ kind: "down", cause: "replaced", identity: true });
+      expect(marks).toBe(0);
     });
 
     it("not in the first seconds after a launch", () => {
@@ -491,6 +509,16 @@ describe("useReviewPrompt at the table", () => {
     expect(h.asked).toBe(0);
     expect((await state(h)).casual).toBe(CASUAL_WINS - 1);
     show(gameState({ phase: "deal" }));
+    show(gameState());
+    show(gameState({ winner: 0 }));
+    await settle(PROMPT_DELAY_MS);
+    expect(h.asked).toBe(1);
+  });
+
+  it("a round joined mid-way whose card never arrived leaves the next whole round counting", async () => {
+    show(gameState({ took_seat: { name: "Bot 0", is_bot: true } }));
+    // the socket dropped before that round's card; the next frame is the next deal
+    show(gameState({ phase: "deal" }), false);
     show(gameState());
     show(gameState({ winner: 0 }));
     await settle(PROMPT_DELAY_MS);

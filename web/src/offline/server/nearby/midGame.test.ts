@@ -5,7 +5,12 @@
 // socket only once the host has bound the seat and sent its state, so a
 // move sent at the open applies on the first try; a network that comes back
 // gets a fresh attempt that lands, and the move goes once.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import type { GameState } from "../../../protocol";
+import type { ReviewPrompt } from "../../../reviewPrompt";
+import { useReviewPrompt } from "../../../useReviewPrompt";
 import { legalPlays } from "../../engine/round";
 import { nearbyChoices } from "../../../joinSeats";
 import type { RoomSeats } from "../../../protocol";
@@ -70,6 +75,47 @@ describe("joining a nearby game in progress", () => {
     const meiPeer = t.fake.wire.find((w) => w.to !== "host" && w.text.includes(`"you":${seat}`))!.to;
     expect(t.fake.wire.some((w) => w.from === meiPeer && w.text.startsWith('{"type":"play"'))).toBe(true);
   });
+
+  it("the taken seat's frames name whose seat it was through that round only, so the rating ask counts whole rounds", async () => {
+    // drivers that play on past the first round end
+    const t = new NearbyTable(24, 6);
+    await t.open(true);
+    await t.join("P1", { drive: true });
+    t.send(t.host, { type: "table_start_bots" });
+    await t.settle(() => t.room?.round?.phase === "play");
+    const mei = await t.join("Mei", { drive: true });
+    const team = mei.seat! % 2;
+    const states = () => mei.frames.filter((f) => f.type === "state") as unknown as GameState[];
+    // each round's frames, split at its card
+    const rounds = () => {
+      const out: GameState[][] = [[]];
+      for (const f of states()) {
+        const last = out[out.length - 1];
+        if (f.phase !== "round_end" && last.some((g) => g.phase === "round_end")) out.push([f]);
+        else last.push(f);
+      }
+      return out;
+    };
+    const won = (r: GameState[]) => r.some((g) => g.phase === "round_end" && g.round_result?.winner_team === team);
+    await t.settle(() => rounds().slice(1).some((r) => won(r) && r.at(-1)!.phase === "round_end"));
+    const all = rounds();
+    expect(won(all[0])).toBe(true);
+    for (const g of all[0].filter((g) => g.phase !== "round_end")) {
+      expect(g.took_seat).toEqual({ name: expect.any(String), is_bot: true });
+    }
+    for (const g of all.slice(1).flat()) expect(g.took_seat).toBeUndefined();
+    // the same frames through the table's hook: the joined round's win is not counted, each whole win is
+    (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const roundWon = vi.fn(async () => null);
+    const prompt = { roundWon, ask: vi.fn(async () => false) } as unknown as ReviewPrompt;
+    const Probe = ({ state }: { state: GameState }) => { useReviewPrompt(state, true, prompt); return null; };
+    const root = createRoot(document.createElement("div"));
+    for (const g of states()) act(() => root.render(createElement(Probe, { state: g })));
+    act(() => root.unmount());
+    const wholeWins = all.slice(1).filter((r) => won(r) && r.at(-1)!.phase === "round_end").length;
+    expect(wholeWins).toBeGreaterThan(0);
+    expect(roundWon).toHaveBeenCalledTimes(wholeWins);
+  }, 60_000);
 
   it("the newcomer's frames carry its own hand only", async () => {
     const t = await started(2, true);

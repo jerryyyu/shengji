@@ -194,6 +194,9 @@ const ICON = {
 export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   const t = useT();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
+  // the table drawn, for reads that answer after the render that sent them
+  const loadedRef = useRef<Loaded | null>(null);
+  loadedRef.current = loaded;
   const [none, setNone] = useState(false);
   const [at, setAt] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -273,19 +276,65 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     endedAt.current = null;
   };
   const retry = useRef<number | null>(null);
+  // One watch read at a time: every read may move where the server counts
+  // this watcher, so the table drawn is the one the last read settled on.
+  // `busy`: a read is on its way; `picking`: a pick, its retry included, is
+  // under way (no follow is sent meanwhile); `waiting`: a pick held for the
+  // read on its way; `more`: Next was asked again while a pick was under way.
+  const busy = useRef(false);
+  const picking = useRef(false);
+  const waiting = useRef<(() => void) | null>(null);
+  const more = useRef(false);
+  const send = (read: () => Promise<WatchFetch>): Promise<WatchFetch> => {
+    busy.current = true;
+    return read().finally(() => {
+      busy.current = false;
+      const go = waiting.current;
+      waiting.current = null;
+      if (go && !closed.current) go();
+    });
+  };
+  /** Whether a follow may be sent now: nothing on its way, no pick under way. */
+  const idle = () => !busy.current && !picking.current;
+  // the table drawn, followed at once: after a pick that drew no other
+  // table, this read (numbered after the pick's) counts the watcher there again
+  const reassert = () => {
+    const doc = loadedRef.current?.doc;
+    if (!doc || doc.rerun || table.current !== doc.table || !idle()) return;
+    void send(() => followWatch(doc.table, next.current?.doc.round ?? doc.round ?? 0, sid())).then((res) => {
+      if (late(res)) return;
+      if (res.ok && res.doc.waiting && table.current === doc.table) {
+        setLive({ round: res.doc.live_round, code: res.doc.code, watchers: res.doc.watchers });
+      }
+    });
+  };
   // a table to watch: the first, or another by Next table (`why` "next") or
   // in place of one that is gone. "Nobody is playing" is said only when the
   // server says so (its 404); a read that fails or brings a round that cannot
   // be drawn is tried once more, a second such read closes the watch with a
-  // toast, and one while a table is on screen keeps that table.
+  // toast, and one while a table is on screen keeps that table. A Next asked
+  // while a pick is under way waits for it: the pick's table is drawn, and
+  // then one more pick goes on from there.
   const pick = (skip: string | null, why: "next" | "gone" | null = null) => {
+    if (picking.current) {
+      if (why === "next") more.current = true;
+      return;
+    }
+    picking.current = true;
     const mine = ++picks.current;
     // a round buffered behind the card is dropped only when another table
     // is shown (`show`); the same table brought back keeps it and its hold
     if (retry.current !== null) window.clearTimeout(retry.current);
     retry.current = null;
+    const settle = (drew: string | null) => {
+      picking.current = false;
+      const again = more.current;
+      more.current = false;
+      if (drew !== null && again) pick(drew, "next");
+      else if (drew === null) reassert();
+    };
     const read = (again: boolean) => {
-      void fetchWatch(mode, skip, sid()).then((r) => {
+      const go = () => void send(() => fetchWatch(mode, skip, sid())).then((r) => {
         if (late(r)) return;
         if (mine !== picks.current) return;
         const l = r.ok ? load(r.doc) : null;
@@ -297,18 +346,25 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
         if (l && why === "next" && l.doc.table === skip && table.current === skip) {
           // Next found no other table: the one on screen, still followed,
           // stays as it is, its round, seat and any round buffered behind it
+          settle(null);
         } else if (l) {
           setNone(false);
           show(l, why ?? "next");
-        } else if (loaded) {
-          // the table on screen stays
+          settle(l.doc.rerun ? null : l.doc.table);
+        } else if (loadedRef.current) {
+          // the table on screen stays, and is counted there again
+          settle(null);
         } else if (failed) {
+          picking.current = false;
           showToast(t("watch.failed"));
           watch.close("error");
         } else {
+          picking.current = false;
           setNone(true);
         }
       });
+      if (busy.current) waiting.current = go;
+      else go();
     };
     read(false);
   };
@@ -369,8 +425,8 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     const { doc } = loaded;
     let on = true;
     const poll = window.setInterval(() => {
-      if (document.visibilityState === "hidden" || table.current !== doc.table) return;
-      void followWatch(doc.table, next.current?.doc.round ?? doc.round ?? 0, sid()).then((res) => {
+      if (document.visibilityState === "hidden" || table.current !== doc.table || !idle()) return;
+      void send(() => followWatch(doc.table, next.current?.doc.round ?? doc.round ?? 0, sid())).then((res) => {
         if (late(res)) return;
         if (!on || table.current !== doc.table || !res.ok) return;
         if (res.doc.waiting) {
@@ -403,8 +459,8 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
       }, Math.max(0, wait));
     };
     const ask = () => {
-      if (next.current || table.current !== doc.table) return;
-      const r = doc.rerun ? fetchWatch(mode, null, sid()) : followWatch(doc.table, doc.round ?? 0, sid());
+      if (next.current || table.current !== doc.table || !idle()) return;
+      const r = send(() => doc.rerun ? fetchWatch(mode, null, sid()) : followWatch(doc.table, doc.round ?? 0, sid()));
       void r.then((res) => {
         if (late(res)) return;
         if (!on || table.current !== doc.table) return;

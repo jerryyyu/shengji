@@ -807,7 +807,11 @@ account may watch any live table's last finished round.
   session `e`: the token stops counting wherever it counts unless a newer
   session has been admitted since, and later reads of that session count
   nowhere (for a token never admitted, the leave is kept among the latest
-  1024 such for 90 s). A watch screen sends that leave as a beacon once as it closes (or
+  1024 such for 90 s). The web client sends one watch read at a time: no
+  follow while a pick (its retry included) is under way, a Next asked
+  meanwhile waits for that pick and goes on from the table it drew, and a
+  pick that draws no other table is followed at once by a read of the table
+  on screen, so the table drawn is the table the server counts. A watch screen sends that leave as a beacon once as it closes (or
   its page goes away), and again for an answer that lands after it closed.
   A pick at another table moves the token's count there. A full table is not picked,
   not followed by a new watcher and not counted in `watch`. 30 reads a minute per

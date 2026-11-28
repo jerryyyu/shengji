@@ -507,17 +507,18 @@ for (const how of ["loading", "reopen", "reopen-429", "replay-end"]) {
   });
   await page.context().close();
 }
-// Three tables, Next overtaken: the screen draws A; a Next is held on its way
-// to the server; two more Nexts bring B and then C, which the screen draws;
-// the held Next then reaches the server. Only C, the table drawn, counts
-// this viewer.
-{
+// Three tables, Nexts while one is held: the screen draws A; a Next is held
+// on its way to the server; two more Nexts are asked meanwhile. Released, the
+// held Next draws B, and one more pick goes on from there: it brings C, or
+// (refused) is refused with its retry and B stays. Either way only the table
+// drawn counts this viewer, and no two reads were ever on their way at once.
+for (const how of ["overtaken", "refused"]) {
   const device = "phone-land";
-  const name = `watch-next-overtaken-${device}`;
+  const name = `watch-next-${how}-${device}`;
   if (!only || only.test(name)) {
     const tables = ["a1b2c3d4", "b1b2c3d4", "c1b2c3d4"];
     const L = leases();
-    let picks = 0, release = null;
+    let picks = 0, release = null, inFlight = 0, most = 0;
     const held = new Promise((r) => { release = r; });
     const page = await open(browser, device, {
       storage: { "shengji.coach": "off", "shengji.muted": "1", "shengji.name": "Jerry" },
@@ -529,6 +530,7 @@ for (const how of ["loading", "reopen", "reopen-429", "replay-end"]) {
           const w = u.searchParams.get("w");
           if (u.pathname.endsWith("/leave")) { L.leave(w, epochOf(u)); return r.fulfill({ status: 204, body: "" }); }
           const table = decodeURIComponent(u.pathname.split("/")[3]);
+          if (inFlight > 0) most = Math.max(most, inFlight + 1);
           L.read(w, epochOf(u), table, true, seqOf(u));
           return r.fulfill({ json: { ...doc(0), table, watcher: w, waiting: true, events: undefined } });
         });
@@ -537,8 +539,15 @@ for (const how of ["loading", "reopen", "reopen-429", "replay-end"]) {
           const skip = u.searchParams.get("skip");
           const w = u.searchParams.get("w");
           const n = ++picks;
+          inFlight++;
+          most = Math.max(most, inFlight);
           // the first Next reaches the server only once released
           if (n === 2) await held;
+          if (how === "refused" && n > 2) {
+            inFlight--;
+            return r.fulfill({ status: 429, json: {} }).catch(() => {});
+          }
+          inFlight--;
           const table = skip ? tables[(tables.indexOf(skip) + 1) % tables.length] : tables[0];
           L.read(w, epochOf(u), table, false, seqOf(u));
           const i = tables.indexOf(table);
@@ -561,11 +570,12 @@ for (const how of ["loading", "reopen", "reopen-429", "replay-end"]) {
       await next();                        // B
       await next();                        // C
       release();
-      await sleep(800);
+      await sleep(how === "refused" ? 2600 : 800);   // the refused pick's retry comes 1.5 s on
       const where = tables.filter((t) => L.count(t) > 0).map((t) => t.slice(0, 1));
-      await rep.check(`${name}: only the table drawn counts the viewer`,
-        (await round()).includes("Round 3") && JSON.stringify(where) === '["c"]' ? null
-          : `drawn ${JSON.stringify(await round())}, counted at ${JSON.stringify(where)}`, page);
+      const want = how === "refused" ? { round: "Round 2", at: '["b"]' } : { round: "Round 3", at: '["c"]' };
+      await rep.check(`${name}: only the table drawn counts the viewer, one read at a time`,
+        (await round()).includes(want.round) && JSON.stringify(where) === want.at && most <= 1 ? null
+          : `drawn ${JSON.stringify(await round())}, counted at ${JSON.stringify(where)}, ${most} reads at once`, page);
     });
     await page.context().close();
   }

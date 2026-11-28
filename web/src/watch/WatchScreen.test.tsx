@@ -517,12 +517,12 @@ describe("caught up", () => {
     expect(h.querySelector(".watch-round")!.textContent).toContain("Round 7");
   });
 
-  it("ignores a pick that answers after a later one", async () => {
+  it("a Next asked while a pick is under way waits for it, then goes on from the table it drew", async () => {
     let release: (() => void) | null = null;
     const slow = new Promise<void>((r) => { release = r; });
     reply = async (url) => {
       if (url.includes("skip=abc123")) { await slow; return { ...feed, table: "old111", round: 9 }; }
-      if (url.includes("skip=")) return { ...feed, table: "new222", round: 8 };
+      if (url.includes("skip=old111")) return { ...feed, table: "new222", round: 8 };
       return url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined } : feed;
     };
     const h = await screen();
@@ -533,13 +533,18 @@ describe("caught up", () => {
       await flush();
     };
     await next();                          // skip=abc123: slow
-    await next();                          // still on abc123, so skip=abc123 again: also slow
-    reply = async (url) => (url.includes("skip=") ? { ...feed, table: "new222", round: 8 } : feed);
-    await next();
-    expect(h.querySelector(".watch-round")!.textContent).toContain("Round 8");
+    await next();                          // waits for it
+    await next();                          // still one more, not two
+    const skips = () => urls.filter((u) => u.includes("skip="));
+    expect(skips()).toHaveLength(1);
+    expect(h.querySelector(".watch-round")!.textContent).toContain("Round 3");
+    // nothing else is read while the pick is under way
+    await act(async () => { vi.advanceTimersByTime(FOLLOW_MS * 2); });
+    expect(urls.filter((u) => u.startsWith("/api/watch/"))).toEqual([]);
     release!();
     await flush();
     expect(h.querySelector(".watch-round")!.textContent).toContain("Round 8");
+    expect(skips().map((u) => new URL(u, "http://x").searchParams.get("skip"))).toEqual(["abc123", "old111"]);
   });
 
   const actions = () => [...document.querySelectorAll(".round-end .round-end-actions button:not(.round-end-view-btn)")].map((b) => b.textContent);
@@ -863,13 +868,14 @@ describe("the menu while plays arrive", () => {
     await open();
     await (await tap(button("More")))();
     const rows = () => [...host.querySelectorAll<HTMLButtonElement>("[role=menuitem]")];
-    const picks = urls.length;
+    const pickReads = () => urls.filter((u) => u.startsWith("/api/watch?")).length;
+    const picks = pickReads();
     const lateNext = await tap(rows()[0]);
     expect(host.querySelector("[role=menu]")).toBeNull();
-    expect(urls.length).toBe(picks + 1);
+    expect(pickReads()).toBe(picks + 1);
     await nextPlay();
     await lateNext();
-    expect(urls.length).toBe(picks + 1);
+    expect(pickReads()).toBe(picks + 1);
     await (await tap(button("More")))();
     const close = vi.spyOn(watch, "close");
     await tap(rows()[1]);

@@ -199,7 +199,7 @@ describe("the Collection tab", () => {
     authState.current = { status: "in", clientId: "cid", user };
     await drawOpen();
     await act(async () => { swatch("Lantern orange").click(); });
-    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("Win 25 ranked rounds to unlock · 14 of 25");
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("Lantern orange · Win 25 ranked rounds to unlock · 14 of 25");
     expect(host.querySelector(".coll-use")?.textContent).toBe("Use");
     expect(fetches.some((f) => f.url === "/api/me/look")).toBe(false);
     await act(async () => { swatch("Imperial yellow").click(); });
@@ -219,7 +219,7 @@ describe("the Collection tab", () => {
     expect(swatch("Imperial yellow").classList.contains("locked")).toBe(false);
     expect(swatch("Lantern orange").classList.contains("locked")).toBe(false);
     await act(async () => { swatch("Jade").click(); });
-    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("Win 50 ranked rounds to unlock · 45 of 50");
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("Jade · Win 50 ranked rounds to unlock · 45 of 50");
     expect(host.querySelector(".coll-use")?.textContent).toBe("Use");
   });
 

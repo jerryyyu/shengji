@@ -11,7 +11,7 @@ import type { StageBeat } from "../companion/stageBeats";
 import { parseLook } from "../companion/look";
 import type { Colour, CompanionKind, LookEntry, UnlockCount } from "../companion/look";
 import { guestName } from "../guestName";
-import { locale, useT } from "../i18n";
+import { locale, tx, useT } from "../i18n";
 import type { MessageKey } from "../i18n";
 import { STORE_NAMES } from "../companion/characters";
 import type { SoldKind, SoonKind } from "../companion/characters";
@@ -88,24 +88,39 @@ function unlockLine(t: ReturnType<typeof useT>, entry: LookEntry, user: AuthUser
 
 const DATE_LOCALE = { en: undefined, "zh-Hans": "zh-CN", "zh-Hant": "zh-TW" } as const;
 
-/** How `user` got an owned look, for the one status line: the date its
- *  companion was bought, Gift for one given to the account, or the count
- *  that unlocked its colour. "" for a look
- *  free from the start, and for one kept in use from before its count was
- *  reached: the line then names the look. */
-export function provenanceLine(t: ReturnType<typeof useT>, entry: LookEntry, user: AuthUser | null): string {
+/** How `user` got an owned look, the part of the one status line after its colour's name: the date its
+ *  companion was bought (the year only when it is not this one), Gift for one given to the account, or the
+ *  count that unlocked its colour. "" for a look free from the start, and for one kept in use from before
+ *  its count was reached. */
+export function provenanceLine(t: ReturnType<typeof useT>, entry: LookEntry, user: AuthUser | null, today = new Date()): string {
   if (!user || !entry.unlocked) return "";
   const bought = entry.product ? user.purchased_on?.[entry.product] : undefined;
   if (bought) {
     const [y, m, d] = bought.split("-").map(Number);
-    const date = new Date(y, m - 1, d).toLocaleDateString(DATE_LOCALE[locale()], { day: "numeric", month: "short", year: "numeric" });
+    const year = y === today.getFullYear() ? {} : { year: "numeric" as const };
+    const date = new Date(y, m - 1, d).toLocaleDateString(DATE_LOCALE[locale()], { day: "numeric", month: "short", ...year });
     return t("home.purchasedOn", { date });
   }
   if (entry.product && user.gifts?.includes(entry.product)) return t("home.gift");
   if (!entry.needs || countOf(user, entry.needs.count) < entry.needs.of) return "";
   const { count, of } = entry.needs;
-  if (count === "rounds") return t("home.unlockedRounds", { of: num(of) });
-  return of === 1 ? t("home.unlockedRankedWin") : t("home.unlockedRankedRounds", { of: num(of) });
+  if (count === "rounds") return t("home.gotRounds", { of: num(of) });
+  return of === 1 ? t("home.gotRankedWin") : t("home.gotRankedRounds", { of: num(of) });
+}
+
+/** The stage's one status line, in two parts: the colour's name and how it was got ("Russet",
+ *  "Purchased Nov 27"), or what unlocks a locked one; a look with nothing to add names the look alone. */
+export function statusParts(t: ReturnType<typeof useT>, entry: LookEntry, inUse: string, user: AuthUser | null,
+  today = new Date()): { name: string; how: string } {
+  const { kind, colour } = parseLook(entry.id);
+  const how = ownershipOf(entry, inUse, user) === "locked" ? unlockLine(t, entry, user) : provenanceLine(t, entry, user, today);
+  return how ? { name: colourName(kind, colour), how } : { name: lookName(t, entry.id), how: "" };
+}
+
+/** The status line's two parts on one line: the name gives way to an ellipsis before the line wraps. */
+function StatusLine({ name, how }: { name: string; how: string }) {
+  if (!how) return <span className="coll-status-name">{name}</span>;
+  return <>{tx("home.statusLine", { name: <span className="coll-status-name">{name}</span>, how: <span className="coll-status-how">{how}</span> })}</>;
 }
 
 /** What the one button may do for `entry` when `inUse` is worn. */
@@ -319,9 +334,8 @@ export default function CharacterPage({ kind, shown, entries, inUse, user, phone
       <Stage kind={kind} colour={colour} size={stageSize(phone, short)} label={lookName(t, entry.id)} cheer={cheer} moves arrives={arrives} />
       {strip}
       <Swatches entries={entries} shown={entry.id} inUse={inUse} user={user} size={56} className="char-swatches" fresh={fresh} onPick={onShow} />
-      <p className="coll-status" role="status">
-        {status || (ownershipOf(entry, inUse, user) === "locked" ? unlockLine(t, entry, user)
-          : provenanceLine(t, entry, user) || lookName(t, entry.id))}
+      <p className={status ? "coll-status" : "coll-status coll-status-look"} role="status">
+        {status || <StatusLine {...statusParts(t, entry, inUse, user)} />}
       </p>
       <UseButton ownership={ownershipOf(entry, inUse, user)} onUse={() => onUse(entry)} price={price} />
     </div>

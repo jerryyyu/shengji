@@ -263,15 +263,15 @@ describe("the Collection's grid and the character page", () => {
     await openTile("Tractor");
     const line = () => host.querySelector(".char-page .coll-status")?.textContent;
     await act(async () => { swatch("Ink black").click(); });
-    expect(line()).toBe("Win 1,000 ranked rounds to unlock · 0 of 1,000");
+    expect(line()).toBe("Ink black · Win 1,000 ranked rounds to unlock · 0 of 1,000");
     expect(use()?.textContent).toBe("Use");
     expect(use()?.disabled).toBe(true);
     await act(async () => { swatch("Imperial yellow").click(); });
-    expect(line()).toBe("Win 10 ranked rounds to unlock · 0 of 10");
+    expect(line()).toBe("Imperial yellow · Win 10 ranked rounds to unlock · 0 of 10");
     authState.current = { status: "in", clientId: "cid", user: { ...user, ranked_wins: 3 } };
     await draw(<CollectionPage />);         // the Tractor still on the stage
     await act(async () => { swatch("Lantern orange").click(); });
-    expect(line()).toBe("Win 25 ranked rounds to unlock · 3 of 25");
+    expect(line()).toBe("Lantern orange · Win 25 ranked rounds to unlock · 3 of 25");
     await act(async () => { use()!.click(); });
     await settle();
     expect(puts).toEqual([]);

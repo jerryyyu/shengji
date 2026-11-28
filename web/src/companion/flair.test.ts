@@ -223,6 +223,21 @@ describe("the layer that paints the pieces", () => {
   });
   afterEach(() => { vi.restoreAllMocks(); window.matchMedia = realMatch; });
 
+  it("clears only a canvas that has something on it: a trail on the back canvas leaves the empty front one alone", () => {
+    const { layer, back, front } = make();
+    back.c.clearRect.mockClear(); front.c.clearRect.mockClear();
+    layer.spawn("0", true, "trail", many(3));
+    run(now + 400);
+    expect(back.c.clearRect.mock.calls.length).toBeGreaterThan(10);
+    expect(front.c.clearRect).not.toHaveBeenCalled();
+    // once its last piece has ended the back canvas is cleared once more, then left alone too
+    run(now + 1200);
+    const cleared = back.c.clearRect.mock.calls.length;
+    layer.clear();
+    expect(back.c.clearRect.mock.calls.length).toBe(cleared);
+    expect(front.c.clearRect).not.toHaveBeenCalled();
+  });
+
   it("never holds more than its caps: 18 of a trail for your own figure, 9 for another's, 64 on the felt; the rest are dropped, not queued", () => {
     const { layer } = make();
     expect(layer.spawn("0", true, "trail", many(40))).toBe(18);

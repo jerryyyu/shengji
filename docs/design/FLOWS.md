@@ -559,6 +559,18 @@ watch screen is in the foreground, reading the table every 15 s through the roun
 leaves the server, and what it sees is unchanged: the previous round only. A listed watcher's companion portrait leads
 its toast while the player's Show companions at the table is on; with it off the words stay and no portrait shows.
 
+Home's felt brings yours (Jerry 2026-11-28: "Can we add companion to this home board too"; then "Make sure it avoids the
+other active elements of cards and text"). On the Play tab's moving picture your own companion stands by your hand,
+the table's figure in its colourway, under the cards: it keeps to a strip of the felt's foot that no hand, no played
+card on its way and no win tag ever reaches, measured off the felt as it is laid out, and is drawn a step smaller where
+the strip is short. At rest it takes the Collection stage's calm moments in turn (a stroll, its habit, and a store
+character's trail and cue; no burst or shower comes by itself); a tap on it hops it, or plays a store character's
+special with its accent, and a tap on the felt walks it there within its strip and back to its spot 3 s after it
+stands. Nothing of it moves while the felt is out of view or the page is hidden, its pieces take the table's device
+tier, and under Reduce Motion it stands still. It is drawn exactly where the table would draw yours: Show companions
+at the table off, or the Collection off for the account, draws none. No surface, control or string is added
+(`companion/HomeCompanion.tsx` in `components/LobbyPreview.tsx`).
+
 Companions come along (Jerry 2026-11-27: "Do each companion is by hand and spectate brings theirs"). On the watch
 screen each person's companion stands at their seat as at the table, in the look they wore as that round began; a
 "Player N" seat of a replay is the default red Tractor, so a look never tells who a masked player is, and a bot has

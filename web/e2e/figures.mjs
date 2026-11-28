@@ -3,8 +3,11 @@
 // Collection's stage draws it, and a table seats it (a scripted socket); the
 // table's figure has the stage's shapes, paints and textures, every one and
 // no other (no figure wears a team's colour), and drawn at one size the two
-// are the same picture. Reduce Motion holds both still in idle.
-//   node e2e/figures.mjs [look-regex]
+// are the same picture. Reduce Motion holds both still in idle. On the home
+// felt your own figure stands inside the felt, and through the felt's whole
+// loop, and after a tap aimed at the middle cards, it touches no card and no
+// text, on a phone, an iPad and a desktop.
+//   node e2e/figures.mjs [look-regex]   ("home" runs the home felt alone)
 import { Report, launch, open, scenario, sleep, until } from "./lib.mjs";
 import { base, fakeSocketScript, pl } from "./fake.mjs";
 
@@ -17,6 +20,7 @@ const LOOKS = {
   sparrow: ["tree", "java", "snow", "oriole"], lamb: ["newyear", "jade", "ink", "lacquer"],
   panda: ["classic", "russet", "ink", "gilded"],
 };
+const home = !only || only.test("home");
 const all = Object.entries(LOOKS).flatMap(([k, cs]) => cs.map((c) => `${k}/${c}`)).filter((l) => !only || only.test(l));
 const product = (look) => ({ lamb: LAMB, panda: PANDA })[look.split("/")[0]] ?? null;
 const user = (look) => ({
@@ -56,6 +60,65 @@ const read = (page, sel) => page.evaluate(async ([sel]) => {
   return { shapes, px: btoa(s), n: svg.querySelectorAll("*").length, team };
 }, [sel]);
 
+/** In the page: the home figure's box, and every card and text box it overlaps (a card or tag drawn at
+ *  all), or that it is not wholly inside the felt. */
+const homeClash = (page) => page.evaluate(() => {
+  const r = (el) => el.getBoundingClientRect();
+  const fig = document.querySelector(".home-cmp svg.cmp");
+  const felt = document.querySelector(".lobby-preview");
+  if (!fig || !felt) return { missing: true, clash: [] };
+  const a = r(fig), f = r(felt);
+  const shown = (el) => { for (let e = el; e && e !== felt; e = e.parentElement) if (Number(getComputedStyle(e).opacity) < 0.02) return false; return true; };
+  const cards = [...felt.querySelectorAll(".lp-fan .card, .lp-flip .card")].filter(shown).map((el) => ["card", el]);
+  const text = [...document.querySelectorAll(".win-tag, .game-title, .account-pill")].filter(shown).map((el) => ["text", el]);
+  const clash = [];
+  for (const [what, el] of cards.concat(text)) {
+    const b = r(el);
+    if (b.width && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) clash.push(`${what} ${el.className} ${el.getAttribute("title") ?? el.textContent?.slice(0, 12)}`);
+  }
+  const inside = a.left >= f.left && a.right <= f.right && a.top >= f.top && a.bottom <= f.bottom;
+  return { missing: false, inside, clash, box: [a.left - f.left, a.top - f.top, a.width].map(Math.round) };
+});
+
+/** The home felt's own figure at three sizes: on the felt, and clear of cards and text all loop long. */
+async function homeFelt(opts) {
+  wearing = "lamb/newyear";
+  for (const device of ["phone-port", "ipad", "desktop"]) {
+    const page = await open(browser, device, { fakeSocket: fakeSocketScript([]), ...opts });
+    await scenario(rep, `home felt: your companion on the felt (${device})`, page, async () => {
+      await until(page, () => document.querySelector(".home-cmp svg.cmp-lamb") !== null, { timeout: 8000 });
+      const first = await homeClash(page);
+      await rep.check(`${device}: home felt: your own figure stands wholly inside the felt`, first.inside ? null : `figure at ${first.box}`, page);
+      // the felt's loop (three tricks and the empty table) is under 12 s; every 120 ms, a tap at the middle cards half way
+      const seen = new Set();
+      let outside = 0;
+      const t0 = Date.now();
+      let tapped = false;
+      while (Date.now() - t0 < 13000) {
+        if (!tapped && Date.now() - t0 > 6000) {
+          tapped = true;
+          const f = await page.locator(".lobby-preview").boundingBox();
+          await page.mouse.click(f.x + f.width / 2, f.y + f.height * 0.5);
+        }
+        const c = await homeClash(page);
+        if (c.missing || !c.inside) outside++;
+        for (const x of c.clash) seen.add(x);
+        await sleep(120);
+      }
+      await rep.check(`${device}: home felt: through the loop and a tap at the middle cards it covers no card and no text`,
+        seen.size ? [...seen].slice(0, 4).join(" | ") : null, page);
+      await rep.check(`${device}: home felt: it never leaves the felt`, outside ? `${outside} samples outside` : null, page);
+      // a store character's tap on the figure is its special
+      await page.locator(".home-cmp .coll-figure").click();
+      await until(page, () => document.querySelector(".home-cmp svg.cmp")?.getAttribute("data-pose") === "react", { timeout: 3000 }).catch(() => {});
+      const pose = await page.evaluate(() => document.querySelector(".home-cmp svg.cmp")?.getAttribute("data-pose"));
+      await rep.check(`${device}: home felt: a tap on the Lamb plays its special`, pose === "react" ? null : `pose ${pose}`, page);
+      if (process.env.HOME_SHOTS) await page.screenshot({ path: `${process.env.HOME_SHOTS}/home-${device}.png` });
+    });
+    await page.context().close();
+  }
+}
+
 const browser = await launch();
 try {
   const opts = { setup, storage: { "shengji.coach": "off", "shengji.muted": "1", "shengji.companions": "individual" } };
@@ -63,7 +126,7 @@ try {
   await coll.emulateMedia({ reducedMotion: "reduce" });
   const frame = (look) => base({ players: [0, 1, 2, 3].map((s) => pl(s, { look: s === 0 || s === 2 ? look : null, is_bot: s % 2 === 1,
     controller: s % 2 ? "bot" : "human" })) });
-  for (const look of all) {
+  for (const look of home && only ? [] : all) {
     wearing = look;
     await scenario(rep, `${look} at the table and on the stage`, coll, async () => {
       await coll.reload();
@@ -86,6 +149,7 @@ try {
       await table.context().close();
     });
   }
+  if (home) await homeFelt(opts);
 } finally {
   await browser.close();
 }

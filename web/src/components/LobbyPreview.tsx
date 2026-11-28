@@ -8,6 +8,8 @@
 // the flight bow), and the innermost flips, turns and lifts the card. CSS
 // transitions do the movement; the timeline only sets which phase each card
 // is in. Under reduced motion the picture is one still frame with no timer.
+// Under the cards stands your own companion (`HomeCompanion`), kept clear of
+// every place a card or a win tag is ever drawn.
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import Card from "./Card";
@@ -16,6 +18,8 @@ import { useTimeline } from "../howto/useTimeline";
 import type { Frame } from "../howto/useTimeline";
 import { DUR, prefersReducedMotion } from "../motion";
 import { useT } from "../i18n";
+import HomeCompanion from "../companion/HomeCompanion";
+import type { Box } from "../companion/HomeCompanion";
 
 type Seat = "bottom" | "left" | "top" | "right";
 interface Point { x: number; y: number; r: number }
@@ -78,6 +82,46 @@ function buildFrames(): Frame<PreviewState>[] {
 export const FRAMES = buildFrames();
 /** The still: the big joker winning the last trick. */
 export const STILL: PreviewState = { trick: TRICKS.length - 1, played: 4, phase: "won" };
+
+/** How far past its centre a card in flight can reach, in stage units: half its diagonal (90) at its largest
+ *  (1.12 as it turns over, 1.07 lifted as it wins) and the winner's lift (14). */
+const CARD_REACH = 115;
+
+/** Every place a played card passes, in stage units: for each card of each trick, the box round each leg of
+ *  its path (its hand to its play, its play to the winner's, and on to the winner's hand), however the two
+ *  easings bow the flight between them. */
+export const CARD_PATHS: Box[] = TRICKS.flatMap((trick) => trick.order.flatMap((seat) => trick.cards[seat].map((_, i, all) => {
+  const s = SEATS[seat], w = SEATS[trick.winner];
+  const off = (i - (all.length - 1) / 2) * PAIR_GAP;
+  const rad = (s.play.r * Math.PI) / 180;
+  const stops = [s.pile, { x: s.play.x + off * Math.cos(rad), y: s.play.y + off * Math.sin(rad) }, w.play, w.pile];
+  return stops.slice(1).map((to, k) => {
+    const from = stops[k];
+    return { x0: Math.min(from.x, to.x) - CARD_REACH, y0: Math.min(from.y, to.y) - CARD_REACH,
+      x1: Math.max(from.x, to.x) + CARD_REACH, y1: Math.max(from.y, to.y) + CARD_REACH };
+  });
+}).flat()));
+
+/** What the companion keeps clear of on `felt` (its layer over the whole felt), in px from its corner: the
+ *  hands' cards as drawn, every played card's path, and the win tag where each trick's winner shows it. */
+export function feltAway(felt: HTMLElement): Box[] {
+  const root = felt.parentElement ?? felt;
+  const f = felt.getBoundingClientRect();
+  const k = f.width / 1200;
+  const boxes: Box[] = [...root.querySelectorAll(".lp-fan .card")].map((c) => {
+    const r = c.getBoundingClientRect();
+    return { x0: r.left - f.left, y0: r.top - f.top, x1: r.right - f.left, y1: r.bottom - f.top };
+  });
+  for (const b of CARD_PATHS) boxes.push({ x0: b.x0 * k, y0: b.y0 * k, x1: b.x1 * k, y1: b.y1 * k });
+  // the tag as drawn when shown (its layout box, before the scale it hides at)
+  const tag = root.querySelector<HTMLElement>(".win-tag");
+  const tw = tag?.offsetWidth ?? 0, th = tag?.offsetHeight ?? 0;
+  for (const t of TRICKS) {
+    const at = winTagAt(t.winner);
+    boxes.push({ x0: at.x * k - tw / 2, y0: at.y * k - th / 2, x1: at.x * k + tw / 2, y1: at.y * k + th / 2 });
+  }
+  return boxes;
+}
 
 const u = (n: number) => `calc(var(--u) * ${Math.round(n * 100) / 100})`;
 
@@ -206,6 +250,7 @@ function Looping() {
 
   return (
     <div className="lobby-preview" ref={rootRef} aria-hidden="true" data-status={status}>
+      <HomeCompanion away={feltAway} />
       <Scene f={tl.state} />
     </div>
   );
@@ -214,6 +259,7 @@ function Looping() {
 function Still() {
   return (
     <div className="lobby-preview" aria-hidden="true" data-still="true">
+      <HomeCompanion away={feltAway} />
       <Scene f={STILL} />
     </div>
   );

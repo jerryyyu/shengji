@@ -362,6 +362,23 @@ def test_a_refund_revokes_and_unequips(accounts_on, client, shop, chain):
     assert client.get("/api/me", headers=shop).json()["products"] == [LAMB]
 
 
+def test_a_refunded_purchase_can_be_bought_again(accounts_on, client, shop, chain):
+    payer = client.get("/api/me", headers=shop).json()["store_token"]
+    assert client.post("/api/store/verify", json={"jws": chain.sign(_txn(appAccountToken=payer))},
+                       headers=shop).status_code == 200
+    refunded = _txn(appAccountToken=payer, revocationDate=int(time.time() * 1000), revocationReason=0)
+    assert client.post("/api/store/notify", json=_notification(chain, "REFUND", refunded)).status_code == 200
+    assert client.get("/api/me", headers=shop).json()["products"] == []
+    # buying it again is a new App Store purchase: its own transaction, granted
+    again = _txn(transactionId="2000000222", originalTransactionId="2000000222", appAccountToken=payer)
+    resp = client.post("/api/store/verify", json={"jws": chain.sign(again)}, headers=shop)
+    assert resp.status_code == 200 and resp.json()["products"] == [LAMB]
+    # the refunded one still says revoked, and does not take the new one away
+    resp = client.post("/api/store/verify", json={"jws": chain.sign(_txn(appAccountToken=payer))}, headers=shop)
+    assert resp.status_code == 409 and resp.json()["detail"] == "revoked"
+    assert client.get("/api/me", headers=shop).json()["products"] == [LAMB]
+
+
 def test_a_revoke_applies_even_with_the_store_off(accounts_on, client, shop, chain, monkeypatch):
     assert client.post("/api/store/verify", json={"jws": chain.sign(_txn(productId=PANDA))},
                        headers=shop).status_code == 200

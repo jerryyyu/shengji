@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { TAB_TOP_EVENT } from "./home/session";
 import {
-  GAME_WON_FOLLOW, KEYBOARD_OPEN_CLASS, STATUS_TAP_EVENT, haptic, hapticCall, hapticsEnabled, hideSplash, isNative, isPhone,
-  lockFor, resetNativeForTests, setHapticsEnabled, subscribeHaptics, setBackGesture, setGameMode, startShell,
+  GAME_WON_FOLLOW, KEYBOARD_OPEN_CLASS, STATUS_TAP_EVENT, haptic, hapticCall, hapticsEnabled, hideSplash, isNative, deviceIdiom,
+  PHONE_WINDOW_SHORT_SIDE, lockFor, orientationLockFor, resetNativeForTests, setHapticsEnabled, subscribeHaptics, setBackGesture, setGameMode, startShell,
 } from "./native";
 
 type Calls = [string, string, unknown][];
@@ -24,17 +24,31 @@ function fakeShell(idiom: "phone" | "pad"): Calls {
   return calls;
 }
 
+const jsdomSize = [window.innerWidth, window.innerHeight] as const;
+
+/** Sizes the window as a WebView of this many points, telling listeners. */
+function sizeWindow(width: number, height: number): void {
+  Object.defineProperty(window, "innerWidth", { value: width, configurable: true });
+  Object.defineProperty(window, "innerHeight", { value: height, configurable: true });
+  window.dispatchEvent(new Event("resize"));
+}
+
 afterEach(() => {
   delete (window as unknown as { Capacitor?: unknown }).Capacitor;
   resetNativeForTests();
+  sizeWindow(...jsdomSize);
 });
+
+/** A keyboard event as the Keyboard plugin sends it: the height rides on the event. */
+const keyboard = (name: string, keyboardHeight?: number) =>
+  window.dispatchEvent(Object.assign(new Event(name), keyboardHeight === undefined ? {} : { keyboardHeight }));
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe("native bridge", () => {
   it("is a no-op in a browser", async () => {
     expect(isNative()).toBe(false);
-    expect(await isPhone()).toBe(false);
+    expect(await deviceIdiom()).toBe(null);
     await lockFor("game");
     haptic("turn");
     hideSplash();   // nothing to call, nothing thrown
@@ -191,15 +205,130 @@ describe("native bridge", () => {
     }
   });
 
-  it("locks an iPhone: the table to both landscapes, the lobby to portrait", async () => {
+  it("locks a phone-sized window: the table to both landscapes, the lobby to portrait", async () => {
+    sizeWindow(402, 874);
     const calls = fakeShell("phone");
     await lockFor("game");
     await lockFor("game");          // unchanged screen: no second call
     await lockFor("lobby");
-    expect(calls.filter(([, m]) => m !== "idiom")).toEqual([
+    expect(calls).toEqual([
       ["ShengjiShell", "lockOrientation", { orientation: "landscape" }],
       ["ScreenOrientation", "lock", { orientation: "portrait" }],
     ]);
+  });
+
+  it("decides the lock by the window's shorter side, whatever the idiom or turn", () => {
+    const cases: [number, number, "lobby" | "game", string | null][] = [
+      [402, 874, "lobby", "portrait"],     // phone, portrait
+      [874, 402, "game", "landscape"],     // phone, turned
+      [599, 900, "game", "landscape"],     // just under the line
+      [600, 900, "game", "free"],          // on the line
+      [744, 1133, "lobby", "free"],        // iPad mini, full screen
+      [1133, 744, "game", "free"],
+      [800, 760, "game", "free"],          // a near-square unfolded foldable
+      [320, 1133, "lobby", "portrait"],    // a narrow iPad window
+      [0, 0, "game", null],                // not laid out yet
+    ];
+    for (const [w, h, screen, want] of cases) {
+      expect(orientationLockFor(screen, w, h), `${w}x${h} ${screen}`).toBe(want);
+    }
+    expect(PHONE_WINDOW_SHORT_SIDE).toBe(600);
+  });
+
+  for (const idiom of ["phone", "pad"] as const) {
+    it(`never locks a large window, reporting ${idiom}`, async () => {
+      sizeWindow(744, 1133);
+      const calls = fakeShell(idiom);
+      await lockFor("game");
+      await lockFor("lobby");
+      expect(calls).toEqual([]);
+    });
+  }
+
+  it("releases the lock on an unfold and takes it again on a fold, mid-game", async () => {
+    sizeWindow(874, 402);           // folded, at the table
+    const calls = fakeShell("phone");
+    await lockFor("game");
+    sizeWindow(402, 874);           // the same window turned: still phone-sized
+    sizeWindow(820, 760);           // unfolded
+    await flush();
+    sizeWindow(760, 820);           // turned while unfolded: still free
+    await flush();
+    sizeWindow(874, 402);           // folded again
+    await flush();
+    expect(calls).toEqual([
+      ["ShengjiShell", "lockOrientation", { orientation: "landscape" }],
+      ["ShengjiShell", "lockOrientation", { orientation: "any" }],
+      ["ShengjiShell", "lockOrientation", { orientation: "landscape" }],
+    ]);
+  });
+
+  it("follows the screen after an unfold: the lobby stays free until the window is phone-sized", async () => {
+    sizeWindow(820, 760);
+    const calls = fakeShell("phone");
+    await lockFor("game");
+    await lockFor("lobby");
+    sizeWindow(402, 874);
+    await flush();
+    expect(calls).toEqual([["ScreenOrientation", "lock", { orientation: "portrait" }]]);
+  });
+
+  it("keeps the lock while the keyboard shrinks the WebView", async () => {
+    sizeWindow(1133, 744);
+    const calls = fakeShell("pad");
+    await lockFor("lobby");
+    keyboard("keyboardWillShow", 336);
+    sizeWindow(1133, 400);          // the space above the keyboard
+    await flush();
+    keyboard("keyboardWillHide");   // the WebView may still be shrunk here
+    await flush();
+    sizeWindow(1133, 744);
+    keyboard("keyboardDidHide");
+    await flush();
+    expect(calls).toEqual([]);
+  });
+
+  it("applies the latest screen's lock when the keyboard goes away without a resize", async () => {
+    sizeWindow(402, 874);
+    const calls = fakeShell("phone");
+    startShell();
+    await lockFor("lobby");
+    keyboard("keyboardWillShow", 0);    // a zero-height change hides nothing
+    await lockFor("game");
+    keyboard("keyboardWillHide");
+    keyboard("keyboardDidHide");
+    await flush();
+    expect(calls.filter(([n]) => n !== "Keyboard")).toEqual([
+      ["ScreenOrientation", "lock", { orientation: "portrait" }],
+      ["ShengjiShell", "lockOrientation", { orientation: "landscape" }],
+    ]);
+  });
+
+  it("defers the lock under a keyboard that has height and applies it on dismissal", async () => {
+    sizeWindow(402, 874);
+    const calls = fakeShell("phone");
+    startShell();
+    await lockFor("lobby");
+    keyboard("keyboardWillShow", 336);
+    await lockFor("game");
+    const locks = () => calls.filter(([n]) => n !== "Keyboard");
+    expect(locks()).toEqual([["ScreenOrientation", "lock", { orientation: "portrait" }]]);
+    keyboard("keyboardDidHide");        // the DidHide alone also applies it
+    await flush();
+    expect(locks()).toEqual([
+      ["ScreenOrientation", "lock", { orientation: "portrait" }],
+      ["ShengjiShell", "lockOrientation", { orientation: "landscape" }],
+    ]);
+  });
+
+  it("stops following the window once the shell is reset", async () => {
+    sizeWindow(402, 874);
+    const calls = fakeShell("phone");
+    await lockFor("lobby");
+    resetNativeForTests();
+    sizeWindow(820, 760);
+    await flush();
+    expect(calls).toEqual([["ScreenOrientation", "lock", { orientation: "portrait" }]]);
   });
 
   it("sets the edge swipe back only when it changes, on any device", async () => {
@@ -212,13 +341,6 @@ describe("native bridge", () => {
       ["ShengjiShell", "setBackGesture", { enabled: true }],
       ["ShengjiShell", "setBackGesture", { enabled: false }],
     ]);
-  });
-
-  it("never locks an iPad", async () => {
-    const calls = fakeShell("pad");
-    await lockFor("game");
-    await lockFor("lobby");
-    expect(calls.map(([n, m]) => `${n}.${m}`)).toEqual(["ShengjiShell.idiom"]);
   });
 
   it("maps each table event to a UIKit feedback style", async () => {
@@ -300,6 +422,6 @@ describe("native bridge", () => {
       isNativePlatform: () => true,
       registerPlugin: () => ({ idiom: () => Promise.reject(new Error("not implemented")) }),
     };
-    expect(await isPhone()).toBe(false);
+    expect(await deviceIdiom()).toBe(null);
   });
 });

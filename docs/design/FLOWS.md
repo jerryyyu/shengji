@@ -111,7 +111,8 @@ two columns from 900px, a sideways phone excepted), Support, Privacy or Terms of
 grouped list rows, Me's stat tiles and How to play's diagrams (Jerry 11-15).
 The phone lobby is portrait (Jerry 2026-11-15: "Yes let's lock lobby to portrait"): the app locks every lobby
 screen (Play and its panels and sheets, Leaderboard, Me, How to play, saved games, Support, Privacy, Terms of use) to portrait
-on an iPhone and the table to both landscapes; the web cannot lock, so a phone held sideways (under 501px tall)
+in a phone-sized window (shorter side under 600pt: an iPhone, a foldable iPhone folded) and the table to both landscapes;
+a larger window (an iPad, a foldable unfolded) turns freely, and a fold or unfold mid-game applies or releases the lock; the web cannot lock, so a phone held sideways (under 501px tall)
 shows the same portrait column, centred under a capped tab bar, and scrolls; the Play tab's preview gives way
 there, so Play and Duo sit clear of the tab bar in the first view. The lobby has no sideways design
 of its own; the table keeps its landscape layout.

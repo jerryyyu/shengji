@@ -22,7 +22,9 @@ vi.mock("../auth", async (importOriginal) => {
 import CollectionPage from "../components/CollectionPage";
 import { forgetHomeSession } from "../home/session";
 import { lookCatalogue } from "../companion/look";
-import { setLanguageChoice } from "../i18n";
+import { setLanguageChoice, tIn } from "../i18n";
+import type { Locale } from "../i18n";
+import { refusalMessage } from "./shop";
 
 const LAMB = "com.jerryyu.shengji.companion.lamb";
 const PANDA = "com.jerryyu.shengji.companion.panda";
@@ -104,6 +106,8 @@ const draw = async () => {
   await settle();
   await settle();
 };
+
+const HELD = "Your Apple ID already bought this for another account. Sign in to that account to use it.";
 
 const names = (sel: string) => [...host.querySelectorAll(`${sel} .coll-tile`)].map((b) => b.textContent);
 const FREE_TILES = ["Tractor", "Bun", "Chick", "Sparrow"];
@@ -247,8 +251,9 @@ describe("the grid's sections", () => {
     globalThis.fetch = vi.fn(async () => ({ status: 409, json: async () => ({ detail: "held_by_other" }) }) as Response) as unknown as typeof fetch;
     await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")!.click(); });
     await settle();
-    expect(host.querySelector(".coll-status")?.textContent).toBe("Purchase not completed (held_by_other)");
-    expect(host.querySelector(".coll-use")?.textContent).toBe("Buy $3.99");
+    expect(host.querySelector(".coll-status")?.textContent).toBe(HELD);
+    // a retry would be refused the same way: Buy gives way to the status line
+    expect(host.querySelector(".coll-use")).toBeNull();
   });
 
   it("restore hands every owned transaction to the server", async () => {
@@ -435,7 +440,7 @@ describe("the payer, the order and the reasons", () => {
     await act(async () => { host.querySelector<HTMLButtonElement>(".coll-restore")!.click(); });
     await settle();
     await settle();
-    expect(host.querySelector(".coll-grid-status")?.textContent).toBe("Purchase not completed (503)");
+    expect(host.querySelector(".coll-grid-status")?.textContent).toBe("Couldn't restore purchases.");
     expect(plugin.finish.mock.calls).toEqual([[{ transactionId: "33" }]]);
   });
 });
@@ -729,7 +734,7 @@ describe("each store answer on its own line", () => {
   const refused = () => {
     globalThis.fetch = vi.fn(async () => ({ status: 409, json: async () => ({ detail: "held_by_other" }) }) as Response) as unknown as typeof fetch;
   };
-  const FAILED = "Purchase not completed (held_by_other)";
+  const FAILED = HELD;
 
   it("a refused purchase is said once, on the stage, and not under Restore purchases", async () => {
     nativeShell();
@@ -870,6 +875,169 @@ describe("Coming soon, where the store cannot sell", () => {
       await draw();
       expect(sections()).toEqual(["我的", "即將推出"]);
       expect(names(".coll-soon")).toEqual(["小羊", "熊貓寶寶", "玉兔", "招財貓", "福狐", "醒獅", "小龍"]);
+    } finally {
+      setLanguageChoice("system");
+    }
+  });
+});
+
+describe("a refusal in plain words", () => {
+  const LOCALES: Locale[] = ["en", "zh-Hans", "zh-Hant"];
+  const refusal = (reason: string | undefined, status = 409) => Object.assign(new Error("verify"), { status, ...(reason ? { reason } : {}) });
+  const copy = (loc: Locale, err: unknown, during: "buy" | "restore") => {
+    const key = refusalMessage(err, during);
+    return key === null ? null : tIn(loc, key);
+  };
+
+  it("says each server refusal in every language", () => {
+    const want: Record<string, [string, string, string]> = {
+      held_by_other: [HELD, "此 Apple ID 已为另一个账号购买，请登录该账号使用。", "此 Apple ID 已為另一個帳號購買，請登入該帳號使用。"],
+      revoked: ["This purchase was refunded.", "这笔购买已退款。", "這筆購買已退款。"],
+      wrong_app: ["Couldn't complete the purchase.", "购买未能完成。", "購買未能完成。"],
+    };
+    for (const [code, lines] of Object.entries(want)) {
+      LOCALES.forEach((loc, i) => expect(copy(loc, refusal(code), "buy")).toBe(lines[i]));
+    }
+    // anything else, a network failure or a 5xx among them, is the generic line
+    for (const err of [refusal("unknown_token"), refusal("storefront", 403), refusal(undefined, 503), refusal(undefined, 0), new Error("offline"),
+      refusal("Too many requests; try again in a minute.", 429)]) {
+      LOCALES.forEach((loc, i) => expect(copy(loc, err, "buy")).toBe(want.wrong_app[i]));
+      LOCALES.forEach((loc, i) => expect(copy(loc, err, "restore")).toBe(["Couldn't restore purchases.", "未能恢复购买。", "未能恢復購買。"][i]));
+    }
+    // no session to buy with: the sign-in flow, not a line
+    expect(refusalMessage(refusal("sign_in_required"), "buy")).toBeNull();
+    expect(refusalMessage(refusal("Not signed in.", 401), "restore")).toBeNull();
+  });
+
+  it("a purchase the server needs a sign-in for opens sign-in and says no line", async () => {
+    const { guestName } = await import("../guestName");
+    const open = vi.spyOn(guestName, "open").mockImplementation(() => {});
+    try {
+      nativeShell();
+      authState.current = { status: "in", clientId: "cid", user };
+      globalThis.fetch = vi.fn(async (url: string) => (url === "/api/store/verify"
+        ? { status: 409, json: async () => ({ detail: "sign_in_required" }) }
+        : { status: 200, json: async () => authState.current.user }) as Response) as unknown as typeof fetch;
+      await draw();
+      await openTile(".coll-more", 0);
+      await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")!.click(); });
+      await settle();
+      expect(open).toHaveBeenCalledWith("shop");
+      expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("Spring Lamb · New Year");
+    } finally {
+      open.mockRestore();
+    }
+  });
+
+  it("a restore whose purchases another account holds says where they are, under Restore purchases", async () => {
+    nativeShell();
+    authState.current = { status: "in", clientId: "cid", user };
+    globalThis.fetch = vi.fn(async (url: string) => (url === "/api/store/verify"
+      ? { status: 409, json: async () => ({ detail: "held_by_other" }) }
+      : { status: 200, json: async () => authState.current.user }) as Response) as unknown as typeof fetch;
+    plugin.restore.mockImplementationOnce(async () => ({ transactions: [{ jws: "taken.jws.sig", productId: LAMB, transactionId: "71" }] }));
+    await draw();
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-restore")!.click(); });
+    await settle();
+    await settle();
+    expect(host.querySelector(".coll-grid-status")?.textContent).toBe(HELD);
+    // settled: acknowledged, never handed over again
+    expect(plugin.finish).toHaveBeenCalledWith({ transactionId: "71" });
+  });
+
+  describe("Restore says what became of what it found, before anything else is tapped", () => {
+    const restoreWith = async (answers: Record<string, { status: number; detail?: string }>) => {
+      nativeShell();
+      authState.current = { status: "in", clientId: "cid", user };
+      plugin.restore.mockImplementationOnce(async () => ({ transactions: Object.keys(answers).map((jws, i) => (
+        { jws, productId: i === 0 ? LAMB : PANDA, transactionId: String(80 + i) })) }));
+      globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/api/store/verify") {
+          const a = answers[JSON.parse(String(init?.body)).jws as string];
+          if (a.status === 200) { server.granted = true; return { status: 200, json: async () => ownedUser } as Response; }
+          return { status: a.status, json: async () => ({ detail: a.detail }) } as Response;
+        }
+        return { status: 200, json: async () => (server.granted ? ownedUser : authState.current.user) } as Response;
+      }) as unknown as typeof fetch;
+      await draw();
+      await act(async () => { host.querySelector<HTMLButtonElement>(".coll-restore")!.click(); });
+      await settle();
+      await settle();
+      return host.querySelector(".coll-grid-status")?.textContent;
+    };
+
+    it("a refunded one", async () => {
+      expect(await restoreWith({ "a.b.c": { status: 409, detail: "revoked" } })).toBe("This purchase was refunded.");
+      expect(plugin.finish).toHaveBeenCalledWith({ transactionId: "80" });
+    });
+    it("another app's", async () => {
+      expect(await restoreWith({ "a.b.c": { status: 409, detail: "wrong_app" } })).toBe("Couldn't restore purchases.");
+    });
+    it("another account's", async () => {
+      expect(await restoreWith({ "a.b.c": { status: 409, detail: "held_by_other" } })).toBe(HELD);
+    });
+    it("one restored and one another account's: no line, both settled", async () => {
+      expect(await restoreWith({ "a.b.c": { status: 200 }, "d.e.f": { status: 409, detail: "held_by_other" } })).toBe("");
+      expect(plugin.finish.mock.calls).toEqual([[{ transactionId: "80" }], [{ transactionId: "81" }]]);
+    });
+    it("a refusal that may pass later still comes first, and keeps its transaction", async () => {
+      expect(await restoreWith({ "a.b.c": { status: 409, detail: "held_by_other" }, "d.e.f": { status: 503 } }))
+        .toBe("Couldn't restore purchases.");
+      expect(plugin.finish.mock.calls).toEqual([[{ transactionId: "80" }]]);
+    });
+  });
+
+  it("a double tap on Buy opens Apple's sheet once", async () => {
+    nativeShell();
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    await openTile(".coll-more", 0);
+    let pay!: (v: unknown) => void;
+    plugin.purchase.mockImplementationOnce(() => new Promise((r) => { pay = r; }) as never);
+    const button = host.querySelector<HTMLButtonElement>(".coll-use.gold")!;
+    await act(async () => { button.click(); button.click(); });
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")?.click(); });
+    expect(plugin.purchase).toHaveBeenCalledTimes(1);
+    await act(async () => { pay({ status: "cancelled" }); });
+    await settle();
+  });
+
+  it("never shows a raw code on the store's status lines, and never an empty one where a refusal is said", async () => {
+    const codes: [string | undefined, number][] = [["held_by_other", 409], ["revoked", 409], ["wrong_app", 409], ["unknown_token", 409],
+      ["storefront", 403], ["bad_signature", 400], [undefined, 503], ["Too many requests; try again in a minute.", 429]];
+    const raw = (s: string) => {
+      expect(s).not.toMatch(/\([a-z_0-9]+\)|（[a-z_0-9]+）/i);
+      expect(s).not.toMatch(/held_by_other|revoked|wrong_app|unknown_token|storefront|bad_signature|503|Too many/);
+    };
+    try {
+      for (const loc of LOCALES) {
+        setLanguageChoice(loc);
+        for (const [reason, status] of codes) {
+          const want = (during: "buy" | "restore") => tIn(loc, refusalMessage(refusal(reason, status), during)!);
+          nativeShell();
+          authState.current = { status: "in", clientId: "cid", user };
+          globalThis.fetch = vi.fn(async (url: string) => (url === "/api/store/verify"
+            ? { status, json: async () => (reason ? { detail: reason } : {}) }
+            : { status: 200, json: async () => authState.current.user }) as Response) as unknown as typeof fetch;
+          plugin.restore.mockImplementationOnce(async () => ({ transactions: [{ jws: "r.j.s", productId: LAMB }] }));
+          await draw();
+          await act(async () => { host.querySelector<HTMLButtonElement>(".coll-restore")!.click(); });
+          await settle();
+          await settle();
+          const restored = host.querySelector(".coll-grid-status")?.textContent ?? "";
+          expect(restored, `${loc} restore ${reason ?? status}`).toBe(want("restore"));
+          raw(restored);
+          await openTile(".coll-more", 0);
+          await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")?.click(); });
+          await settle();
+          await settle();
+          const stage = host.querySelector(".char-page .coll-status")?.textContent ?? "";
+          expect(stage, `${loc} buy ${reason ?? status}`).toBe(want("buy"));
+          raw(stage);
+          act(() => root.unmount());
+          root = createRoot(host);
+        }
+      }
     } finally {
       setLanguageChoice("system");
     }

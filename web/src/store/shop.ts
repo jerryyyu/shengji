@@ -11,6 +11,7 @@ import type { AuthUser } from "../auth";
 import { COMPANION_PRODUCTS } from "../companion/look";
 import { refreshAccount } from "../companion/writes";
 import { viewerScope } from "../home/session";
+import type { MessageKey } from "../i18n";
 import { haptic } from "../native";
 import {
   onStoreTransaction, storeFinish, storeKitAvailable, storePending, storeProducts, storePurchase, storeRestore,
@@ -43,11 +44,17 @@ export function shopAllowed(user: AuthUser | null | undefined): boolean {
  *  network, a 5xx) leaves it with the App Store, which hands it over again. */
 export const PERMANENT_REFUSALS = new Set(["held_by_other", "revoked", "wrong_app"]);
 
-/** A refusal's reason: the server's code, else its status. */
-export function refusalReason(err: unknown): string {
+/** What the store's one status line says for a refusal, in place of its
+ *  code: another account holds it (where to use it), it was refunded, else
+ *  the purchase or the restore did not complete. Null when the account has
+ *  no session to buy with (`sign_in_required`, 401): the answer is the
+ *  sign-in flow, not a line. */
+export function refusalMessage(err: unknown, during: "buy" | "restore"): MessageKey | null {
   const e = err as { reason?: unknown; status?: unknown };
-  if (typeof e?.reason === "string" && e.reason) return e.reason;
-  return String(typeof e?.status === "number" ? e.status : 0);
+  if (e?.reason === "sign_in_required" || e?.status === 401) return null;
+  if (e?.reason === "held_by_other") return "home.shopHeldByOther";
+  if (e?.reason === "revoked") return "home.shopRefunded";
+  return during === "buy" ? "home.shopFailed" : "home.restoreFailed";
 }
 
 const isPermanent = (err: unknown) => PERMANENT_REFUSALS.has((err as { reason?: string })?.reason ?? "");
@@ -124,16 +131,30 @@ export async function buy(product: string): Promise<BuyOutcome> {
 }
 
 /** Restore purchases: everything the Apple account owns, verified again.
- *  A permanent refusal (another account's purchase) is left out; a refusal
- *  that may pass later keeps the transaction and rejects, with its reason,
- *  once every transaction has been tried. */
+ *  A permanent refusal is settled (acknowledged) and a refusal that may pass
+ *  later keeps its transaction. Once every transaction has been tried, it
+ *  rejects with the first refusal that may pass later; else resolves when
+ *  any was restored onto the account (its tile says so); else, when every
+ *  one was refused for good, rejects with that refusal, another account's
+ *  hold before a refund before any other, so the line says why nothing
+ *  arrived. Nothing found resolves. */
 export async function restorePurchases(): Promise<void> {
   const list = await storeRestore();
   let retry: unknown = null;
+  let restored = false;
+  const refused: unknown[] = [];
   for (const t of list) {
-    await deliver(t).catch((err: unknown) => { if (!isPermanent(err) && retry === null) retry = err; });
+    await deliver(t).then(
+      (granted) => { if (granted?.includes(t.productId)) restored = true; },
+      (err: unknown) => {
+        if (!isPermanent(err)) retry ??= err;
+        else refused.push(err);
+      });
   }
   if (retry !== null) throw retry;
+  if (restored || refused.length === 0) return;
+  const kind = (reason: string) => refused.find((e) => (e as { reason?: string }).reason === reason);
+  throw kind("held_by_other") ?? kind("revoked") ?? refused[0];
 }
 
 /** Whether the account must sign in with Apple or Google before it buys or

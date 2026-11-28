@@ -80,7 +80,7 @@ describe("the identity sheet's entry points", () => {
     "App.tsx": ["moved"],
     "components/AccountChip.tsx": ["chip"],
     "components/CharacterPage.tsx": ["collection"],
-    "components/StoreFoot.tsx": ["shop", "shop"],
+    "components/StoreFoot.tsx": ["shop", "shop", "shop", "shop"],
     "components/GuestChip.tsx": ["chip"],
     "components/MePage.tsx": ["me_row", "me_signin", "me_row"],
     "components/Leaderboard.tsx": ["leaderboard_row"],

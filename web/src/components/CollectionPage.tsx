@@ -100,8 +100,9 @@ export default function CollectionPage() {
   const [shown, setShown] = useState<string>(inUse);
   const [arrived, setArrived] = useState<CompanionKind | null>(null);
   // Buy's answer belongs to the product it was for, Restore's to its row:
-  // each is said on its own line, and a late answer never reaches another stage
-  const [bought, setBought] = useState<{ product: string; text: string } | null>(null);
+  // each is said on its own line, and a late answer never reaches another stage;
+  // `held` (another account holds it) takes Buy away, since a retry is refused the same way
+  const [bought, setBought] = useState<{ product: string; text: string; held?: boolean } | null>(null);
   const [restored, setRestored] = useState("");
   const [cheer, setCheer] = useState(0);
   // a selection the player made swaps the stage with a short crossfade
@@ -308,8 +309,9 @@ export default function CollectionPage() {
   } else {
     const kind = selected;
     const product = COMPANION_PRODUCTS[kind];
-    const price = product && !owns(kind) ? (
-      <BuyFoot product={product} shop={shop} onStatus={(text) => setBought({ product, text })}
+    const held = !!bought?.held && bought.product === product;
+    const price = product && !owns(kind) && !held ? (
+      <BuyFoot product={product} shop={shop} onStatus={(text, isHeld) => setBought({ product, text, held: isHeld })}
                onOwned={() => { setArrived(kind); setCheer((n) => n + 1); }} />
     ) : undefined;
     stage = (

@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth";
 import { refreshAccount } from "../companion/writes";
 import { guestName } from "../guestName";
 import { useT } from "../i18n";
-import { buy, isPayerToken, refusalReason, restorePurchases, useSignInFirst } from "../store/shop";
+import { buy, isPayerToken, refusalMessage, restorePurchases, useSignInFirst } from "../store/shop";
 import type { ShopState } from "../store/shop";
 
 /** Restore purchases, a text row at the foot of the Collection. What the
@@ -12,6 +12,8 @@ import type { ShopState } from "../store/shop";
 export function RestoreRow({ onStatus }: { onStatus: (s: string) => void }) {
   const t = useT();
   const [busy, setBusy] = useState(false);
+  // a second tap before the disabled state renders is the same restore
+  const running = useRef(false);
   const signInFirst = useSignInFirst();
   return (
     <button type="button" className="grp-row coll-restore" disabled={busy}
@@ -20,11 +22,17 @@ export function RestoreRow({ onStatus }: { onStatus: (s: string) => void }) {
                 guestName.open("shop");
                 return;
               }
+              if (running.current) return;
+              running.current = true;
               setBusy(true);
               onStatus("");
               restorePurchases()
-                .catch((err: unknown) => onStatus(t("home.shopFailed", { n: refusalReason(err) })))
-                .finally(() => setBusy(false));
+                .catch((err: unknown) => {
+                  const key = refusalMessage(err, "restore");
+                  if (key) onStatus(t(key));
+                  else guestName.open("shop");
+                })
+                .finally(() => { running.current = false; setBusy(false); });
             }}>
       {t("home.restorePurchases")}
     </button>
@@ -36,13 +44,16 @@ export function RestoreRow({ onStatus }: { onStatus: (s: string) => void }) {
  *  app's device account, or the price button held until the server has
  *  given the account its payer token. A purchase ends in `onOwned` (the
  *  character's cheer and its tile's move into Yours) and the success haptic;
- *  Ask to Buy and a refusal use the one status line (`onStatus`). */
+ *  Ask to Buy and a refusal use the one status line (`onStatus`), whose
+ *  `held` marks another account holding it, which no retry here can change. */
 export function BuyFoot({ product, shop, onOwned, onStatus }: {
-  product: string; shop: ShopState; onOwned: () => void; onStatus: (s: string) => void;
+  product: string; shop: ShopState; onOwned: () => void; onStatus: (s: string, held?: boolean) => void;
 }) {
   const t = useT();
   const account = useAuth();
   const [busy, setBusy] = useState(false);
+  // a second tap before the disabled state renders is the same purchase
+  const running = useRef(false);
   const price = shop.prices[product];
   const signInFirst = useSignInFirst();
   const token = account.status === "in" && isPayerToken(account.user?.store_token);
@@ -64,7 +75,8 @@ export function BuyFoot({ product, shop, onOwned, onStatus }: {
     );
   }
   const purchase = () => {
-    if (busy || !token || !price) return;
+    if (running.current || !token || !price) return;
+    running.current = true;
     setBusy(true);
     onStatus("");
     buy(product)
@@ -72,8 +84,12 @@ export function BuyFoot({ product, shop, onOwned, onStatus }: {
         if (outcome === "owned") onOwned();
         else if (outcome === "pending") onStatus(t("home.shopPending"));
       })
-      .catch((err: unknown) => onStatus(t("home.shopFailed", { n: refusalReason(err) })))
-      .finally(() => setBusy(false));
+      .catch((err: unknown) => {
+        const key = refusalMessage(err, "buy");
+        if (key) onStatus(t(key), key === "home.shopHeldByOther");
+        else guestName.open("shop");
+      })
+      .finally(() => { running.current = false; setBusy(false); });
   };
   return (
     <div className="coll-use-row">

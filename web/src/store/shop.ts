@@ -131,23 +131,30 @@ export async function buy(product: string): Promise<BuyOutcome> {
 }
 
 /** Restore purchases: everything the Apple account owns, verified again.
- *  A permanent refusal (another account's purchase) is settled and left
- *  out; a refusal that may pass later keeps the transaction. Once every
- *  transaction has been tried it rejects with the first refusal that may
- *  pass later, else with another account's hold, so the line says why a
- *  purchase did not arrive here. */
+ *  A permanent refusal is settled (acknowledged) and a refusal that may pass
+ *  later keeps its transaction. Once every transaction has been tried, it
+ *  rejects with the first refusal that may pass later; else resolves when
+ *  any was restored onto the account (its tile says so); else, when every
+ *  one was refused for good, rejects with that refusal, another account's
+ *  hold before a refund before any other, so the line says why nothing
+ *  arrived. Nothing found resolves. */
 export async function restorePurchases(): Promise<void> {
   const list = await storeRestore();
   let retry: unknown = null;
-  let held: unknown = null;
+  let restored = false;
+  const refused: unknown[] = [];
   for (const t of list) {
-    await deliver(t).catch((err: unknown) => {
-      if (!isPermanent(err)) retry ??= err;
-      else if ((err as { reason?: string })?.reason === "held_by_other") held ??= err;
-    });
+    await deliver(t).then(
+      (granted) => { if (granted?.includes(t.productId)) restored = true; },
+      (err: unknown) => {
+        if (!isPermanent(err)) retry ??= err;
+        else refused.push(err);
+      });
   }
   if (retry !== null) throw retry;
-  if (held !== null) throw held;
+  if (restored || refused.length === 0) return;
+  const kind = (reason: string) => refused.find((e) => (e as { reason?: string }).reason === reason);
+  throw kind("held_by_other") ?? kind("revoked") ?? refused[0];
 }
 
 /** Whether the account must sign in with Apple or Google before it buys or

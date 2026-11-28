@@ -327,6 +327,29 @@ try {
       }));
       await rep.check(`${device} the Lamb strolls across the stage by itself and leaves its trail behind it`,
         strolled.moved > 30 && strolled.painted > 0 && strolled.under ? null : JSON.stringify(strolled), page);
+      // a tile's tap plays the character's entrance, and its special paints its accent on the stage's felt
+      const painted = (ms, depth) => page.evaluate(([span, which]) => new Promise((done) => {
+        const cs = [...document.querySelectorAll(".char-stage canvas")].filter((c) => !which || c.dataset.depth === which), t0 = performance.now();
+        let most = 0;
+        const tick = () => {
+          for (const c of cs) { const px = c.getContext("2d").getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < px.length; i += 4) if (px[i] > 24) n++; most = Math.max(most, n); }
+          if (performance.now() - t0 > span) done(most); else requestAnimationFrame(tick);
+        };
+        tick();
+      }), [ms, depth]);
+      await page.locator(".coll-soon .coll-tile.foil", { hasText: "Baby Panda" }).tap();
+      await until(page, () => document.querySelector(".char-stage svg.cmp-panda") !== null, { timeout: 5000 });
+      await page.evaluate(() => { document.querySelector(".coll-page").scrollTop = 0; });
+      const entered = await painted(1600, "");
+      await rep.check(`${device} a tap on the Panda's tile plays its entrance on the stage`, entered > 0 ? null : "nothing painted in 1.6 s", page);
+      await page.locator(".coll-soon .coll-tile.foil", { hasText: "Baby Panda" }).tap();
+      await page.evaluate(() => { document.querySelector(".coll-page").scrollTop = 0; });
+      const again = await painted(1600, "");
+      await rep.check(`${device} the selected tile tapped again plays the entrance again`, again > 0 ? null : "nothing painted in 1.6 s", page);
+      await sleep(600);
+      await page.locator(".char-stage .coll-figure").tap();
+      const accent = await painted(2400, "front");
+      await rep.check(`${device} the Panda's bamboo bite paints its leaf flecks on the stage`, accent > 0 ? null : "the front canvas stayed empty for 2.4 s", page);
       await page.locator(".coll-yours .coll-tile", { hasText: "Bun" }).tap();
       await until(page, () => document.querySelector(".char-stage svg.cmp-bun") !== null, { timeout: 5000 });
       const free = await page.evaluate(() => document.querySelectorAll(".char-stage canvas").length);

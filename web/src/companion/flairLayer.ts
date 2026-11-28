@@ -71,6 +71,11 @@ export class TierSampler {
 }
 /** One tier for the page, wherever pieces are painted. */
 export const sessionTier = new TierSampler();
+/** A sampler that never steps down: the Collection's stage is one figure on its own felt, far inside what any
+ *  tier allows a table, so it shows a store character whole on every device. */
+export class FullTier extends TierSampler {
+  note(): Tier { return "full"; }
+}
 
 interface Live { owner: string; tag: Tag; piece: Piece; t0: number }
 

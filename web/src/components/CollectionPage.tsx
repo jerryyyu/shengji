@@ -108,6 +108,8 @@ export default function CollectionPage() {
   const [cheer, setCheer] = useState(0);
   // a selection the player made swaps the stage with a short crossfade
   const [swaps, setSwaps] = useState(0);
+  // every tap on a tile, the selected one's too: each plays its character's way in on the stage
+  const [taps, setTaps] = useState(0);
   const who = lookAccount(user);
   // the looks new on this visit for this viewer, marked until tapped; another
   // viewer signed in on the open page starts a visit of its own
@@ -259,6 +261,7 @@ export default function CollectionPage() {
   const select = (k: Selected) => {
     telemetry.tap("collection_tile");
     if (k !== selected) setSwaps((n) => n + 1);
+    setTaps((n) => n + 1);
     choose(k);
     if (phone) setScrollUp((n) => n + 1);
   };
@@ -304,14 +307,14 @@ export default function CollectionPage() {
     const colour = isSoon(selected) ? soonColour(selected) : COMPANIONS[selected][0];
     stage = (
       <div className="char-page">
-        <Stage key={selected} kind={selected} colour={colour} size={stageSize(phone, short)} label={kindName(t, selected)} arrives={swaps > 0} />
+        <Stage key={selected} kind={selected} colour={colour} size={stageSize(phone, short)} label={kindName(t, selected)} arrives={taps} />
         <p className="coll-status" role="status">{t("home.comingSoon")}</p>
       </div>
     );
   } else if (isSoon(selected)) {
     stage = (
       <div className="char-page">
-        <Stage key={selected} kind={selected} colour={soonColour(selected)} size={stageSize(phone, short)} label={kindName(t, selected)} arrives={swaps > 0} />
+        <Stage key={selected} kind={selected} colour={soonColour(selected)} size={stageSize(phone, short)} label={kindName(t, selected)} arrives={taps} />
         <p className="coll-status" role="status">{kindName(t, selected)}</p>
         <div className="coll-use-row">
           <button type="button" className="btn big coll-use done" disabled>{t("home.soon")}</button>
@@ -332,7 +335,7 @@ export default function CollectionPage() {
     stage = (
       <CharacterPage key={kind} kind={kind} shown={shown} entries={entriesOf(kind)} inUse={inUse} user={user} phone={phone} short={short}
                      fresh={fresh} onShow={show} onUse={use} price={price}
-                     status={said ? t(said) : bought && bought.product === product && !owns(kind) ? bought.text : ""} cheer={cheer} arrives={swaps > 0} />
+                     status={said ? t(said) : bought && bought.product === product && !owns(kind) ? bought.text : ""} cheer={cheer} arrives={taps} />
     );
   }
 

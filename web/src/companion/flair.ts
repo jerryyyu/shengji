@@ -102,12 +102,18 @@ export const GOLD_LEVEL = 4;
 
 /** A figure as a moment sees it: where its feet's middle is, its width, the
  *  way it faces, its colourway, and whether its pieces turn gold. */
-export interface Stance { x: number; y: number; px: number; dir: 1 | -1; colour: string; gold: boolean }
+export interface Stance {
+  x: number; y: number; px: number; dir: 1 | -1; colour: string; gold: boolean;
+  /** How far a figure's width is for a piece in flight: the figure's own width at the table, less on the
+   *  Collection's stage, where the figure is large and the felt round it small, so its pieces stay on the felt. */
+  fly?: number;
+}
 
 const rnd = (a: number, b: number, rand: () => number) => a + rand() * (b - a);
 const key = (t: number, x: number, y: number, r: number, s: number, o: number, sy = s): Key => ({ t, x, y, r, sx: s, sy, o });
 /** How much larger pieces are drawn round a larger figure (the Collection's stage). */
-const grow = (px: number) => Math.min(2.4, Math.max(1, px / 52));
+export const grow = (px: number) => Math.min(2.4, Math.max(1, px / 52));
+const flyOf = (s: Stance) => s.fly ?? s.px;
 const tintOf = (m: Material, s: Stance, i: number): readonly [string, string] =>
   (s.gold && i % 3 === 2 ? GOLD : m.tints[s.colour] ?? Object.values(m.tints)[0]);
 
@@ -120,7 +126,7 @@ const tintOf = (m: Material, s: Stance, i: number): readonly [string, string] =>
 export function trailPieces(m: Material, s: Stance, u: Spot, n: number, first: number, rand: () => number = Math.random): Piece[] {
   const k = grow(s.px), nx = -u.y, ny = u.x;
   return Array.from({ length: n }, (_, i) => {
-    const back = rnd(0.6, 1.05, rand) * s.px, side = (i % 2 ? rnd(0.04, 0.2, rand) : rnd(-0.2, -0.04, rand)) * s.px;
+    const back = 0.5 * s.px + rnd(0.1, 0.55, rand) * flyOf(s), side = (i % 2 ? rnd(0.04, 0.2, rand) : rnd(-0.2, -0.04, rand)) * s.px;
     const x0 = s.x - u.x * back + nx * side, y0 = s.y - u.y * back + ny * side;
     const far = rnd(6, 26, rand) * k, x1 = x0 - u.x * far, y1 = y0 - u.y * far, lift = s.px * rnd(0.2, 0.55, rand);
     const sc = rnd(0.9, 1.5, rand), o = rnd(0.75, 0.95, rand), r0 = rnd(0, 360, rand), r1 = r0 + rnd(140, 360, rand) * (rand() < 0.5 ? -1 : 1);
@@ -164,8 +170,8 @@ export function burstPieces(m: Material, s: Stance, n: number, delay: number, ra
   for (let i = 0; i < n; i++) {
     const right = i % 2 === 0, share = (Math.floor(i / 2) + 0.5) / half;
     const a = ((right ? -62 + 50 * share : -118 - 50 * share) + rnd(-5, 5, rand)) * Math.PI / 180;
-    const r0 = s.px * 0.6, r1 = s.px * (0.6 + 0.7 * rnd(0.8, 1.15, rand));
-    const ax = ox + Math.cos(a) * r1, ay = oy + Math.sin(a) * r1, ex = ax + Math.cos(a) * s.px * 0.25, ey = s.y - rnd(0, 6, rand), r = rnd(0, 360, rand);
+    const r0 = s.px * 0.6, r1 = s.px * 0.6 + flyOf(s) * 0.7 * rnd(0.8, 1.15, rand);
+    const ax = ox + Math.cos(a) * r1, ay = oy + Math.sin(a) * r1, ex = ax + Math.cos(a) * flyOf(s) * 0.25, ey = s.y - rnd(0, 6, rand), r = rnd(0, 360, rand);
     const [c1, c2] = tintOf(m, s, i);
     out.push({ shape: m.shape, depth: "front", w: m.size[0] * 1.5 * k, h: m.size[1] * 1.5 * k, c1, c2, ms: rnd(1150, 1450, rand), delay: delay + i * 35, keys: [
       key(0, ox + Math.cos(a) * r0, oy + Math.sin(a) * r0, r, 0.3, 0), key(0.34, ax, ay, r + 140, 1, 1), key(0.86, ex, ey, r + 330, 0.9, 0.85), key(1, ex, ey, r + 330, 0.9, 0)] });
@@ -177,8 +183,8 @@ export function burstPieces(m: Material, s: Stance, n: number, delay: number, ra
 export function showerPieces(m: Material, s: Stance, n: number, rand: () => number = Math.random): Piece[] {
   const k = grow(s.px), out: Piece[] = markPieces(m, s, 300, 1, false);
   for (let i = 0; i < n; i++) {
-    const side = i % 2 ? -1 : 1, x0 = s.x + side * rnd(0.7, 1.3, rand) * s.px, y0 = s.y - s.px * rnd(1.7, 2.1, rand);
-    const sway = side * rnd(4, 16, rand) * k, y1 = s.y - rnd(0, 8, rand), r = rnd(0, 360, rand);
+    const side = i % 2 ? -1 : 1, x0 = s.x + side * (0.5 * s.px + rnd(0.2, 0.8, rand) * flyOf(s)), y0 = s.y - s.px * rnd(1.7, 2.1, rand);
+    const sway = side * rnd(4, 16, rand) * k * (flyOf(s) / s.px), y1 = s.y - rnd(0, 8, rand), r = rnd(0, 360, rand);
     const [c1, c2] = tintOf(m, s, i);
     out.push({ shape: m.shape, depth: "front", w: m.size[0] * 1.5 * k, h: m.size[1] * 1.5 * k, c1, c2, ms: 1350, delay: 150 + i * 110, keys: [
       key(0, x0, y0, r, 0.8, 0), key(0.2, x0 + sway, y0 + (y1 - y0) * 0.3, r + 120, 1, 1), key(0.85, x0 + sway * 1.5, y1, r + 400, 1, 0.9), key(1, x0 + sway * 1.5, y1, r + 400, 1, 0)] });
@@ -201,7 +207,11 @@ export function entrancePieces(m: Material, s: Stance, n: number, rand: () => nu
   }
   for (let i = 0; i < n - 1; i++) {
     const a0 = (i * 2 * Math.PI) / Math.max(1, n - 1);
-    const at = (turn: number, r: number): [number, number] => [cx + Math.cos(a0 + turn) * r * s.px, cy + Math.sin(a0 + turn) * r * s.px * 0.8];
+    // the ring it stops at is the figure's; how far out it starts is a flight
+    const at = (turn: number, r: number): [number, number] => {
+      const out = 0.68 * s.px + (r - 0.68) * flyOf(s);
+      return [cx + Math.cos(a0 + turn) * out, cy + Math.sin(a0 + turn) * out * 0.8];
+    };
     const [c1, c2] = tintOf(m, s, i);
     const p = [at(0, 1.3), at(1.2, 1.05), at(2.6, 0.78), at(3.4, 0.68)];
     out.push({ shape: m.shape, depth: "front", w: m.size[0] * 1.25 * k, h: m.size[1] * 1.25 * k, c1, c2, ms: 900, delay: i * 40, keys: [
@@ -218,7 +228,7 @@ export function accentPieces(m: Material, s: Stance, reach: number, at: number, 
   const x = s.x + s.dir * ((c.at[0] - 0.5) * s.px + reach), y = s.y - (1 - c.at[1]) * s.px;
   return Array.from({ length: c.n }, (_, i) => {
     const a = (c.deg + (c.n > 1 ? (i / (c.n - 1) - 0.5) * c.spread : 0)) * Math.PI / 180, ux = Math.cos(a) * s.dir, uy = Math.sin(a);
-    const r0 = s.px * 0.12, r1 = s.px * rnd(0.5, 0.8, rand), r = rnd(0, 360, rand), ey = s.y - rnd(0, 5, rand);
+    const r0 = s.px * 0.12, r1 = flyOf(s) * rnd(0.5, 0.8, rand), r = rnd(0, 360, rand), ey = s.y - rnd(0, 5, rand);
     const [c1, c2] = tintOf(m, s, i);
     return { shape: m.shape, depth: "front", w: m.size[0] * 1.5 * k, h: m.size[1] * 1.5 * k, c1, c2, ms: 950, delay: at + i * 60, keys: [
       key(0, x + ux * r0, y + uy * r0, r, 0.4, 0), key(0.35, x + ux * r1, y + uy * r1, r + 120, 1, 1),
@@ -239,6 +249,46 @@ export function restPieces(m: Material, s: Stance): Piece[] {
   const k = grow(s.px), [c1, c2] = tintOf(m, s, 0);
   return ([[-0.38, -18], [-0.06, 24], [0.3, -8]] as const).map(([dx, r]) =>
     ({ shape: m.shape, depth: "back" as const, w: m.size[0] * k, h: m.size[1] * k, c1, c2, ms: 0, delay: 0, keys: [key(0, s.x + dx * s.px, s.y + 2, r, 1, 0.85)] }));
+}
+
+/** The furthest a piece is ever painted from its middle: half the diagonal of the box its shape is drawn in
+ *  (a petal's or a leaf's curve bulges to its full height either side), at its largest scale, however it turns. */
+export function reachOfPiece(p: Piece): number {
+  const most = Math.max(...p.keys.map((k) => Math.max(Math.abs(k.sx), Math.abs(k.sy))));
+  const box = p.shape === "petal" || p.shape === "leaf" ? Math.hypot(p.w / 2, p.h) : p.shape === "spark" ? p.w / 2 : Math.hypot(p.w / 2, p.h / 2);
+  return box * most + 1;
+}
+const MARKS: ReadonlySet<string> = new Set(["blossom", "ripple", "ink"]);
+/** How far to either side of its middle a mark is ever painted: its ring or blot at its widest, with the
+ *  line it is drawn in (`flairLayer.ts` draws a blossom to 0.9 of its half-width in a line 0.06 of it wide, a
+ *  ripple's ring at 0.9 in a line 0.12 wide, an ink blot to 0.8), at its largest scale. A blossom turns, so its
+ *  taller scale counts too. */
+export function reachOfMark(p: Piece): number {
+  const half = p.w / 2;
+  const drawn = p.shape === "blossom" ? half * 0.9 + Math.max(1, half * 0.06) / 2 : p.shape === "ripple" ? half * 0.9 + Math.max(1.5, half * 0.12) / 2 : half * 0.8;
+  return drawn * Math.max(...p.keys.map((k) => (p.shape === "blossom" ? Math.max(Math.abs(k.sx), Math.abs(k.sy)) : Math.abs(k.sx)))) + 1;
+}
+
+/** `pieces` with every one painted between `x0` and `x1` (a felt's edges) through its whole life: its path is
+ *  kept that far inside as the piece is ever painted from its middle (`reachOfPiece`), so no tip of it crosses an
+ *  edge as it turns. A path that would cross is squeezed into the room it has, from the end that is inside, and
+ *  one wholly past an edge is brought in to it. A mark stays round the figure it marks: where the figure
+ *  stands too near an edge for it, the mark is drawn just small enough that its line stays on the felt, and one
+ *  with room is drawn as it is. The Collection's stage uses it, where the figure may stand by the felt's edge. */
+export function fitted(pieces: readonly Piece[], x0: number, x1: number): Piece[] {
+  return pieces.map((p) => {
+    if (MARKS.has(p.shape)) {
+      const room = Math.max(0, Math.min(...p.keys.map((k) => Math.min(k.x - x0, x1 - k.x)))), reach = reachOfMark(p);
+      if (reach <= room) return p;
+      const less = room / reach;
+      return { ...p, keys: p.keys.map((k) => ({ ...k, sx: k.sx * less, sy: k.sy * less })) };
+    }
+    const half = reachOfPiece(p), a = Math.min(x0 + half, (x0 + x1) / 2), b = Math.max(x1 - half, (x0 + x1) / 2);
+    const xs = p.keys.map((k) => k.x), lo = Math.min(...xs), hi = Math.max(...xs);
+    if (lo >= a && hi <= b) return p;
+    const from = Math.min(Math.max(lo, a), b), to = Math.max(Math.min(hi, b), a), span = hi - lo;
+    return { ...p, keys: p.keys.map((k) => ({ ...k, x: span > 0 ? from + ((k.x - lo) / span) * (to - from) : from })) };
+  });
 }
 
 /** Where a walk from `from` to `to` (by `via`, `leg` of its way along)

@@ -86,7 +86,8 @@ function deliver(t: SignedTransaction): Promise<string[] | null> {
       settleDelivery(t, null);
       return user.products ?? [];
     } catch (err) {
-      if (t.transactionId && isPermanent(err)) await storeFinish(t.transactionId).catch(() => {});
+      // an unverified one is finished only on a grant: a refusal of it may be the device's fault
+      if (t.transactionId && isPermanent(err) && !t.unverified) await storeFinish(t.transactionId).catch(() => {});
       // refused for any reason but a passing one: the received purchase it is has its outcome
       if (!isTransient(err)) settleDelivery(t, err);
       throw err;
@@ -209,15 +210,17 @@ export async function buy(product: string): Promise<BuyOutcome> {
   clearDelivery(product);
   const result = await storePurchase(product, payer.store_token);
   if (result.status === "cancelled" || result.status === "pending") return result.status;
-  if (result.status !== "purchased") throw Object.assign(new Error("unverified"), { status: 0 });
-  const { jws, productId, transactionId } = result;
+  // an unverified purchase with its JWS goes to the server like any other, which
+  // decides; an older shell's bare "unverified" has nothing to send
+  if (!("jws" in result)) throw Object.assign(new Error("unverified"), { status: 0, reason: "unverified" });
+  const { jws, productId, transactionId, unverified } = result;
   const same = () => viewerScope(auth.state) === scope && !!signedIn();
   let granted: string[] | null;
   try {
-    granted = await deliver({ jws, productId, ...(transactionId ? { transactionId } : {}) });
+    granted = await deliver({ jws, productId, ...(transactionId ? { transactionId } : {}), ...(unverified ? { unverified } : {}) });
   } catch (err) {
     if (!same()) return "none";
-    if (isTransient(err)) {
+    if (isTransient(err) && !unverified) {
       // Apple charged; the transaction stays unfinished and is handed over again
       awaitDelivery(payer.store_token, product, { jws, productId, ...(transactionId ? { transactionId } : {}) });
       throw Object.assign(err instanceof Error ? err : new Error("verify"), { received: true });

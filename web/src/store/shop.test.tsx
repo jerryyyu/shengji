@@ -1276,3 +1276,74 @@ describe("a refusal in plain words", () => {
     }
   });
 });
+
+describe("a transaction StoreKit could not verify on the device", () => {
+  const UNSURE = { jws: "unsure.jws.sig", productId: LAMB, transactionId: "2000000999", unverified: true };
+  const answer = (verify: { status: number; detail?: string }) => {
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      fetches.push({ url, init });
+      if (url === "/api/store/verify") {
+        if (verify.status === 200) { server.granted = true; return { status: 200, json: async () => ownedUser } as Response; }
+        return { status: verify.status, json: async () => ({ detail: verify.detail }) } as Response;
+      }
+      return { status: 200, json: async () => (server.granted ? ownedUser : authState.current.user) } as Response;
+    }) as unknown as typeof fetch;
+  };
+  const verified = () => fetches.filter((f) => f.url === "/api/store/verify").map((f) => JSON.parse(String(f.init?.body)).jws);
+
+  it("from Apple's sheet is handed to the server, which refuses it: a plain line, and it is kept", async () => {
+    nativeShell();
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    await openTile(".coll-more", 0);
+    plugin.purchase.mockImplementationOnce(async () => ({ status: "unverified", ...UNSURE }) as never);
+    answer({ status: 400, detail: "bad_signature" });
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")!.click(); });
+    await settle();
+    expect(verified()).toEqual(["unsure.jws.sig"]);
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("Couldn't complete the purchase.");
+    expect(plugin.finish).not.toHaveBeenCalled();
+  });
+
+  it("is finished only when the server granted it, never on a refusal", async () => {
+    nativeShell();
+    plugin.pending.mockImplementation(async () => ({ transactions: [UNSURE] }));
+    answer({ status: 409, detail: "held_by_other" });
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    await settle();
+    expect(verified()).toContain("unsure.jws.sig");
+    expect(plugin.finish).not.toHaveBeenCalled();
+    act(() => root.unmount());
+    root = createRoot(host);
+    answer({ status: 200 });
+    await draw();
+    await settle();
+    expect(plugin.finish).toHaveBeenCalledWith({ transactionId: "2000000999" });
+  });
+
+  it("on Restore purchases, a refused one says the restore line and is kept", async () => {
+    nativeShell();
+    plugin.restore.mockImplementationOnce(async () => ({ transactions: [UNSURE] }));
+    answer({ status: 400, detail: "bad_signature" });
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-restore")!.click(); });
+    await settle();
+    await settle();
+    expect(host.querySelector(".coll-grid-status")?.textContent).toBe("Couldn't restore purchases.");
+    expect(plugin.finish).not.toHaveBeenCalled();
+  });
+
+  it("an older shell's bare unverified answer sends nothing and says the plain line", async () => {
+    nativeShell();
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    await openTile(".coll-more", 0);
+    plugin.purchase.mockImplementationOnce(async () => ({ status: "unverified" }) as never);
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")!.click(); });
+    await settle();
+    expect(verified()).toEqual([]);
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("Couldn't complete the purchase.");
+  });
+});

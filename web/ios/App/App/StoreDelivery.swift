@@ -1,22 +1,29 @@
 import Foundation
 
-/// One verified App Store transaction as the page receives it.
+/// One App Store transaction as the page receives it. `unverified` marks
+/// one StoreKit could not verify on the device: it is still handed over, so
+/// a paid purchase is never dropped here, and the server's own check of its
+/// JWS decides; nothing grants it on the device's word.
 struct DeliveredTransaction: Equatable {
     let id: UInt64
     let productId: String
     let jws: String
+    var unverified: Bool = false
 
     /// What the bridge sends: the id the page acknowledges with, as a string
-    /// (a JavaScript number cannot hold every UInt64).
+    /// (a JavaScript number cannot hold every UInt64), and `unverified: true`
+    /// only for an unverified one.
     var payload: [String: Any] {
-        ["transactionId": String(id), "productId": productId, "jws": jws]
+        var out: [String: Any] = ["transactionId": String(id), "productId": productId, "jws": jws]
+        if unverified { out["unverified"] = true }
+        return out
     }
 }
 
 /// The App Store's unfinished transactions, as StoreDelivery uses them.
 protocol StoreLedger {
-    /// Verified transactions not finished yet, which StoreKit delivers again
-    /// at every launch until they are.
+    /// Transactions not finished yet, verified or not, which StoreKit
+    /// delivers again at every launch until they are.
     func unfinished() async -> [DeliveredTransaction]
     /// Finish the unfinished transaction `id`; false when there is none.
     func finish(id: UInt64) async -> Bool

@@ -57,10 +57,14 @@ export interface SignedTransaction {
   /** The App Store's id, which `storeFinish` acknowledges; absent from a
    *  shell that finishes on its own. */
   transactionId?: string;
+  /** StoreKit could not verify it on the device: the server's own check of
+   *  `jws` decides, and only its grant finishes it. */
+  unverified?: true;
 }
 
 export type PurchaseResult =
   | ({ status: "purchased" } & SignedTransaction)
+  | ({ status: "unverified" } & SignedTransaction)
   | { status: "cancelled" | "pending" | "unverified" };
 
 const isSigned = (t: unknown): t is SignedTransaction =>
@@ -69,6 +73,7 @@ const isSigned = (t: unknown): t is SignedTransaction =>
 const signed = (t: SignedTransaction): SignedTransaction => ({
   jws: t.jws, productId: t.productId,
   ...(typeof t.transactionId === "string" && t.transactionId ? { transactionId: t.transactionId } : {}),
+  ...(t.unverified === true ? { unverified: true as const } : {}),
 });
 
 /** The App Store's products among `ids`, in that order; none without a store. */
@@ -89,6 +94,8 @@ export async function storePurchase(id: string, appAccountToken: string | null =
   const r = (await fn(appAccountToken ? { id, appAccountToken } : { id })) as { status?: unknown; jws?: unknown; productId?: unknown } | undefined;
   if (r?.status === "purchased" && isSigned(r)) return { status: "purchased", ...signed(r) };
   if (r?.status === "cancelled" || r?.status === "pending") return { status: r.status };
+  // a shell that hands over an unverified purchase sends its JWS, flagged
+  if (r?.status === "unverified" && isSigned(r)) return { status: "unverified", ...signed(r), unverified: true };
   return { status: "unverified" };
 }
 

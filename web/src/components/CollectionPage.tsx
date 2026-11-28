@@ -17,7 +17,8 @@ import { useT } from "../i18n";
 import { isNative } from "../native";
 import { prefersReducedMotion } from "../motion";
 import { useMediaQuery } from "../phoneLayout";
-import { useShop } from "../store/shop";
+import { guestName } from "../guestName";
+import { clearDelivery, refusalMessage, useDelivery, useShop } from "../store/shop";
 import { showToast } from "../toast";
 import { telemetry, useScreen } from "../telemetry";
 import CharacterPage, { SHORT_SCREEN, Stage, Tick, kindName, stageSize } from "./CharacterPage";
@@ -101,8 +102,7 @@ export default function CollectionPage() {
   const [arrived, setArrived] = useState<CompanionKind | null>(null);
   // Buy's answer belongs to the product it was for, Restore's to its row:
   // each is said on its own line, and a late answer never reaches another stage;
-  // `hide` takes Buy away: another account holds it (a retry is refused the same
-  // way), or Apple charged and the store is handing it over again
+  // `hide` takes Buy away when another account holds it (a retry is refused the same way)
   const [bought, setBought] = useState<{ product: string; text: string; hide?: boolean } | null>(null);
   const [restored, setRestored] = useState("");
   const [cheer, setCheer] = useState(0);
@@ -288,6 +288,17 @@ export default function CollectionPage() {
   // the character on the stage has been seen: its tile drops "New" at once
   const hasNew = (k: CompanionKind) => k !== kindShown && unseen.some((id) => parseLook(id).kind === k);
 
+  // a purchase received while the server was out of reach is said from its
+  // delivery, which outlasts a tile change; one that needs a sign-in opens it
+  const selectedProduct = isSoon(selected) || previewed(selected) ? undefined : COMPANION_PRODUCTS[selected];
+  const delivery = useDelivery(selectedProduct);
+  useEffect(() => {
+    if (selectedProduct && delivery?.state === "refused" && refusalMessage(delivery.err, "buy") === null) {
+      clearDelivery(selectedProduct);
+      guestName.open("shop");
+    }
+  }, [delivery, selectedProduct]);
+
   let stage;
   if (previewed(selected)) {
     const colour = isSoon(selected) ? soonColour(selected) : COMPANIONS[selected][0];
@@ -310,7 +321,10 @@ export default function CollectionPage() {
   } else {
     const kind = selected;
     const product = COMPANION_PRODUCTS[kind];
-    const hidden = !!bought?.hide && bought.product === product;
+    const said = product && !owns(kind) && delivery
+      ? (delivery.state === "received" ? "home.shopReceived" : refusalMessage(delivery.err, "buy"))
+      : null;
+    const hidden = (!!bought?.hide && bought.product === product) || said === "home.shopReceived" || said === "home.shopHeldByOther";
     const price = product && !owns(kind) && !hidden ? (
       <BuyFoot product={product} shop={shop} onStatus={(text, hide) => setBought({ product, text, hide })}
                onOwned={() => { setArrived(kind); setCheer((n) => n + 1); }} />
@@ -318,7 +332,7 @@ export default function CollectionPage() {
     stage = (
       <CharacterPage key={kind} kind={kind} shown={shown} entries={entriesOf(kind)} inUse={inUse} user={user} phone={phone} short={short}
                      fresh={fresh} onShow={show} onUse={use} price={price}
-                     status={bought && bought.product === product && !owns(kind) ? bought.text : ""} cheer={cheer} arrives={swaps > 0} />
+                     status={said ? t(said) : bought && bought.product === product && !owns(kind) ? bought.text : ""} cheer={cheer} arrives={swaps > 0} />
     );
   }
 

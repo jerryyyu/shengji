@@ -101,12 +101,14 @@ let lockScreen: ScreenKind | null = null;
 let lastLock: OrientationLock | null = null;
 let lockListening = false;
 
-/** Applies the lock the current screen and window size call for. While the
- *  keyboard is up the WebView is only the space above it, which is not the
- *  window's size, so the lock stays as it was. Nothing was locked before the
- *  first lock, so a first "free" sends nothing. */
+let keyboardUp = false;
+
+/** Applies the lock the current screen and window size call for. While a
+ *  keyboard with height is up the WebView is only the space above it, which
+ *  is not the window's size, so the lock waits for the keyboard to go away.
+ *  Nothing was locked before the first lock, so a first "free" sends nothing. */
 async function applyLock(): Promise<void> {
-  if (lockScreen === null || document.body.classList.contains(KEYBOARD_OPEN_CLASS)) return;
+  if (lockScreen === null || keyboardUp) return;
   const lock = orientationLockFor(lockScreen, window.innerWidth, window.innerHeight);
   if (lock === null || lock === lastLock) return;
   const first = lastLock === null;
@@ -123,6 +125,25 @@ async function applyLock(): Promise<void> {
 }
 
 const onLockResize = () => { void applyLock(); };
+/** A zero-height change (the QuickType bar alone) shrinks nothing, so it
+ *  does not hold the lock; the Keyboard plugin puts the height on the event. */
+const onLockKeyboardShow = (e: Event) => {
+  const height = (e as Event & { keyboardHeight?: unknown }).keyboardHeight;
+  keyboardUp = !(typeof height === "number" && height <= 0);
+};
+/** As the keyboard starts to go the WebView may still be its shrunk size, so
+ *  the lock is only released to the next resize; once it has gone, which may
+ *  bring no resize at all, the latest screen's lock is applied. */
+const onLockKeyboardWillHide = () => { keyboardUp = false; };
+const onLockKeyboardDidHide = () => {
+  keyboardUp = false;
+  void applyLock();
+};
+const LOCK_KEYBOARD_EVENTS: [string, (e: Event) => void][] = [
+  ["keyboardWillShow", onLockKeyboardShow],
+  ["keyboardWillHide", onLockKeyboardWillHide],
+  ["keyboardDidHide", onLockKeyboardDidHide],
+];
 
 /** Lobby screens portrait, the table landscape (both sides), in a
  *  phone-sized window only; see orientationLockFor. */
@@ -132,6 +153,7 @@ export async function lockFor(screen: ScreenKind): Promise<void> {
   if (!lockListening) {
     lockListening = true;
     window.addEventListener("resize", onLockResize);
+    for (const [name, fn] of LOCK_KEYBOARD_EVENTS) window.addEventListener(name, fn);
   }
   await applyLock();
 }
@@ -355,8 +377,10 @@ export function resetNativeForTests(): void {
   idiom = null;
   lockScreen = null;
   lastLock = null;
+  keyboardUp = false;
   if (lockListening) {
     window.removeEventListener("resize", onLockResize);
+    for (const [name, fn] of LOCK_KEYBOARD_EVENTS) window.removeEventListener(name, fn);
     lockListening = false;
   }
   selectionPrimed = false;

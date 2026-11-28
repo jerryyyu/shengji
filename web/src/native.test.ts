@@ -39,6 +39,10 @@ afterEach(() => {
   sizeWindow(...jsdomSize);
 });
 
+/** A keyboard event as the Keyboard plugin sends it: the height rides on the event. */
+const keyboard = (name: string, keyboardHeight?: number) =>
+  window.dispatchEvent(Object.assign(new Event(name), keyboardHeight === undefined ? {} : { keyboardHeight }));
+
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe("native bridge", () => {
@@ -273,13 +277,48 @@ describe("native bridge", () => {
     sizeWindow(1133, 744);
     const calls = fakeShell("pad");
     await lockFor("lobby");
-    document.body.classList.add(KEYBOARD_OPEN_CLASS);
+    keyboard("keyboardWillShow", 336);
     sizeWindow(1133, 400);          // the space above the keyboard
     await flush();
-    document.body.classList.remove(KEYBOARD_OPEN_CLASS);
+    keyboard("keyboardWillHide");   // the WebView may still be shrunk here
+    await flush();
     sizeWindow(1133, 744);
+    keyboard("keyboardDidHide");
     await flush();
     expect(calls).toEqual([]);
+  });
+
+  it("applies the latest screen's lock when the keyboard goes away without a resize", async () => {
+    sizeWindow(402, 874);
+    const calls = fakeShell("phone");
+    startShell();
+    await lockFor("lobby");
+    keyboard("keyboardWillShow", 0);    // a zero-height change hides nothing
+    await lockFor("game");
+    keyboard("keyboardWillHide");
+    keyboard("keyboardDidHide");
+    await flush();
+    expect(calls.filter(([n]) => n !== "Keyboard")).toEqual([
+      ["ScreenOrientation", "lock", { orientation: "portrait" }],
+      ["ShengjiShell", "lockOrientation", { orientation: "landscape" }],
+    ]);
+  });
+
+  it("defers the lock under a keyboard that has height and applies it on dismissal", async () => {
+    sizeWindow(402, 874);
+    const calls = fakeShell("phone");
+    startShell();
+    await lockFor("lobby");
+    keyboard("keyboardWillShow", 336);
+    await lockFor("game");
+    const locks = () => calls.filter(([n]) => n !== "Keyboard");
+    expect(locks()).toEqual([["ScreenOrientation", "lock", { orientation: "portrait" }]]);
+    keyboard("keyboardDidHide");        // the DidHide alone also applies it
+    await flush();
+    expect(locks()).toEqual([
+      ["ScreenOrientation", "lock", { orientation: "portrait" }],
+      ["ShengjiShell", "lockOrientation", { orientation: "landscape" }],
+    ]);
   });
 
   it("stops following the window once the shell is reset", async () => {

@@ -735,7 +735,7 @@ keeps the table on screen.
   droop of a big trick lost, and for a store character a round won (its special under its shower). A store
   character's material comes with each as at the table: its trail on every walk, its cue at rest, its burst and
   mark on Big play, its accent on its special, one piece falling as it droops. Its pieces' flights are fitted to the
-  felt beside the figure, so none leaves the stage (the figure is large there and the felt small), and the stage
+  felt beside the figure, so none is painted past the felt's edge at any moment (the figure is large there and the felt small; a mark stays round the figure and is drawn just small enough to fit where the figure stands by an edge), and the stage
   paints them whole on every device: it is one figure, far inside what any tier allows a table, so a device the
   table has stepped down (Low Power Mode) still sees what a store character adds. Not shown on the stage: the
   step aside (nothing covers it), a level gained and the growth and gold that come with a team's level (the stage

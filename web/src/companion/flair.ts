@@ -259,16 +259,30 @@ export function reachOfPiece(p: Piece): number {
   return box * most + 1;
 }
 const MARKS: ReadonlySet<string> = new Set(["blossom", "ripple", "ink"]);
+/** How far to either side of its middle a mark is ever painted: its ring or blot at its widest, with the
+ *  line it is drawn in (`flairLayer.ts` draws a blossom to 0.9 of its half-width in a line 0.06 of it wide, a
+ *  ripple's ring at 0.9 in a line 0.12 wide, an ink blot to 0.8), at its largest scale. A blossom turns, so its
+ *  taller scale counts too. */
+export function reachOfMark(p: Piece): number {
+  const half = p.w / 2;
+  const drawn = p.shape === "blossom" ? half * 0.9 + Math.max(1, half * 0.06) / 2 : p.shape === "ripple" ? half * 0.9 + Math.max(1.5, half * 0.12) / 2 : half * 0.8;
+  return drawn * Math.max(...p.keys.map((k) => (p.shape === "blossom" ? Math.max(Math.abs(k.sx), Math.abs(k.sy)) : Math.abs(k.sx)))) + 1;
+}
 
 /** `pieces` with every one painted between `x0` and `x1` (a felt's edges) through its whole life: its path is
  *  kept that far inside as the piece is ever painted from its middle (`reachOfPiece`), so no tip of it crosses an
  *  edge as it turns. A path that would cross is squeezed into the room it has, from the end that is inside, and
- *  one wholly past an edge is brought in to it. A mark is left where it is: it is drawn round the figure, as
- *  wide as the figure, and stands where the figure stands. The Collection's stage uses it, where the figure may
- *  stand by the felt's edge. */
+ *  one wholly past an edge is brought in to it. A mark stays round the figure it marks: where the figure
+ *  stands too near an edge for it, the mark is drawn just small enough that its line stays on the felt, and one
+ *  with room is drawn as it is. The Collection's stage uses it, where the figure may stand by the felt's edge. */
 export function fitted(pieces: readonly Piece[], x0: number, x1: number): Piece[] {
   return pieces.map((p) => {
-    if (MARKS.has(p.shape)) return p;
+    if (MARKS.has(p.shape)) {
+      const room = Math.max(0, Math.min(...p.keys.map((k) => Math.min(k.x - x0, x1 - k.x)))), reach = reachOfMark(p);
+      if (reach <= room) return p;
+      const less = room / reach;
+      return { ...p, keys: p.keys.map((k) => ({ ...k, sx: k.sx * less, sy: k.sy * less })) };
+    }
     const half = reachOfPiece(p), a = Math.min(x0 + half, (x0 + x1) / 2), b = Math.max(x1 - half, (x0 + x1) / 2);
     const xs = p.keys.map((k) => k.x), lo = Math.min(...xs), hi = Math.max(...xs);
     if (lo >= a && hi <= b) return p;

@@ -289,6 +289,56 @@ describe("by the felt's edge", () => {
       expect(right).toBeLessThanOrEqual(FELT.w);
       expect(left).toBeGreaterThanOrEqual(0);
     });
+
+  /** How far to either side of its middle a mark is painted in state `k`, as the layer draws it: the ring or blot
+   *  and the line it is drawn in, under the canvas's scale. */
+  const painted = (p: Piece, k: { sx: number; sy: number }) => {
+    const half = p.w / 2;
+    if (p.shape === "blossom") return (half * 0.9 + Math.max(1, half * 0.06) / 2) * Math.max(Math.abs(k.sx), Math.abs(k.sy));
+    if (p.shape === "ripple") return (half * 0.9 + Math.max(1.5, half * 0.12) / 2) * Math.abs(k.sx);
+    return half * 0.8 * Math.abs(k.sx);
+  };
+  it.each([["panda", "classic", 342, "ripple"], ["panda", "classic", 1, "ripple"], ["lamb", "newyear", 342, "blossom"], ["lamb", "newyear", 1, "blossom"]] as const)(
+    "the %s (%s) walked to x=%i: its Big play %s stays round it, drawn just small enough that its line is on the felt at every moment", async (kind, colour, x, shape) => {
+      vi.spyOn(Math, "random").mockReturnValue(0.9);
+      px = 176;
+      await draw(kind, colour);
+      await tick(300);
+      await tap(x);
+      await tick(1250);
+      const from = spawn.mock.calls.length;
+      await chip("Big play");
+      const marks = (spawn.mock.calls as unknown as [string, boolean, string, Piece[]][]).slice(from).flatMap((c) => c[3]).filter((p) => p.shape === shape);
+      expect(marks.length).toBeGreaterThan(0);
+      let left = Infinity, right = -Infinity, widest = 0;
+      for (const p of marks) for (let n = 0; n <= 200; n++) {
+        const k = stateAt(p.keys, n / 200);
+        if (k.o <= 0.004) continue;
+        const r = painted(p, k);
+        left = Math.min(left, k.x - r); right = Math.max(right, k.x + r); widest = Math.max(widest, r);
+      }
+      expect(right).toBeLessThanOrEqual(FELT.w);
+      expect(left).toBeGreaterThanOrEqual(0);
+      // still round the figure, and still a mark: its anchor is the figure's middle, and it is not shrunk away
+      const anchor = marks[0].keys[0].x;
+      for (const p of marks) for (const k of p.keys) expect(k.x).toBe(anchor);
+      expect(widest).toBeGreaterThan(40);
+    });
+
+  it("a mark with room is drawn as it is: in the middle of the stage Big play's ring is the table's own size", async () => {
+    for (const [kind, colour, shape] of [["lamb", "newyear", "blossom"], ["panda", "classic", "ripple"]] as const) {
+      await act(async () => { root.render(<div />); });
+      px = 100;
+      await draw(kind, colour);
+      await tick(300);
+      const from = spawn.mock.calls.length;
+      await chip("Big play");
+      const marks = (spawn.mock.calls as unknown as [string, boolean, string, Piece[]][]).slice(from).flatMap((c) => c[3]).filter((p) => p.shape === shape);
+      expect(marks.length).toBeGreaterThan(0);
+      // the builders' own scales, untouched: the blossom opens to 1.5, the ripple spreads to 1.7 wide
+      expect(Math.max(...marks.flatMap((p) => p.keys.map((k) => k.sx)))).toBe(shape === "blossom" ? 1.5 : 1.7);
+    }
+    });
 });
 
 describe("a tap on the stage's felt", () => {

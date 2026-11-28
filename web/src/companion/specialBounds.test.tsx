@@ -318,8 +318,8 @@ const PAID = ["lamb", "panda", "rabbit", "cat", "fox", "lion", "dragon"] as cons
 const KINDS = [...FREE_KINDS, ...PAID];
 /** The longest a special may run: the free ones are short; the store's tell a small story. */
 const longest = (kind: string) => ((FREE_KINDS as readonly string[]).includes(kind) ? 2000 : 2600);
-const rootOf = (kind: string, pose: string) => ["cmp", ...(DRAWINGS[kind as keyof typeof DRAWINGS].char ? ["cmp-char"] : []), `cmp-${kind}`, ...(pose ? [`cmp-${pose}`] : []), "cmp-us"];
-const drawing = (kind: string, still: boolean) => tree(parseArt(DRAWINGS[kind as keyof typeof DRAWINGS].markup("" as never, "t", { pose: "react", detail: false, still, team: "us" })), null);
+const rootOf = (kind: string, pose: string) => ["cmp", ...(DRAWINGS[kind as keyof typeof DRAWINGS].char ? ["cmp-char"] : []), `cmp-${kind}`, ...(pose ? [`cmp-${pose}`] : [])];
+const drawing = (kind: string, still: boolean) => tree(parseArt(DRAWINGS[kind as keyof typeof DRAWINGS].markup("" as never, "t", { pose: "react", detail: false, still })), null);
 /** The pieces a special adds to the figure: each fades in and out for it alone. */
 const PIECES = ["cmp-smoke", "cmp-dust", "cmp-jet", "cmp-pop", "cmp-feather", "cmp-trail",
   "cmp-impact", "cmp-petals", "cmp-petals2", "cmp-dizzy", "cmp-crumbs", "cmp-coin", "cmp-glint", "cmp-card", "cmp-flame", "cmp-poof"];
@@ -384,14 +384,14 @@ describe("the companions' specials", () => {
     // a limb only the pose draws (the rider's waving arm) leaves with the pose
     const inIdle = new Set<string>();
     const note = (el: El) => { el.classes.forEach((c) => inIdle.add(c)); el.kids.forEach(note); };
-    tree(parseArt(DRAWINGS[kind].markup("" as never, "t", { pose: "idle", detail: false, still: true, team: "us" })), null).forEach(note);
+    tree(parseArt(DRAWINGS[kind].markup("" as never, "t", { pose: "idle", detail: false, still: true })), null).forEach(note);
     for (const part of last.moved) {
       const cls = part.cls.split(".");
       if (PIECES.some((c) => cls.includes(c))) expect(part.opacity, part.cls).toBeLessThan(0.05);
       else if (cls.some((c) => inIdle.has(c))) expect(part.shift, part.cls).toBeLessThan(4);
     }
     // and it paints where the idle drawing does, within a couple of units
-    const idle = play(kind, rootOf(kind, ""), tree(parseArt(DRAWINGS[kind].markup("" as never, "t", { pose: "idle", detail: false, still: true, team: "us" })), null), 0).box;
+    const idle = play(kind, rootOf(kind, ""), tree(parseArt(DRAWINGS[kind].markup("" as never, "t", { pose: "idle", detail: false, still: true })), null), 0).box;
     expect(Math.abs(last.box.y - idle.y)).toBeLessThan(4);
     expect(Math.abs(last.box.x - idle.x)).toBeLessThan(4);
     expect(Math.abs(last.box.w - idle.w)).toBeLessThan(8);
@@ -443,7 +443,7 @@ describe("the companions' specials", () => {
       document.body.appendChild(host);
       const root = createRoot(host);
       try {
-        await act(async () => { root.render(<Companion kind={kind} colour={"" as never} size={PHONE} state="react" still team="us" />); });
+        await act(async () => { root.render(<Companion kind={kind} colour={"" as never} size={PHONE} state="react" still />); });
         const svg = host.querySelector("svg.cmp")!;
         expect(svg.classList.contains("cmp-react")).toBe(false);
         expect(svg.classList.contains("cmp-still")).toBe(true);

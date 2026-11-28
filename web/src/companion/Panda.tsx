@@ -6,7 +6,7 @@
 // bite: it sits down hard and chomps the stalk like corn on the cob.
 import { PANDA_COLOURS } from "./storePalette";
 import type { PandaColour, PandaColourId } from "./storePalette";
-import { ball, bits, confetti, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, ramp, sharedDefs, spark } from "./rig";
+import { ball, bits, confetti, dataUrl, eye, glow, groundShadow, part, portraitSvg, ramp, sharedDefs, spark } from "./rig";
 import type { CharOpts, CharPose, EyeMode } from "./rig";
 
 /** A colour by id, or a palette given whole (the CSS-variable master passes one). */
@@ -35,7 +35,7 @@ const STILL: Partial<Record<CharPose, Record<string, string>>> = {
 
 /** The Panda's shapes in its 400 box, as SVG markup. `id` keeps its gradient
  *  ids apart from another drawing's on the same page. */
-export function pandaMarkup(colour: PandaColourId | PandaColour, id: string, { pose = "idle", detail = true, shadow = true, still = false, team }: CharOpts = {}): string {
+export function pandaMarkup(colour: PandaColourId | PandaColour, id: string, { pose = "idle", detail = true, shadow = true, still = false }: CharOpts = {}): string {
   const p = colourOf(colour);
   const face = FACE[pose];
   const at = (still || pose === "sleep" ? STILL[pose] : undefined) ?? {};
@@ -79,7 +79,7 @@ export function pandaMarkup(colour: PandaColourId | PandaColour, id: string, { p
   const front = pose === "react";
   const dust = p.dust ? `<g class="cmp-dust">` + spark(96, 66, 0.95) + spark(276, 252, 0.7) + spark(238, 150, 0.55) + spark(86, 262, 0.6) + (detail ? spark(256, 320, 0.5) + spark(332, 76, 0.8, p.dark[0]) + spark(40, 150, 0.6, p.dark[0]) : "") + `</g>` : "";
 
-  const body = part("cmp-body", part("cmp-torso", torso, at.torso) + part("cmp-head", head, at.head) + (team ? kerchief(team, 106, 254, 216, 17, 150) : "")
+  const body = part("cmp-body", part("cmp-torso", torso, at.torso) + part("cmp-head", head, at.head)
     + part("cmp-arm-l", arm(92, 1), at.armL) + (front ? "" : prop) + part("cmp-arm-r", arm(268, -1), at.armR) + (front ? prop : "") + dust, at.body);
   return defs + (shadow ? groundShadow(id, 184, 132) : "") + body + (pose === "react" ? bits("cmp-crumbs", 180, 236, 62, 6, [p.leaf[0], p.bamboo[1], p.leaf[1]], 10, 170, 0.8) : "") + (pose === "cheer" ? confetti(180, 150) : "");
 }

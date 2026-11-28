@@ -1,10 +1,10 @@
 // The Tractor's rider: a farm kid in a straw hat at the cab window. The
 // Tractor's builder draws `inside` over the glass (it is clipped to the
 // window) and `outside` after the cab, so the waving arm reaches out of the
-// window. The shirt and hat band take the Tractor colour's hood and stripe;
-// at the table the neckerchief takes the team's colour.
-import { part, teamPaint } from "./rig";
-import type { CharPose, Team } from "./rig";
+// window. The shirt, hat band and neckerchief take the Tractor colour's hood
+// and stripe, the same wherever it is drawn.
+import { part } from "./rig";
+import type { CharPose } from "./rig";
 
 /** The part of a Tractor colour the rider wears. */
 export interface RiderAccents { hood: string; stripe?: string }
@@ -12,7 +12,7 @@ export interface RiderAccents { hood: string; stripe?: string }
 const SKIN = "#f6d2ac", STRAW = "#f3d58a", STRAW_LO = "#c99a3c", INK = "#2b1713";
 
 /** The rider's markup for the Tractor's 400 box. `id` is the Tractor's own. */
-export function riderMarkup(accents: RiderAccents, id: string, { pose = "idle", still = false, team }: { pose?: CharPose; still?: boolean; team?: Team } = {}): { defs: string; inside: string; outside: string } {
+export function riderMarkup(accents: RiderAccents, id: string, { pose = "idle", still = false }: { pose?: CharPose; still?: boolean } = {}): { defs: string; inside: string; outside: string } {
   const asleep = pose === "sleep", happy = pose === "cheer" || pose === "hop" || pose === "react";
   const band = accents.stripe ?? "#c22a36";
   const eyes = asleep ? `<path d="M146 159q4 3 8 0M162 159q4 3 8 0" fill="none" stroke="${INK}" stroke-width="2.6" stroke-linecap="round"/>`
@@ -26,7 +26,7 @@ export function riderMarkup(accents: RiderAccents, id: string, { pose = "idle", 
     + eyes + mouth + part("cmp-hat", hat, still && pose === "react" ? "translate(2 -12) rotate(-14 158 140)" : asleep ? "translate(0 9) rotate(6 158 140)" : "");
   const inside = `<g clip-path="url(#cab-${id})">`
     + `<ellipse cx="158" cy="194" rx="30" ry="20" fill="${accents.hood}"/>`
-    + `<path ${teamPaint(team, band)} d="M136 178Q158 190 180 178L182 186Q158 200 134 186Z"/>`
+    + `<path fill="${band}" d="M136 178Q158 190 180 178L182 186Q158 200 134 186Z"/>`
     + part("cmp-rider", head, asleep ? "translate(5 8) rotate(16 158 178)" : still && pose === "cheer" ? "translate(0 -3) rotate(-6 158 178)" : "")
     + `</g>`;
   const arm = `<path d="M118 166L92 134" stroke="${accents.hood}" stroke-width="13" stroke-linecap="round"/><path d="M96 139L88 129" stroke="${SKIN}" stroke-width="12" stroke-linecap="round"/>`;

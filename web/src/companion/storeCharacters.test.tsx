@@ -67,18 +67,12 @@ describe("the store characters' drawings", () => {
     }
   });
 
-  it("at the table a team wears its colour and stands on its ground shadow, with no team pad", () => {
+  it("stands on its ground shadow with no team pad, and no figure is painted in a team's colour", () => {
     for (const kind of KINDS) {
-      const colour = STORE[kind][0] as never;
-      const us = DRAWINGS[kind].markup(colour, "t", { team: "us" });
-      const them = DRAWINGS[kind].markup(colour, "t", { team: "them" });
-      for (const svg of [us, them]) {
-        expect(svg).not.toContain("cmp-pad");
-        expect(svg).toContain('class="cmp-shadow"');
-      }
-      expect(us).toContain("#5b9dff");
-      expect(them).toContain("#ff9d4d");
-      expect(DRAWINGS[kind].markup(colour, "t", {})).not.toContain("cmp-pad");
+      const svg = DRAWINGS[kind].markup(STORE[kind][0] as never, "t", {});
+      expect(svg).not.toContain("cmp-pad");
+      expect(svg).toContain('class="cmp-shadow"');
+      expect(svg).not.toMatch(/cmp-team|#5b9dff|#ff9d4d/);
     }
   });
 
@@ -160,7 +154,7 @@ describe("the figure", () => {
     for (const kind of Object.keys(DRAWINGS) as DrawnKind[]) {
       for (const colour of colours[kind]) {
         for (const state of ["idle", "hop", "cheer", "sleep", "react"] as const) {
-          act(() => root.render(<Companion kind={kind} colour={colour as never} size={40} max={48} level={12} team="us"
+          act(() => root.render(<Companion kind={kind} colour={colour as never} size={40} max={48} level={12}
                                            grow={false} state={state} still idle="rest" />));
           const svg = host.querySelector("svg")!;
           expect([kind, colour, state, svg.classList.contains("cmp-still")]).toEqual([kind, colour, state, true]);
@@ -169,7 +163,7 @@ describe("the figure", () => {
       }
     }
     // an animated figure (a special played with animated markup) is not still
-    act(() => root.render(<Companion kind="panda" colour="gilded" size={40} team="us" grow={false} state="react" still={false} />));
+    act(() => root.render(<Companion kind="panda" colour="gilded" size={40} grow={false} state="react" still={false} />));
     expect(host.querySelector("svg")!.classList.contains("cmp-still")).toBe(false);
     expect(host.querySelector("svg")!.classList.contains("cmp-react")).toBe(true);
   });

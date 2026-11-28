@@ -107,17 +107,12 @@ describe("the free companions", () => {
     expect(decodeURIComponent(DRAWINGS.tractor.portraitUrl("red", false))).toContain("cmp-rider");
   });
 
-  it("at the table a team wears its colour and stands on its ground shadow, with no team pad", () => {
+  it("stands on its ground shadow with no team pad, and no figure is painted in a team's colour", () => {
     for (const kind of FREE_KINDS) {
-      const us = DRAWINGS[kind].markup(COMPANIONS[kind][0], "t", { team: "us" });
-      const them = DRAWINGS[kind].markup(COMPANIONS[kind][0], "t", { team: "them" });
-      for (const svg of [us, them]) {
-        expect(svg).not.toContain("cmp-pad");
-        expect(svg).toContain('class="cmp-shadow"');
-      }
-      expect(us).toContain("#5b9dff");
-      expect(them).toContain("#ff9d4d");
-      expect(DRAWINGS[kind].markup(COMPANIONS[kind][0], "t", {})).not.toContain("cmp-pad");
+      const svg = DRAWINGS[kind].markup(COMPANIONS[kind][0], "t", {});
+      expect(svg).not.toContain("cmp-pad");
+      expect(svg).toContain('class="cmp-shadow"');
+      expect(svg).not.toMatch(/cmp-team|#5b9dff|#ff9d4d/);
     }
   });
 
@@ -155,11 +150,11 @@ describe("level growth", () => {
   });
 
   it("a level gained pops the figure from its old size; a level lost does not", async () => {
-    await draw(<Companion kind="chick" colour="yellow" size={44} max={56} level={0} team="us" />);
+    await draw(<Companion kind="chick" colour="yellow" size={44} max={56} level={0} />);
     const svg = () => host.querySelector("svg.cmp") as SVGSVGElement;
     expect(svg().getAttribute("width")).toBe("44");
     expect(svg().classList.contains("cmp-grow")).toBe(false);
-    await draw(<Companion kind="chick" colour="yellow" size={44} max={56} level={2} team="us" />);
+    await draw(<Companion kind="chick" colour="yellow" size={44} max={56} level={2} />);
     expect(svg().getAttribute("width")).toBe("50");
     expect(svg().classList.contains("cmp-grow")).toBe(true);
     expect(svg().style.getPropertyValue("--cmp-from")).toBe((44 / 50).toFixed(3));
@@ -170,7 +165,7 @@ describe("level growth", () => {
       svg().dispatchEvent(ev);
     });
     expect(svg().classList.contains("cmp-grow")).toBe(false);
-    await draw(<Companion kind="chick" colour="yellow" size={44} max={56} level={0} team="us" />);
+    await draw(<Companion kind="chick" colour="yellow" size={44} max={56} level={0} />);
     expect(svg().classList.contains("cmp-grow")).toBe(false);
   });
 });

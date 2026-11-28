@@ -1,9 +1,9 @@
 // A companion at the table is the figure the Collection shows, measured in a
 // real browser on the real app: for every look, the account wears it, the
 // Collection's stage draws it, and a table seats it (a scripted socket); the
-// table's figure, with the team's neckwear (every `cmp-team` shape) taken
-// out, has the stage's shapes, paints and textures, and drawn at one size
-// the two are the same picture. Reduce Motion holds both still in idle.
+// table's figure has the stage's shapes, paints and textures, every one and
+// no other (no figure wears a team's colour), and drawn at one size the two
+// are the same picture. Reduce Motion holds both still in idle.
 //   node e2e/figures.mjs [look-regex]
 import { Report, launch, open, scenario, sleep, until } from "./lib.mjs";
 import { base, fakeSocketScript, pl } from "./fake.mjs";
@@ -32,15 +32,12 @@ async function setup(page) {
   await page.route("**/api/me", (r) => r.fulfill({ json: user(wearing) }));
 }
 
-/** In the page: the figure `sel`'s shapes, its id taken out and its team shapes left out, and its picture
- *  drawn at 176 px with those shapes removed, as RGBA bytes in base64. */
-// Shapes the table repaints in the team's colour rather than adds (the Tractor's waist stripe and its
-// rider's neckerchief, which a preview draws in the colourway's own paint), left out of both figures.
-const REPAINTED = ["M92 196H228", "M136 178Q158 190 180 178L182 186Q158 200 134 186Z"];
-const read = (page, sel) => page.evaluate(async ([sel, repainted]) => {
-  const svg = document.querySelector(sel).cloneNode(true);
-  for (const el of svg.querySelectorAll(".cmp-team, .cmp-team-lo, .cmp-team-shade, .cmp-team-line")) el.remove();
-  for (const el of svg.querySelectorAll("path")) if (repainted.includes(el.getAttribute("d"))) el.remove();
+/** In the page: the figure `sel`'s shapes, its id taken out, whether anything of a team is on it, and its
+ *  picture drawn at 176 px, as RGBA bytes in base64. */
+const read = (page, sel) => page.evaluate(async ([sel]) => {
+  const live = document.querySelector(sel);
+  const team = /cmp-(us|them)/.test(live.getAttribute("class") ?? "") || live.querySelector('[class*="cmp-team"]') !== null;
+  const svg = live.cloneNode(true);
   const id = /url\(#[a-z]+-([A-Za-z0-9]+)\)/.exec(svg.innerHTML)?.[1] ?? "";
   const norm = svg.innerHTML.split(id).join("ID");
   const doc = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${norm}</svg>`, "image/svg+xml");
@@ -56,8 +53,8 @@ const read = (page, sel) => page.evaluate(async ([sel, repainted]) => {
   const g = c.getContext("2d"); g.drawImage(img, 0, 0, 176, 176);
   const px = g.getImageData(0, 0, 176, 176).data;
   let s = ""; for (let i = 0; i < px.length; i += 8192) s += String.fromCharCode(...px.subarray(i, i + 8192));
-  return { shapes, px: btoa(s), n: svg.querySelectorAll("*").length };
-}, [sel, REPAINTED]);
+  return { shapes, px: btoa(s), n: svg.querySelectorAll("*").length, team };
+}, [sel]);
 
 const browser = await launch();
 try {
@@ -84,6 +81,7 @@ try {
       const a = Buffer.from(stage.px, "base64"), b = Buffer.from(seat.px, "base64");
       let diff = 0; for (let i = 0; i < a.length; i++) diff += Math.abs(a[i] - b[i]);
       const mean = diff / a.length;
+      await rep.check(`${look}: nothing of a team is drawn on the table's figure or the stage's`, !seat.team && !stage.team ? null : `team marks: table ${seat.team}, stage ${stage.team}`, table);
       await rep.check(`${look}: drawn at one size, the two are the same picture`, mean < 0.5 ? null : `mean channel difference ${mean.toFixed(2)}`, table);
       await table.context().close();
     });

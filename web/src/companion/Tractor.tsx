@@ -9,8 +9,8 @@ import type { ReactNode } from "react";
 import { TRACTOR_COLOURS } from "./palette";
 import type { TractorColour, TractorColourId } from "./palette";
 import { riderMarkup } from "./TractorRider";
-import { TEAM, confetti, puff } from "./rig";
-import type { CharPose, Team } from "./rig";
+import { confetti, puff } from "./rig";
+import type { CharPose } from "./rig";
 
 export type Eyes = "open" | "sleep";
 
@@ -49,14 +49,14 @@ function wheel(cx: number, cy: number, r: number, id: string, detail: boolean): 
  *  gradient ids apart from another drawing's on the same page; `detail` adds
  *  the treads and scrollwork, which are noise under 40 px; `puffs` draws the
  *  exhaust smoke; `rider` seats the farm kid at the window (`TractorRider.tsx`);
- *  `team` paints the waist band at the table. Its signature reaction is the
+ *  the waist stripe is the colour's own. Its signature reaction is the
  *  wheelie: it rears up on its big wheel in three clouds of exhaust and
  *  slams back down in dust; drawn still, it holds the wheelie. */
-export function tractorMarkup(colour: TractorColourId, id: string, { eyes = "open", detail = true, puffs = true, shadow = true, rider = false, pose = "idle", still = false, team }: {
-  eyes?: Eyes; detail?: boolean; puffs?: boolean; shadow?: boolean; rider?: boolean; pose?: CharPose; still?: boolean; team?: Team;
+export function tractorMarkup(colour: TractorColourId, id: string, { eyes = "open", detail = true, puffs = true, shadow = true, rider = false, pose = "idle", still = false }: {
+  eyes?: Eyes; detail?: boolean; puffs?: boolean; shadow?: boolean; rider?: boolean; pose?: CharPose; still?: boolean;
 } = {}): string {
   const p = colourOf(colour);
-  const r = rider ? riderMarkup(p, id, { pose, still, team }) : null;
+  const r = rider ? riderMarkup(p, id, { pose, still }) : null;
   const lg = (name: string, stops: readonly string[]) =>
     `<linearGradient id="${name}-${id}" x1="0" y1="0" x2="1" y2="1">${stops.map((c, i) =>
       `<stop offset="${stops.length === 3 ? [0, 0.6, 1][i] : i}" stop-color="${c}"/>`).join("")}</linearGradient>`;
@@ -84,7 +84,7 @@ export function tractorMarkup(colour: TractorColourId, id: string, { eyes = "ope
     + `<rect x="112" y="118" width="96" height="62" rx="12" fill="url(#glass-${id})"/>`
     + (r ? r.inside : "")
     + `<path d="M124 170L158 124h18L142 170Z" fill="#fff" opacity="${r ? ".3" : ".55"}"/>`
-    + `<path d="M92 196H228" ${team ? `class="cmp-team-line" stroke="${TEAM[team].base}" stroke-width="10"` : `stroke="${p.stripe ?? `url(#gold-${id})`}" stroke-width="5"`}/>${motif}`
+    + `<path d="M92 196H228" stroke="${p.stripe ?? `url(#gold-${id})`}" stroke-width="5"/>${motif}`
     + `<rect x="332" y="226" width="22" height="38" rx="7" fill="#fff5d6"/>`
     + `<path d="M336 238h14M336 246h14M336 254h14" stroke="#b9781f" stroke-width="2.4"/>`
     + eye(262, 220, eyes) + eye(306, 220, eyes)

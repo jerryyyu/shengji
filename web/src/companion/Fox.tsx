@@ -6,7 +6,7 @@
 // the flap shut.
 import { FOX_COLOURS } from "./storePalette";
 import type { FoxColour, FoxColourId } from "./storePalette";
-import { ball, confetti, spark, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, ramp, sharedDefs } from "./rig";
+import { ball, confetti, spark, dataUrl, eye, glow, groundShadow, part, portraitSvg, ramp, sharedDefs } from "./rig";
 import type { CharOpts, CharPose, EyeMode } from "./rig";
 
 /** A colour by id, or a palette given whole (the CSS-variable master passes one). */
@@ -38,7 +38,7 @@ const COINS = ["translate(-112 264)", "translate(104 264)", "translate(8 -52)"];
 
 /** The Fox's shapes in its 400 box, as SVG markup. `id` keeps its gradient
  *  ids apart from another drawing's on the same page. */
-export function foxMarkup(colour: FoxColourId | FoxColour, id: string, { pose = "idle", detail = true, shadow = true, still = false, team }: CharOpts = {}): string {
+export function foxMarkup(colour: FoxColourId | FoxColour, id: string, { pose = "idle", detail = true, shadow = true, still = false }: CharOpts = {}): string {
   const p = colourOf(colour);
   const face = FACE[pose];
   const at = (still || pose === "sleep" ? STILL[pose] : undefined) ?? {};
@@ -87,7 +87,7 @@ export function foxMarkup(colour: FoxColourId | FoxColour, id: string, { pose = 
   const coins = pose === "react" ? coin(1) + coin(2) + coin(3) + `<g class="cmp-glint">${spark(60, 300, 2.4, "#fff6d6")}${spark(312, 296, 2.2, "#fff6d6")}</g>` : "";
   // In the special the envelope is thrown up in front of the face, so it is drawn over the head; at rest it sits under the chin either way.
   const prop = part("cmp-prop", part("cmp-toss", envelope, at.toss) + paws, at.prop), face2 = part("cmp-head", head, at.head);
-  const body = part("cmp-body", part("cmp-torso", torso) + (team ? kerchief(team, 124, 248, 226, 10, 240) : "") + (pose === "react" ? face2 + prop : prop + face2) + coins, at.body);
+  const body = part("cmp-body", part("cmp-torso", torso) + (pose === "react" ? face2 + prop : prop + face2) + coins, at.body);
   return defs + (shadow ? groundShadow(id, 200, 126) : "") + body + (pose === "cheer" ? confetti(186, 150) : "");
 }
 

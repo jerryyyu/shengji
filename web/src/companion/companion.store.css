@@ -15,15 +15,6 @@
 .cmp-char .cmp-flap,
 .cmp-char .cmp-prop { transform-box: view-box; }
 
-/* at the table: the neckwear takes the team's colour */
-.cmp-us { --team: #5b9dff; --team-lo: #2f6fd6; }
-.cmp-them { --team: #ff9d4d; --team-lo: #d96a14; }
-.cmp-us .cmp-team,
-.cmp-them .cmp-team { fill: var(--team); }
-.cmp-us .cmp-team-lo,
-.cmp-them .cmp-team-lo { fill: var(--team-lo); }
-.cmp-us .cmp-team-line,
-.cmp-them .cmp-team-line { stroke: var(--team); }
 
 /* a level gained at round end: the figure grows from its old size (`--cmp-from`, old over new) with a small pop */
 .cmp-grow { transform-origin: 50% 100%; animation: cmp-grow 0.4s ease 1; }

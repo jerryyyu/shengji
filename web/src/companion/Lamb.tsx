@@ -8,7 +8,7 @@
 // and tosses its head.
 import { LAMB_COLOURS } from "./storePalette";
 import type { LambColour, LambColourId } from "./storePalette";
-import { ball, confetti, curl, dataUrl, eye, glow, groundShadow, part, portraitSvg, puff, ramp, sharedDefs, spark, teamPaint } from "./rig";
+import { ball, confetti, curl, dataUrl, eye, glow, groundShadow, part, portraitSvg, puff, ramp, sharedDefs, spark } from "./rig";
 import type { CharOpts, CharPose, EyeMode } from "./rig";
 
 /** A colour by id, or a palette given whole (the CSS-variable master passes one). */
@@ -41,7 +41,7 @@ const STILL: Partial<Record<CharPose, Record<string, string>>> = {
 
 /** The Lamb's shapes in its 400 box, as SVG markup. `id` keeps its gradient
  *  ids apart from another drawing's on the same page. */
-export function lambMarkup(colour: LambColourId | LambColour, id: string, { pose = "idle", detail = true, shadow = true, still = false, team }: CharOpts = {}): string {
+export function lambMarkup(colour: LambColourId | LambColour, id: string, { pose = "idle", detail = true, shadow = true, still = false }: CharOpts = {}): string {
   const p = colourOf(colour);
   const face = FACE[pose];
   const at = (still || pose === "sleep" ? STILL[pose] : undefined) ?? {};
@@ -49,6 +49,7 @@ export function lambMarkup(colour: LambColourId | LambColour, id: string, { pose
 
   const defs = `<defs>${sharedDefs(id)}${ball("wool", id, p.wool)}${ball("skin", id, p.skin, [0.34, 0.28, 0.82])}${ball("bell", id, p.bell, [0.34, 0.28, 0.8])}`
     + ramp("horn", id, [p.horn[0], p.horn[1], p.horn[2], p.horn[3]], [0.1, 0, 0.9, 1])
+    + ramp("scarf", id, [p.scarf[0], p.scarf[1], p.scarf[2]], [0, 0, 1, 1])
     + ramp("leg", id, p.leg, [0, 0, 0, 1]) + ramp("hoof", id, p.hoof, [0, 0, 0, 1]) + glow("ao", id, p.wool[3], 0.75) + glow("under", id, "#3a1f2e", 0.42)
     + glow("muzzle", id, "#fffaf0", 0.96, 0.55) + glow("blush", id, p.blush, 0.78, 0.25)
     + (detail ? `<clipPath id="horns-${id}"><path d="${HORN_L}"/><path d="${HORN_R}"/></clipPath>` : "")
@@ -86,11 +87,12 @@ export function lambMarkup(colour: LambColourId | LambColour, id: string, { pose
     return `<ellipse cx="${x}" cy="${y}" rx="11" ry="6.5" fill="${i % 3 ? "#ffb7c5" : "#ff8fa8"}" transform="rotate(${(i * 67) % 180} ${x} ${y})"/>`;
   }).join("") + `</g>`;
   const head = `<ellipse cx="226" cy="266" rx="84" ry="34" fill="${u("under")}"/>`
-    // the scarf is the team's, worn at the table only; the bell hangs at the neck either way
-    + (team ? `<path d="M178 246C154 256 138 280 130 306L153 312C158 288 170 268 190 256Z" ${teamPaint(team, "")}/>`
-      + `<path d="M176 250C166 264 164 282 166 298L186 296C184 280 188 266 196 256Z" ${teamPaint(team, "", true)}/>`
-      + `<path d="M166 222Q236 268 306 222L311 247Q236 296 161 247Z" ${teamPaint(team, "")}/>`
-      + `<path class="cmp-team-shade" d="M176 232Q236 270 298 230L306 222Q236 268 166 222Z" fill="#000" opacity=".25"/>` : "")
+    // its scarf is its colourway's own, the same wherever it is drawn; the bell hangs from it
+    + `<path d="M178 246C154 256 138 280 130 306L153 312C158 288 170 268 190 256Z" fill="${u("scarf")}"/>`
+    + `<path d="M176 250C166 264 164 282 166 298L186 296C184 280 188 266 196 256Z" fill="${p.scarf[2]}"/>`
+    + `<path d="M166 222Q236 268 306 222L311 247Q236 296 161 247Z" fill="${u("scarf")}"/>`
+    + `<path d="M176 232Q236 270 298 230L306 222Q236 268 166 222Z" fill="${p.scarf[3]}" opacity=".55"/>`
+    + (detail ? `<path d="M164 240Q236 288 308 240" fill="none" stroke="${p.trim}" stroke-width="2.8"/><path d="M133 300l19 5M168 292l17-1.6" stroke="${p.trim}" stroke-width="2.8" stroke-linecap="round"/>` : "")
     + part("cmp-bell", `<circle cx="236" cy="284" r="15.5" fill="${u("bell")}"/>`
       + `<path d="M225 287h22" stroke="${p.bellInk}" stroke-width="2.8" stroke-linecap="round"/><circle cx="236" cy="293" r="2.7" fill="${p.bellInk}"/>`
       + `<ellipse cx="230" cy="277" rx="4.8" ry="2.8" fill="#fff" opacity=".8" transform="rotate(-30 230 277)"/>`, at.bell)

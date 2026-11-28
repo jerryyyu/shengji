@@ -1,7 +1,16 @@
-// Characters that belong to one Chinese script only, derived from OpenCC's
-// STCharacters and TSCharacters tables (Apache-2.0): a Simplified form whose
+// Characters that belong to one Chinese script only: a Simplified form whose
 // Traditional form differs, and the reverse. A character both scripts write
 // the same way (后, 里, 台, 面) is in neither list.
+//
+// This file is a derived work, not a copy, of two Open Chinese Convert
+// (OpenCC) dictionaries, data/dictionary/STCharacters.txt and
+// data/dictionary/TSCharacters.txt, at
+// https://github.com/BYVoid/OpenCC/tree/5dc4bf3d06d413a4e0e3325ff9009826ba159334
+// OpenCC is licensed under the Apache License, Version 2.0; its text is
+// OPENCC_LICENSE.txt beside this file. Upstream ships no NOTICE file.
+// Changed from the dictionaries: only each table's keys are kept, and only
+// those that are a single character absent from their own conversions and
+// absent from the other table's kept keys; the conversions are dropped.
 
 /** Simplified-only characters: none belongs in a Traditional string. */
 export const SIMPLIFIED_ONLY: ReadonlySet<string> = new Set(

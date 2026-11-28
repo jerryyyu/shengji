@@ -24,7 +24,7 @@ import { forgetHomeSession } from "../home/session";
 import { lookCatalogue } from "../companion/look";
 import { setLanguageChoice, tIn } from "../i18n";
 import type { Locale } from "../i18n";
-import { refusalMessage } from "./shop";
+import { forgetDeliveries, refusalMessage } from "./shop";
 
 const LAMB = "com.jerryyu.shengji.companion.lamb";
 const PANDA = "com.jerryyu.shengji.companion.panda";
@@ -82,6 +82,7 @@ beforeEach(() => {
   plugin.storefront.mockImplementation(async () => ({ countryCode: "USA" }));
   plugin.pending.mockImplementation(async () => ({ transactions: [] }));
   forgetHomeSession();
+  forgetDeliveries();
   fetches.length = 0;
   globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
     fetches.push({ url, init });
@@ -108,6 +109,7 @@ const draw = async () => {
 };
 
 const HELD = "Your Apple ID already bought this for another account. Sign in to that account to use it.";
+const RECEIVED = "Purchase received — it'll appear in a moment.";
 
 const names = (sel: string) => [...host.querySelectorAll(`${sel} .coll-tile`)].map((b) => b.textContent);
 const FREE_TILES = ["Tractor", "Bun", "Chick", "Sparrow"];
@@ -1002,6 +1004,232 @@ describe("a refusal in plain words", () => {
     await settle();
   });
 
+  it("says a purchase Apple charged for but the server has not answered in every language", () => {
+    const received = Object.assign(new TypeError("network"), { received: true });
+    expect(LOCALES.map((loc) => copy(loc, received, "buy")))
+      .toEqual([RECEIVED, "已收到购买，稍后就会显示。", "已收到購買，稍後就會顯示。"]);
+  });
+
+  /** Lamb bought, Apple charged, and the server unreachable until `reachable()`. */
+  const chargedOffline = () => {
+    const unfinished = { jws: "header.payload.sig", productId: LAMB, transactionId: "2000000111" };
+    plugin.purchase.mockImplementationOnce(async () => ({ status: "purchased", ...unfinished }) as never);
+    let finished = false;
+    plugin.pending.mockImplementation(async () => ({ transactions: finished ? [] : [unfinished] }));
+    plugin.finish.mockImplementation(async () => { finished = true; return { finished: true }; });
+    const ok = globalThis.fetch;
+    let up = false;
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/store/verify" && !up) throw new TypeError("network");
+      return ok(url, init);
+    }) as unknown as typeof fetch;
+    return { reachable: () => { up = true; } };
+  };
+
+  it("a purchase charged while the server is unreachable says it was received, hides Buy, and lands on reconnect", async () => {
+    nativeShell();
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    await openTile(".coll-more", 0);
+    const net = chargedOffline();
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")!.click(); });
+    await settle();
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe(RECEIVED);
+    expect(host.querySelector(".coll-use")).toBeNull();
+    expect(plugin.finish).not.toHaveBeenCalled();
+    net.reachable();
+    await act(async () => { window.dispatchEvent(new Event("online")); });
+    await settle();
+    await settle();
+    expect(plugin.finish).toHaveBeenCalledWith({ transactionId: "2000000111" });
+    // the account read again is drawn (the app's auth store re-renders on it)
+    await act(async () => { root.render(<CollectionPage />); });
+    // the owned state replaces the line: the look, and Use
+    expect(host.querySelector(".char-page .coll-status")?.textContent).not.toBe(RECEIVED);
+    expect(host.querySelector(".coll-use")?.textContent).toBe("Use");
+  });
+
+  it("while the page is open, a received purchase is handed over again on a short backoff", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      nativeShell();
+      authState.current = { status: "in", clientId: "cid", user };
+      await draw();
+      await openTile(".coll-more", 0);
+      const net = chargedOffline();
+      await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")!.click(); });
+      await settle();
+      expect(host.querySelector(".char-page .coll-status")?.textContent).toBe(RECEIVED);
+      net.reachable();
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      await settle();
+      await settle();
+      expect(plugin.finish).toHaveBeenCalledWith({ transactionId: "2000000111" });
+      await act(async () => { root.render(<CollectionPage />); });
+      expect(host.querySelector(".coll-use")?.textContent).toBe("Use");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a received purchase the server then refuses for good says that refusal, and keeps saying it across tiles", async () => {
+    nativeShell();
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    await openTile(".coll-more", 0);
+    chargedOffline();
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")!.click(); });
+    await settle();
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe(RECEIVED);
+    // another tile and back: still received, Buy still away
+    await openTile(".coll-yours", 1);
+    await openTile(".coll-more", 0);
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe(RECEIVED);
+    expect(host.querySelector(".coll-use")).toBeNull();
+    // back online, the server says another account holds it
+    globalThis.fetch = vi.fn(async (url: string) => (url === "/api/store/verify"
+      ? { status: 409, json: async () => ({ detail: "held_by_other" }) }
+      : { status: 200, json: async () => authState.current.user }) as Response) as unknown as typeof fetch;
+    await act(async () => { window.dispatchEvent(new Event("online")); });
+    await settle();
+    await settle();
+    expect(plugin.finish).toHaveBeenCalledWith({ transactionId: "2000000111" });
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe(HELD);
+    expect(host.querySelector(".coll-use")).toBeNull();
+  });
+
+  it("a received purchase the server then refunds says so, and Buy comes back", async () => {
+    nativeShell();
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    await openTile(".coll-more", 0);
+    chargedOffline();
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")!.click(); });
+    await settle();
+    globalThis.fetch = vi.fn(async (url: string) => (url === "/api/store/verify"
+      ? { status: 409, json: async () => ({ detail: "revoked" }) }
+      : { status: 200, json: async () => authState.current.user }) as Response) as unknown as typeof fetch;
+    await act(async () => { window.dispatchEvent(new Event("online")); });
+    await settle();
+    await settle();
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("This purchase was refunded.");
+    expect(host.querySelector(".coll-use")?.textContent).toBe("Buy $3.99");
+  });
+
+  it("a received purchase the server then needs a sign-in for opens sign-in, and the line goes", async () => {
+    const { guestName } = await import("../guestName");
+    const open = vi.spyOn(guestName, "open").mockImplementation(() => {});
+    try {
+      nativeShell();
+      authState.current = { status: "in", clientId: "cid", user };
+      await draw();
+      await openTile(".coll-more", 0);
+      chargedOffline();
+      await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")!.click(); });
+      await settle();
+      globalThis.fetch = vi.fn(async (url: string) => (url === "/api/store/verify"
+        ? { status: 409, json: async () => ({ detail: "sign_in_required" }) }
+        : { status: 200, json: async () => authState.current.user }) as Response) as unknown as typeof fetch;
+      await act(async () => { window.dispatchEvent(new Event("online")); });
+      await settle();
+      await settle();
+      expect(open).toHaveBeenCalledWith("shop");
+      expect(host.querySelector(".char-page .coll-status")?.textContent).not.toBe(RECEIVED);
+      // kept with the App Store for after the sign-in
+      expect(plugin.finish).not.toHaveBeenCalled();
+    } finally {
+      open.mockRestore();
+    }
+  });
+
+  it("an older transaction's refusal does not settle the purchase being handed over", async () => {
+    nativeShell();
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    await openTile(".coll-more", 0);
+    const net = chargedOffline();
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")!.click(); });
+    await settle();
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe(RECEIVED);
+    // back online: an older, refunded Lamb transaction comes first, then the current one
+    const older = { jws: "older.lamb.sig", productId: LAMB, transactionId: "1000000001" };
+    const current = { jws: "header.payload.sig", productId: LAMB, transactionId: "2000000111" };
+    plugin.pending.mockImplementation(async () => ({ transactions: [older, current] }));
+    let grant = false;
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/store/verify") {
+        const jws = JSON.parse(String(init?.body)).jws as string;
+        if (jws === "older.lamb.sig") return { status: 409, json: async () => ({ detail: "revoked" }) } as Response;
+        if (!grant) return { status: 503, json: async () => ({}) } as Response;
+        server.granted = true;
+        return { status: 200, json: async () => ownedUser } as Response;
+      }
+      return { status: 200, json: async () => (server.granted ? ownedUser : authState.current.user) } as Response;
+    }) as unknown as typeof fetch;
+    void net;
+    await act(async () => { window.dispatchEvent(new Event("online")); });
+    await settle();
+    await settle();
+    // the refund was the older purchase's: the current one is still being handed over
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe(RECEIVED);
+    grant = true;
+    await act(async () => { window.dispatchEvent(new Event("online")); });
+    await settle();
+    await settle();
+    expect(plugin.finish).toHaveBeenCalledWith({ transactionId: "2000000111" });
+  });
+
+  it("another account signed in does not see the first account's purchase outcome", async () => {
+    nativeShell();
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    await openTile(".coll-more", 0);
+    chargedOffline();
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")!.click(); });
+    await settle();
+    globalThis.fetch = vi.fn(async (url: string) => (url === "/api/store/verify"
+      ? { status: 409, json: async () => ({ detail: "revoked" }) }
+      : { status: 200, json: async () => authState.current.user }) as Response) as unknown as typeof fetch;
+    await act(async () => { window.dispatchEvent(new Event("online")); });
+    await settle();
+    await settle();
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("This purchase was refunded.");
+    // a second account on the same device
+    const second: AuthUser = { ...user, email: "k@x", name_shown: "Kim", store_token: "22222222-2222-4222-8222-222222222222" };
+    authState.current = { status: "in", clientId: "cid", user: second };
+    await act(async () => { root.render(<CollectionPage />); });
+    await settle();
+    await openTile(".coll-more", 0);
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("Spring Lamb · New Year");
+    expect(host.querySelector(".coll-use")?.textContent).toBe("Buy $3.99");
+  });
+
+  it("a pending list that cannot be read on reconnect keeps the hand-over going until it lands", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      nativeShell();
+      authState.current = { status: "in", clientId: "cid", user };
+      await draw();
+      await openTile(".coll-more", 0);
+      const net = chargedOffline();
+      await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")!.click(); });
+      await settle();
+      net.reachable();
+      const list = plugin.pending.getMockImplementation()!;
+      plugin.pending.mockImplementationOnce(async () => { throw new Error("store busy"); });
+      await act(async () => { window.dispatchEvent(new Event("online")); });
+      await settle();
+      expect(plugin.finish).not.toHaveBeenCalled();
+      plugin.pending.mockImplementation(list);
+      await act(async () => { await vi.advanceTimersByTimeAsync(35000); });
+      await settle();
+      await settle();
+      expect(plugin.finish).toHaveBeenCalledWith({ transactionId: "2000000111" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("never shows a raw code on the store's status lines, and never an empty one where a refusal is said", async () => {
     const codes: [string | undefined, number][] = [["held_by_other", 409], ["revoked", 409], ["wrong_app", 409], ["unknown_token", 409],
       ["storefront", 403], ["bad_signature", 400], [undefined, 503], ["Too many requests; try again in a minute.", 429]];
@@ -1013,7 +1241,10 @@ describe("a refusal in plain words", () => {
       for (const loc of LOCALES) {
         setLanguageChoice(loc);
         for (const [reason, status] of codes) {
-          const want = (during: "buy" | "restore") => tIn(loc, refusalMessage(refusal(reason, status), during)!);
+          // after Apple's sheet, a 5xx or a 429 is a purchase received and still being handed over
+          const transient = status >= 500 || status === 429;
+          const want = (during: "buy" | "restore") => tIn(loc, refusalMessage(
+            Object.assign(refusal(reason, status), during === "buy" && transient ? { received: true } : {}), during)!);
           nativeShell();
           authState.current = { status: "in", clientId: "cid", user };
           globalThis.fetch = vi.fn(async (url: string) => (url === "/api/store/verify"
@@ -1036,6 +1267,8 @@ describe("a refusal in plain words", () => {
           raw(stage);
           act(() => root.unmount());
           root = createRoot(host);
+          // each code is its own session: no received purchase carried into the next
+          forgetDeliveries();
         }
       }
     } finally {

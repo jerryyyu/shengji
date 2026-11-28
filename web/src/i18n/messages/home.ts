@@ -66,6 +66,7 @@ export const home = defineMessages({
     zh: "此 Apple ID 已为另一个账号购买，请登录该账号使用。",
     hant: "此 Apple ID 已為另一個帳號購買，請登入該帳號使用。",
   },
+  "home.shopReceived": { en: "Purchase received — it'll appear in a moment.", zh: "已收到购买，稍后就会显示。", hant: "已收到購買，稍後就會顯示。" },
   "home.shopRefunded": { en: "This purchase was refunded.", zh: "这笔购买已退款。", hant: "這筆購買已退款。" },
   "home.tabMe": { en: "Me", zh: "我", hant: "我" },
   "home.navMain": { en: "Main", zh: "主导航", hant: "主導覽" },

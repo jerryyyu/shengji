@@ -42,7 +42,11 @@ CONFIG_KEYS = ("d", "heads", "enc_layers", "xattn_layers", "x_hidden", "card_sel
 
 
 class BeliefNumpyError(ValueError):
-    """Malformed package, weights or decision inputs."""
+    """The belief model or proposal could not be used."""
+
+
+class BeliefPreparationTimeout(BeliefNumpyError):
+    """The proposal exceeded its preparation time limit."""
 
 
 def _ln(x: np.ndarray, w: np.ndarray, b: np.ndarray) -> np.ndarray:
@@ -471,7 +475,7 @@ class BeliefProposal:
         self.drawn = 0
         self.prep_seconds = time.perf_counter() - t0
         if self.prep_seconds > PREP_SECONDS:
-            raise BeliefNumpyError(f"belief preparation took {self.prep_seconds:.3f}s")
+            raise BeliefPreparationTimeout(f"belief preparation took {self.prep_seconds:.3f}s")
 
     def _refill(self) -> None:
         from ..train.belief_seq import sample_worlds, sample_worlds_capacity

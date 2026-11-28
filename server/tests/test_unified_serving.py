@@ -1151,6 +1151,62 @@ def test_projected_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp
     assert len(direct) > (30 if width in (2, 4) else 60)
 
 
+@pytest.mark.parametrize("custom", ["stock", "finisher", "instance_state", "decide_play", "follow", "children", "score"])
+def test_reply_readout_preserves_custom_callbacks(tmp_path, monkeypatch, custom):
+    from functools import partial
+    from shengji.ai.unified_readout_numpy import load_unified_readout_numpy
+    from shengji.engine import fast
+    from shengji.train import pv_tree_search as search, unified_slots as us
+    from test_pv_encode_batch_fast import lgf_bot
+
+    if not fast.is_active():
+        pytest.skip("projected replies require the compiled engine")
+    (clone, seat, candidates), _ = _multi_reply_fixture(1, 2)
+    model = load_unified_readout_numpy(*_random_pair(tmp_path)["unified"])
+    bot = lgf_bot(7, True, 5)
+    bot.unified_fast = True
+    us.install_value_readout(bot, model)
+    us.install_reply_readout(bot, model)
+    bot.unified_frame = us.LeafFrame(bot, clone, clone.trick.leader)
+    bot.unified_frame.pos = 0
+    builder = search.reply_children_fast
+    if custom == "finisher":
+        class CustomFinisher(us.HeuristicBot):
+            pass
+        monkeypatch.setattr(search, "default_finisher", CustomFinisher)
+    elif custom == "instance_state":
+        monkeypatch.setattr(search.default_finisher(), "custom_state", True, raising=False)
+    elif custom == "decide_play":
+        decide = us.HeuristicBot.decide_play
+        monkeypatch.setattr(us.HeuristicBot, "decide_play", lambda *args: decide(*args))
+    elif custom == "follow":
+        follow = us.HeuristicBot._follow
+        monkeypatch.setattr(us.HeuristicBot, "_follow", lambda *args: follow(*args))
+    elif custom == "children":
+        builder = lambda *args: search.reply_children_fast(*args)
+    elif custom == "score":
+        score = bot.evaluator.score
+        monkeypatch.setattr(bot.evaluator, "score", lambda *args: score(*args))
+
+    def consume(*args, children_fn):
+        if custom == "stock":
+            assert children_fn is not builder
+        else:
+            assert children_fn is builder
+        return children_fn(clone, seat, candidates)
+
+    children = us.readout_reply_ply(consume)(
+        bot, [clone], None, {}, search.greedy_stats(), 3, 7, None,
+        partial(search.team_values, bot), None, None, search.child_position_fast,
+        children_fn=builder,
+    )
+    assert len(children) == len(candidates)
+    if custom == "stock":
+        assert all(isinstance(child, tuple) for child in children)
+    else:
+        assert all(isinstance(child, search.Round) for child in children)
+
+
 def test_projected_reply_heuristic_memo_keeps_seats_caches_and_candidate_rows_distinct():
     from shengji.engine import fast
     from shengji.train import pv_tree_search as search, unified_slots as us

@@ -6,7 +6,7 @@ import { buildReplay, frameOfTrick, stepTrick } from "../replay/reducer";
 import type { Replay, ReplayFrame, RoundReplayDoc } from "../replay/reducer";
 import { navigate } from "../replay/route";
 import Card, { SUIT_SYMBOL, shortLabel } from "./Card";
-import { displayName } from "../i18n";
+import { displayName, t, useT } from "../i18n";
 import Hand from "./Hand";
 import type { HandRects } from "./Hand";
 import TrickArea from "./TrickArea";
@@ -51,7 +51,7 @@ function asState(replay: Replay, frame: ReplayFrame): GameState {
 
 function TrumpLabel({ suit, rank }: { suit: string | null; rank: string }) {
   if (!suit) return <span>{rank}</span>;
-  if (suit === "NT") return <span><b>NT</b> {rank}</span>;
+  if (suit === "NT") return <span><b>{t("table.nt")}</b> {rank}</span>;
   const red = suit === "H" || suit === "D";
   return <span><b className={red ? "replay-red" : undefined}>{SUIT_SYMBOL[suit] ?? suit}</b> {rank}</span>;
 }
@@ -63,23 +63,27 @@ function cards(list: string[]): string {
 function caption(replay: Replay, frame: ReplayFrame): string {
   const { setup } = replay;
   const name = (seat: number | null) =>
-    seat === null ? "?" : seat === setup.seat ? "You"
-      : setup.players[seat] ? displayName(setup.players[seat].name, setup.players[seat].is_bot) : `Seat ${seat + 1}`;
+    seat === null ? "?" : seat === setup.seat ? t("me.replay.you")
+      : setup.players[seat] ? displayName(setup.players[seat].name, setup.players[seat].is_bot) : t("me.games.seat", { n: seat + 1 });
   if (frame.kind === "deal") {
-    if (setup.declarations.length === 0) return "Dealt. Nobody declared; trump was flipped from the kitty.";
-    return "Dealt. " + setup.declarations
-      .map((d) => `${name(d.seat)} declared ${cards(d.cards)}`).join(", ") + ".";
+    if (setup.declarations.length === 0) return t("me.replay.dealtNone");
+    const list = setup.declarations
+      .map((d) => t("me.replay.declared", { name: name(d.seat), cards: cards(d.cards) })).join(t("me.replay.comma"));
+    return t("me.replay.dealt", { list });
   }
   if (frame.kind === "start") {
-    if (setup.ownBury) return `You buried ${cards(setup.ownBury)}.`;
-    return `${name(setup.banker)} buried 8 cards.`;
+    if (setup.ownBury) return t("me.replay.buriedYou", { cards: cards(setup.ownBury) });
+    return t("me.replay.buried", { name: name(setup.banker) });
   }
-  if (frame.kind === "end") return "Round over.";
+  if (frame.kind === "end") return t("me.replay.over");
   const play = frame.trick?.plays[frame.playNo];
-  const head = `Trick ${frame.trickNo}: ${name(play?.seat ?? null)} ${frame.playNo === 0 ? "led" : "played"} ${cards(play?.cards ?? [])}`;
-  if (frame.winner === null) return head + ".";
-  const pts = frame.trickPoints ? ` and ${frame.trickPoints} points` : "";
-  return `${head}. ${name(frame.winner)} ${frame.winner === setup.seat ? "win" : "wins"} the trick${pts}.`;
+  const head = t(frame.playNo === 0 ? "me.replay.led" : "me.replay.played",
+    { n: frame.trickNo, name: name(play?.seat ?? null), cards: cards(play?.cards ?? []) });
+  if (frame.winner === null) return t("me.replay.open", { head });
+  const points = frame.trickPoints;
+  if (frame.winner === setup.seat) return points ? t("me.replay.wonYouPts", { head, points }) : t("me.replay.wonYou", { head });
+  const winner = name(frame.winner);
+  return points ? t("me.replay.wonPts", { head, name: winner, points }) : t("me.replay.won", { head, name: winner });
 }
 
 function ResultPanel({ replay, frame }: { replay: Replay; frame: ReplayFrame }) {
@@ -90,15 +94,19 @@ function ResultPanel({ replay, frame }: { replay: Replay; frame: ReplayFrame }) 
   const kitty = r.kitty ?? replay.setup.kitty;
   return (
     <div className={`replay-result ${won ? "won" : "lost"}`} role="status">
-      <div className="replay-result-head">{won ? "Your team won the round" : "Your team lost the round"}</div>
-      <div>Attackers scored {r.attacker_points} points{r.kitty_points ? ` (kitty ${r.kitty_points})` : ""}.</div>
+      <div className="replay-result-head">{t(won ? "me.replay.teamWon" : "me.replay.teamLost")}</div>
       <div>
-        {r.level_change > 0 ? `Up ${r.level_change} level${r.level_change === 1 ? "" : "s"}. ` : "No level change. "}
-        Levels {r.new_levels[myTeam]}–{r.new_levels[1 - myTeam]}.
+        {r.kitty_points
+          ? t("me.replay.scoredKitty", { n: r.attacker_points, kitty: r.kitty_points })
+          : t("me.replay.scored", { n: r.attacker_points })}
+      </div>
+      <div>
+        {t(r.level_change > 0 ? "me.replay.levelsUp" : "me.replay.levelsSame",
+          { n: r.level_change, a: r.new_levels[myTeam], b: r.new_levels[1 - myTeam] })}
       </div>
       {kitty && kitty.length ? (
-        <div className="replay-mini-cards" aria-label="Kitty">
-          <span className="replay-mini-label">Kitty</span>
+        <div className="replay-mini-cards" aria-label={t("watch.kitty")}>
+          <span className="replay-mini-label">{t("watch.kitty")}</span>
           {kitty.map((c, i) => <Card key={i} code={c} />)}
         </div>
       ) : null}
@@ -107,6 +115,7 @@ function ResultPanel({ replay, frame }: { replay: Replay; frame: ReplayFrame }) 
 }
 
 export function ReplayBoard({ replay }: { replay: Replay }) {
+  useT();
   const [at, setAt] = useState(0);
   const [showAll, setShowAll] = useState(false);
   const handRects = useRef<HandRects>(new Map());
@@ -136,9 +145,9 @@ export function ReplayBoard({ replay }: { replay: Replay }) {
   return (
     <div className="replay">
       <div className="replay-info">
-        <span className="chip">Trump <TrumpLabel suit={setup.trumpSuit} rank={setup.trumpRank} /></span>
-        <span className="chip">Levels {setup.levels[myTeam]}–{setup.levels[1 - myTeam]}</span>
-        <span className="chip">Attackers {frame.attackerPoints}</span>
+        <span className="chip">{t("me.replay.trump")} <TrumpLabel suit={setup.trumpSuit} rank={setup.trumpRank} /></span>
+        <span className="chip">{t("me.games.levels", { a: setup.levels[myTeam], b: setup.levels[1 - myTeam] })}</span>
+        <span className="chip">{t("me.replay.attackers", { n: frame.attackerPoints })}</span>
       </div>
       <div className="replay-seats">
         {order.map((s) => {
@@ -146,8 +155,8 @@ export function ReplayBoard({ replay }: { replay: Replay }) {
           return (
             <span key={s}
                   className={`replay-seat team${s % 2}${frame.turn === s ? " on-turn" : ""}${s === setup.seat ? " you" : ""}`}>
-              {setup.banker === s ? <span className="banker-crown" title="Banker">👑</span> : null}
-              <span className="replay-seat-name">{s === setup.seat ? `${p.name} (you)` : displayName(p.name, p.is_bot)}</span>
+              {setup.banker === s ? <span className="banker-crown" title={t("me.replay.banker")}>👑</span> : null}
+              <span className="replay-seat-name">{s === setup.seat ? `${p.name}${t("me.board.you")}` : displayName(p.name, p.is_bot)}</span>
               <span className="card-count">{frame.cardsLeft[s]}</span>
             </span>
           );
@@ -159,22 +168,22 @@ export function ReplayBoard({ replay }: { replay: Replay }) {
       </div>
       <p className="replay-caption" aria-live="polite">{caption(replay, frame)}</p>
       <div className="replay-controls">
-        <button className="btn subtle" aria-label="Previous trick" disabled={at === 0}
+        <button className="btn subtle" aria-label={t("watch.back")} disabled={at === 0}
                 onClick={() => go(stepTrick(replay, at, -1))}>⏮</button>
-        <button className="btn subtle" aria-label="Previous play" disabled={at === 0}
+        <button className="btn subtle" aria-label={t("me.replay.prevPlay")} disabled={at === 0}
                 onClick={() => go(at - 1)}>◀</button>
         <span className="replay-step">{at + 1}/{last + 1}</span>
-        <button className="btn subtle" aria-label="Next play" disabled={at === last}
+        <button className="btn subtle" aria-label={t("me.replay.nextPlay")} disabled={at === last}
                 onClick={() => go(at + 1)}>▶</button>
-        <button className="btn subtle" aria-label="Next trick" disabled={at === last}
+        <button className="btn subtle" aria-label={t("watch.forward")} disabled={at === last}
                 onClick={() => go(stepTrick(replay, at, 1))}>⏭</button>
         {replay.trickCount > 0 ? (
-          <select className="replay-jump" aria-label="Jump to trick"
+          <select className="replay-jump" aria-label={t("me.replay.jump")}
                   value={frame.trickNo > 0 ? String(frame.trickNo) : ""}
                   onChange={(e) => { if (e.target.value) go(frameOfTrick(replay, Number(e.target.value))); }}>
-            <option value="">Trick…</option>
+            <option value="">{t("me.replay.jumpPick")}</option>
             {Array.from({ length: replay.trickCount }, (_, i) => (
-              <option key={i + 1} value={String(i + 1)}>Trick {i + 1}</option>
+              <option key={i + 1} value={String(i + 1)}>{t("me.replay.trickN", { n: i + 1 })}</option>
             ))}
           </select>
         ) : null}
@@ -184,15 +193,15 @@ export function ReplayBoard({ replay }: { replay: Replay }) {
       </div>
       {frame.kind === "end" ? <ResultPanel replay={replay} frame={frame} /> : null}
       {!replay.complete ? (
-        <p className="replay-note">This round did not finish.</p>
+        <p className="replay-note">{t("me.replay.unfinished")}</p>
       ) : null}
       {allKnown ? (
         <div className="replay-all">
           <button className="btn subtle" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
-            {showAll ? "Hide other hands" : "Show other hands"}
+            {t(showAll ? "me.replay.hideHands" : "me.replay.showHands")}
           </button>
           {showAll ? order.slice(1).map((s) => (
-            <div key={s} className="replay-mini-cards" aria-label={`${displayName(setup.players[s].name, setup.players[s].is_bot)}'s hand`}>
+            <div key={s} className="replay-mini-cards" aria-label={t("me.replay.handOf", { name: displayName(setup.players[s].name, setup.players[s].is_bot) })}>
               <span className="replay-mini-label">{displayName(setup.players[s].name, setup.players[s].is_bot)}</span>
               {(frame.hands[s] ?? []).map((c) => <Card key={c.id} code={c.code} />)}
             </div>
@@ -213,14 +222,15 @@ export default function ReplayView({ id, round }: { id: string; round: number })
     return () => { live = false; };
   }, [id, round]);
   const replay = useMemo(() => (res && res.ok ? buildReplay(res.data) : null), [res]);
+  useT();
 
   return (
     <div className="panel games-panel wide">
-      <GamesHead back="Game" onBack={() => navigate({ page: "game", id })} title={`Round ${round}`} />
-      {res === null ? <GamesNotice title="Loading…" />
+      <GamesHead back={t("me.games.game")} onBack={() => navigate({ page: "game", id })} title={t("me.games.round", { n: round })} />
+      {res === null ? <GamesNotice title={t("common.loading")} />
         : !res.ok ? (res.reason === "signed_out" ? <SignInPrompt />
           : res.reason === "not_found" ? <GamesUnavailable />
-          : <p className="lobby-error" role="alert">Could not load the round ({res.status || "no connection"}).</p>)
+          : <p className="lobby-error" role="alert">{t("me.replay.failed", { status: res.status || t("me.noConnection") })}</p>)
         : replay && replay.frames.length ? <ReplayBoard replay={replay} />
         : <GamesUnavailable />}
     </div>

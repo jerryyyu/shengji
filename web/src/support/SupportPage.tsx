@@ -4,19 +4,27 @@ import InfoHead from "./InfoHead";
 import { followInfoLink } from "./route";
 import { EMAIL_MAX, EMAIL_RE, MESSAGE_MAX, MESSAGE_MIN, sendSupport } from "./api";
 import type { SendResult, SupportTopic } from "./api";
+import { tx, useT } from "../i18n";
+import type { MessageKey } from "../i18n";
 
-const TOPICS: { value: SupportTopic; label: string }[] = [
-  { value: "bug", label: "Bug" },
-  { value: "feedback", label: "Feedback" },
-  { value: "account", label: "Account" },
-  { value: "other", label: "Other" },
+const TOPICS: { value: SupportTopic; key: MessageKey }[] = [
+  { value: "bug", key: "support.topicBug" },
+  { value: "feedback", key: "support.topicFeedback" },
+  { value: "account", key: "support.topicAccount" },
+  { value: "other", key: "support.topicOther" },
 ];
 
-const ERRORS: Record<Exclude<SendResult, "ok">, string> = {
-  rate_limited: "Too many messages. Try again later.",
-  invalid: "Check the message and the email address, then send again.",
-  failed: "Couldn’t send. Check your connection.",
+type Refusal = Exclude<SendResult, "ok">;
+
+const ERRORS: Record<Refusal, MessageKey> = {
+  rate_limited: "support.errRateLimited",
+  invalid: "support.errInvalid",
+  failed: "support.errFailed",
 };
+
+/** The hidden field only a script fills in: its label is bait, read by no
+ *  player, so it stays the one word such a script looks for. */
+const TRAP_LABEL = "Website";
 
 type Phase = "editing" | "sending" | "sent";
 
@@ -27,7 +35,8 @@ export default function SupportPage() {
   const [email, setEmail] = useState("");
   const [website, setWebsite] = useState("");
   const [phase, setPhase] = useState<Phase>("editing");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Refusal | null>(null);
+  const t = useT();
 
   const length = message.trim().length;
   const emailBad = email.trim() !== "" && (email.trim().length > EMAIL_MAX || !EMAIL_RE.test(email.trim()));
@@ -44,7 +53,7 @@ export default function SupportPage() {
       return;
     }
     setPhase("editing");
-    setError(ERRORS[result]);
+    setError(result);
   };
 
   const again = () => {
@@ -56,23 +65,23 @@ export default function SupportPage() {
   return (
     <div className="screen lobby-screen info-screen">
       <div className="panel games-panel info-panel">
-        <InfoHead title="Support" />
+        <InfoHead title={t("support.title")} />
         {phase === "sent" ? (
           <div className="support-thanks" role="status">
-            <p className="support-thanks-title">Thanks — we read every message.</p>
-            {email.trim() ? <p className="info-text">We’ll reply if we can.</p> : null}
-            <button type="button" className="btn big" onClick={again}>Send another</button>
+            <p className="support-thanks-title">{t("support.thanks")}</p>
+            {email.trim() ? <p className="info-text">{t("support.reply")}</p> : null}
+            <button type="button" className="btn big" onClick={again}>{t("support.again")}</button>
           </div>
         ) : (
           <form className="support-form" onSubmit={submit} noValidate>
             <label className="field">
-              <span className="field-label">Topic</span>
+              <span className="field-label">{t("support.topic")}</span>
               <select value={topic} onChange={(e) => setTopic(e.target.value as SupportTopic)}>
-                {TOPICS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                {TOPICS.map((o) => <option key={o.value} value={o.value}>{t(o.key)}</option>)}
               </select>
             </label>
             <label className="field">
-              <span className="field-label">Message</span>
+              <span className="field-label">{t("support.message")}</span>
               <textarea
                 className="support-message"
                 value={message}
@@ -84,11 +93,11 @@ export default function SupportPage() {
                 onChange={(e) => setMessage(e.target.value)}
               />
               <span id={`${id}-count`} className="field-hint support-count">
-                {length < MESSAGE_MIN ? `At least ${MESSAGE_MIN} characters` : `${length} / ${MESSAGE_MAX}`}
+                {length < MESSAGE_MIN ? t("support.atLeast", { n: MESSAGE_MIN }) : `${length} / ${MESSAGE_MAX}`}
               </span>
             </label>
             <label className="field">
-              <span className="field-label">Email (optional)</span>
+              <span className="field-label">{t("support.email")}</span>
               <input
                 type="email"
                 value={email}
@@ -102,23 +111,24 @@ export default function SupportPage() {
                 onChange={(e) => setEmail(e.target.value)}
               />
               <span id={`${id}-email`} className="field-hint">
-                {emailBad ? "That doesn’t look like an email address." : null}
+                {emailBad ? t("support.emailBad") : null}
               </span>
             </label>
             <div className="support-trap" aria-hidden="true">
               <label>
-                Website
+                {TRAP_LABEL}
                 <input type="text" name="website" tabIndex={-1} autoComplete="off"
                        value={website} onChange={(e) => setWebsite(e.target.value)} />
               </label>
             </div>
-            {error ? <p className="support-error" role="alert">{error}</p> : null}
+            {error ? <p className="support-error" role="alert">{t(ERRORS[error])}</p> : null}
             <button type="submit" className="btn primary big" disabled={!ready || phase === "sending"}>
-              {phase === "sending" ? "Sending…" : "Send"}
+              {t(phase === "sending" ? "support.sending" : "support.send")}
             </button>
             <p className="info-small">
-              What we keep when you send this is in the{" "}
-              <a href="/privacy" onClick={(e) => followInfoLink(e, "privacy")}>privacy policy</a>.
+              {tx("support.keep", {
+                privacy: <a href="/privacy" onClick={(e) => followInfoLink(e, "privacy")}>{t("support.privacyLink")}</a>,
+              })}
             </p>
           </form>
         )}

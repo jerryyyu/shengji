@@ -19,11 +19,11 @@ export const howto = defineMessages({
   "howto.goal.title": { en: "Climb from 2 to Ace", zh: "从 2 打到 A", hant: "從 2 打到 A" },
   "howto.goal.body": {
     en: "Two teams of two; your partner sits across from you. Win rounds to climb from level 2 to Ace.",
-    zh: "四人分两队，对面是你的队友。赢一局就升级，从 2 打到 A。",
-    hant: "四人分兩隊，對面是你的隊友。贏一局就升級，從 2 打到 A。",
+    zh: "四人分两队，对面是你的搭档。赢一局就升级，从 2 打到 A。",
+    hant: "四人分兩隊，對面是你的搭檔。贏一局就升級，從 2 打到 A。",
   },
   "howto.goal.you": { en: "You", zh: "我", hant: "我" },
-  "howto.goal.partner": { en: "{name} · partner", zh: "{name} · 队友", hant: "{name} · 隊友" },
+  "howto.goal.partner": { en: "{name} · partner", zh: "{name} · 搭档", hant: "{name} · 搭檔" },
   "howto.goal.ladder": { en: "Levels 2 to Ace", zh: "级数 2 到 A", hant: "級數 2 到 A" },
 
   "howto.trump.title": { en: "Trump beats everything", zh: "主牌最大", hant: "主牌最大" },
@@ -147,6 +147,6 @@ export const howto = defineMessages({
   "howto.win.caption": {
     en: "The top bar keeps the games score. Signed in, a full Ranked round counts toward your rating; Casual rounds don't.",
     zh: "顶栏记着盘数。登录后打完整的一局排位才计入积分，休闲局不计。",
-    hant: "頂欄記著盤數。登入後打完整的一局排位才計入積分，休閒局不計。",
+    hant: "畫面上方記著盤數。登入後打完整的一局排位才計入積分，休閒局不計。",
   },
 });

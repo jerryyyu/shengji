@@ -6,4 +6,5 @@ export const FILES: string[] = [
   "components/Leaderboard.tsx",
   "components/GamesList.tsx",
   "components/GamesStatus.tsx",
+  "components/ReplayView.tsx",
 ];

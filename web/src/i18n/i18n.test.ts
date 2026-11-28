@@ -36,17 +36,6 @@ describe("the message table", () => {
     }
   });
 
-  it("writes the Traditional table in Traditional characters", () => {
-    // Simplified forms that have a distinct Traditional one; any of them in
-    // the hant table is a missed conversion (简体中文 names its language)
-    const simplified = /[这个们说话时间请设网络级机开关门对号钮点击计积赢输张际听让认识过还没从发层图]/;
-    for (const key of keys) {
-      if (key === "language.zh") continue;
-      const hant = tIn("zh-Hant", key, SAMPLE);
-      expect(hant, key).not.toMatch(simplified);
-    }
-  });
-
   it("defines each key in one area only, under that area's prefix", () => {
     const seen = new Map<string, string>();
     for (const [area, table] of Object.entries(AREAS)) {

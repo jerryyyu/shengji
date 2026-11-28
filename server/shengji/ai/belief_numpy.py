@@ -554,6 +554,10 @@ def draw_length_worlds(inp, probabilities, mask, draw_lengths, batch, rng):
         if suit_totals[group] == 0:
             continue
         counts = np.where(suit == group, copies, 0)
+        if batch == 1:
+            # A first-hit loss trial has one world, hence only one quota to fill.
+            worlds += sample_worlds(probabilities, counts, mask, lengths[0, group], 1, rng)
+            continue
         quotas, indices = np.unique(lengths[:, group], axis=0, return_inverse=True)
         for index, quota in enumerate(quotas):
             rows = np.flatnonzero(indices == index)

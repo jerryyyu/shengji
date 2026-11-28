@@ -60,6 +60,7 @@ export function watcherToken(): string {
 export function forgetWatcherToken(): void {
   token = null;
   epoch = 0;
+  reads = 0;
 }
 
 /** The Watch session: a count, kept for the tab or app session, that goes
@@ -68,6 +69,10 @@ export function forgetWatcherToken(): void {
  *  a late leave from a closed screen never ends a watch opened since. */
 const EPOCH_KEY = "shengji.watch.epoch";
 let epoch = 0;
+/** The reads sent in the current session, counted up from 1 and sent as `q`:
+ *  the server counts the watcher only by a read later than the one that
+ *  counted it, so a pick overtaken by a later Next counts nowhere. */
+let reads = 0;
 
 export function nextWatchSession(): number {
   let stored = 0;
@@ -77,6 +82,7 @@ export function nextWatchSession(): number {
     /* storage off: this page's own count */
   }
   epoch = Math.max(epoch, stored) + 1;
+  reads = 0;
   try {
     window.sessionStorage.setItem(EPOCH_KEY, String(epoch));
   } catch {
@@ -104,14 +110,14 @@ async function getDoc(path: string): Promise<WatchFetch> {
 
 /** A table to watch: `mode` first; never `skip` (Next table). */
 export function fetchWatch(mode: string, skip: string | null, session: number): Promise<WatchFetch> {
-  const q = new URLSearchParams({ mode, w: watcherToken(), e: String(session) });
+  const q = new URLSearchParams({ mode, w: watcherToken(), e: String(session), q: String(++reads) });
   if (skip) q.set("skip", skip);
   return getDoc(`/api/watch?${q.toString()}`);
 }
 
 /** The table being watched: its round after `after` once that round is finished. */
 export function followWatch(table: string, after: number, session: number): Promise<WatchFetch> {
-  const q = new URLSearchParams({ after: String(after), w: watcherToken(), e: String(session) });
+  const q = new URLSearchParams({ after: String(after), w: watcherToken(), e: String(session), q: String(++reads) });
   return getDoc(`/api/watch/${encodeURIComponent(table)}?${q.toString()}`);
 }
 

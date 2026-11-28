@@ -202,6 +202,10 @@ class Lease:
     epoch: int
     at: float
     left: bool = False
+    # the session's read that admitted it (its ``q``, counted up from 1 by
+    # the client within a session): an earlier read of the session that
+    # finishes later counts nowhere
+    seq: int = 0
 
 
 # watcher token -> its Lease: a token counts at one table at most, and a
@@ -238,24 +242,25 @@ def _room_by_id(table: str | None) -> Any | None:
                  and r.watch.id == table), None)
 
 
-def admissible(token: str, epoch: int, table: str, follow: bool) -> bool:
-    """Whether a read from Watch session ``epoch`` may count ``token`` at
-    ``table``: never from a session older than one admitted, nor from a
-    session that has left; and a follow never moves the token, so one of a
-    table the token has since moved from (Next, its answer still on its way)
-    is answered without counting there."""
+def admissible(token: str, epoch: int, table: str, follow: bool, seq: int = 0) -> bool:
+    """Whether read ``seq`` of Watch session ``epoch`` may count ``token``
+    at ``table``: never from a session older than one admitted, nor from a
+    session that has left, nor a read of the session sent before the one
+    that admitted it (a pick overtaken by a later Next); and a follow never
+    moves the token, so one of a table the token has since moved from (Next,
+    its answer still on its way) is answered without counting there."""
     early = _early.get(token)
     if early is not None and epoch <= early[0]:
         return False
     lease = _leases.get(token)
     if lease is None or epoch > lease.epoch:
         return True
-    if epoch < lease.epoch or lease.left:
+    if epoch < lease.epoch or lease.left or seq < lease.seq:
         return False
     return not follow or lease.table in (None, table)
 
 
-def admit(room: Any, token: str, epoch: int, now: float) -> Lease:
+def admit(room: Any, token: str, epoch: int, now: float, seq: int = 0) -> Lease:
     """Count ``token`` at this table, and at no other; the admission's own
     Lease, for ``holds``."""
     for other in _rooms():
@@ -263,7 +268,7 @@ def admit(room: Any, token: str, epoch: int, now: float) -> Lease:
         if st is not None and other is not room:
             st.drop(token)
     room.watch.watchers[token] = now
-    lease = _leases[token] = Lease(room.watch.id, epoch, now)
+    lease = _leases[token] = Lease(room.watch.id, epoch, now, seq=seq)
     _early.pop(token, None)
     _sweep(now)
     return lease
@@ -1054,10 +1059,12 @@ def _token(w: str | None) -> str:
 
 @router.get("/watch")
 async def watch(request: Request, mode: str | None = None, skip: str | None = None,
-                w: str | None = None, e: int = 0) -> Response:
+                w: str | None = None, e: int = 0, q: int = 0) -> Response:
     """Pick a table and send its latest finished round; with no table, the
     rerun; with neither, 404. ``e`` is the reader's Watch session
-    (``admissible``): a read from an older session is answered, never counted."""
+    and ``q`` its read within that session (``admissible``): a read from an
+    older session, or overtaken by a later read of its own, is answered and
+    never counted."""
     wide = await _admit(request)
     # read before the table is picked and checked: no await comes between
     # that check and the answer
@@ -1065,8 +1072,8 @@ async def watch(request: Request, mode: str | None = None, skip: str | None = No
     token, now = _token(w), time.time()
     room = pick(mode if mode in ("ranked", "casual") else None, skip, token, now, wide)
     if room is not None:
-        lease = (admit(room, token, e, now)
-                 if admissible(token, e, room.watch.id, follow=False) else None)
+        lease = (admit(room, token, e, now, q)
+                 if admissible(token, e, room.watch.id, False, q) else None)
         out = await _serve(room, token, None, wide)
         if out is not None and out[1] is not None:
             # the players are told once per arrival, by the admission that
@@ -1095,7 +1102,7 @@ async def watch(request: Request, mode: str | None = None, skip: str | None = No
 
 @router.get("/watch/{table}")
 async def follow(table: str, request: Request, after: int | None = None,
-                 w: str | None = None, e: int = 0) -> Response:
+                 w: str | None = None, e: int = 0, q: int = 0) -> Response:
     """The table a watcher is at: its newer finished round, or ``waiting``
     while the round after ``after`` is in play. 404 once it cannot be
     watched (closed, emptied, Allow joiners off) or is at its cap."""
@@ -1121,7 +1128,7 @@ async def follow(table: str, request: Request, after: int | None = None,
     new = token not in st.watchers
     if new and not _free(room, now):
         raise HTTPException(status_code=404, detail="Not found.")
-    lease = admit(room, token, e, now) if admissible(token, e, st.id, follow=True) else None
+    lease = admit(room, token, e, now, q) if admissible(token, e, st.id, True, q) else None
     out = await _serve(room, token, after, wide)
     if out is None:
         unadmit(room, token, lease)

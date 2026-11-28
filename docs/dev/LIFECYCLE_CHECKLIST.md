@@ -91,4 +91,7 @@ link never detaches a newer one.
   in the browser, `e2e/watch.mjs` `watch-count-*`); a read finishing after a
   newer reopen leaves the newer watch, failing or not
   (`test_an_older_read_finishing_after_a_newer_reopen_leaves_the_newer_watch`,
-  two overlapping handlers) (#2023).
+  two overlapping handlers); a pick overtaken by later Nexts counts nowhere,
+  in every order its reads settle in
+  (`test_picks_overtaken_by_later_nexts_count_nowhere_whatever_order_they_settle_in`;
+  `e2e/watch.mjs` `watch-next-overtaken`) (#2023).

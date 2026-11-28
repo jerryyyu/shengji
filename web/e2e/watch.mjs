@@ -54,27 +54,29 @@ function doc(k) {
 
 /** The server's watcher leases (spectate.py `admissible`, `admit`,
  *  `release`) for the stubbed feeds: a token counts at one table at most, a
- *  follow never moves it, and a read or leave of an older Watch session than
- *  one admitted changes nothing. */
+ *  follow never moves it, a read or leave of an older Watch session than one
+ *  admitted changes nothing, and nor does a read of the session sent before
+ *  the one that counted it (`q`). */
 function leases() {
   const at = new Map();
   return {
-    read(token, epoch, table, follow) {
+    read(token, epoch, table, follow, seq = 0) {
       const l = at.get(token);
       const ok = !l || epoch > l.epoch
-        || (epoch === l.epoch && !l.left && (!follow || l.table === null || l.table === table));
-      if (ok) at.set(token, { table, epoch, left: false });
+        || (epoch === l.epoch && !l.left && seq >= l.seq && (!follow || l.table === null || l.table === table));
+      if (ok) at.set(token, { table, epoch, seq, left: false });
       return ok;
     },
     leave(token, epoch) {
       const l = at.get(token);
-      if (!l || epoch >= l.epoch) at.set(token, { table: null, epoch, left: true });
+      if (!l || epoch >= l.epoch) at.set(token, { table: null, epoch, seq: 0, left: true });
     },
     count(table) { return [...at.values()].filter((l) => l.table === table).length; },
     total() { return [...at.values()].filter((l) => l.table !== null).length; },
   };
 }
 const epochOf = (u) => Number(u.searchParams.get("e")) || 0;
+const seqOf = (u) => Number(u.searchParams.get("q")) || 0;
 
 const presence = { type: "presence", tables: 1, playing: 1, waiting: 0, ranked: 1, casual: 0, watch: 1, rerun: true };
 
@@ -341,8 +343,8 @@ for (const tables of [["a1b2c3d4", "e5f6a7b8"], ["a1b2c3d4"]]) {
   if (only && !only.test(name)) continue;
   const L = leases();
   let minted = 0;
-  const docOf = (table, w, e, follow) => {
-    L.read(w, e, table, follow);
+  const docOf = (table, w, e, follow, q) => {
+    L.read(w, e, table, follow, q);
     const i = tables.indexOf(table);
     return { ...doc(0), table, watcher: w, round: 1 + i, live_round: 2 + i, watchers: L.count(table) };
   };
@@ -356,14 +358,14 @@ for (const tables of [["a1b2c3d4", "e5f6a7b8"], ["a1b2c3d4"]]) {
         const w = u.searchParams.get("w");
         if (u.pathname.endsWith("/leave")) { L.leave(w, epochOf(u)); return r.fulfill({ status: 204, body: "" }); }
         const table = decodeURIComponent(u.pathname.split("/")[3]);
-        return r.fulfill({ json: { ...docOf(table, w, epochOf(u), true), waiting: true, events: undefined } });
+        return r.fulfill({ json: { ...docOf(table, w, epochOf(u), true, seqOf(u)), waiting: true, events: undefined } });
       });
       await p.route("**/api/watch?**", (r) => {
         const u = new URL(r.request().url());
         const skip = u.searchParams.get("skip");
         const w = u.searchParams.get("w") || `${String(++minted).padStart(4, "0")}${"c".repeat(28)}`;
         const table = skip && tables.includes(skip) ? tables[(tables.indexOf(skip) + 1) % tables.length] : tables[0];
-        return r.fulfill({ json: docOf(table, w, epochOf(u), false) });
+        return r.fulfill({ json: docOf(table, w, epochOf(u), false, seqOf(u)) });
       });
     },
   });
@@ -452,7 +454,7 @@ for (const how of ["loading", "reopen", "reopen-429", "replay-end"]) {
         const u = new URL(r.request().url());
         const w = u.searchParams.get("w");
         if (u.pathname.endsWith("/leave")) { L.leave(w, epochOf(u)); return r.fulfill({ status: 204, body: "" }); }
-        L.read(w, epochOf(u), "a1b2c3d4", true);
+        L.read(w, epochOf(u), "a1b2c3d4", true, seqOf(u));
         return r.fulfill({ json: { ...doc(0), watcher: w, waiting: true, events: undefined, watchers: L.count("a1b2c3d4") } });
       });
       await p.route("**/api/watch?**", async (r) => {
@@ -461,7 +463,7 @@ for (const how of ["loading", "reopen", "reopen-429", "replay-end"]) {
         const n = ++reads;
         if (how === "replay-end" && n === 1) return r.fulfill({ json: { ...doc(0), rerun: true, live_round: null, watcher: w } });
         if (how === "reopen-429" && n > 1) return r.fulfill({ status: 429, json: {} });
-        L.read(w, epochOf(u), "a1b2c3d4", false);      // counted as the server answers
+        L.read(w, epochOf(u), "a1b2c3d4", false, seqOf(u));      // counted as the server answers
         if (how !== "replay-end" && n === 1) await held;
         await r.fulfill({ json: { ...doc(0), watcher: w, watchers: L.count("a1b2c3d4") } }).catch(() => {});
       });
@@ -504,6 +506,69 @@ for (const how of ["loading", "reopen", "reopen-429", "replay-end"]) {
         : `${L.total()} counted, eye ${eye}, ${reads} picks, ${minted} tokens minted for reads with none`, page);
   });
   await page.context().close();
+}
+// Three tables, Next overtaken: the screen draws A; a Next is held on its way
+// to the server; two more Nexts bring B and then C, which the screen draws;
+// the held Next then reaches the server. Only C, the table drawn, counts
+// this viewer.
+{
+  const device = "phone-land";
+  const name = `watch-next-overtaken-${device}`;
+  if (!only || only.test(name)) {
+    const tables = ["a1b2c3d4", "b1b2c3d4", "c1b2c3d4"];
+    const L = leases();
+    let picks = 0, release = null;
+    const held = new Promise((r) => { release = r; });
+    const page = await open(browser, device, {
+      storage: { "shengji.coach": "off", "shengji.muted": "1", "shengji.name": "Jerry" },
+      fakeSocket: fakeSocketScript([presence]),
+      setup: async (p) => {
+        await p.route("**/api/**", (r) => r.fulfill({ status: 404, json: {} }));
+        await p.route("**/api/watch/**", (r) => {
+          const u = new URL(r.request().url());
+          const w = u.searchParams.get("w");
+          if (u.pathname.endsWith("/leave")) { L.leave(w, epochOf(u)); return r.fulfill({ status: 204, body: "" }); }
+          const table = decodeURIComponent(u.pathname.split("/")[3]);
+          L.read(w, epochOf(u), table, true, seqOf(u));
+          return r.fulfill({ json: { ...doc(0), table, watcher: w, waiting: true, events: undefined } });
+        });
+        await p.route("**/api/watch?**", async (r) => {
+          const u = new URL(r.request().url());
+          const skip = u.searchParams.get("skip");
+          const w = u.searchParams.get("w");
+          const n = ++picks;
+          // the first Next reaches the server only once released
+          if (n === 2) await held;
+          const table = skip ? tables[(tables.indexOf(skip) + 1) % tables.length] : tables[0];
+          L.read(w, epochOf(u), table, false, seqOf(u));
+          const i = tables.indexOf(table);
+          await r.fulfill({ json: { ...doc(0), table, watcher: w, round: 1 + i, live_round: 2 + i } }).catch(() => {});
+        });
+      },
+    });
+    await scenario(rep, name, page, async () => {
+      const next = async () => {
+        await page.click('.watch-hud [aria-haspopup="menu"]');
+        await page.click(".watch-screen [role=menu] [role=menuitem]:first-child");
+        await sleep(500);
+      };
+      const round = () => page.evaluate(() => document.querySelector(".watch-round")?.textContent ?? "");
+      await page.waitForSelector(".play-presence-watch");
+      await page.click(".play-presence-watch");
+      await page.waitForSelector(".watch-tabs");
+      await page.click('button[aria-label="Pause"]');
+      await next();                        // held
+      await next();                        // B
+      await next();                        // C
+      release();
+      await sleep(800);
+      const where = tables.filter((t) => L.count(t) > 0).map((t) => t.slice(0, 1));
+      await rep.check(`${name}: only the table drawn counts the viewer`,
+        (await round()).includes("Round 3") && JSON.stringify(where) === '["c"]' ? null
+          : `drawn ${JSON.stringify(await round())}, counted at ${JSON.stringify(where)}`, page);
+    });
+    await page.context().close();
+  }
 }
 // A replay's top right is one Leave control: a tap, the browser's back or
 // Escape each land on the Play tab with its presence line.

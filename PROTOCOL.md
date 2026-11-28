@@ -763,7 +763,7 @@ signed-in account whose id is in `SPECTATE_ACCOUNTS` (comma-separated account
 ids, a deployment secret); anyone else gets 404 from both endpoints. A listed
 account may watch any live table's last finished round.
 
-- `GET /api/watch?mode=&skip=&w=&e=` picks a table and answers with its latest
+- `GET /api/watch?mode=&skip=&w=&e=&q=` picks a table and answers with its latest
   finished round: `{table, watcher, mode, live_round, code, rerun, waiting,
   round, seat, players, finished, events}`. `events` are the saved games'
   allow-listed records with every card shown; `seat` is the banker. Each
@@ -781,18 +781,22 @@ account may watch any live table's last finished round.
   round, so successive Nexts visit every table in turn; `skip` itself when no
   other table can be watched (never the rerun in its place), and the first
   pick's rule when `skip` names no table.
-- `GET /api/watch/{table}?after=N&w=&e=` follows that table: its round after `N`
+- `GET /api/watch/{table}?after=N&w=&e=&q=` follows that table: its round after `N`
   once finished, else `{waiting: true, live_round}`. 404 once the table cannot
   be watched.
 - `w` is the watcher token (the first answer gives one when a read sends
-  none) and `e` the reader's Watch session (default 0). The web client makes
+  none), `e` the reader's Watch session (default 0) and `q` the read's
+  number within that session (from 1; default 0). The web client makes
   its token (32 hex) before its first read and keeps it for the browser tab or
   app session, and counts its sessions there, one more each time the watch
-  screen opens; every read and leave carries both. The server keeps where each
+  screen opens, and its reads within each; every read carries all three and
+  every leave the token and session. The server keeps where each
   token counts and the highest session admitted for it (server-side only): a
   token counts at one table at most, and a pick or a follow that counts it at
   a table drops it from every other. A read from an older session than one
-  admitted, or from a session that has left, is answered and counted nowhere;
+  admitted, from a session that has left, or numbered below the read that
+  counted the token (a pick overtaken by a later Next), is answered and
+  counted nowhere;
   a follow never moves the token, so a follow of a table the token has since
   moved from (a Next whose answer is on its way) is answered and not counted
   there. Each admission acts on the token only while it still holds it: a

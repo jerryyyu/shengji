@@ -393,6 +393,31 @@ def test_a_follow_of_the_table_next_moved_from_counts_nowhere(feed):
     assert _counts(a, b) == [0, 0]
 
 
+def test_picks_overtaken_by_later_nexts_count_nowhere_whatever_order_they_settle_in(feed, monkeypatch):
+    import itertools
+
+    srv, spectate, client = feed
+    monkeypatch.setattr(spectate.LIMITER, "limit", 10_000)
+    tables = [_live(srv, f"LV{i}", tid) for i, tid in enumerate(("aa", "bb", "cc"))]
+    # the screen draws aa; Next (read 2, skip aa) is delayed; Next again (read
+    # 3, still skip aa) brings bb, Next (read 4, skip bb) brings cc, which the
+    # screen draws and follows (read 5); read 2 reaches the server whenever
+    reads = [("pick", 2, "aa"), ("pick", 3, "aa"), ("pick", 4, "bb"), ("follow", 5, "cc")]
+    for n, order in enumerate(itertools.permutations(reads)):
+        token = f"{n}".rjust(32, "f")
+        first = _watch(client, mode="ranked", w=token, e=1, q=1).json()
+        assert first["table"] in ("aa", "bb", "cc")
+        for kind, q, at in order:
+            if kind == "pick":
+                _watch(client, mode="ranked", skip=at, w=token, e=1, q=q)
+            else:
+                client.get(f"/api/watch/{at}", params={"w": token, "e": 1, "q": q, "after": 0})
+        where = [t.room.watch.id for t in tables if token in t.room.watch.watchers]
+        assert where == ["cc"], (order, where)
+        _leave(client, w=token, e=1)
+        assert not any(token in t.room.watch.watchers for t in tables)
+
+
 def test_one_token_counts_at_one_table_at_most(feed):
     srv, spectate, client = feed
     a, b = _live(srv, "LV1", "aa"), _live(srv, "LV2", "bb")

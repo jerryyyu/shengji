@@ -620,6 +620,33 @@ describe("caught up", () => {
     expect(beacons).toEqual([leaveOf(1), leaveOf(2)]);
   });
 
+  it("numbers its reads within the session, so a pick overtaken by a later Next counts nowhere", async () => {
+    const held1 = held();
+    const order = ["abc123", "bbb222", "ccc333"];
+    let picks = 0;
+    reply = async (url) => {
+      if (url.startsWith("/api/watch/")) return { ...feed, waiting: true, events: undefined };
+      const n = ++picks;
+      if (n === 2) await held1.gate;
+      const skip = new URL(url, "http://x").searchParams.get("skip");
+      const table = skip ? order[(order.indexOf(skip) + 1) % order.length] : order[0];
+      return { ...feed, table, round: 3 + order.indexOf(table) };
+    };
+    const h = await screen();
+    await act(async () => { btn(h, "Pause")!.click(); });
+    await nextTable(h);                    // held
+    await nextTable(h);                    // bbb222
+    await nextTable(h);                    // ccc333
+    await held1.deliver();
+    expect(h.querySelector(".watch-round")!.textContent).toContain("Round 5");
+    const qs = urls.filter((u) => u.startsWith("/api/watch")).map((u) => Number(new URL(u, "http://x").searchParams.get("q")));
+    expect(qs).toEqual(qs.map((_, i) => i + 1));
+    close();
+    urls.length = 0;
+    await screen();
+    expect(new URL(urls[0], "http://x").searchParams.get("q")).toBe("1");   // a new session counts afresh
+  });
+
   const close = () => {
     const r = roots.pop()!;
     act(() => r.root.unmount());

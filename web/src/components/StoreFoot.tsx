@@ -3,7 +3,7 @@ import { useAuth } from "../auth";
 import { refreshAccount } from "../companion/writes";
 import { guestName } from "../guestName";
 import { useT } from "../i18n";
-import { buy, isPayerToken, refusalReason, restorePurchases, useSignInFirst } from "../store/shop";
+import { buy, isPayerToken, refusalMessage, restorePurchases, useSignInFirst } from "../store/shop";
 import type { ShopState } from "../store/shop";
 
 /** Restore purchases, a text row at the foot of the Collection. What the
@@ -23,7 +23,11 @@ export function RestoreRow({ onStatus }: { onStatus: (s: string) => void }) {
               setBusy(true);
               onStatus("");
               restorePurchases()
-                .catch((err: unknown) => onStatus(t("home.shopFailed", { n: refusalReason(err) })))
+                .catch((err: unknown) => {
+                  const key = refusalMessage(err, "restore");
+                  if (key) onStatus(t(key));
+                  else guestName.open("shop");
+                })
                 .finally(() => setBusy(false));
             }}>
       {t("home.restorePurchases")}
@@ -36,9 +40,10 @@ export function RestoreRow({ onStatus }: { onStatus: (s: string) => void }) {
  *  app's device account, or the price button held until the server has
  *  given the account its payer token. A purchase ends in `onOwned` (the
  *  character's cheer and its tile's move into Yours) and the success haptic;
- *  Ask to Buy and a refusal use the one status line (`onStatus`). */
+ *  Ask to Buy and a refusal use the one status line (`onStatus`), whose
+ *  `held` marks another account holding it, which no retry here can change. */
 export function BuyFoot({ product, shop, onOwned, onStatus }: {
-  product: string; shop: ShopState; onOwned: () => void; onStatus: (s: string) => void;
+  product: string; shop: ShopState; onOwned: () => void; onStatus: (s: string, held?: boolean) => void;
 }) {
   const t = useT();
   const account = useAuth();
@@ -72,7 +77,11 @@ export function BuyFoot({ product, shop, onOwned, onStatus }: {
         if (outcome === "owned") onOwned();
         else if (outcome === "pending") onStatus(t("home.shopPending"));
       })
-      .catch((err: unknown) => onStatus(t("home.shopFailed", { n: refusalReason(err) })))
+      .catch((err: unknown) => {
+        const key = refusalMessage(err, "buy");
+        if (key) onStatus(t(key), key === "home.shopHeldByOther");
+        else guestName.open("shop");
+      })
       .finally(() => setBusy(false));
   };
   return (

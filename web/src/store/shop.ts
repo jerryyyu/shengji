@@ -11,6 +11,7 @@ import type { AuthUser } from "../auth";
 import { COMPANION_PRODUCTS } from "../companion/look";
 import { refreshAccount } from "../companion/writes";
 import { viewerScope } from "../home/session";
+import type { MessageKey } from "../i18n";
 import { haptic } from "../native";
 import {
   onStoreTransaction, storeFinish, storeKitAvailable, storePending, storeProducts, storePurchase, storeRestore,
@@ -43,11 +44,17 @@ export function shopAllowed(user: AuthUser | null | undefined): boolean {
  *  network, a 5xx) leaves it with the App Store, which hands it over again. */
 export const PERMANENT_REFUSALS = new Set(["held_by_other", "revoked", "wrong_app"]);
 
-/** A refusal's reason: the server's code, else its status. */
-export function refusalReason(err: unknown): string {
+/** What the store's one status line says for a refusal, in place of its
+ *  code: another account holds it (where to use it), it was refunded, else
+ *  the purchase or the restore did not complete. Null when the account has
+ *  no session to buy with (`sign_in_required`, 401): the answer is the
+ *  sign-in flow, not a line. */
+export function refusalMessage(err: unknown, during: "buy" | "restore"): MessageKey | null {
   const e = err as { reason?: unknown; status?: unknown };
-  if (typeof e?.reason === "string" && e.reason) return e.reason;
-  return String(typeof e?.status === "number" ? e.status : 0);
+  if (e?.reason === "sign_in_required" || e?.status === 401) return null;
+  if (e?.reason === "held_by_other") return "home.shopHeldByOther";
+  if (e?.reason === "revoked") return "home.shopRefunded";
+  return during === "buy" ? "home.shopFailed" : "home.restoreFailed";
 }
 
 const isPermanent = (err: unknown) => PERMANENT_REFUSALS.has((err as { reason?: string })?.reason ?? "");

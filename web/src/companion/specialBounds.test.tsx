@@ -614,7 +614,7 @@ describe("the table's moves of the figure", () => {
   const SIZES = [SEAT_SIZE.phone.base, SEAT_SIZE.phone.max];
   /** Where the still drawing of `pose` paints in a figure `px` wide, in px. */
   const still = (kind: string, pose: "idle" | "cheer", px: number): Box => {
-    const els = tree(parseArt(DRAWINGS[kind as keyof typeof DRAWINGS].markup("" as never, "t", { pose, detail: false, still: true, team: "us" })), null);
+    const els = tree(parseArt(DRAWINGS[kind as keyof typeof DRAWINGS].markup("" as never, "t", { pose, detail: true, still: true, team: "us" })), null);
     const root = ["cmp", ...(DRAWINGS[kind as keyof typeof DRAWINGS].char ? ["cmp-char"] : []), `cmp-${kind}`, ...(pose === "idle" ? ["cmp-idle", "cmp-rest"] : []), "cmp-still", "cmp-us"];
     const b = play(kind, root, els, 0).box, k = px / 400;
     return { x: b.x * k, y: b.y * k, w: b.w * k, h: b.h * k };

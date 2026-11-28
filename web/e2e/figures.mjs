@@ -85,15 +85,18 @@ const homeClash = (page) => page.evaluate(() => {
   return { missing: false, inside, onStrip, mid: Math.round(mid * 10) / 10, strip, clash, box: [a.left - f.left, a.top - f.top, a.width].map(Math.round) };
 });
 
-/** Sample the home figure every `every` ms for `ms`, while `during` runs; the problems seen. */
+/** Sample the home figure every `every` ms for `ms`, while `during` runs: the problems seen, and how many
+ *  samples found the figure drawn (`seen`). */
 async function sampleHome(page, ms, during = async () => {}, every = 40) {
   const bad = new Set();
+  let seen = 0;
   let stop = false;
   const sampling = (async () => {
     const t0 = Date.now();
     while (!stop && Date.now() - t0 < ms) {
       const c = await homeClash(page);
       if (!c.missing) {
+        seen++;
         for (const x of c.clash) bad.add(x);
         if (!c.inside) bad.add(`outside the felt at ${c.box}`);
         if (!c.onStrip) bad.add(`middle ${c.mid} off its strip ${c.strip}`);
@@ -104,12 +107,28 @@ async function sampleHome(page, ms, during = async () => {}, every = 40) {
   await during();
   await sampling;
   stop = true;
-  return [...bad];
+  return Object.assign([...bad], { seen });
 }
-const feltTap = async (page, share) => {
+/** A tap on the felt `share` of the way across and `down` of the way down: at half height it is above the
+ *  figure, so it lands on the felt, never on the figure. */
+const feltTap = async (page, share, down = 0.5) => {
   const f = await page.locator(".lobby-preview").boundingBox();
-  await page.mouse.click(f.x + f.width * share, f.y + f.height * 0.92);
+  await page.mouse.click(f.x + f.width * share, f.y + f.height * down);
 };
+/** The way the home figure faces (1 right, -1 left), where its middle stands, and once its special has
+ *  started, the signed travel of its lunge's keyframes from there (px; none when no lunge plays). */
+const homeFacing = (page) => page.evaluate(() => {
+  const face = document.querySelector(".home-cmp .char-face");
+  const dir = /scaleX\(-1\)/.test(face?.style.transform ?? "") ? -1 : 1;
+  const walk = document.querySelector(".home-cmp .char-walk");
+  const at = Number(/translate\((-?[\d.]+)px/.exec(walk?.style.transform ?? "")?.[1] ?? 0);
+  return { dir, at };
+});
+const lungeTravel = (page) => page.evaluate(() => {
+  const walk = document.querySelector(".home-cmp .char-walk");
+  const xs = walk.getAnimations().flatMap((a) => a.effect.getKeyframes().map((k) => Number(/translate\((-?[\d.]+)px/.exec(k.transform)?.[1])));
+  return xs.filter((x) => Number.isFinite(x));
+});
 const figureSize = (page) => page.evaluate(() => Number(document.querySelector(".home-cmp svg.cmp")?.getAttribute("width") ?? 0));
 
 /** The home felt's own figure at three sizes: on the felt, and clear of cards and text all loop long. */
@@ -177,7 +196,10 @@ async function homeFelt(opts) {
     await sleep(600);
     const gone = await rs.evaluate(() => document.querySelector(".home-cmp svg.cmp") === null);
     bad = await sampleHome(rs, 3000, async () => { await rs.setViewportSize({ width: 390, height: 844 }); });
-    await rep.check("home felt: after a size with no felt and back, it stands on its strip, clear of every card", gone && !bad.length ? null : `gone ${gone}; ${bad.slice(0, 3).join(" | ")}`, rs);
+    // back upright it must be drawn again: an absent figure is a failure, not a pass
+    const back = await rs.evaluate(() => document.querySelector(".home-cmp svg.cmp") !== null);
+    await rep.check("home felt: after a size with no felt and back, it is drawn again, on its strip, clear of every card",
+      gone && back && bad.seen >= 20 && !bad.length ? null : `gone ${gone}; back ${back}; drawn in ${bad.seen} samples; ${bad.slice(0, 3).join(" | ")}`, rs);
   });
   await rs.context().close();
   // the Lamb's special facing each way, its step back and its lunge sampled: at rest at its strip's left end
@@ -186,16 +208,34 @@ async function homeFelt(opts) {
   await scenario(rep, "home felt: the Lamb's special both ways", sp, async () => {
     await until(sp, () => document.querySelector(".home-cmp svg.cmp") !== null, { timeout: 8000 });
     await sleep(300);
-    let bad = await sampleHome(sp, 1600, async () => { await sp.locator(".home-cmp .coll-figure").click(); }, 20);
-    await rep.check("home felt: the Lamb's special facing right at its spot keeps its step back on its strip, clear of every card", bad.length ? bad.slice(0, 3).join(" | ") : null, sp);
+    // facing right at its spot: the lunge goes right of it, never back past the strip's end
+    const special = async (want) => {
+      const before = await homeFacing(sp);
+      let travel = [];
+      const bad = await sampleHome(sp, 1600, async () => {
+        await sp.locator(".home-cmp .coll-figure").click();
+        await sleep(60);
+        travel = await lungeTravel(sp);
+      }, 20);
+      const out = travel.map((x) => x - before.at);
+      const lunged = out.some((d) => Math.sign(d) === want && Math.abs(d) >= 2);
+      return { before, out, lunged, bad };
+    };
+    let r = await special(1);
+    await rep.check("home felt: the Lamb's special facing right at its spot lunges right, its step back on its strip, clear of every card",
+      r.before.dir === 1 && r.lunged && r.bad.seen >= 15 && !r.bad.length ? null
+        : `facing ${r.before.dir}; lunge ${r.out.map(Math.round)}; drawn ${r.bad.seen}; ${r.bad.slice(0, 3).join(" | ")}`, sp);
+    // walked to the strip's right end, then back to its middle by a tap on the felt above it: it faces left
     const strip = await sp.evaluate(() => document.querySelector(".home-cmp").getAttribute("data-strip").split(",").map(Number));
+    const fw = (await sp.locator(".lobby-preview").boundingBox()).width;
     await feltTap(sp, 0.98);
     await sleep(1700);
-    const fw = (await sp.locator(".lobby-preview").boundingBox()).width;
     await feltTap(sp, 0.5 + (strip[0] + strip[1]) / 2 / fw);
     await sleep(1700);
-    bad = await sampleHome(sp, 1600, async () => { await sp.locator(".home-cmp .coll-figure").click(); }, 20);
-    await rep.check("home felt: the Lamb's special facing left mid-strip keeps its lunge on its strip, clear of every card", bad.length ? bad.slice(0, 3).join(" | ") : null, sp);
+    r = await special(-1);
+    await rep.check("home felt: the Lamb's special facing left mid-strip lunges left, on its strip, clear of every card",
+      r.before.dir === -1 && r.lunged && r.bad.seen >= 15 && !r.bad.length ? null
+        : `facing ${r.before.dir}; lunge ${r.out.map(Math.round)}; drawn ${r.bad.seen}; ${r.bad.slice(0, 3).join(" | ")}`, sp);
   });
   await sp.context().close();
 }

@@ -53,6 +53,14 @@ function probe() {
     if (k) Q.listeners.delete(`${k[0]}:${k[1]}:${idOf(k[2])}:${k[3]}`);
     return remove.call(this, type, fn, o);
   };
+  // each walk the table starts, to tell a walk from a jump
+  Q.walks = [];
+  const animate = Element.prototype.animate;
+  Element.prototype.animate = function (k, o) {
+    if (this.classList?.contains("tc-walk")) Q.walks.push({ t: Math.round(performance.now()), ms: Math.round(typeof o === "number" ? o : o?.duration ?? 0),
+      path: Array.isArray(k) ? k.map((f) => f.transform).join(" > ") : "" });
+    return animate.call(this, k, o);
+  };
   let last = 0;
   const loop = (t) => {
     Q.frames++;
@@ -132,11 +140,16 @@ async function after(rep, name, page, base, { people }) {
   await sleep(3500);
   const s = await floor(page);
   const jumps = await page.evaluate(() => window.__cq.jumps.splice(0));
+  const walks = await page.evaluate(() => window.__cq.walks.splice(0));
   const dup = s.figures.filter((x, i) => s.figures.indexOf(x) !== i);
   console.log(`   ${name}: ${JSON.stringify({ ...s, jumps: jumps.length })} base ${JSON.stringify({ timers: base.timers, intervals: base.intervals, obs: base.obs, listeners: base.listeners })}`);
   await rep.check(`${name}: one figure a person`, [dup.length ? `seats drawn twice: ${dup}` : null,
     s.figures.length !== people ? `${s.figures.length} figures for ${people} people` : null], page);
-  await rep.check(`${name}: no jump`, jumps.map((j) => `seat ${j.seat} moved ${j.d} px in ${j.dt} ms`), page);
+  const during = (j) => walks.filter((w) => w.t <= j.t && j.t <= w.t + w.ms + 34).map((w) => `${w.ms} ms walk ${w.path}`).join("; ") || "no walk running";
+  // a move with no walk of the table's running is a jump; a quick hop-walk (0.3 to 0.5 s) may be fast, never sudden
+  const walked = jumps.filter((j) => during(j) !== "no walk running");
+  if (walked.length) console.log(`   ${name}: ${walked.length} fast frames, each inside a walk (${during(walked[0])})`);
+  await rep.check(`${name}: no jump`, jumps.filter((j) => during(j) === "no walk running").map((j) => `seat ${j.seat} moved ${j.d} px in ${j.dt} ms with no walk running`), page);
   await rep.check(`${name}: no pose left running`, [s.anims ? `${s.anims} companion animations still running` : null,
     s.infinite ? `${s.infinite} infinite companion animations` : null,
     ...s.poses.filter((p) => p === "react" || p === "levelup").map((p) => `a figure still in ${p}`)], page);

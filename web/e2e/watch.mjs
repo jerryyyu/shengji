@@ -7,7 +7,7 @@
 // own companion stands in the safe area and walks to a tap; and a replay is
 // left in one tap, by back or by Escape; Next table goes on to another table
 // and back, or keeps the only one as it was; and a watcher who leaves and
-// comes back counts once.
+// comes back counts once, even when it leaves before its first answer lands.
 //   node e2e/watch.mjs [device-regex]
 import fs from "node:fs";
 import path from "node:path";
@@ -404,6 +404,48 @@ for (const tables of [["a1b2c3d4", "e5f6a7b8"], ["a1b2c3d4"]]) {
     if (SHOTS?.test(name)) await shot(page, name);
   });
   await page.context().close();
+}
+// Leave from the loading screen while the first pick's answer is held: the
+// server counted the watcher as it answered, so once the answer lands the
+// page leaves again and the table counts nobody.
+{
+  const device = "phone-land";
+  const name = `watch-leave-while-loading-${device}`;
+  if (!only || only.test(name)) {
+    const counted = new Set();
+    let release = null;
+    const held = new Promise((r) => { release = r; });
+    const page = await open(browser, device, {
+      storage: { "shengji.coach": "off", "shengji.muted": "1", "shengji.name": "Jerry" },
+      fakeSocket: fakeSocketScript([presence]),
+      setup: async (p) => {
+        await p.route("**/api/**", (r) => r.fulfill({ status: 404, json: {} }));
+        await p.route("**/api/watch/**", (r) => {
+          const u = new URL(r.request().url());
+          if (u.pathname.endsWith("/leave")) counted.delete(u.searchParams.get("w"));
+          return r.fulfill({ status: 204, body: "" });
+        });
+        await p.route("**/api/watch?**", async (r) => {
+          const w = "d".repeat(32);
+          counted.add(w);                  // counted as the server answers
+          await held;
+          await r.fulfill({ json: { ...doc(0), watcher: w, watchers: counted.size } }).catch(() => {});
+        });
+      },
+    });
+    await scenario(rep, name, page, async () => {
+      await page.waitForSelector(".play-presence-watch");
+      await page.click(".play-presence-watch");
+      await page.waitForSelector(".watch-empty .btn");
+      await page.click(".watch-empty .btn");
+      await page.waitForSelector(".play-presence-watch");
+      release();
+      for (let i = 0; i < 20 && counted.size > 0; i++) await sleep(100);
+      await rep.check(`${name}: the held answer lands after Leave and the table counts nobody`,
+        counted.size === 0 ? null : `${counted.size} still counted`, page);
+    });
+    await page.context().close();
+  }
 }
 // A replay's top right is one Leave control: a tap, the browser's back or
 // Escape each land on the Play tab with its presence line.

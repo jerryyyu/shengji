@@ -49,7 +49,16 @@ function saveWatcher(v: unknown): void {
   }
 }
 
+/** How many watch reads this page has sent: each one counts this watcher
+ *  where it lands, so an answer arriving after its screen closed is left
+ *  again only when no later read has moved or renewed the count. */
+let sent = 0;
+export function watchReads(): number {
+  return sent;
+}
+
 async function getDoc(path: string): Promise<WatchFetch> {
+  sent++;
   let resp: Response;
   try {
     resp = await fetch(path, { credentials: "same-origin" });

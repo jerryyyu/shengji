@@ -611,6 +611,78 @@ describe("caught up", () => {
     expect(beacons).toHaveLength(2);
   });
 
+  const close = () => {
+    const r = roots.pop()!;
+    act(() => r.root.unmount());
+    r.host.remove();
+  };
+  const held = () => {
+    let deliver: (() => void) | null = null;
+    const gate = new Promise<void>((res) => { deliver = res; });
+    return { gate, deliver: async () => { deliver!(); await flush(); } };
+  };
+
+  it("an answer that lands after the screen closed is left again: one beacon for its table", async () => {
+    const first = held();
+    reply = async (url) => {
+      if (url.startsWith("/api/watch/")) return { ...feed, waiting: true, events: undefined };
+      await first.gate;
+      return feed;
+    };
+    const h = await screen();
+    expect(h.querySelector(".watch-tabs")).toBeNull();      // still loading: its Leave
+    close();
+    expect(beacons).toEqual([]);
+    await first.deliver();
+    expect(beacons).toEqual([`/api/watch/abc123/leave?w=${feed.watcher}`]);
+  });
+
+  it("closing while Next's answer is on its way leaves the table that answer counted at", async () => {
+    const b = held();
+    reply = async (url) => {
+      if (url.startsWith("/api/watch/")) return { ...feed, waiting: true, events: undefined };
+      if (url.includes("skip=abc123")) { await b.gate; return { ...feed, table: "bbb222", round: 8 }; }
+      return feed;
+    };
+    const h = await screen();
+    await nextTable(h);
+    close();
+    expect(beacons).toEqual([`/api/watch/abc123/leave?w=${feed.watcher}`]);
+    await b.deliver();
+    expect(beacons).toEqual([`/api/watch/abc123/leave?w=${feed.watcher}`, `/api/watch/bbb222/leave?w=${feed.watcher}`]);
+  });
+
+  it("a late answer to a closed screen leaves nothing once a newer watch has read since", async () => {
+    const first = held();
+    let reads = 0;
+    reply = async (url) => {
+      if (url.startsWith("/api/watch/")) return { ...feed, waiting: true, events: undefined };
+      if (reads++ === 0) await first.gate;
+      return feed;
+    };
+    await screen();
+    close();
+    const h = await screen();                               // the same table, watched again
+    expect(h.querySelector(".watch-tabs")).not.toBeNull();
+    await first.deliver();
+    expect(beacons).toEqual([]);
+  });
+
+  it("Next on the only table keeps the round buffered behind the card, and its hold", async () => {
+    reply = (url) => url.startsWith("/api/watch/abc123") ? { ...feed, round: 4 } : feed;
+    const h = await screen();
+    await toEnd(h);                        // round 4 of abc123 is buffered behind the card
+    expect(follows()).toBeGreaterThanOrEqual(1);
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    await flush();
+    await nextTable(h);
+    expect(urls.some((u) => u.includes("skip=abc123"))).toBe(true);
+    expect(h.querySelector(".watch-round")!.textContent).toContain("Round 3");
+    await act(async () => { vi.advanceTimersByTime(CARD_HOLD_MS - 1000 + 100); });
+    await flush();
+    expect(h.querySelector(".watch-round")!.textContent).toContain("Round 4");
+  });
+
   it("a replay counts nobody, so leaving it tells nothing", async () => {
     reply = () => ({ ...feed, table: "rerun", rerun: true, live_round: null, code: null });
     await screen();

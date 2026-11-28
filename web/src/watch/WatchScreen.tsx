@@ -16,8 +16,8 @@ import { codes } from "../codeJoin";
 import { rounds } from "../roundTelemetry";
 import { tapHandlers } from "../tap";
 import { showToast } from "../toast";
-import { fetchWatch, followWatch, leaveWatch } from "./api";
-import type { WatchDoc } from "./api";
+import { fetchWatch, followWatch, leaveWatch, watchReads } from "./api";
+import type { WatchDoc, WatchFetch } from "./api";
 import {
   backTrick, beatMs, beatsOf, forwardTrick, handAt, liftedIds, nextSpeed, saveSpeed, savedSpeed, tabOrder,
 } from "./playback";
@@ -243,6 +243,17 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   const usageTable = useRef<string | null>(null);
   // the live table this watcher counts at, and its token: told when it leaves
   const counted = useRef<{ table: string; watcher: string } | null>(null);
+  // the screen is gone: an answer landing now is not shown
+  const closed = useRef(false);
+  /** An answer that landed after the screen closed: the server counted this
+   *  watcher at its table as it answered, so it is left again, unless a
+   *  later read (a watch opened since) holds this watcher now. `n` is
+   *  `watchReads()` as the read was sent. */
+  const lateAfterClose = (r: WatchFetch, n: number) => {
+    if (!closed.current) return false;
+    if (r.ok && !r.doc.rerun && n === watchReads()) leaveWatch(r.doc.table, r.doc.watcher);
+    return true;
+  };
   const show = (l: Loaded, why: WatchBy = "ended") => {
     dropNext();
     counted.current = l.doc.rerun ? null : { table: l.doc.table, watcher: l.doc.watcher };
@@ -268,11 +279,15 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   // toast, and one while a table is on screen keeps that table.
   const pick = (skip: string | null, why: "next" | "gone" | null = null) => {
     const mine = ++picks.current;
-    dropNext();
+    // a round buffered behind the card is dropped only when another table
+    // is shown (`show`); the same table brought back keeps it and its hold
     if (retry.current !== null) window.clearTimeout(retry.current);
     retry.current = null;
     const read = (again: boolean) => {
-      void fetchWatch(mode, skip, loaded?.doc.watcher ?? null).then((r) => {
+      const req = fetchWatch(mode, skip, loaded?.doc.watcher ?? null);
+      const n = watchReads();
+      void req.then((r) => {
+        if (lateAfterClose(r, n)) return;
         if (mine !== picks.current) return;
         const l = r.ok ? load(r.doc) : null;
         const failed = r.ok ? l === null : r.reason !== "none";
@@ -306,7 +321,8 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
       if (c) leaveWatch(c.table, c.watcher);
     };
     window.addEventListener("pagehide", tell);
-    return () => { window.removeEventListener("pagehide", tell); tell(); };
+    closed.current = false;
+    return () => { closed.current = true; window.removeEventListener("pagehide", tell); tell(); };
   }, []);
   useEffect(() => () => {
     dropNext();
@@ -341,7 +357,10 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     let on = true;
     const poll = window.setInterval(() => {
       if (document.visibilityState === "hidden" || table.current !== doc.table) return;
-      void followWatch(doc.table, next.current?.doc.round ?? doc.round ?? 0, doc.watcher).then((res) => {
+      const req = followWatch(doc.table, next.current?.doc.round ?? doc.round ?? 0, doc.watcher);
+      const n = watchReads();
+      void req.then((res) => {
+        if (lateAfterClose(res, n)) return;
         if (!on || table.current !== doc.table || !res.ok) return;
         if (res.doc.waiting) {
           setLive({ round: res.doc.live_round, code: res.doc.code, watchers: res.doc.watchers });
@@ -376,7 +395,9 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
       if (next.current || table.current !== doc.table) return;
       const r = doc.rerun ? fetchWatch(mode, null, doc.watcher)
         : followWatch(doc.table, doc.round ?? 0, doc.watcher);
+      const n = watchReads();
       void r.then((res) => {
+        if (lateAfterClose(res, n)) return;
         if (!on || table.current !== doc.table) return;
         if (res.ok && res.doc.waiting) {
           setLive({ round: res.doc.live_round, code: res.doc.code, watchers: res.doc.watchers });

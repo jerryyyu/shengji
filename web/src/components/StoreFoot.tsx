@@ -45,9 +45,10 @@ export function RestoreRow({ onStatus }: { onStatus: (s: string) => void }) {
  *  given the account its payer token. A purchase ends in `onOwned` (the
  *  character's cheer and its tile's move into Yours) and the success haptic;
  *  Ask to Buy and a refusal use the one status line (`onStatus`), whose
- *  `held` marks another account holding it, which no retry here can change. */
+ *  `hide` takes Buy away: another account holds it, which no retry here can
+ *  change, or Apple charged and the store is handing it over again. */
 export function BuyFoot({ product, shop, onOwned, onStatus }: {
-  product: string; shop: ShopState; onOwned: () => void; onStatus: (s: string, held?: boolean) => void;
+  product: string; shop: ShopState; onOwned: () => void; onStatus: (s: string, hide?: boolean) => void;
 }) {
   const t = useT();
   const account = useAuth();
@@ -86,7 +87,7 @@ export function BuyFoot({ product, shop, onOwned, onStatus }: {
       })
       .catch((err: unknown) => {
         const key = refusalMessage(err, "buy");
-        if (key) onStatus(t(key), key === "home.shopHeldByOther");
+        if (key) onStatus(t(key), key === "home.shopHeldByOther" || key === "home.shopReceived");
         else guestName.open("shop");
       })
       .finally(() => { running.current = false; setBusy(false); });

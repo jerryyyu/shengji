@@ -45,13 +45,15 @@ export function shopAllowed(user: AuthUser | null | undefined): boolean {
 export const PERMANENT_REFUSALS = new Set(["held_by_other", "revoked", "wrong_app"]);
 
 /** What the store's one status line says for a refusal, in place of its
- *  code: another account holds it (where to use it), it was refunded, else
+ *  code: Apple charged and the server has not answered yet (`received`),
+ *  another account holds it (where to use it), it was refunded, else
  *  the purchase or the restore did not complete. Null when the account has
  *  no session to buy with (`sign_in_required`, 401): the answer is the
  *  sign-in flow, not a line. */
 export function refusalMessage(err: unknown, during: "buy" | "restore"): MessageKey | null {
   const e = err as { reason?: unknown; status?: unknown };
   if (e?.reason === "sign_in_required" || e?.status === 401) return null;
+  if ((err as { received?: unknown })?.received === true) return "home.shopReceived";
   if (e?.reason === "held_by_other") return "home.shopHeldByOther";
   if (e?.reason === "revoked") return "home.shopRefunded";
   return during === "buy" ? "home.shopFailed" : "home.restoreFailed";
@@ -90,10 +92,34 @@ function deliver(t: SignedTransaction): Promise<string[] | null> {
   });
 }
 
-/** Hand the server every transaction the App Store still holds unfinished. */
-async function recoverPending(): Promise<void> {
+/** A refusal the same hand-over may pass in a moment: no answer (no
+ *  network), too many requests, or a 5xx. */
+const isTransient = (err: unknown) => {
+  const s = (err as { status?: unknown })?.status;
+  return typeof s !== "number" || s === 0 || s === 429 || s >= 500;
+};
+
+/** Hand the server every transaction the App Store still holds unfinished;
+ *  how many met a transient refusal. */
+async function recoverPending(): Promise<number> {
   const list = await storePending().catch(() => []);
-  for (const t of list) await deliver(t).catch(() => null);
+  let transient = 0;
+  for (const t of list) await deliver(t).catch((err: unknown) => { if (isTransient(err)) transient += 1; });
+  return transient;
+}
+
+/** The first and the longest wait between hand-overs of a purchase Apple
+ *  charged for while the server could not be reached. */
+export const RETRY_FIRST_MS = 2000;
+export const RETRY_MAX_MS = 30000;
+
+// A purchase charged while the server was out of reach: the shown store
+// hands the App Store's unfinished transactions over again until it lands.
+let awaiting = false;
+const awaitingListeners = new Set<() => void>();
+function awaitDelivery() {
+  awaiting = true;
+  awaitingListeners.forEach((f) => f());
 }
 
 export type BuyOutcome = "owned" | "cancelled" | "pending" | "none";
@@ -123,6 +149,11 @@ export async function buy(product: string): Promise<BuyOutcome> {
     granted = await deliver({ jws, productId, ...(transactionId ? { transactionId } : {}) });
   } catch (err) {
     if (!same()) return "none";
+    if (isTransient(err)) {
+      // Apple charged; the transaction stays unfinished and is handed over again
+      awaitDelivery();
+      throw Object.assign(err instanceof Error ? err : new Error("verify"), { received: true });
+    }
     throw err;
   }
   if (!same() || !granted?.includes(product)) return "none";
@@ -215,6 +246,48 @@ export function useShop(): ShopState {
   useEffect(() => {
     if (state.shown) void recoverPending();
   }, [state.shown, payer]);
+  // A received purchase is handed over again on a doubling wait while the
+  // store is shown, and at once when the network comes back.
+  useEffect(() => {
+    if (!state.shown) return;
+    let live = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let wait = RETRY_FIRST_MS;
+    let running = false;
+    const attempt = async () => {
+      timer = undefined;
+      if (!live || !awaiting || running) return;
+      running = true;
+      const left = await recoverPending().finally(() => { running = false; });
+      if (!live) return;
+      if (left === 0) {
+        awaiting = false;
+        return;
+      }
+      timer = setTimeout(() => { void attempt(); }, wait);
+      wait = Math.min(wait * 2, RETRY_MAX_MS);
+    };
+    const schedule = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      wait = RETRY_FIRST_MS;
+      timer = setTimeout(() => { void attempt(); }, wait);
+      wait = Math.min(wait * 2, RETRY_MAX_MS);
+    };
+    const now = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      wait = RETRY_FIRST_MS;
+      void attempt();
+    };
+    awaitingListeners.add(schedule);
+    window.addEventListener("online", now);
+    if (awaiting) schedule();
+    return () => {
+      live = false;
+      if (timer !== undefined) clearTimeout(timer);
+      awaitingListeners.delete(schedule);
+      window.removeEventListener("online", now);
+    };
+  }, [state.shown]);
   // an account the store is never shown to is settled at once
   return allowed ? state : { shown: false, prices: {}, settled: true };
 }

@@ -101,8 +101,9 @@ export default function CollectionPage() {
   const [arrived, setArrived] = useState<CompanionKind | null>(null);
   // Buy's answer belongs to the product it was for, Restore's to its row:
   // each is said on its own line, and a late answer never reaches another stage;
-  // `held` (another account holds it) takes Buy away, since a retry is refused the same way
-  const [bought, setBought] = useState<{ product: string; text: string; held?: boolean } | null>(null);
+  // `hide` takes Buy away: another account holds it (a retry is refused the same
+  // way), or Apple charged and the store is handing it over again
+  const [bought, setBought] = useState<{ product: string; text: string; hide?: boolean } | null>(null);
   const [restored, setRestored] = useState("");
   const [cheer, setCheer] = useState(0);
   // a selection the player made swaps the stage with a short crossfade
@@ -309,15 +310,15 @@ export default function CollectionPage() {
   } else {
     const kind = selected;
     const product = COMPANION_PRODUCTS[kind];
-    const held = !!bought?.held && bought.product === product;
-    const price = product && !owns(kind) && !held ? (
-      <BuyFoot product={product} shop={shop} onStatus={(text, isHeld) => setBought({ product, text, held: isHeld })}
+    const hidden = !!bought?.hide && bought.product === product;
+    const price = product && !owns(kind) && !hidden ? (
+      <BuyFoot product={product} shop={shop} onStatus={(text, hide) => setBought({ product, text, hide })}
                onOwned={() => { setArrived(kind); setCheer((n) => n + 1); }} />
     ) : undefined;
     stage = (
       <CharacterPage key={kind} kind={kind} shown={shown} entries={entriesOf(kind)} inUse={inUse} user={user} phone={phone} short={short}
                      fresh={fresh} onShow={show} onUse={use} price={price}
-                     status={bought && bought.product === product ? bought.text : ""} cheer={cheer} arrives={swaps > 0} />
+                     status={bought && bought.product === product && !owns(kind) ? bought.text : ""} cheer={cheer} arrives={swaps > 0} />
     );
   }
 

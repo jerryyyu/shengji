@@ -108,6 +108,7 @@ const draw = async () => {
 };
 
 const HELD = "Your Apple ID already bought this for another account. Sign in to that account to use it.";
+const RECEIVED = "Purchase received — it'll appear in a moment.";
 
 const names = (sel: string) => [...host.querySelectorAll(`${sel} .coll-tile`)].map((b) => b.textContent);
 const FREE_TILES = ["Tractor", "Bun", "Chick", "Sparrow"];
@@ -1002,6 +1003,74 @@ describe("a refusal in plain words", () => {
     await settle();
   });
 
+  it("says a purchase Apple charged for but the server has not answered in every language", () => {
+    const received = Object.assign(new TypeError("network"), { received: true });
+    expect(LOCALES.map((loc) => copy(loc, received, "buy")))
+      .toEqual([RECEIVED, "已收到购买，稍后就会显示。", "已收到購買，稍後就會顯示。"]);
+  });
+
+  /** Lamb bought, Apple charged, and the server unreachable until `reachable()`. */
+  const chargedOffline = () => {
+    const unfinished = { jws: "header.payload.sig", productId: LAMB, transactionId: "2000000111" };
+    plugin.purchase.mockImplementationOnce(async () => ({ status: "purchased", ...unfinished }) as never);
+    let finished = false;
+    plugin.pending.mockImplementation(async () => ({ transactions: finished ? [] : [unfinished] }));
+    plugin.finish.mockImplementation(async () => { finished = true; return { finished: true }; });
+    const ok = globalThis.fetch;
+    let up = false;
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/store/verify" && !up) throw new TypeError("network");
+      return ok(url, init);
+    }) as unknown as typeof fetch;
+    return { reachable: () => { up = true; } };
+  };
+
+  it("a purchase charged while the server is unreachable says it was received, hides Buy, and lands on reconnect", async () => {
+    nativeShell();
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    await openTile(".coll-more", 0);
+    const net = chargedOffline();
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")!.click(); });
+    await settle();
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe(RECEIVED);
+    expect(host.querySelector(".coll-use")).toBeNull();
+    expect(plugin.finish).not.toHaveBeenCalled();
+    net.reachable();
+    await act(async () => { window.dispatchEvent(new Event("online")); });
+    await settle();
+    await settle();
+    expect(plugin.finish).toHaveBeenCalledWith({ transactionId: "2000000111" });
+    // the account read again is drawn (the app's auth store re-renders on it)
+    await act(async () => { root.render(<CollectionPage />); });
+    // the owned state replaces the line: the look, and Use
+    expect(host.querySelector(".char-page .coll-status")?.textContent).not.toBe(RECEIVED);
+    expect(host.querySelector(".coll-use")?.textContent).toBe("Use");
+  });
+
+  it("while the page is open, a received purchase is handed over again on a short backoff", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      nativeShell();
+      authState.current = { status: "in", clientId: "cid", user };
+      await draw();
+      await openTile(".coll-more", 0);
+      const net = chargedOffline();
+      await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")!.click(); });
+      await settle();
+      expect(host.querySelector(".char-page .coll-status")?.textContent).toBe(RECEIVED);
+      net.reachable();
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      await settle();
+      await settle();
+      expect(plugin.finish).toHaveBeenCalledWith({ transactionId: "2000000111" });
+      await act(async () => { root.render(<CollectionPage />); });
+      expect(host.querySelector(".coll-use")?.textContent).toBe("Use");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("never shows a raw code on the store's status lines, and never an empty one where a refusal is said", async () => {
     const codes: [string | undefined, number][] = [["held_by_other", 409], ["revoked", 409], ["wrong_app", 409], ["unknown_token", 409],
       ["storefront", 403], ["bad_signature", 400], [undefined, 503], ["Too many requests; try again in a minute.", 429]];
@@ -1013,7 +1082,10 @@ describe("a refusal in plain words", () => {
       for (const loc of LOCALES) {
         setLanguageChoice(loc);
         for (const [reason, status] of codes) {
-          const want = (during: "buy" | "restore") => tIn(loc, refusalMessage(refusal(reason, status), during)!);
+          // after Apple's sheet, a 5xx or a 429 is a purchase received and still being handed over
+          const transient = status >= 500 || status === 429;
+          const want = (during: "buy" | "restore") => tIn(loc, refusalMessage(
+            Object.assign(refusal(reason, status), during === "buy" && transient ? { received: true } : {}), during)!);
           nativeShell();
           authState.current = { status: "in", clientId: "cid", user };
           globalThis.fetch = vi.fn(async (url: string) => (url === "/api/store/verify"

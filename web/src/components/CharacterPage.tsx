@@ -1,7 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { AuthUser } from "../auth";
 import { Companion, Portrait } from "../companion/Companion";
+import TableCompanions from "../companion/TableCompanions";
+import type { TablePreview } from "../companion/TableCompanions";
+import type { GameState, StatePlayer } from "../protocol";
 import { DRAWINGS } from "../companion/kinds";
 import type { DrawnColour, DrawnKind } from "../companion/kinds";
 import { PAGE_CYCLE, useLivePose } from "../companion/livePose";
@@ -11,6 +14,7 @@ import type { StageBeat } from "../companion/stageBeats";
 import { parseLook } from "../companion/look";
 import type { Colour, CompanionKind, LookEntry, UnlockCount } from "../companion/look";
 import { guestName } from "../guestName";
+import { Segmented } from "../home/HomeShell";
 import { locale, tx, useT } from "../i18n";
 import type { MessageKey } from "../i18n";
 import { STORE_NAMES } from "../companion/characters";
@@ -213,23 +217,89 @@ export function UseButton({ ownership, onUse, price }: {
   );
 }
 
+/** What the stage shows: the figure large on its own felt, or as a table
+ *  draws it. The last choice is kept on this device. */
+export type StageView = "stage" | "table";
+const VIEW_KEY = "shengji.collectionView";
+function readView(): StageView {
+  try {
+    return window.localStorage.getItem(VIEW_KEY) === "table" ? "table" : "stage";
+  } catch {
+    return "stage";
+  }
+}
+function keepView(v: StageView): void {
+  try {
+    window.localStorage.setItem(VIEW_KEY, v);
+  } catch {
+    /* blocked storage: the choice lasts this page */
+  }
+}
+
+/** The stage's two-way switch, at its top right: the app's segmented
+ *  control, labels only. A tap on it is not a tap on the felt. */
+function ViewSwitch({ view, onView }: { view: StageView; onView: (v: StageView) => void }) {
+  const t = useT();
+  const options = [{ value: "stage" as const, label: t("home.viewStage") }, { value: "table" as const, label: t("home.viewTable") }];
+  return (
+    <div className="char-view" onClick={(e) => e.stopPropagation()}>
+      <Segmented label={options.map((o) => o.label).join(" · ")} options={options} value={view} onChange={onView} />
+    </div>
+  );
+}
+
+/** The one row of move chips: Hop, Cheer, Big play, then the special. */
+function Chips({ kind, label, onPose, onBig }: {
+  kind: DrawnKind; label: string; onPose: (p: "hop" | "cheer" | "react") => void; onBig: () => void;
+}) {
+  const t = useT();
+  return (
+    <div className="char-poses" role="group" aria-label={label}>
+      {MOVES.map((m) => (
+        <button key={m.pose} type="button" className="char-move" onClick={() => onPose(m.pose)}>{t(m.name)}</button>
+      ))}
+      <button type="button" className="char-move" onClick={onBig}>{t("home.moveBigPlay")}</button>
+      <button type="button" className="char-move" onClick={() => onPose("react")}>{t(SPECIAL_NAME[kind])}</button>
+    </div>
+  );
+}
+
+interface StageProps {
+  /** The taps that selected it: each plays its way in once. 0 for the page's first figure, which is drawn settled. */
+  arrives?: number;
+  kind: DrawnKind; colour: DrawnColour; size: number; label: string;
+  /** The row of move chips under the felt, each playing its move once before the cycle resumes; with them the Stage · Table switch. */
+  moves?: boolean;
+  /** Each new value plays the cheer at once (a purchase). */
+  cheer?: number;
+}
+
 /** A live figure on felt that cycles through its moves by itself (idle,
  *  hop, cheer, its special, a short sleep: `PAGE_CYCLE`), each once-move for
  *  its own animation's length, while it is on screen; off screen its figure
  *  is paused. Every tap plays its special from the start. With `moves`, one
  *  row of chips under it plays Hop, Cheer, Big play or the special once,
- *  then the cycle resumes. Under Reduce Motion it stands still, and a tap or
- *  a chip shows that pose drawn still. */
-export function Stage({ kind, colour, size, label, cheer = 0, moves = false, arrives = 0 }: {
-  /** The taps that selected it: each plays its way in once. 0 for the page's first figure, which is drawn settled. */
-  arrives?: number;
-  kind: DrawnKind; colour: DrawnColour; size: number; label: string;
-  /** The row of move chips under the felt, each playing its move once before the cycle resumes. */
-  moves?: boolean;
-  /** Each new value plays the cheer at once (a purchase). */
-  cheer?: number;
-}) {
-  const t = useT();
+ *  then the cycle resumes, and the switch at its top right shows the figure
+ *  as the table draws it instead (`TableView`). Under Reduce Motion it
+ *  stands still, and a tap or a chip shows that pose drawn still. A switch
+ *  of view keeps the character and draws it settled: the taps and the cheer
+ *  before it are not played again. */
+export function Stage({ arrives = 0, cheer = 0, moves = false, ...rest }: StageProps) {
+  const [view, setView] = useState<StageView>(readView);
+  const since = useRef({ arrives: 0, cheer: 0 });
+  const pick = (v: StageView) => {
+    if (v === view) return;
+    since.current = { arrives, cheer };
+    keepView(v);
+    setView(v);
+  };
+  const shown = moves ? view : "stage";
+  const sw = moves ? <ViewSwitch view={shown} onView={pick} /> : null;
+  const props = { ...rest, moves, arrives: Math.max(0, arrives - since.current.arrives), cheer: Math.max(0, cheer - since.current.cheer), viewSwitch: sw };
+  return shown === "table" ? <TableView {...props} /> : <StageFelt {...props} />;
+}
+
+function StageFelt({ kind, colour, size, label, cheer = 0, moves = false, arrives = 0, viewSwitch }: StageProps & { viewSwitch: ReactNode }) {
   const felt = useRef<HTMLDivElement>(null);
   const moveBox = useRef<HTMLSpanElement>(null);
   const beat = useRef<{ stop: () => void } | null>(null);
@@ -265,6 +335,7 @@ export function Stage({ kind, colour, size, label, cheer = 0, moves = false, arr
   }, [cheer, play]);
   const stage = (
     <div ref={felt} className={`coll-felt char-stage${live.paused ? " live-paused" : ""}`} onClick={flair.onFelt}>
+      {viewSwitch}
       {flair.material ? <canvas className="char-flair" data-depth="back" ref={flairBack} aria-hidden="true" /> : null}
       <div className="char-figures" style={{ height: size }}>
         <span className="char-walk" ref={walkBox}>
@@ -286,13 +357,70 @@ export function Stage({ kind, colour, size, label, cheer = 0, moves = false, arr
   return (
     <>
       {stage}
-      <div className="char-poses" role="group" aria-label={label}>
-        {MOVES.map((m) => (
-          <button key={m.pose} type="button" className="char-move" onClick={() => playPose(m.pose)}>{t(m.name)}</button>
-        ))}
-        <button type="button" className="char-move" onClick={() => playBeat("big")}>{t("home.moveBigPlay")}</button>
-        <button type="button" className="char-move" onClick={() => playPose("react")}>{t(SPECIAL_NAME[kind])}</button>
+      <Chips kind={kind} label={label} onPose={playPose} onBig={() => playBeat("big")} />
+    </>
+  );
+}
+
+/** The players a table seats round the Collection's Table view: yours at the
+ *  bottom, wearing the look shown, and three bots, who draw none. Off its
+ *  seat (`seated` false) yours is a bot's too, so seating it again is a
+ *  person sitting down at a table already shown: it comes in its own way. */
+function fixtureTable(look: string, seated: boolean): GameState {
+  const players: StatePlayer[] = [0, 1, 2, 3].map((seat) => {
+    const you = seat === 0 && seated;
+    return { seat, name: "", is_bot: !you, look: you ? look : null, connected: true, team: (seat % 2) as 0 | 1, cards_left: 0,
+             is_banker: false, takeover_in: null, controller: you ? "human" : "bot", reserved_for: null, reserved_secs: null };
+  });
+  return { type: "state", room: "collection", you: 0, phase: "play", players, hand: [], levels: ["2", "2"], games_won: [0, 0],
+           banker: null, trump: null, turn: null, declare_options: [], current_declaration: null, passed: [], trick: null,
+           last_trick: null, attacker_points: 0, kitty_count: 0, round_result: null, message: null, notice: null };
+}
+
+/** The stage as a table draws your companion: the table's own felt and its
+ *  own layer of companions (`TableCompanions`) round a fixture table with
+ *  nobody else's, so the figure stands where yours does at the bottom-left
+ *  corner of a table, at the size a table draws it on this screen (a phone's,
+ *  or a tablet's and a desktop window's), tagged "You". Your seat's hand line
+ *  is there with no cards in it, as the place a table stands yours by. Every
+ *  move is the table's own: a tap on the felt walks it within its corner, a
+ *  tap on it or the special's chip plays its special (at most every 3 s, a
+ *  small hop between), and Hop, Cheer and Big play play the table's moves. A
+ *  tile tap seats it again, so it comes in its own way. */
+function TableView({ kind, colour, size, label, cheer = 0, arrives = 0, viewSwitch }: StageProps & { viewSwitch: ReactNode }) {
+  const seat = useRef<HTMLDivElement>(null);
+  const [seated, setSeated] = useState(arrives === 0);
+  const [cue, setCue] = useState<TablePreview["cue"]>(null);
+  const n = useRef(0);
+  const look = `${kind}/${colour}`;
+  const state = useMemo(() => fixtureTable(look, seated), [look, seated]);
+  const preview = useMemo<TablePreview>(() => ({ cue }), [cue]);
+  // each tile tap: off its seat for a frame, then seated again on the table already drawn
+  useEffect(() => {
+    if (arrives === 0) return;
+    setSeated(false);
+    // two frames: the table has drawn (and so counts as shown) before yours sits down
+    let frame = window.requestAnimationFrame(() => { frame = window.requestAnimationFrame(() => setSeated(true)); });
+    return () => window.cancelAnimationFrame(frame);
+  }, [arrives]);
+  const move = (m: "hop" | "cheer" | "big") => setCue({ move: m, n: ++n.current });
+  useEffect(() => {
+    if (cheer > 0) setCue({ move: "cheer", n: ++n.current });
+  }, [cheer]);
+  // the special's chip is a tap on yours, as at the table
+  const special = () => seat.current?.querySelector<HTMLElement>(".tc-walk.tc-mine")?.click();
+  return (
+    <>
+      <div className="coll-felt char-stage char-table">
+        <div className="felt char-table-felt" aria-hidden="true" />
+        {viewSwitch}
+        <div className="char-seat" ref={seat}>
+          <TableCompanions state={state} preview={preview} />
+          <div className="hand char-hand" aria-hidden="true"><span className="hand-slot" /></div>
+        </div>
+        <div className="char-figures" style={{ height: size }} />
       </div>
+      <Chips kind={kind} label={label} onPose={(p) => (p === "react" ? special() : move(p))} onBig={() => move("big")} />
     </>
   );
 }

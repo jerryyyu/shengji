@@ -1269,8 +1269,14 @@ function fromShared(l: Layout, x: number, y: number): Spot {
  *  latest is sent once the time is up. */
 export const HOME_SHARE_GAP_MS = 1100;
 
-export default function TableCompanions({ state, watch = null, shared, onShare }: {
+/** The Collection's Table view (`CharacterPage.tsx`): its fixture table
+ *  draws yours whatever the Show at the table switch says, and each new
+ *  `cue` plays that move on yours as the table plays it for a game event. */
+export interface TablePreview { cue: { move: "hop" | "cheer" | "big"; n: number } | null }
+
+export default function TableCompanions({ state, watch = null, shared, onShare, preview = null }: {
   state: GameState; watch?: { quiet: boolean; cheer?: number | null } | null;
+  preview?: TablePreview | null;
   /** The other seats' shared moves (`Table.tsx` reads them off the socket). */
   shared?: SharedMoves;
   /** Send one of yours to the table: its special on a tap, the spot a tap parked it. */
@@ -1315,7 +1321,7 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
   // an open table's newcomer until the next trick draws none, as a replay draws none
-  const on = shown && shownAtTable(mode) && state.joining_you !== true;
+  const on = shown && (preview !== null || shownAtTable(mode)) && state.joining_you !== true;
   const size = tablet ? SEAT_SIZE.tablet : SEAT_SIZE.phone;
   const { levels, ups, done } = useLevelUps(state, size);
   const seated = state.players.find((p) => p.seat === state.you);
@@ -1514,6 +1520,15 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
     return () => { document.removeEventListener("pointerdown", down, true); felt.removeEventListener("click", tap); };
   }, [on, size.base, watching]);
 
+  // a preview's move: from rest for a frame, so the same move asked again plays again
+  const cue = preview?.cue ?? null;
+  useEffect(() => {
+    if (!cue) return;
+    setPoses((p) => ({ ...p, [state.you]: "idle" }));
+    const frame = window.requestAnimationFrame(() => setPoses((p) => ({ ...p, [state.you]: cue.move })));
+    return () => window.cancelAnimationFrame(frame);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cue?.n]);
   const cheer = watch?.cheer ?? null;
   const cheered = useRef({ seen: cheer, last: -Infinity });
   useEffect(() => {

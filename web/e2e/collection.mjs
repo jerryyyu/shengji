@@ -3,13 +3,15 @@
 // stays #/collection, no history entry, the tile ringed); on a phone, a tablet
 // and a desktop a tile tapped further down scrolls the page back up to the stage; a link to
 // #/collection/<kind> selects that character and leaves the plain address;
-// the phone's sideways tab swipe still works on the page. Real touch input
+// the phone's sideways tab swipe still works on the page. The stage's Stage ·
+// Table switch sits at its top right, clear of the title and the figure, and
+// Table draws the figure on the felt at the size a table seats yours there. Real touch input
 // (CDP Input.dispatchTouchEvent) lets the browser's own hit testing pick
 // targets. A guest, who cannot buy, sees the store characters as Coming soon.
 //   node e2e/collection.mjs [device-regex]
 import { webkit } from "playwright-core";
 import { BASE, DEVICES as DEVICES_AT, Report, launch, open, scenario, sleep, until } from "./lib.mjs";
-import { fakeSocketScript } from "./fake.mjs";
+import { base, fakeSocketScript, pl } from "./fake.mjs";
 
 const only = process.argv[2] ? new RegExp(process.argv[2]) : null;
 const rep = new Report("collection", { partial: !!only });
@@ -427,6 +429,51 @@ try {
       });
       await ctx.close();
     }
+  // the Stage · Table switch on a phone each way up, a tablet and a desktop window: at the stage's top right,
+  // tappable, clear of the title and of the stage's figure; Table puts the figure wholly on the felt at the
+  // size a real table (a scripted socket) seats yours on the same screen, within 1 px
+  for (const device of ["phone-port", "phone-land", "ipad11-land", "desktop"].filter((d) => !only || only.test(d))) {
+    const page = await open(browser, device, { url: "#/collection", setup, fakeSocket: fakeSocketScript([]),
+      storage: { "shengji.coach": "off", "shengji.muted": "1" } });
+    await scenario(rep, `${device} Stage · Table`, page, async () => {
+      await until(page, () => document.querySelector(".char-view .segmented-btn") !== null);
+      const press = (loc) => (page.qa.d.touch === false ? loc.click() : loc.tap());
+      const rect = (sel) => page.evaluate((sel) => { const e = document.querySelector(sel); if (!e) return null;
+        const b = e.getBoundingClientRect(); return { x: b.left, y: b.top, r: b.right, b: b.bottom }; }, sel);
+      const meets = (a, b) => a.x < b.r && b.x < a.r && a.y < b.b && b.y < a.b;
+      const sw = await rect(".char-view"), st = await rect(".char-stage"), title = await rect(".large-title"), fig = await rect(".char-figures svg.cmp");
+      const top = sw && st && sw.y - st.y <= 12 && st.r - sw.r <= 12 && sw.y >= st.y && sw.r <= st.r;
+      await rep.check(`${device} the switch sits at the stage's top right`, top ? null : JSON.stringify({ sw, st }), page);
+      await rep.check(`${device} the switch overlaps neither the title nor the figure`,
+        sw && (!title || !meets(sw, title)) && fig && !meets(sw, fig) ? null : JSON.stringify({ sw, title, fig }), page);
+      const hit = await page.evaluate(() => { const b = [...document.querySelectorAll(".char-view .segmented-btn")][1].getBoundingClientRect();
+        return document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.closest(".segmented-btn")?.textContent ?? null; });
+      await rep.check(`${device} Table is the topmost thing under its own centre`, hit === "Table" ? null : `hit ${hit}`, page);
+      await press(page.locator(".char-view .segmented-btn", { hasText: "Table" }));
+      await until(page, () => document.querySelector(".char-seat .tc-move svg.cmp") !== null, { timeout: 6000 });
+      await sleep(600);
+      const on = await page.evaluate(() => {
+        const f = document.querySelector(".char-table").getBoundingClientRect(), s = document.querySelector(".char-seat .tc-move svg.cmp").getBoundingClientRect();
+        return { inside: s.left >= f.left && s.right <= f.right && s.top >= f.top && s.bottom <= f.bottom, w: s.width, h: s.height,
+          left: s.left - f.left, fromFoot: f.bottom - s.bottom, cards: document.querySelectorAll(".char-table .card, .char-table .opponent").length,
+          you: document.querySelector(".char-table .tc-you")?.textContent ?? null };
+      });
+      await rep.check(`${device} Table puts the figure wholly on the felt, tagged You, by the bottom-left corner`,
+        on.inside && on.you === "You" && on.left < on.w && on.fromFoot < on.h && on.cards === 0 ? null : JSON.stringify(on), page);
+      const table = await open(browser, device, { setup, fakeSocket: fakeSocketScript([base({ turn: 1, players: [0, 1, 2, 3].map((s) => pl(s, {
+        look: s === 0 ? "tractor/red" : null, is_bot: s !== 0, controller: s === 0 ? "human" : "bot" })) })]),
+        storage: { "shengji.coach": "off", "shengji.muted": "1", "shengji.companions": "individual" } });
+      await until(table, () => document.querySelector('.tc-seat[data-pos="bottom"] .tc-move svg.cmp') !== null, { timeout: 8000 });
+      const seat = await table.evaluate(() => { const b = document.querySelector('.tc-seat[data-pos="bottom"] .tc-move svg.cmp').getBoundingClientRect();
+        return Math.max(b.width, b.height); });
+      await table.context().close();
+      await rep.check(`${device} the figure is the table's bottom seat's size (${seat} px) within 1 px`,
+        Math.abs(Math.max(on.w, on.h) - seat) <= 1 ? null : `stage ${Math.max(on.w, on.h)} vs table ${seat}`, page);
+      await press(page.locator(".char-view .segmented-btn", { hasText: "Stage" }));
+      await sleep(300);
+      await rep.check(`${device} Stage brings the stage back`, (await rect(".char-figures svg.cmp")) && !(await rect(".char-table")) ? null : "still the table", page);
+    });
+    await page.context().close();
   }
   // the same lower taps in WebKit, the engine of the iOS app: a smooth scroll it is given while the page
   // shrinks under it (a Coming soon stage is shorter) is dropped there, not in Chrome

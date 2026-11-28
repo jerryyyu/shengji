@@ -24,6 +24,9 @@ export const home = defineMessages({
   "home.moveHop": { en: "Hop", zh: "跳一跳", hant: "跳一跳" },
   "home.moveCheer": { en: "Cheer", zh: "欢呼", hant: "歡呼" },
   "home.moveBigPlay": { en: "Big play", zh: "大牌", hant: "大牌" },
+  // the stage's switch: the figure large on its own felt, or as the table draws it
+  "home.viewStage": { en: "Stage", zh: "展示", hant: "展示" },
+  "home.viewTable": { en: "Table", zh: "牌桌", hant: "牌桌" },
   "home.specialTractor": { en: "Wheelie", zh: "翘头", hant: "翹頭" },
   "home.specialBun": { en: "Steamer pop", zh: "出笼", hant: "出籠" },
   "home.specialChick": { en: "Flutter", zh: "扑腾", hant: "撲騰" },

@@ -212,7 +212,7 @@ def test_room_log_harvest_preserves_search_degradation(tmp_path, degraded):
     ([0.5, 0.75], 9), ([0.5, None], 9), ([0.5, 0.0], 17),
 ], ids=["priced", "confirmation", "relaxed-redraw"])
 def test_room_log_pv_evidence_reaches_the_tactical_fixture(tmp_path, means, selected):
-    from scripts.tactical_fixture_from_source import from_shard
+    from scripts.tactical_fixture_from_source import from_room_log, from_shard
 
     events = _completed_round()
     opening = next(event for event in events if event["e"] == "play")
@@ -243,13 +243,19 @@ def test_room_log_pv_evidence_reaches_the_tactical_fixture(tmp_path, means, sele
 
     shard = tmp_path / "decisions.jsonl"
     shard.write_text("".join(encode_line(row) for row in records))
-    fixture = from_shard(argparse.Namespace(
+    args = argparse.Namespace(
         shard=shard, key=record["source_ref"], id="room-pv-evidence",
         category="doomed-throw", predicate="not_a_doomed_throw", args="{}",
-        why="", notes="", current_bot=None))
-    assert fixture["observed"]["action"] == played
-    assert fixture["observed"]["admitted"] == ballot
-    assert fixture["observed"]["value_means"] == means
+        why="", notes="", current_bot=None,
+        log=tmp_path / "room.jsonl", line=events.index(opening) + 1)
+    _write_jsonl(args.log, events)
+    for fixture in (from_room_log(args), from_shard(args)):
+        observed = fixture["observed"]
+        assert observed["action"] == played
+        assert observed["admitted"] == ballot
+        assert observed["value_means"] == means
+        assert observed["admitted_indices"] == [17, 9]
+        assert observed["selected_index"] == selected
 
 
 def test_room_log_pv_means_require_aligned_admitted_cards():

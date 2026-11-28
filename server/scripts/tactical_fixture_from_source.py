@@ -111,6 +111,8 @@ def from_room_log(args: argparse.Namespace) -> dict:
         "selected_index": decision.get("selected_index"),
         "policy": decision.get("policy"),
     }
+    if "admitted_indices" in decision:
+        observed["admitted_indices"] = decision["admitted_indices"]
     source = {"kind": "room-log", "path": str(Path(args.log).name), "line": args.line,
               "round": round_no}
     return build(rnd, seat, plays, declarations, source, observed, args)
@@ -164,6 +166,10 @@ def from_shard(args: argparse.Namespace) -> dict:
         "exploration": rec.get("exploration"),
         "policy": rec.get("policy"),
     }
+    allocation = rec.get("allocation") or {}
+    for key in ("admitted_indices", "selected_index"):
+        if key in allocation:
+            observed[key] = allocation[key]
     source = {"kind": "shard", "path": str(Path(args.shard)), "source_ref": rec["source_ref"],
               "run": Path(args.shard).resolve().parents[1].name}
     return build(rnd, seat, plays, declarations, source, observed, args)

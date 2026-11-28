@@ -16,7 +16,7 @@ import { codes } from "../codeJoin";
 import { rounds } from "../roundTelemetry";
 import { tapHandlers } from "../tap";
 import { showToast } from "../toast";
-import { fetchWatch, followWatch } from "./api";
+import { fetchWatch, followWatch, leaveWatch } from "./api";
 import type { WatchDoc } from "./api";
 import {
   backTrick, beatMs, beatsOf, forwardTrick, handAt, liftedIds, nextSpeed, saveSpeed, savedSpeed, tabOrder,
@@ -241,8 +241,11 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   // table's watch and begins the next one's; the next round of the same
   // table keeps it
   const usageTable = useRef<string | null>(null);
+  // the live table this watcher counts at, and its token: told when it leaves
+  const counted = useRef<{ table: string; watcher: string } | null>(null);
   const show = (l: Loaded, why: WatchBy = "ended") => {
     dropNext();
+    counted.current = l.doc.rerun ? null : { table: l.doc.table, watcher: l.doc.watcher };
     if (usageTable.current !== null && usageTable.current !== l.doc.table) {
       watchUsage.left(why);
       watchUsage.begin("next");
@@ -277,7 +280,9 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
           retry.current = window.setTimeout(() => { retry.current = null; read(true); }, RETRY_MS);
           return;
         }
-        if (l) {
+        if (l && skip !== null && l.doc.table === skip && loaded?.doc.table === skip) {
+          // the only table there is: it stays as it is, its round and seat
+        } else if (l) {
           setNone(false);
           show(l, why ?? "next");
         } else if (loaded) {
@@ -293,6 +298,16 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     read(false);
   };
   useEffect(() => { pick(null); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+  // leaving (any way out unmounts this screen) or the page going away tells
+  // the server this watcher is gone from its table
+  useEffect(() => {
+    const tell = () => {
+      const c = counted.current;
+      if (c) leaveWatch(c.table, c.watcher);
+    };
+    window.addEventListener("pagehide", tell);
+    return () => { window.removeEventListener("pagehide", tell); tell(); };
+  }, []);
   useEffect(() => () => {
     dropNext();
     // a later answer to a pick is dropped, and none is tried again

@@ -259,8 +259,84 @@ def test_picking_prefers_the_asked_mode_then_the_table_furthest_in_and_skips(fee
     late.deal()
     assert _watch(client, mode="ranked").json()["table"] == late.room.watch.id
     assert _watch(client, mode="casual").json()["table"] == casual.room.watch.id
+    late.room.watch.id, early.room.watch.id, casual.room.watch.id = "b2", "c3", "a1"
+    # Next goes on from the skipped table in one fixed order: the asked mode, then by id
     nxt = _watch(client, mode="ranked", skip=late.room.watch.id).json()
     assert nxt["table"] == early.room.watch.id
+
+
+def _next_tables(client, mode, start, n):
+    seen, at, w = [], start, None
+    for _ in range(n):
+        doc = _watch(client, mode=mode, skip=at, **({"w": w} if w else {})).json()
+        at, w = doc["table"], doc["watcher"]
+        seen.append(at)
+    return seen
+
+
+def test_next_table_reaches_every_table_in_turn_and_wraps(feed, monkeypatch):
+    srv, spectate, client = feed
+    monkeypatch.setattr(spectate.LIMITER, "limit", 1000)
+    tables = []
+    for code, tid, rounds in (("T1", "aa", 1), ("T2", "bb", 3), ("T3", "cc", 2)):
+        t = Table(srv, code=code, ranked=True)
+        for _ in range(rounds):
+            t.play_round()
+        t.deal()
+        t.room.watch.id = tid
+        tables.append(t)
+    first = _watch(client, mode="ranked").json()["table"]
+    assert first == "bb"                     # the first pick: furthest into its game
+    # each Next another table, all three in turn, then round again; never the rerun
+    assert _next_tables(client, "ranked", first, 6) == ["cc", "aa", "bb", "cc", "aa", "bb"]
+    # how far each table has played changes between reads; the turn order does not
+    tables[0].play_round()
+    tables[0].play_round()
+    tables[0].play_round()
+    tables[0].deal()
+    assert _next_tables(client, "ranked", "bb", 3) == ["cc", "aa", "bb"]
+
+
+def test_next_table_with_the_only_table_stays_there_not_on_its_rerun(feed):
+    srv, spectate, client = feed
+    t = Table(srv, ranked=True)
+    t.play_round()
+    t.play_round()
+    t.deal()
+    assert len(spectate._reruns) == 2        # its own rounds are reruns too
+    doc = _watch(client, mode="ranked").json()
+    again = _watch(client, mode="ranked", skip=doc["table"], w=doc["watcher"]).json()
+    assert again["rerun"] is False and again["table"] == t.room.watch.id
+    assert t.room.watch.live_watchers(spectate.time.time()) == 1
+    # a table that went away gives way to the rerun as before
+    srv.rooms.pop(t.room.code)
+    gone = _watch(client, mode="ranked", skip=doc["table"], w=doc["watcher"]).json()
+    assert gone["rerun"] is True
+
+
+def test_leaving_stops_the_count_and_a_stranger_token_changes_nothing(feed):
+    srv, spectate, client = feed
+    t = Table(srv, ranked=True)
+    t.play_round()
+    t.deal()
+    st = t.room.watch
+    a = _watch(client).json()["watcher"]
+    b = _watch(client).json()["watcher"]
+    assert st.live_watchers(spectate.time.time()) == 2
+    # reopening with the same token is the same watcher
+    assert _watch(client, w=a).json()["watcher"] == a
+    assert st.live_watchers(spectate.time.time()) == 2
+    assert client.post(f"/api/watch/{st.id}/leave", params={"w": a}).status_code == 204
+    assert st.live_watchers(spectate.time.time()) == 1 and a not in st.who
+    # an unknown token, a malformed one, an unknown table: nothing changes
+    assert client.post(f"/api/watch/{st.id}/leave", params={"w": "0" * 32}).status_code == 204
+    assert client.post(f"/api/watch/{st.id}/leave", params={"w": "x"}).status_code == 204
+    assert client.post("/api/watch/nosuch/leave", params={"w": b}).status_code == 204
+    assert client.post(f"/api/watch/{st.id}/leave").status_code == 204
+    assert st.live_watchers(spectate.time.time()) == 1
+    # rejoining after leaving counts once
+    assert _watch(client, w=a).json()["watcher"] == a
+    assert st.live_watchers(spectate.time.time()) == 2
 
 
 def test_every_watcher_up_to_the_cap_gets_the_live_table(feed, monkeypatch):

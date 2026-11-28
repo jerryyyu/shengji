@@ -749,13 +749,29 @@ def presence(user_id: int | None = None) -> dict | None:
 
 def pick(mode: str | None, skip: str | None, token: str, now: float,
          wide: bool = False) -> Any | None:
-    """The table to watch: the asked mode first, then the one furthest
-    into its game; never ``skip``, never one at its cap (unless this
-    watcher already counts there)."""
+    """The table to watch, never one at its cap (unless this watcher
+    already counts there). With no ``skip``: the asked mode first, then the
+    one furthest into its game. With ``skip`` (Next table, or the table
+    that went away): the next table after it in one fixed order, the asked
+    mode first and then by table id, wrapping round, so each Next reaches
+    another table and every table comes in turn however far each has
+    played; ``skip`` itself only when no other table can be watched, and
+    then never the rerun in its place."""
+    rooms = _rooms()
+    open_ = [r for r in rooms if servable(r, now, wide, token)]
+    others = [r for r in open_ if r.watch.id != skip]
+    if skip is not None:
+        here = next((r for r in rooms if getattr(r, "watch", None) is not None
+                     and r.watch.id == skip), None)
+        if here is not None:
+            def order(room: Any) -> tuple:
+                return (_mode(room) != mode, room.watch.id)
+            if not others:
+                return here if servable(here, now, wide, token) else None
+            after = [r for r in others if order(r) > order(here)]
+            return min(after or others, key=order)
     best = None
-    for room in _rooms():
-        if not servable(room, now, wide, token) or room.watch.id == skip:
-            continue
+    for room in others:
         st = room.watch
         key = (_mode(room) == mode, room.game.round_no, st.last.round)
         if best is None or key > best[0]:
@@ -994,6 +1010,20 @@ async def follow(table: str, request: Request, after: int | None = None,
     if built is None:
         return Response(content=_dumps(head), media_type="application/json")
     return _answer(head, built)
+
+
+@router.post("/watch/{table}/leave", status_code=204)
+async def leave(table: str, w: str | None = None) -> Response:
+    """The watcher ``w`` left this table (its screen closed or its page went
+    away): it stops counting there now, not when its lease runs out. An
+    unknown table or token changes nothing; the answer is the same."""
+    if w is not None and 16 <= len(w) <= 64 and w.isalnum():
+        for room in _rooms():
+            st = getattr(room, "watch", None)
+            if st is not None and st.id == table:
+                st.drop(w)
+                break
+    return Response(status_code=204)
 
 
 def register_spectate(app) -> None:

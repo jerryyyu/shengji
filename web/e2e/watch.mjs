@@ -5,7 +5,9 @@
 // ends; a live table's menu stays as a tap left it while plays arrive; in the
 // iOS app sideways the menu opens on top and Leave leaves, and the watcher's
 // own companion stands in the safe area and walks to a tap; and a replay is
-// left in one tap, by back or by Escape.
+// left in one tap, by back or by Escape; Next table goes on to another table
+// and back, or keeps the only one as it was; and a watcher who leaves and
+// comes back counts once.
 //   node e2e/watch.mjs [device-regex]
 import fs from "node:fs";
 import path from "node:path";
@@ -302,6 +304,106 @@ for (const device of ["phone-land", "phone-land-se", "ipad11-land"]) {
     });
     await page.context().close();
   }
+}
+// Next table and the watcher count against a stub that keeps the server's
+// rules: Next goes on from the skipped table in a fixed order and wraps
+// (staying put only with one table), a request with no token mints one, a
+// leave drops that token. Two tables: Next reaches the other and comes back,
+// and the bottom seat is each table's banker every time; one table: Next keeps
+// the round where it was. Then watch, leave, watch again: a count of 1.
+for (const tables of [["a1b2c3d4", "e5f6a7b8"], ["a1b2c3d4"]]) {
+  const device = "phone-land";
+  const name = `watch-next-${tables.length}-tables-${device}`;
+  if (only && !only.test(name)) continue;
+  const counted = new Map(tables.map((t) => [t, new Set()]));
+  let minted = 0;
+  const docOf = (table, w) => {
+    for (const set of counted.values()) set.delete(w);
+    counted.get(table).add(w);
+    const i = tables.indexOf(table);
+    return { ...doc(0), table, watcher: w, round: 1 + i, live_round: 2 + i, watchers: counted.get(table).size };
+  };
+  const page = await open(browser, device, {
+    storage: { "shengji.coach": "off", "shengji.muted": "1", "shengji.name": "Jerry" },
+    fakeSocket: fakeSocketScript([presence]),
+    setup: async (p) => {
+      await p.route("**/api/**", (r) => r.fulfill({ status: 404, json: {} }));
+      await p.route("**/api/watch/**", (r) => {
+        const u = new URL(r.request().url());
+        const [, , , table, act] = u.pathname.split("/");
+        const w = u.searchParams.get("w");
+        if (act === "leave") { counted.get(table)?.delete(w); return r.fulfill({ status: 204, body: "" }); }
+        return r.fulfill({ json: { ...docOf(table, w), waiting: true, events: undefined } });
+      });
+      await p.route("**/api/watch?**", (r) => {
+        const u = new URL(r.request().url());
+        const skip = u.searchParams.get("skip");
+        const w = u.searchParams.get("w") || `${String(++minted).padStart(4, "0")}${"c".repeat(28)}`;
+        const table = skip && tables.includes(skip) ? tables[(tables.indexOf(skip) + 1) % tables.length] : tables[0];
+        return r.fulfill({ json: docOf(table, w) });
+      });
+    },
+  });
+  await scenario(rep, name, page, async () => {
+    // the round label, without the watcher count before it
+    const strip = () => page.evaluate(() => {
+      const c = document.querySelector(".watch-round")?.cloneNode(true);
+      c?.querySelector(".watch-count")?.remove();
+      return c?.textContent ?? "";
+    });
+    const bottom = () => page.evaluate(() => document.querySelector("[role=tab][aria-selected=true]")?.textContent ?? "");
+    const next = async () => {
+      await page.click('.watch-hud [aria-haspopup="menu"]');
+      await page.click(".watch-screen [role=menu] [role=menuitem]:first-child");
+      await sleep(700);
+    };
+    await page.waitForSelector(".play-presence-watch");
+    await page.click(".play-presence-watch");
+    await page.waitForSelector(".watch-tabs");
+    await page.click('button[aria-label="Pause"]');
+    const first = { strip: await strip(), seat: await bottom() };
+    const seen = [];
+    for (let i = 0; i < 3; i++) {
+      if (tables.length === 1) {
+        await page.click('button[aria-label="Next trick"]');
+        await page.click("[role=tab]:nth-child(2)");
+      }
+      const before = { strip: await strip(), seat: await bottom(),
+        felt: await page.evaluate(() => document.querySelector(".felt").innerHTML) };
+      await next();
+      const after = { strip: await strip(), seat: await bottom(),
+        felt: await page.evaluate(() => document.querySelector(".felt").innerHTML) };
+      seen.push(after.strip);
+      if (tables.length === 1) {
+        await rep.check(`${name}: Next ${i + 1} keeps the only table as it was`,
+          after.strip === before.strip && after.seat === before.seat && after.felt === before.felt ? null
+            : `${JSON.stringify(before.strip)} ${before.seat} then ${JSON.stringify(after.strip)} ${after.seat}`, page);
+      } else {
+        await rep.check(`${name}: Next ${i + 1} lands behind that table's banker`,
+          after.seat === first.seat ? null : `${after.seat}, not ${first.seat}`, page);
+      }
+    }
+    if (tables.length > 1) {
+      await rep.check(`${name}: Next goes to the other table and back, never the same one twice running`,
+        JSON.stringify([first.strip, ...seen]) === JSON.stringify(["Round 1 · previous round", "Round 2 · previous round",
+          "Round 1 · previous round", "Round 2 · previous round"])
+          ? null : `strips ${JSON.stringify([first.strip, ...seen])}`, page);
+    }
+    // watch, leave, watch again: one watcher
+    const count = () => page.evaluate(() => document.querySelector(".watch-count")?.textContent ?? "none");
+    await page.click('.watch-hud [aria-haspopup="menu"]');
+    await page.click(".watch-screen [role=menu] .leave");
+    await page.waitForSelector(".play-presence-watch");
+    await sleep(300);
+    const left = [...counted.values()].reduce((n, s) => n + s.size, 0);
+    await page.click(".play-presence-watch");
+    await page.waitForSelector(".watch-tabs");
+    await rep.check(`${name}: leaving stops the count, and watching again counts 1`,
+      left === 0 && (await count()) === "1" && minted === 1 ? null
+        : `after leaving ${left} counted, then the eye says ${await count()}, ${minted} tokens minted`, page);
+    if (SHOTS?.test(name)) await shot(page, name);
+  });
+  await page.context().close();
 }
 // A replay's top right is one Leave control: a tap, the browser's back or
 // Escape each land on the Play tab with its presence line.

@@ -763,8 +763,7 @@ signed-in account whose id is in `SPECTATE_ACCOUNTS` (comma-separated account
 ids, a deployment secret); anyone else gets 404 from both endpoints. A listed
 account may watch any live table's last finished round.
 
-- `GET /api/watch?mode=&skip=&w=` picks a table (the `mode` first, then the
-  table furthest into its game, never `skip`) and answers with its latest
+- `GET /api/watch?mode=&skip=&w=` picks a table and answers with its latest
   finished round: `{table, watcher, mode, live_round, code, rerun, waiting,
   round, seat, players, finished, events}`. `events` are the saved games'
   allow-listed records with every card shown; `seat` is the banker. Each
@@ -776,12 +775,22 @@ account may watch any live table's last finished round.
   named as the leaderboard shows them: a player it lists keeps their name, a
   bot its name, and anyone else is `Player 1` to `Player 4` by seat (in every
   record); with
-  neither, 404.
+  neither, 404. With no `skip` the pick is the `mode` first, then the table
+  furthest into its game. With `skip` (Next table) it is the table after
+  `skip` in one fixed order, the `mode` first and then by table id, wrapping
+  round, so successive Nexts visit every table in turn; `skip` itself when no
+  other table can be watched (never the rerun in its place), and the first
+  pick's rule when `skip` names no table.
 - `GET /api/watch/{table}?after=N&w=` follows that table: its round after `N`
   once finished, else `{waiting: true, live_round}`. 404 once the table cannot
   be watched.
 - `w` is the watcher token the first answer gave; a table counts at most 50
-  watchers, each until 90 s pass without a read; a full table is not picked,
+  watchers, each until 90 s pass without a read or until
+  `POST /api/watch/{table}/leave?w=` (204, whatever the table or token) says it
+  left; a client keeps its token for the browser tab or app session and sends
+  it with every pick, so a watch opened again is the same watcher, and sends
+  that leave as a beacon when its watch screen closes or the page goes away.
+  A pick at another table moves the token's count there. A full table is not picked,
   not followed by a new watcher and not counted in `watch`. 30 reads a minute per
   address. `code` is set only for a casual table seating joiners now.
 - Only a round whose `round_end` is logged is ever served.

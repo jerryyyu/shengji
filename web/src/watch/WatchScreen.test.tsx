@@ -34,6 +34,7 @@ const feed = {
   finished: true, events: fixture.events,
 };
 const urls: string[] = [];
+const beacons: string[] = [];
 let root: Root;
 let host: HTMLDivElement;
 
@@ -44,6 +45,10 @@ beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true,
     value: function (this: HTMLDialogElement) { this.removeAttribute("open"); } });
   urls.length = 0;
+  beacons.length = 0;
+  sessionStorage.clear();
+  Object.defineProperty(navigator, "sendBeacon", { configurable: true,
+    value: (url: string) => { beacons.push(url); return true; } });
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
     urls.push(url);
     const body = url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined } : feed;
@@ -544,6 +549,75 @@ describe("caught up", () => {
     expect(urls.some((u) => u.includes("skip=abc123"))).toBe(true);
     expect(actions()).toEqual(["Play", "Leave"]);
     expect(document.querySelector(".round-end")!.textContent).not.toContain("in play");
+  });
+
+  const nextTable = async (h: HTMLElement) => {
+    await act(async () => { btn(h, "More")!.click(); });
+    await act(async () => { [...h.querySelectorAll<HTMLButtonElement>("[role=menuitem]")][0].click(); });
+    await flush();
+  };
+
+  it("a Next table that brings back the only table keeps it as it is: its round, its beat and its seat", async () => {
+    reply = (url) => url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined }
+      : url.includes("skip=abc123") ? { ...feed, round: 3, seat: (banker + 2) % 4 } : feed;
+    const h = await screen();
+    await act(async () => { btn(h, "Pause")!.click(); });
+    for (let i = 0; i < 3; i++) await act(async () => { btn(h, "Next trick")!.click(); });
+    const tab = [...h.querySelectorAll<HTMLButtonElement>("[role=tab]")][1];
+    await act(async () => { tab.click(); });
+    const before = { felt: h.querySelector(".felt")!.innerHTML, hand: h.querySelector(".watch-hand")!.innerHTML };
+    await nextTable(h);
+    expect(urls.some((u) => u.includes("skip=abc123"))).toBe(true);
+    expect(tab.getAttribute("aria-selected")).toBe("true");
+    expect(h.querySelector(".watch-hand")!.innerHTML).toBe(before.hand);
+    expect(h.querySelector(".felt")!.innerHTML).toBe(before.felt);
+    expect(btn(h, "Previous trick")!.disabled).toBe(false);
+  });
+
+  it("Next table goes on to the table the server picks, each in turn", async () => {
+    const order = ["abc123", "bbb222", "ccc333"];
+    reply = (url) => {
+      if (url.startsWith("/api/watch/")) return { ...feed, waiting: true, events: undefined };
+      const skip = new URL(url, "http://x").searchParams.get("skip");
+      const table = skip ? order[(order.indexOf(skip) + 1) % order.length] : "abc123";
+      return { ...feed, table, round: 3 + order.indexOf(table) };
+    };
+    const h = await screen();
+    const seen = [];
+    for (let i = 0; i < 4; i++) {
+      await nextTable(h);
+      seen.push(h.querySelector(".watch-round")!.textContent);
+    }
+    expect(seen).toEqual(["Round 4 · previous round", "Round 5 · previous round",
+                          "Round 3 · previous round", "Round 4 · previous round"]);
+    // a move to another table needs no leave: the server moves the watcher's count with it
+    expect(beacons).toEqual([]);
+  });
+
+  it("opening the watch again is the same watcher, and leaving tells the server", async () => {
+    reply = (url) => url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined }
+      : { ...feed, watcher: "t".repeat(32) };
+    await screen();
+    expect(urls[0]).not.toContain("w=");
+    const first = roots.pop()!;
+    act(() => first.root.unmount());
+    first.host.remove();
+    expect(beacons).toEqual([`/api/watch/abc123/leave?w=${"t".repeat(32)}`]);
+    urls.length = 0;
+    await screen();
+    expect(urls[0]).toContain(`w=${"t".repeat(32)}`);
+    // the page going away tells it too
+    window.dispatchEvent(new Event("pagehide"));
+    expect(beacons).toHaveLength(2);
+  });
+
+  it("a replay counts nobody, so leaving it tells nothing", async () => {
+    reply = () => ({ ...feed, table: "rerun", rerun: true, live_round: null, code: null });
+    await screen();
+    const r = roots.pop()!;
+    act(() => r.root.unmount());
+    r.host.remove();
+    expect(beacons).toEqual([]);
   });
 
   it("a Next table that finds nothing keeps the table and its seat offer", async () => {

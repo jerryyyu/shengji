@@ -93,6 +93,91 @@
     window.dispatchEvent(new Event(hidden ? "pagehide" : "pageshow"));
   };
 
+  // Opt-in smoothness sampling stays off unless a harness calls startPerf().
+  // This is deliberately a callback-timing probe: input-to-RAF is not painted-pixel latency.
+  const PERF_DEFAULT_MAX_SAMPLES = 240;
+  let perfSession = null;
+  const boundedPush = (items, item, max) => {
+    if (items.length >= max) items.shift();
+    items.push(item);
+  };
+  const perfNow = () => (typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now());
+  const perfMaxSamples = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.max(1, Math.min(2000, Math.floor(n))) : PERF_DEFAULT_MAX_SAMPLES;
+  };
+  const finishPerf = () => {
+    if (!perfSession) return null;
+    const session = perfSession;
+    perfSession = null;
+    if (session.raf !== null) cancelAnimationFrame(session.raf);
+    document.removeEventListener("visibilitychange", session.visibility);
+    window.removeEventListener("pointerdown", session.pointer);
+    window.removeEventListener("keydown", session.key);
+    const stoppedAt = perfNow();
+    return {
+      startedAt: session.startedAt,
+      stoppedAt,
+      frameGaps: session.frameGaps,
+      inputToNextFrame: session.inputToNextFrame,
+      sampleLimit: session.maxSamples,
+      latencyKind: "callback",
+      paintedPixelLatency: false,
+      latencyNote: "Input-to-next-animation-frame timings are callback latency, not painted pixel latency. Timing starts in the input handler and excludes pre-handler queue delay.",
+      visibilitySource: "harness-controlled (qa.setHidden)",
+    };
+  };
+  const schedulePerfFrame = (session) => {
+    if (perfSession !== session || session.raf !== null || document.hidden) return;
+    session.raf = requestAnimationFrame((now) => {
+      session.raf = null;
+      if (perfSession !== session || document.hidden) return;
+      const t = Number.isFinite(now) ? now : perfNow();
+      if (session.lastFrame !== null) {
+        boundedPush(session.frameGaps, { at: t, gapMs: Math.max(0, t - session.lastFrame) }, session.maxSamples);
+      }
+      session.lastFrame = t;
+      const callbackAt = perfNow();
+      for (const input of session.pendingInputs) {
+        boundedPush(session.inputToNextFrame, { type: input.type, at: callbackAt, latencyMs: Math.max(0, callbackAt - input.at) }, session.maxSamples);
+      }
+      session.pendingInputs.length = 0;
+      schedulePerfFrame(session);
+    });
+  };
+  qa.startPerf = (options = {}) => {
+    finishPerf();
+    const maxSamples = perfMaxSamples(options?.maxSamples);
+    const session = {
+      startedAt: perfNow(), maxSamples, raf: null, lastFrame: null,
+      frameGaps: [], inputToNextFrame: [], pendingInputs: [],
+      pointer: () => {
+        if (!document.hidden && perfSession === session) boundedPush(session.pendingInputs, { type: "pointer", at: perfNow() }, session.maxSamples);
+      },
+      key: () => {
+        if (!document.hidden && perfSession === session) boundedPush(session.pendingInputs, { type: "key", at: perfNow() }, session.maxSamples);
+      },
+      visibility: () => {
+        if (perfSession !== session) return;
+        if (document.hidden) {
+          if (session.raf !== null) cancelAnimationFrame(session.raf);
+          session.raf = null;
+          session.lastFrame = null;
+          session.pendingInputs.length = 0;
+        } else {
+          session.lastFrame = null;
+          schedulePerfFrame(session);
+        }
+      },
+    };
+    perfSession = session;
+    document.addEventListener("visibilitychange", session.visibility);
+    window.addEventListener("pointerdown", session.pointer);
+    window.addEventListener("keydown", session.key);
+    schedulePerfFrame(session);
+  };
+  qa.stopPerf = finishPerf;
+
   // ---- keyboard (mobile Safari: the layout viewport keeps its size, the visual one shrinks)
   const vv = window.visualViewport;
   if (vv) {

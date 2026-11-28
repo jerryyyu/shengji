@@ -18,6 +18,7 @@ import { COMPANION_KINDS } from "./look";
 import { LIFT } from "./seatZones";
 import { clear, figureBox } from "./seatZones";
 import type { Layout } from "./seatZones";
+import { HOP_PEAKS, MOVES, SEAT_SIZE, hopFrames, levelUpFrames } from "./TableCompanions";
 import { parseArt } from "./Tractor";
 import type { ArtNode } from "./Tractor";
 
@@ -603,3 +604,67 @@ describe("the moves that answer the game", () => {
     for (const [, frames] of NAMED) for (const k of frames) expect(Object.keys(k).filter((p) => p !== "offset")).toEqual(["transform"]);
   });
 });
+
+/** The table's own moves of the box round a still drawing (TableCompanions
+ *  `MOVES`, `hopFrames`, `levelUpFrames`): a translate and a scale about
+ *  the box's feet, so where the figure paints is a box's corners moved by
+ *  each keyframe. Between keyframes each edge moves straight, and no move's
+ *  easing overshoots, so the keyframes are the extremes. */
+describe("the table's moves of the figure", () => {
+  const SIZES = [SEAT_SIZE.phone.base, SEAT_SIZE.phone.max];
+  /** Where the still drawing of `pose` paints in a figure `px` wide, in px. */
+  const still = (kind: string, pose: "idle" | "cheer", px: number): Box => {
+    const els = tree(parseArt(DRAWINGS[kind as keyof typeof DRAWINGS].markup("" as never, "t", { pose, detail: true, still: true, team: "us" })), null);
+    const root = ["cmp", ...(DRAWINGS[kind as keyof typeof DRAWINGS].char ? ["cmp-char"] : []), `cmp-${kind}`, ...(pose === "idle" ? ["cmp-idle", "cmp-rest"] : []), "cmp-still", "cmp-us"];
+    const b = play(kind, root, els, 0).box, k = px / 400;
+    return { x: b.x * k, y: b.y * k, w: b.w * k, h: b.h * k };
+  };
+  /** How far the moved drawing reaches past each side of `room`, at its worst keyframe (positive is out). */
+  const reach = (b: Box, frames: Keyframe[], px: number, room: Box) => {
+    const out = { left: -Infinity, right: -Infinity, top: -Infinity, bottom: -Infinity };
+    const ref = { x: 0, y: 0, w: px, h: px };
+    for (const f of frames) {
+      const m = mul(shift(px / 2, px), mul(matrix(fns(String(f.transform)), ref), shift(-px / 2, -px)));
+      const pts = [at(m, b.x, b.y), at(m, b.x + b.w, b.y), at(m, b.x, b.y + b.h), at(m, b.x + b.w, b.y + b.h)];
+      out.left = Math.max(out.left, room.x - Math.min(...pts.map((p) => p[0])));
+      out.right = Math.max(out.right, Math.max(...pts.map((p) => p[0])) - room.x - room.w);
+      out.top = Math.max(out.top, room.y - Math.min(...pts.map((p) => p[1])));
+      out.bottom = Math.max(out.bottom, Math.max(...pts.map((p) => p[1])) - room.y - room.h);
+    }
+    return out;
+  };
+  const inside = (r: ReturnType<typeof reach>, what: string) => {
+    for (const side of ["left", "right", "top", "bottom"] as const) expect(r[side], `${what}: ${side}`).toBeLessThanOrEqual(0);
+  };
+  // the room a figure keeps (`figureBox`): a figure may face either way, so its narrower side counts on both
+  const kept = (px: number): Box => {
+    const b = figureBox({ x: 0, y: 0 }, px, false), side = Math.min(-b.x, b.x + b.w - px);
+    return { x: -side, y: b.y, w: px + 2 * side, h: b.h };
+  };
+
+  it.each(KINDS)("the %s's hop, at each height the table picks, stays in its room raised by the height past LIFT", (kind) => {
+    for (const px of SIZES) for (const k of HOP_PEAKS) {
+      const room = kept(px), up = Math.max(0, Math.ceil((k - LIFT) * px));
+      inside(reach(still(kind, "idle", px), hopFrames(k), px, { ...room, y: room.y - up, h: room.h + up }), `${px} px, hop ${k}`);
+    }
+  });
+
+  it.each(KINDS)("the %s's cheer, fidget and nudge stay in the room its figure keeps", (kind) => {
+    for (const px of SIZES) {
+      inside(reach(still(kind, "cheer", px), MOVES.cheer.frames, px, kept(px)), `${px} px, cheer`);
+      inside(reach(still(kind, "idle", px), MOVES.nudge.frames, px, kept(px)), `${px} px, nudge`);
+    }
+  });
+
+  it.each(KINDS)("the %s's level gained, its pop and its cheer, stays in the room its new size keeps", (kind) => {
+    for (const px of SIZES) for (const from of [1, SEAT_SIZE.phone.base / (SEAT_SIZE.phone.base + 3)]) {
+      inside(reach(still(kind, "cheer", px), levelUpFrames(from), px, kept(px)), `${px} px from ${from.toFixed(3)}`);
+    }
+  });
+
+  it("the evaluator sees a move that leaves the room: the level gained's pop at 1.4 breaks the top", () => {
+    const frames = levelUpFrames(1).map((f) => (String(f.transform).includes("scale(1.") && !String(f.transform).includes(",") ? { ...f, transform: "translateY(0) scale(1.4)" } : f));
+    expect(reach(still("tractor", "cheer", 44), frames, 44, kept(44)).top).toBeGreaterThan(0);
+  });
+});
+

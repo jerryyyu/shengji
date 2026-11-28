@@ -2,6 +2,8 @@
 //   node e2e/run.mjs ci     the scripted-socket suites (matrix, phases, actions, client, watch, collection): needs only web/dist
 //   node e2e/run.mjs full   those, then the live flows against a game server it starts
 //   node e2e/run.mjs flows  the live flows alone
+//   node e2e/run.mjs companions  companions through a real reconnect and rejoin, against COMPANIONS_BASE or a
+//                           server it starts with the Collection and device accounts on (BASE does not apply)
 // `full` needs a Python with the server's dependencies: PY=/path/to/python
 // (default server/.venv/bin/python). BASE=<url> skips starting anything.
 import { spawn, spawnSync } from "node:child_process";
@@ -39,7 +41,7 @@ if (built.status !== 0) process.exit(built.status ?? 1);
 if (!fs.existsSync(path.join(WEB, "dist/index.html"))) { console.error("web/dist is missing: run `npm run build` first"); process.exit(2); }
 
 let rc = 0;
-if (mode !== "flows") {
+if (mode !== "flows" && mode !== "companions") {
   let base = process.env.BASE;
   if (!base) {
     const port = await freePort();
@@ -56,23 +58,34 @@ if (mode !== "flows") {
   rc |= run("collection.mjs", { BASE: base });
   rc |= run("figures.mjs", { BASE: base });
 }
+/** A game server of its own (other people's open tables would seat the suite elsewhere), with `env` added;
+ *  BASE names one already running instead, unless `own` asks for a fresh one whatever BASE says. */
+async function gameServer(env = {}, { own = false } = {}) {
+  if (process.env.BASE && !own) return process.env.BASE;
+  const py = process.env.PY ?? path.join(WEB, "../server/.venv/bin/python");
+  if (!fs.existsSync(py)) { console.error(`no Python at ${py}: set PY`); process.exit(2); }
+  const port = await freePort();
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), "shengji-e2e-"));
+  const k = spawn(py, ["-m", "uvicorn", "shengji.api.server:app", "--host", "127.0.0.1", "--port", String(port)], {
+    cwd: path.join(WEB, "../server"), stdio: "ignore", detached: true,
+    env: { ...process.env, PYTHONPATH: path.join(WEB, "../server"), SHENGJI_DATA_DIR: data, SHENGJI_LOG_DIR: path.join(data, "logs"), ...env },
+  });
+  kids.push(k);
+  const base = `http://127.0.0.1:${port}/`;
+  if (!(await up(base + "healthz", 60000))) { console.error("the game server did not start"); process.exit(2); }
+  return base;
+}
 if (mode === "full" || mode === "flows") {
-  let base = process.env.BASE;
-  if (!base) {
-    const py = process.env.PY ?? path.join(WEB, "../server/.venv/bin/python");
-    if (!fs.existsSync(py)) { console.error(`no Python at ${py}: set PY`); process.exit(2); }
-    const port = await freePort();
-    // its own empty server: other people's open tables would seat the suite elsewhere
-    const data = fs.mkdtempSync(path.join(os.tmpdir(), "shengji-e2e-"));
-    const k = spawn(py, ["-m", "uvicorn", "shengji.api.server:app", "--host", "127.0.0.1", "--port", String(port)], {
-      cwd: path.join(WEB, "../server"), stdio: "ignore", detached: true,
-      env: { ...process.env, PYTHONPATH: path.join(WEB, "../server"), SHENGJI_DATA_DIR: data, SHENGJI_LOG_DIR: path.join(data, "logs") },
-    });
-    kids.push(k);
-    base = `http://127.0.0.1:${port}/`;
-    if (!(await up(base + "healthz", 60000))) { console.error("the game server did not start"); process.exit(2); }
-  }
-  rc |= run("flows.mjs", { BASE: base });
+  rc |= run("flows.mjs", { BASE: await gameServer() });
+}
+// The companions suite needs a server with the Collection on for everyone and device accounts made, so
+// each player has a look of their own; an ordinary BASE has neither. COMPANIONS_BASE names a server started
+// with both; otherwise it starts its own. A full run given an external BASE starts nothing local for it.
+if (mode === "companions" || (mode === "full" && (!process.env.BASE || process.env.COMPANIONS_BASE))) {
+  const base = process.env.COMPANIONS_BASE ?? await gameServer({ COLLECTION_ENABLED: "1", SHENGJI_DEVICE_ACCOUNTS: "1" }, { own: true });
+  rc |= run("companions.mjs", { BASE: base });
+} else if (mode === "full") {
+  console.log("companions: skipped (BASE is external; set COMPANIONS_BASE to a server with COLLECTION_ENABLED=1 and SHENGJI_DEVICE_ACCOUNTS=1)");
 }
 stop();
 process.exit(rc);

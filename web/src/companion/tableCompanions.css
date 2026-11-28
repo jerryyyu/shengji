@@ -70,3 +70,8 @@
 }
 /* your own companion takes a tap (its special); every other figure lets taps through to the felt */
 .tc-walk.tc-mine { pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+
+/* A store character's pieces: two canvases the felt's size, one under the
+   figures (the trail, the marks) and one over them (bursts, the glint), in
+   the order the table draws them. Neither takes a tap. */
+.tc-flair { position: absolute; left: 0; top: 0; pointer-events: none; }

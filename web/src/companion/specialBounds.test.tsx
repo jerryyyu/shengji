@@ -12,7 +12,10 @@ import { describe, expect, it } from "vitest";
 import { Companion } from "./Companion";
 import { DRAWINGS } from "./kinds";
 import { FREE_KINDS } from "./look";
-import { BIG, CHUGS, DROOPS, LEANS, PERKS, READY_BOB, READY_HELD, READY_SCALE, RELAX, fits, lookFrames, pickBeat, reachOfFrames } from "./beats";
+import { BIG, CHUGS, DROOPS, LEANS, LUNGE_BACK, LUNGE_REACH, PERKS, READY_BOB, READY_HELD, READY_SCALE, RELAX, fits, lookFrames, lungeFor, lungeFrames, pickBeat, reachOfFrames } from "./beats";
+import { ARRIVES, GAITS, QUIRKS, gaitFrames } from "./flair";
+import { COMPANION_KINDS } from "./look";
+import { LIFT } from "./seatZones";
 import { clear, figureBox } from "./seatZones";
 import type { Layout } from "./seatZones";
 import { parseArt } from "./Tractor";
@@ -462,7 +465,7 @@ describe("the companions' specials", () => {
 describe("the moves that answer the game", () => {
   const SIZES = [44, 56, 60, 76];
   const NAMED: [string, Keyframe[], string][] = [
-    ...[...PERKS, READY_BOB, RELAX, BIG, ...DROOPS, ...CHUGS].map((b): [string, Keyframe[], string] => [b.name, b.frames, b.easing]),
+    ...[...PERKS, READY_BOB, RELAX, BIG, ...DROOPS, ...CHUGS, ...Object.values(QUIRKS)].map((b): [string, Keyframe[], string] => [b.name, b.frames, b.easing]),
     ...([1, -1] as const).flatMap((dir) => [...LEANS.flatMap((lean) => [lean, -lean]).map((lean) => ({ dir, lean, up: false })), { dir, lean: 0, up: true }])
       .map((to): [string, Keyframe[], string] => [`look ${to.dir} ${to.lean}${to.up ? " up" : ""}`, lookFrames({ dir: 1, lean: 0, up: false }, to, true), "ease-out"]),
   ];
@@ -494,6 +497,68 @@ describe("the moves that answer the game", () => {
       const got = swept(frames, easing, px), kept = reachOfFrames(frames, px);
       for (const side of ["l", "r", "up", "down"] as const) expect(got[side], `${side} at ${px}`).toBeLessThanOrEqual(kept[side] + 0.05);
     }
+  });
+
+  it.each(Object.values(ARRIVES).flat().map((b): [string, Keyframe[], string] => [b.name, b.frames, b.easing]))(
+    "the way in %s never goes past the reach the table keeps clear for it", (_name, frames, easing) => {
+      const moved = frames.map((k) => ({ transform: k.transform, offset: k.offset }));
+      for (const px of SIZES) {
+        const got = swept(moved, easing, px), kept = reachOfFrames(frames, px);
+        for (const side of ["l", "r", "up", "down"] as const) expect(got[side], `${side} at ${px}`).toBeLessThanOrEqual(kept[side] + 0.05);
+      }
+    });
+
+  it("with nothing but its standing box clear every companion still has a way in, and its gait stays inside the box it stands in", () => {
+    for (const kind of COMPANION_KINDS) for (const px of SIZES) for (const tag of [true, false]) {
+      const tight = hemmed(S, px, tag, { side: 0, up: 0 });
+      expect(pickBeat(ARRIVES[kind], S, px, tag, tight), `${kind} at ${px}`).not.toBeNull();
+      for (const dir of [1, -1] as const) {
+        const reach = reachOfFrames(gaitFrames(GAITS[kind], dir), px);
+        // a standing figure keeps LIFT of its height over its head and a twentieth of its width each side
+        expect(reach.up, `${kind} up at ${px}`).toBeLessThanOrEqual(Math.ceil(px * LIFT) + 3);
+        expect(Math.max(reach.l, reach.r), `${kind} side at ${px}`).toBeLessThanOrEqual(Math.ceil(px * 0.05) + 3);
+      }
+    }
+  });
+
+  it("at the phone's 44 px each habit needs a few px a side at most, and none where it does not turn", () => {
+    // a turn about the feet dips the far corner a little under them, so the felt under it is left open here
+    const open = (side: number): Layout => { const l = hemmed(S, 44, false, { side, up: 4 }); return { ...l, obstacles: l.obstacles.slice(0, 3) }; };
+    const need = (kind: (typeof COMPANION_KINDS)[number]) => [0, 2, 4, 6, 8, 10].find((side) => fits(QUIRKS[kind].frames, S, 44, false, open(side)));
+    for (const kind of COMPANION_KINDS) expect(need(kind), kind).toBeLessThanOrEqual(8);
+    expect(need("bun")).toBe(0);
+    expect(need("tractor")).toBe(0);
+  });
+
+  it("the Lamb's charge is the longest lunge that stays clear where it stands, and none where none does", () => {
+    const px = 44;
+    const room = (side: number) => hemmed(S, px, true, { side, up: 40 });
+    expect(lungeFor(S, px, true, 1, room(30))).toEqual({ reach: LUNGE_REACH[0] * px, back: LUNGE_BACK * px });
+    expect(lungeFor(S, px, true, -1, room(30))).toEqual({ reach: LUNGE_REACH[0] * px, back: LUNGE_BACK * px });
+    expect(lungeFor(S, px, true, 1, room(LUNGE_REACH[1] * px + 0.5)).reach).toBe(LUNGE_REACH[1] * px);
+    expect(lungeFor(S, px, true, 1, room(LUNGE_REACH[2] * px + 0.5)).reach).toBe(LUNGE_REACH[2] * px);
+    expect(lungeFor(S, px, true, 1, room(LUNGE_REACH[2] * px - 1))).toEqual({ reach: 0, back: 0 });
+    expect(lungeFor(null, px, true, 1, room(30))).toEqual({ reach: 0, back: 0 });
+    // clear ahead only: it lunges with no step back
+    const b = figureBox(S, px, true);
+    const ahead: Layout = { ...room(30), obstacles: [{ x: b.x - 51, y: 0, w: 50, h: 1000 }] };
+    expect(lungeFor(S, px, true, 1, ahead)).toEqual({ reach: LUNGE_REACH[0] * px, back: 0 });
+    expect(lungeFor(S, px, true, -1, ahead).reach).toBe(0);
+    // drawn half as large again for its special, it needs that much more room
+    expect(lungeFor(S, px, true, 1, room(30), 1.5).reach).toBeLessThan(LUNGE_REACH[0] * px);
+    expect(lungeFor(S, px, true, 1, hemmed(S, px, true, { side: 60, up: 60 }), 1.5).reach).toBe(LUNGE_REACH[0] * px);
+  });
+
+  it("a lunge moves only the walk box, starts and ends where the figure stands, and is furthest out as the butt lands", () => {
+    const frames = lungeFrames(S, 1, { reach: 22, back: 6 });
+    for (const k of frames) expect(Object.keys(k).filter((p) => p !== "offset" && p !== "easing")).toEqual(["transform"]);
+    expect(frames[0].transform).toBe(`translate(${S.x}px, ${S.y}px)`);
+    expect(frames[frames.length - 1].transform).toBe(frames[0].transform);
+    const xs = frames.map((k) => Number(/translate\(([-\d.]+)px/.exec(String(k.transform))![1]) - S.x);
+    expect(Math.max(...xs)).toBe(22);
+    expect(Math.min(...xs)).toBe(-6);
+    expect(frames[xs.indexOf(22)].offset).toBe(0.46);
+    expect(lungeFrames(S, -1, { reach: 22, back: 6 })[3].transform).toBe(`translate(${S.x - 22}px, ${S.y}px)`);
   });
 
   it("the evaluator sees a move that leaves its reach: a droop tipped twice as far breaks the side", () => {

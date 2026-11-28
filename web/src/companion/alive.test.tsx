@@ -20,6 +20,8 @@ vi.mock("../auth", async (importOriginal) => {
 });
 
 import TableCompanions from "./TableCompanions";
+import { FlairLayer } from "./flairLayer";
+import type { Piece } from "./flair";
 import type { Rect } from "./seatZones";
 import { TABLES } from "./seatZones.fixtures";
 
@@ -97,7 +99,9 @@ const advance = async (ms: number) => {
   await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
 };
 const el = (seat: number, part: "walk" | "face" | "move") => host.querySelector<HTMLElement>(`.tc-seat[data-seat="${seat}"] .tc-${part}`)!;
-const on = (seat: number, part: "walk" | "face" | "move", from = 0) => anims.slice(from).filter((a) => a.seat === String(seat) && a.box === `tc-${part}`);
+/** A figure's way in as it is first drawn: it fades up. Not one of the moves that answer the game. */
+const isArrive = (a: Rec) => a.frames[0]?.opacity === 0;
+const on = (seat: number, part: "walk" | "face" | "move", from = 0) => anims.slice(from).filter((a) => a.seat === String(seat) && a.box === `tc-${part}` && !isArrive(a));
 const text = (a: Rec) => a.frames.map((k) => String(k.transform)).join(" | ");
 /** The moves this file is about, by what their keyframes do. */
 const isPerk = (a: Rec) => a.box === "tc-move" && /scale\(1\.17, 1\.17\)$/.test(text(a)) && /^translateY\(0%\) rotate\(0deg\) scale\(1, 1\)/.test(text(a));
@@ -510,5 +514,326 @@ describe("how much a figure does", () => {
     }
     // the turn still shows every time: the size without the jump
     expect(anims.filter((a) => a.seat === "0" && isPerk(a) && a.ms === 200).length).toBeGreaterThan(20);
+  });
+});
+
+// Every companion's character at the table, and a store character's
+// material on top of it (`flair.ts`): which seats bring pieces, when, on
+// which layer, and that nothing starts in the deal or under Reduce Motion.
+describe("character and material at the table", () => {
+  let spawn: ReturnType<typeof vi.spyOn>;
+  let rest: ReturnType<typeof vi.spyOn>;
+  let sized: ReturnType<typeof vi.spyOn>;
+  let ctx: unknown;
+  const realCtx = HTMLCanvasElement.prototype.getContext;
+  beforeEach(() => {
+    spawn = vi.spyOn(FlairLayer.prototype, "spawn");
+    rest = vi.spyOn(FlairLayer.prototype, "rest");
+    sized = vi.spyOn(FlairLayer.prototype, "resize");
+    HTMLCanvasElement.prototype.getContext = (() => null) as unknown as typeof realCtx;
+    ctx = null;
+  });
+  afterEach(() => { spawn.mockRestore(); rest.mockRestore(); sized.mockRestore(); HTMLCanvasElement.prototype.getContext = realCtx; void ctx; });
+  /** Yours a Lamb, the left seat a Panda, the other two free. */
+  const paid = (over: Partial<GameState> = {}) => state({ players: [player(0, { look: "lamb/newyear" }), player(1, { look: "panda/classic" }), player(2), player(3)], ...over });
+  const calls = (tag: string, owner?: string) => (spawn.mock.calls as unknown as [string, boolean, string, Piece[]][])
+    .map((c, i) => ({ owner: c[0], own: c[1], tag: c[2], pieces: c[3], started: spawn.mock.results[i]?.value as number }))
+    .filter((c) => c.tag === tag && (owner === undefined || c.owner === owner));
+  /** The felt's layer, from its first sizing to the felt. */
+  const layer = () => sized.mock.instances[0] as unknown as FlairLayer;
+  const click = (x: number, y: number) => act(() => { host.querySelector(".felt")!.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: x, clientY: y })); });
+
+  it("a table of free companions draws no canvas; a store character brings one under the figures and one over them", async () => {
+    await render(state());
+    expect(host.querySelectorAll("canvas")).toHaveLength(0);
+    await render(paid());
+    const kids = [...host.querySelector(".table-companions")!.children];
+    expect(kids[0].matches('canvas.tc-flair[data-depth="back"]')).toBe(true);
+    expect(kids[kids.length - 1].matches('canvas.tc-flair[data-depth="front"]')).toBe(true);
+    // the trail's layer comes before every figure, so it is drawn under them
+    const seats = kids.filter((k) => k.matches(".tc-seat"));
+    expect(seats).toHaveLength(4);
+    for (const s of seats) expect(kids.indexOf(s)).toBeGreaterThan(0);
+    for (const s of seats) expect(kids.indexOf(s)).toBeLessThan(kids.length - 1);
+  });
+
+  it("the watch screen draws the figures with no pieces", async () => {
+    await act(async () => { root.render(<div className="felt"><div className="opponent pos-left" /><div className="opponent pos-top" /><div className="opponent pos-right" />
+      <div className="you-row" /><div className="hand"><div className="hand-slot" /></div><TableCompanions state={paid()} watch={{ quiet: false }} /></div>); });
+    expect(host.querySelectorAll(".tc-seat").length).toBeGreaterThan(0);
+    expect(host.querySelectorAll("canvas")).toHaveLength(0);
+    await advance(20000);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  /** The table before its other three people sit down: bots, who have no companion. */
+  const alone = (over: Partial<GameState> = {}) => state({ players: [player(0, { look: "lamb/newyear" }),
+    ...[1, 2, 3].map((s) => player(s, { is_bot: true, look: null }))], ...over });
+  const arrive = (seat: number) => anims.filter((a) => a.seat === String(seat) && a.box === "tc-move" && isArrive(a));
+
+  it("a table opened or reconnected into draws everyone settled: no way in, no entrance", async () => {
+    await render(paid());
+    await advance(3000);
+    expect(anims.filter(isArrive)).toHaveLength(0);
+    expect(calls("entrance")).toHaveLength(0);
+  });
+
+  it("a person who sits down at a table already shown: their companion comes in its own way, a store character with its entrance at another seat's share", async () => {
+    await render(alone());
+    await advance(1000);
+    await render(paid());
+    expect(arrive(0)).toHaveLength(0);
+    for (const seat of [1, 2, 3]) expect(arrive(seat), `seat ${seat}`).toHaveLength(1);
+    expect(new Set([1, 2, 3].map((s) => text(arrive(s)[0]))).size).toBe(3);
+    expect(calls("entrance").map((c) => [c.owner, c.own])).toEqual([["1", false]]);
+    expect(calls("entrance", "1")[0].pieces.length).toBeLessThanOrEqual(4);
+    // once: a later frame plays none
+    await render(paid({ turn: 2 }));
+    expect([1, 2, 3].flatMap(arrive)).toHaveLength(3);
+  });
+
+  it("a figure first drawn while the hand is dealt is simply there: no move and no pieces, then or later", async () => {
+    await render(alone());
+    await advance(1000);
+    await render(paid({ phase: "deal" } as Partial<GameState>));
+    expect(anims.filter(isArrive)).toHaveLength(0);
+    expect(calls("entrance")).toHaveLength(0);
+    await render(paid());
+    await advance(3000);
+    expect(anims.filter(isArrive)).toHaveLength(0);
+    expect(calls("entrance")).toHaveLength(0);
+  });
+
+  it("nothing starts while the hand is dealt, and what was in the air as the deal begins is taken off", async () => {
+    await render(paid());
+    const clear = vi.spyOn(FlairLayer.prototype, "clear");
+    expect(layer().dealing).toBe(false);
+    await render(paid({ phase: "deal" } as Partial<GameState>));
+    expect(layer().dealing).toBe(true);
+    expect(clear).toHaveBeenCalled();
+    expect(layer().spawn("0", true, "burst", [])).toBe(0);
+    await render(paid());
+    expect(layer().dealing).toBe(false);
+    clear.mockRestore();
+  });
+
+  it("yours walks in its own gait at the walk's pace, and a store character drops its trail behind it as each hop lands, under the figures", async () => {
+    await render(paid());
+    await advance(1500);
+    const from = anims.length;
+    click(m.felt.w / 2, m.felt.h * 0.42);
+    const walk = on(0, "walk", from)[0], gait = on(0, "face", from)[0];
+    expect(walk).toBeTruthy();
+    // the Lamb's prance, a whole number of 520 ms steps fitted to the walk
+    expect(text(gait)).toContain("translateY(-12%) rotate(4deg)");
+    expect(gait.ms * gait.iters).toBeCloseTo(walk.ms, 5);
+    expect(Math.abs(gait.ms - 520)).toBeLessThan(260);
+    const before = calls("trail").length;
+    await advance(walk.ms + 50);
+    const trail = calls("trail").slice(before);
+    expect(trail).toHaveLength(Math.max(1, Math.round(walk.ms / 520)));
+    for (const c of trail) {
+      expect([c.owner, c.own]).toEqual(["0", true]);
+      expect(c.pieces.length).toBeGreaterThanOrEqual(2);
+      expect(c.pieces.length).toBeLessThanOrEqual(3);
+      for (const p of c.pieces) expect(p.depth).toBe("back");
+    }
+    // behind it: it walked to the right or the left, and every piece lands on the side it came from
+    const xs = walk.frames.map((k) => Number(/translate\(([-\d.]+)px/.exec(String(k.transform))![1]));
+    const dir = Math.sign(xs[xs.length - 1] - xs[0]) || 1;
+    const last = trail[trail.length - 1];
+    for (const p of last.pieces) expect((p.keys[p.keys.length - 1].x - (xs[xs.length - 1] + 22)) * dir).toBeLessThan(0);
+  });
+
+  it("a free companion walks in its own gait too, and drops nothing", async () => {
+    await render(state());
+    await advance(1500);
+    const from = anims.length;
+    click(m.felt.w / 2, m.felt.h * 0.42);
+    expect(text(on(0, "face", from)[0])).toContain("scale(1.08, 0.9)");
+    await advance(4000);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("a habit of its own is one of its fidgets at rest: after the sway, the blink and the small hop", async () => {
+    await render(state({ players: [player(0), player(1, { look: "tractor/red" }), player(2), player(3)] }));
+    await advance(1000);
+    const from = anims.length;
+    const seen: Rec[] = [];
+    for (let t = 0; t < 60000 && seen.length < 3; t += 100) { await advance(100); seen.splice(0, seen.length, ...on(1, "move", from)); }
+    expect(seen.map((a) => a.ms)).toEqual([600, 420, 700]);
+    expect(text(seen[2])).toContain("rotate(-1.5deg)");
+  });
+
+  it("a big play: the store character that won it bursts in its own pieces and mark; the one that lost it lets one piece fall", async () => {
+    await render(paid());
+    await advance(9000);
+    const from = spawn.mock.calls.length;
+    await render(paid({ last_trick: taken(0, 25, 1) }));
+    const burst = calls("burst").slice(calls("burst").length - (spawn.mock.calls.length - from));
+    const mine = burst.find((c) => c.owner === "0")!, theirs = burst.find((c) => c.owner === "1")!;
+    expect(mine.own).toBe(true);
+    expect(mine.pieces.filter((p) => p.shape === "petal")).toHaveLength(7);
+    expect(mine.pieces.filter((p) => p.shape === "blossom")).toHaveLength(1);
+    expect(mine.pieces.length).toBeLessThanOrEqual(11);
+    expect(theirs.own).toBe(false);
+    expect(theirs.pieces).toHaveLength(1);
+    expect(theirs.pieces[0].shape).toBe("leaf");
+  });
+
+  it("a round won: the store character's shower comes with its special once the sheet has closed, never behind it", async () => {
+    await render(paid());
+    const end = { winner_team: 0, level_change: 0, new_levels: ["2", "2"], kitty_points: 0 };
+    await render(paid({ phase: "round_end", round_result: end } as unknown as Partial<GameState>));
+    await advance(3000);
+    expect(calls("shower")).toHaveLength(0);
+    await render(paid());
+    const shower = calls("shower");
+    expect(shower.map((c) => c.owner)).toEqual(["0"]);
+    expect(shower[0].pieces.filter((p) => p.shape === "petal")).toHaveLength(6);
+    expect(shower[0].pieces.length).toBeLessThanOrEqual(9);
+    expect(el(0, "move").getAttribute("data-move")).toBe("react");
+  });
+
+  it("a tap on your Lamb plays the horn butt for 1.5 s: the table lunges it as far as stays clear, and its accent fans out ahead of it", async () => {
+    await render(paid());
+    await advance(1500);
+    const from = anims.length, before = calls("burst").length;
+    act(() => { el(0, "walk").dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    expect(el(0, "move").getAttribute("data-move")).toBe("react");
+    const accent = calls("burst").slice(before);
+    expect(accent).toHaveLength(1);
+    expect(accent[0].pieces).toHaveLength(3);
+    expect(accent[0].pieces[0].delay).toBe(690);
+    const lunge = on(0, "walk", from);
+    for (const a of lunge) {
+      expect(a.ms).toBe(1500);
+      expect(a.frames[0].transform).toBe(a.frames[a.frames.length - 1].transform);
+    }
+    await advance(1450);
+    expect(el(0, "move").getAttribute("data-move")).toBe("react");
+    await advance(100);
+    expect(el(0, "move").getAttribute("data-move")).toBe("idle");
+  });
+
+  it("another seat's shared special plays here with its accent, at the other seats' share", async () => {
+    const shared = (n: number) => (
+      <div className="felt"><div className="opponent pos-left" /><div className="opponent pos-top" /><div className="opponent pos-right" />
+        <div className="you-row" /><div className="hand"><div className="hand-slot" /></div>
+        <TableCompanions state={paid()} shared={n ? { 1: { act: "special", n } } : {}} /></div>);
+    await act(async () => { root.render(shared(0)); });
+    await advance(1500);
+    const before = calls("burst").length;
+    await act(async () => { root.render(shared(1)); });
+    expect(el(1, "move").getAttribute("data-move")).toBe("react");
+    const accent = calls("burst").slice(before);
+    // the Panda's two bites, one fleck each
+    expect(accent.map((c) => [c.owner, c.own, c.pieces.length, c.pieces[0].delay])).toEqual([["1", false, 1, 780], ["1", false, 1, 1200]]);
+  });
+
+  it("a store character's cue shows on its own clock at rest", async () => {
+    await render(paid());
+    await advance(1500);
+    expect(calls("cue")).toHaveLength(0);
+    await advance(8000);
+    expect(calls("cue").map((c) => c.owner).sort()).toEqual(["0", "1"]);
+    expect(calls("cue", "0")[0].pieces.map((p) => p.shape)).toEqual(["spark", "spark"]);
+    expect(calls("cue", "1")[0].pieces.map((p) => p.shape)).toEqual(["ripple", "ripple"]);
+  });
+
+  it("from level 6 your team's store character's pieces turn part gold", async () => {
+    await render(paid({ levels: ["6", "2"] }));
+    await advance(1500);
+    click(m.felt.w / 2, m.felt.h * 0.42);
+    await advance(3500);
+    const tints = calls("trail").flatMap((c) => c.pieces.map((p) => p.c1));
+    expect(tints.length).toBeGreaterThan(2);
+    expect(tints).toContain("#fff3c0");
+  });
+
+  it("a big play mid-walk bursts from where the figure is drawn, not from where its walk will end", async () => {
+    await render(paid());
+    await advance(9000);
+    const from = anims.length;
+    click(m.felt.w / 2, m.felt.h * 0.42);
+    const walk = on(0, "walk", from)[0];
+    const xs = walk.frames.map((k) => Number(/translate\(([-\d.]+)px/.exec(String(k.transform))![1]));
+    const start = xs[0], goal = xs[xs.length - 1];
+    expect(Math.abs(goal - start)).toBeGreaterThan(60);
+    await advance(300);
+    const before = calls("burst").length;
+    await render(paid({ last_trick: taken(0, 25, 1) }));
+    const mark = calls("burst").slice(before).find((c) => c.owner === "0")!.pieces.find((p) => p.shape === "blossom")!;
+    // the ring opens round its middle: 300 ms into an eased walk it has barely left
+    const px = Number(host.querySelector('.tc-seat[data-seat="0"] svg')!.getAttribute("width"));
+    const middle = mark.keys[0].x - px / 2;
+    expect(Math.abs(middle - start)).toBeLessThan(Math.abs(goal - start) * 0.3);
+    expect(Math.abs(middle - goal)).toBeGreaterThan(Math.abs(goal - start) * 0.7);
+  });
+
+  /** A table of free companions, then the left seat's person changed for one with a Panda. */
+  const free = () => state({ players: [player(0), player(1, { is_bot: true, look: null }), player(2), player(3)] });
+  const joined = (over: Partial<GameState> = {}) => state({ players: [player(0), player(1, { look: "panda/classic" }), player(2), player(3)], ...over });
+
+  it("the first store character to sit down at a table of free companions brings its entrance with it, exactly once", async () => {
+    await render(free());
+    await advance(1000);
+    expect(host.querySelectorAll("canvas")).toHaveLength(0);
+    await render(joined());
+    await advance(50);
+    expect(arrive(1)).toHaveLength(1);
+    expect(calls("entrance").map((c) => [c.owner, c.own, c.started > 0])).toEqual([["1", false, true]]);
+    await render(joined({ turn: 2 }));
+    await advance(3000);
+    expect(calls("entrance")).toHaveLength(1);
+  });
+
+  it("and its walks on its own clock drop its trail, though the layer came after its clock was set", async () => {
+    // its walks pick their spots from a stream that varies, as at a real table
+    let n = 0;
+    rnd.mockImplementation(() => (n++ * 0.37) % 1);
+    await render(free());
+    await advance(1000);
+    await render(joined());
+    const from = anims.length;
+    for (let s = 0; s < 70; s++) await advance(1000);
+    const walks = on(1, "walk", from).filter((a) => a.ms >= 300);
+    expect(walks.length).toBeGreaterThan(0);
+    const trail = calls("trail", "1");
+    expect(trail.length).toBeGreaterThanOrEqual(walks.length);
+    for (const c of trail) { expect(c.own).toBe(false); expect(c.pieces).toHaveLength(1); }
+  });
+
+  it("another seat's trail drops one piece a hop, and from level 6 every third of them is gold", async () => {
+    const at = (n: number, levels: string[]) => (
+      <div className="felt"><div className="opponent pos-left" /><div className="opponent pos-top" /><div className="opponent pos-right" />
+        <div className="you-row" /><div className="hand"><div className="hand-slot" /></div>
+        <TableCompanions state={paid({ levels } as Partial<GameState>)} shared={n ? { 1: { act: "home", x: 0.62, y: 0.45, n } } : {}} /></div>);
+    const tints = async (levels: string[]) => {
+      spawn.mockClear();
+      await act(async () => { root.render(at(0, levels)); });
+      await advance(1500);
+      await act(async () => { root.render(at(1, levels)); });
+      await advance(3500);
+      await act(async () => { root.render(<div />); });
+      return calls("trail", "1").flatMap((c) => { expect(c.pieces).toHaveLength(1); return c.pieces.map((p) => p.c1); });
+    };
+    const plain = await tints(["2", "2"]);
+    expect(plain.length).toBeGreaterThanOrEqual(3);
+    expect(plain).not.toContain("#fff3c0");
+    const gold = await tints(["2", "6"]);
+    expect(gold.length).toBeGreaterThanOrEqual(3);
+    expect(gold.map((c) => c === "#fff3c0")).toEqual(gold.map((_, i) => i % 3 === 2));
+  });
+
+  it("under Reduce Motion nothing moves or starts: a store character has three still pieces at its feet", async () => {
+    reduced = true;
+    await render(paid());
+    await advance(20000);
+    expect(anims).toHaveLength(0);
+    expect(spawn.mock.results.every((r: { value?: unknown }) => r.value === 0)).toBe(true);
+    const still = (rest.mock.calls as unknown as [string, Piece[] | null][]).filter((c) => c[1]);
+    expect(still.map((c) => c[0]).sort()).toEqual(["0", "1"]);
+    for (const c of still) expect(c[1]).toHaveLength(3);
   });
 });

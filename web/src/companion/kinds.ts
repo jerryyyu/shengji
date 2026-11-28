@@ -75,7 +75,7 @@ export const DRAWINGS: Record<DrawnKind, Drawing> = {
   bun: drawn(BUN_COLOURS, BUN_Z, 1600, bunMarkup, bunPortraitUrl),
   chick: drawn(CHICK_COLOURS, CHICK_Z, 1500, chickMarkup, chickPortraitUrl),
   sparrow: drawn(SPARROW_COLOURS, SPARROW_Z, 1800, sparrowMarkup, sparrowPortraitUrl),
-  lamb: drawn(LAMB_COLOURS, LAMB_Z, 2600, lambMarkup, lambPortraitUrl),
+  lamb: drawn(LAMB_COLOURS, LAMB_Z, 1500, lambMarkup, lambPortraitUrl),
   panda: drawn(PANDA_COLOURS, PANDA_Z, 1900, pandaMarkup, pandaPortraitUrl),
   rabbit: drawn(RABBIT_COLOURS, RABBIT_Z, 2400, rabbitMarkup, rabbitPortraitUrl),
   cat: drawn(CAT_COLOURS, CAT_Z, 2200, catMarkup, catPortraitUrl),

@@ -6,6 +6,7 @@ import { DRAWINGS } from "../companion/kinds";
 import type { DrawnColour, DrawnKind } from "../companion/kinds";
 import { PAGE_CYCLE, useLivePose } from "../companion/livePose";
 import { playStageBeat, stageBeatMs, STAGE_BEATS } from "../companion/stageBeats";
+import { useStageFlair } from "../companion/stageFlair";
 import type { StageBeat } from "../companion/stageBeats";
 import { parseLook } from "../companion/look";
 import type { Colour, CompanionKind, LookEntry, UnlockCount } from "../companion/look";
@@ -202,7 +203,9 @@ export function UseButton({ ownership, onUse, price }: {
  *  row of chips under it plays Hop, Cheer, Big play or the special once,
  *  then the cycle resumes. Under Reduce Motion it stands still, and a tap or
  *  a chip shows that pose drawn still. */
-export function Stage({ kind, colour, size, label, cheer = 0, moves = false }: {
+export function Stage({ kind, colour, size, label, cheer = 0, moves = false, arrives = false }: {
+  /** It was selected onto a page already shown, so it comes in its own way; the page's first figure is drawn settled. */
+  arrives?: boolean;
   kind: DrawnKind; colour: DrawnColour; size: number; label: string;
   /** The row of move chips under the felt, each playing its move once before the cycle resumes. */
   moves?: boolean;
@@ -213,8 +216,14 @@ export function Stage({ kind, colour, size, label, cheer = 0, moves = false }: {
   const felt = useRef<HTMLDivElement>(null);
   const moveBox = useRef<HTMLSpanElement>(null);
   const beat = useRef<{ stop: () => void } | null>(null);
+  const walkBox = useRef<HTMLSpanElement>(null);
+  const faceBox = useRef<HTMLSpanElement>(null);
+  const flairBack = useRef<HTMLCanvasElement>(null);
+  const flairFront = useRef<HTMLCanvasElement>(null);
   const live = useLivePose(kind, PAGE_CYCLE, felt);
   const { play } = live;
+  const flair = useStageFlair(kind, colour, size, live.pose, live.key, live.paused,
+    { felt, walk: walkBox, face: faceBox, move: moveBox, back: flairBack, front: flairFront }, arrives);
   useEffect(() => () => beat.current?.stop(), []);
   // the table's big play: the box jumps while the figure holds the cheer
   const playBeat = (b: StageBeat) => {
@@ -224,6 +233,7 @@ export function Stage({ kind, colour, size, label, cheer = 0, moves = false }: {
     const top = felt.current?.getBoundingClientRect().top ?? 0;
     const at = moveBox.current?.getBoundingClientRect().top ?? top;
     beat.current = playStageBeat(moveBox.current, b, { px: size, up: Math.max(0, at - top) });
+    flair.big();
   };
   const playPose = (p: "hop" | "cheer" | "react") => {
     beat.current?.stop();
@@ -235,15 +245,21 @@ export function Stage({ kind, colour, size, label, cheer = 0, moves = false }: {
     if (cheer > 0) play("cheer");
   }, [cheer, play]);
   const stage = (
-    <div ref={felt} className={`coll-felt char-stage${live.paused ? " live-paused" : ""}`}>
+    <div ref={felt} className={`coll-felt char-stage${live.paused ? " live-paused" : ""}`} onClick={flair.onFelt}>
+      {flair.material ? <canvas className="char-flair" data-depth="back" ref={flairBack} aria-hidden="true" /> : null}
       <div className="char-figures" style={{ height: size }}>
-        <button type="button" className="coll-figure" aria-label={label} onClick={() => playPose("react")}>
-          <span className="char-box" ref={moveBox}>
-            <Companion key={live.key} kind={kind} colour={colour} size={size} state={live.pose}
-                       onPoseEnd={live.onPoseEnd} />
+        <span className="char-walk" ref={walkBox}>
+          <span className="char-face" ref={faceBox}>
+            <button type="button" className="coll-figure" aria-label={label} onClick={() => playPose("react")}>
+              <span className="char-box" ref={moveBox}>
+                <Companion key={live.key} kind={kind} colour={colour} size={size} state={live.pose}
+                           onPoseEnd={live.onPoseEnd} />
+              </span>
+            </button>
           </span>
-        </button>
+        </span>
       </div>
+      {flair.material ? <canvas className="char-flair" data-depth="front" ref={flairFront} aria-hidden="true" /> : null}
     </div>
   );
   if (!moves) return stage;
@@ -279,7 +295,9 @@ export function stageSize(phone: boolean, short: boolean): number {
  *  store character not owned `price` (Buy, Sign in to buy). A tap on a colour
  *  only shows it; the button puts it in use. "New" marks the colours in `fresh`. */
 export default function CharacterPage({ kind, shown, entries, inUse, user, phone, short = false, strip, fresh, onShow, onUse, price,
-  status = "", cheer = 0 }: {
+  status = "", cheer = 0, arrives = false }: {
+  /** It was selected onto a page already shown (`Stage`). */
+  arrives?: boolean;
   kind: CompanionKind; shown: string; entries: readonly LookEntry[]; inUse: string; user: AuthUser | null; phone: boolean;
   /** A short screen (`SHORT_SCREEN`): a smaller stage, so its colours and button fit above the tab bar. */
   short?: boolean;
@@ -294,7 +312,7 @@ export default function CharacterPage({ kind, shown, entries, inUse, user, phone
   const { colour } = parseLook(entry.id);
   return (
     <div className="char-page">
-      <Stage kind={kind} colour={colour} size={stageSize(phone, short)} label={lookName(t, entry.id)} cheer={cheer} moves />
+      <Stage kind={kind} colour={colour} size={stageSize(phone, short)} label={lookName(t, entry.id)} cheer={cheer} moves arrives={arrives} />
       {strip}
       <Swatches entries={entries} shown={entry.id} inUse={inUse} user={user} size={56} className="char-swatches" fresh={fresh} onPick={onShow} />
       <p className="coll-status" role="status">

@@ -903,7 +903,9 @@ describe("the table", () => {
     const walks = (seat: string) => anims.filter((a) => a.seat === seat && a.box.split(" ").includes("tc-walk"));
     // a special drawn larger is its own animation of the move box, apart from the moves
     const grow = (a: { frames: Keyframe[] }) => /^scale\([\d.]+\)$/.test(String(a.frames[1]?.transform));
-    const moves = (seat: string) => anims.filter((a) => a.seat === seat && a.box === "tc-move" && !grow(a));
+    // a figure's way in as it is first drawn (it fades up) is not one of the moves these tests count
+    const arrival = (a: { frames: Keyframe[] }) => a.frames[0]?.opacity === 0;
+    const moves = (seat: string) => anims.filter((a) => a.seat === seat && a.box === "tc-move" && !grow(a) && !arrival(a));
     const grows = (seat: string) => anims.filter((a) => a.seat === seat && a.box === "tc-move" && grow(a));
     const felt = () => host.querySelector(".felt")!;
 
@@ -1493,7 +1495,7 @@ describe("the table", () => {
       expect(specialOn("2")).toBe(false);
     });
 
-    it.each([["lamb/newyear", 2600], ["panda/classic", 1900], ["bun/plain", 1600]] as const)(
+    it.each([["lamb/newyear", 1500], ["panda/classic", 1900], ["bun/plain", 1600]] as const)(
       "a tap on yours as %s holds its special for the drawing's whole length (%i ms), from the one timing table", async (look, ms) => {
         await render(state({ players: [player(0, { look }), player(1), player(2), player(3)] } as Partial<GameState>));
         expect(DRAWINGS[look.split("/")[0] as keyof typeof DRAWINGS].reactMs).toBe(ms);

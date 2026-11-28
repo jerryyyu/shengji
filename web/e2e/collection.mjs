@@ -282,6 +282,57 @@ try {
           ? null : JSON.stringify(got), page);
     });
 
+    // a store character's tile wears the foil edge, and the stage shows what it adds with no words:
+    // its two canvases, its entrance, and a stroll by itself that leaves its trail under the figure
+    await scenario(rep, `${device} a store character's stage`, page, async () => {
+      const foil = await page.evaluate(() => ({
+        foil: [...document.querySelectorAll(".coll-tile.foil svg.cmp")].map((s) => [...s.classList].find((c) => /^cmp-(lamb|panda)$/.test(c)) ?? "other").sort(),
+        plain: document.querySelectorAll(".coll-yours .coll-tile.foil").length,
+        edge: getComputedStyle(document.querySelector(".coll-tile.foil")).borderTopWidth,
+      }));
+      await rep.check(`${device} the store characters' tiles wear the foil edge, and no free one does`,
+        foil.foil.join() === "cmp-lamb,cmp-panda" && foil.plain === 0 && foil.edge === "2px" ? null : JSON.stringify(foil), page);
+      await page.locator(".coll-soon .coll-tile.foil", { hasText: "Spring Lamb" }).tap();
+      await until(page, () => document.querySelector(".char-stage svg.cmp-lamb") !== null, { timeout: 5000 });
+      const drawn = await page.evaluate(() => {
+        const stage = document.querySelector(".char-stage"), kids = [...stage.children];
+        const at = (sel) => kids.findIndex((k) => k.matches(sel));
+        return { back: at('canvas.char-flair[data-depth="back"]'), figures: at(".char-figures"), front: at('canvas.char-flair[data-depth="front"]'),
+          strings: document.querySelector(".char-page").textContent.replace(/\s+/g, " ").trim() };
+      });
+      await rep.check(`${device} the Lamb's trail is drawn under the figure and its burst over it`,
+        drawn.back === 0 && drawn.figures > drawn.back && drawn.front > drawn.figures ? null : JSON.stringify(drawn), page);
+      // a wide layout does not scroll back up to the stage, and a stage out of view rests
+      await page.evaluate(() => { document.querySelector(".coll-page").scrollTop = 0; });
+      // it strolls by itself within a few seconds, and pieces are painted behind it as it goes
+      const strolled = await page.evaluate(() => new Promise((done) => {
+        const walk = document.querySelector(".char-stage .char-walk"), back = document.querySelector('.char-stage canvas[data-depth="back"]');
+        const t0 = performance.now();
+        let moved = 0, painted = 0, under = true;
+        const tick = () => {
+          const dx = new DOMMatrixReadOnly(getComputedStyle(walk).transform).m41;
+          moved = Math.max(moved, Math.abs(dx));
+          const px = back.getContext("2d").getImageData(0, 0, back.width, back.height).data;
+          let n = 0, sum = 0;
+          for (let i = 3; i < px.length; i += 4) if (px[i] > 24) { n++; sum += ((i - 3) / 4) % back.width; }
+          if (n > 0 && moved > 4) {
+            painted = Math.max(painted, n);
+            // the pieces' middle is behind the figure's: on the side it came from
+            const mid = sum / n / (back.width / back.clientWidth) - back.clientWidth / 2;
+            if (Math.sign(mid - dx) === Math.sign(dx) && Math.abs(dx) > 8) under = false;
+          }
+          if (performance.now() - t0 > 11000 || (painted > 0 && moved > 30)) done({ moved: Math.round(moved), painted, under }); else requestAnimationFrame(tick);
+        };
+        tick();
+      }));
+      await rep.check(`${device} the Lamb strolls across the stage by itself and leaves its trail behind it`,
+        strolled.moved > 30 && strolled.painted > 0 && strolled.under ? null : JSON.stringify(strolled), page);
+      await page.locator(".coll-yours .coll-tile", { hasText: "Bun" }).tap();
+      await until(page, () => document.querySelector(".char-stage svg.cmp-bun") !== null, { timeout: 5000 });
+      const free = await page.evaluate(() => document.querySelectorAll(".char-stage canvas").length);
+      await rep.check(`${device} a free companion's stage draws no canvas`, free === 0 ? null : `${free} canvases`, page);
+    });
+
     if (phone) {
       await scenario(rep, `${device} tab swipe`, page, async () => {
         const y = Math.round(page.qa.d.h * 0.7);

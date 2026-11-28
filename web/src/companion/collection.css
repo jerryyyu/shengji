@@ -131,6 +131,11 @@
 .char-figures { display: flex; justify-content: center; align-items: flex-end; }
 /* the figure's move box: the table's moves turn and scale it about its feet */
 .char-box { display: block; line-height: 0; transform-origin: 50% 100%; }
+/* the figure's walk across the stage and the way it faces: transforms of their own boxes, as at the table */
+.char-walk { display: block; line-height: 0; will-change: transform; }
+.char-face { display: block; line-height: 0; transform-origin: 50% 100%; will-change: transform; }
+/* a store character's pieces: one canvas under the figure (its trail, its mark) and one over it */
+.char-flair { position: absolute; left: 0; top: 0; pointer-events: none; }
 /* the colours: four in a row on a phone, each a 56 px portrait */
 .char-swatches {
   display: grid;
@@ -181,6 +186,29 @@
 }
 .coll-tile:active { transform: scale(0.97); }
 .coll-tile.dim .coll-tile-stage { opacity: 0.55; }
+/* a store character's tile, for sale or owned: a foil edge and a slow sheen across its felt, no words */
+.coll-tile.foil {
+  border: 2px solid transparent;
+  background: linear-gradient(var(--grp), var(--grp)) padding-box,
+    conic-gradient(from 210deg, #f2c14e, #fff6d0, #c98a2a, #f7e3a0, #a8dadc, #fff6d0, #f2c14e) border-box;
+}
+.coll-tile.foil .coll-tile-stage { border-radius: 14px 14px 12px 12px; overflow: hidden; }
+.coll-tile.foil .coll-tile-stage::after {
+  content: "";
+  position: absolute;
+  inset: -10% -40%;
+  background: linear-gradient(105deg, transparent 44%, rgba(255, 255, 255, 0.5) 50%, transparent 56%);
+  transform: translateX(-120%);
+  animation: coll-sheen 6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes coll-sheen {
+  0%, 78% { transform: translateX(-120%); }
+  94%, 100% { transform: translateX(120%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .coll-tile.foil .coll-tile-stage::after { animation: none; }
+}
 .coll-tile-stage {
   position: relative;
   display: grid;

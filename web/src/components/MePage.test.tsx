@@ -31,10 +31,11 @@ import { setLanguageChoice } from "../i18n";
 
 const JERRY = { name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" };
 const STATS = { name: "Jerry", rating: 1532, rank: 12, rounds: 412, provisional: false, levels_per_round: 0.41,
-                won_pct: 58.2, defender_won_pct: 61, attacker_won_pct: 54, best_streak: 7, games_won: 34,
+                won_pct: 58.2, defender_won_pct: 61, attacker_won_pct: 54, best_streak: 7, games_won: 34, rounds_won: 239,
                 week_delta: 8, history: [1491, 1532], visible: true,
                 recent_games: [{ started_at: 1, ended_at: 2, rounds: 6, delta: 14, games_won: 1, partner: null,
                                  partner_bot: true, opponents_bots: 2 }] };
+let STATS_BODY: Partial<typeof STATS> = STATS;
 // the clock is a local midday, so a game a minute old is "Today" whatever the
 // hour the suite runs; only Date is faked, timers stay real
 const NOW = new Date(2026, 5, 15, 12, 0, 0);
@@ -55,6 +56,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
   games = [GAME];
+  STATS_BODY = STATS;
   forgetHomeSession();
   guestName.reset();
   calls = [];
@@ -72,7 +74,7 @@ beforeEach(() => {
     if (method === "POST" && url === "/api/me/leaderboard-visibility") {
       return { status: 200, json: async () => JSON.parse(String(init?.body)) } as Response;
     }
-    const body = url === "/api/me/stats" ? STATS
+    const body = url === "/api/me/stats" ? STATS_BODY
       : url.startsWith("/api/me/games?") ? { games, next_before: null } : null;
     return { status: body ? 200 : 404, json: async () => body ?? {} } as Response;
   }) as typeof fetch;
@@ -127,12 +129,26 @@ describe("signed in", () => {
     expect(host.querySelector(".me-sub")?.textContent).toBe("1,532 · #12 all time · ▲ 8 this week");
     const tiles = [...host.querySelectorAll(".me-tile")].map((t) => t.textContent);
     expect(tiles).toEqual(["58%rounds won", "+0.41levels / round", "7best streak"]);
-    expect(rowLabels()).toEqual(["Games won", "Rounds played", "Won as defenders", "Won as attackers",
+    expect(rowLabels()).toEqual(["Rounds won", "Rounds played", "Won as defenders", "Won as attackers",
       "Coach", "Sound", "Language", "How to play", "Show me on the leaderboard", "Edit name", "Privacy policy",
       "Terms of use", "Support", "On iPhone", "Sign out", "Delete account"]);
     expect(host.textContent).not.toContain("With a bot partner");
     expect(host.querySelector(".me-delete")?.className).toContain("destructive");
     expect(host.querySelector(".segmented-btn[aria-pressed=true]")?.textContent).toBe("Stats");
+  });
+
+  it("the first count is the rated rounds won, and a dash from a server that does not send it", async () => {
+    await render();
+    const value = (label: string) => [...host.querySelectorAll(".grp-row")]
+      .find((r) => r.querySelector(".grp-label")?.textContent === label)?.querySelector(".grp-value")?.textContent;
+    expect(value("Rounds won")).toBe("239");
+    expect(host.textContent).not.toContain("Games won");
+    act(() => root.unmount());
+    host.remove();
+    const { rounds_won: _, ...older } = STATS;
+    STATS_BODY = older;
+    await render();
+    expect(value("Rounds won")).toBe("—");
   });
 
   it("merges stats and games: the Games segment lists the saved games by day, a row one tap", async () => {

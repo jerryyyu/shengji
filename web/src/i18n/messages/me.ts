@@ -21,7 +21,7 @@ export const me = defineMessages({
   "me.tile.levels": { en: "levels / round", zh: "级/局", hant: "級/局" },
   "me.tile.streak": { en: "best streak", zh: "最长连胜", hant: "最長連勝" },
   "me.noRanked": { en: "No ranked rounds yet.", zh: "还没有打过排位局。", hant: "還沒有打過排位局。" },
-  "me.count.gamesWon": { en: "Games won", zh: "赢的盘数", hant: "贏的盤數" },
+  "me.count.roundsWon": { en: "Rounds won", zh: "赢的局数", hant: "贏的局數" },
   "me.count.rounds": { en: "Rounds played", zh: "总局数", hant: "總局數" },
   "me.count.defenders": { en: "Won as defenders", zh: "坐庄胜率", hant: "坐莊勝率" },
   "me.count.attackers": { en: "Won as attackers", zh: "闲家胜率", hant: "閒家勝率" },

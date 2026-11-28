@@ -49,6 +49,8 @@ export interface MyStats {
   attacker_won_pct: number | null;
   best_streak: number;
   games_won: number;
+  /** rated rounds the account's team won; absent from an older server */
+  rounds_won?: number;
   week_delta: number;
   history: number[];
   /** each history point's unix time, the same length; absent from an older server */

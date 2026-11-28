@@ -572,6 +572,8 @@ def stats(store: accounts.Store, user_id: int, now: float | None = None) -> dict
         "attacker_won_pct": _pct(sum(e["won"] for e in attacking), len(attacking)),
         "best_streak": best,
         "games_won": sum(e["game_won"] for e in events),
+        # rated rounds the account's team won, as ``Store.ranked_wins`` counts them
+        "rounds_won": wins,
         "week_delta": int(round(week_delta)),
         "history": history,
         "history_at": history_at,

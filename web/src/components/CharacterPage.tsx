@@ -218,7 +218,9 @@ export function UseButton({ ownership, onUse, price }: {
 }
 
 /** What the stage shows: the figure large on its own felt, or as a table
- *  draws it. The last choice is kept on this device. */
+ *  draws it. The Collection page holds the choice, above the character
+ *  selected, so it lasts the visit whichever tile is tapped; it is kept on
+ *  this device too, where storage allows. */
 export type StageView = "stage" | "table";
 const VIEW_KEY = "shengji.collectionView";
 function readView(): StageView {
@@ -228,21 +230,30 @@ function readView(): StageView {
     return "stage";
   }
 }
-function keepView(v: StageView): void {
-  try {
-    window.localStorage.setItem(VIEW_KEY, v);
-  } catch {
-    /* blocked storage: the choice lasts this page */
-  }
+
+/** The stage's view for this visit, and a setter that also keeps it on the device. */
+export function useStageView(): [StageView, (v: StageView) => void] {
+  const [view, setView] = useState<StageView>(readView);
+  const pick = (v: StageView) => {
+    try {
+      window.localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      /* blocked storage: the choice lasts this visit */
+    }
+    setView(v);
+  };
+  return [view, pick];
 }
 
-/** The stage's two-way switch, at its top right: the app's segmented
- *  control, labels only. A tap on it is not a tap on the felt. */
-function ViewSwitch({ view, onView }: { view: StageView; onView: (v: StageView) => void }) {
+/** The stage's two-way switch, over its top right: the app's segmented
+ *  control, labels only. The page draws it outside the stage it switches,
+ *  so a new character or view leaves it (and its focus) in place, and the
+ *  stage's clipped corner never trims its tap area. */
+export function ViewSwitch({ view, onView }: { view: StageView; onView: (v: StageView) => void }) {
   const t = useT();
   const options = [{ value: "stage" as const, label: t("home.viewStage") }, { value: "table" as const, label: t("home.viewTable") }];
   return (
-    <div className="char-view" onClick={(e) => e.stopPropagation()}>
+    <div className="char-view">
       <Segmented label={options.map((o) => o.label).join(" · ")} options={options} value={view} onChange={onView} />
     </div>
   );
@@ -268,7 +279,7 @@ interface StageProps {
   /** The taps that selected it: each plays its way in once. 0 for the page's first figure, which is drawn settled. */
   arrives?: number;
   kind: DrawnKind; colour: DrawnColour; size: number; label: string;
-  /** The row of move chips under the felt, each playing its move once before the cycle resumes; with them the Stage · Table switch. */
+  /** The row of move chips under the felt, each playing its move once before the cycle resumes; with them the stage takes the Table view. */
   moves?: boolean;
   /** Each new value plays the cheer at once (a purchase). */
   cheer?: number;
@@ -279,27 +290,22 @@ interface StageProps {
  *  its own animation's length, while it is on screen; off screen its figure
  *  is paused. Every tap plays its special from the start. With `moves`, one
  *  row of chips under it plays Hop, Cheer, Big play or the special once,
- *  then the cycle resumes, and the switch at its top right shows the figure
- *  as the table draws it instead (`TableView`). Under Reduce Motion it
- *  stands still, and a tap or a chip shows that pose drawn still. A switch
- *  of view keeps the character and draws it settled: the taps and the cheer
- *  before it are not played again. */
-export function Stage({ arrives = 0, cheer = 0, moves = false, ...rest }: StageProps) {
-  const [view, setView] = useState<StageView>(readView);
-  const since = useRef({ arrives: 0, cheer: 0 });
-  const pick = (v: StageView) => {
-    if (v === view) return;
-    since.current = { arrives, cheer };
-    keepView(v);
-    setView(v);
-  };
+ *  then the cycle resumes, and `view` "table" shows the figure as the table
+ *  draws it instead (`TableView`). Under Reduce Motion it stands still, and a
+ *  tap or a chip shows that pose drawn still. A change of view keeps the
+ *  character and draws it settled: the taps and the cheer before it are not
+ *  played again. */
+export function Stage({ arrives = 0, cheer = 0, moves = false, view = "stage", ...rest }: StageProps & { view?: StageView }) {
   const shown = moves ? view : "stage";
-  const sw = moves ? <ViewSwitch view={shown} onView={pick} /> : null;
-  const props = { ...rest, moves, arrives: Math.max(0, arrives - since.current.arrives), cheer: Math.max(0, cheer - since.current.cheer), viewSwitch: sw };
+  // the taps and cheers counted as the view last changed
+  const [since, setSince] = useState({ view: shown, arrives: 0, cheer: 0 });
+  if (since.view !== shown) setSince({ view: shown, arrives, cheer });
+  const base = since.view === shown ? since : { arrives, cheer };
+  const props = { ...rest, moves, arrives: Math.max(0, arrives - base.arrives), cheer: Math.max(0, cheer - base.cheer) };
   return shown === "table" ? <TableView {...props} /> : <StageFelt {...props} />;
 }
 
-function StageFelt({ kind, colour, size, label, cheer = 0, moves = false, arrives = 0, viewSwitch }: StageProps & { viewSwitch: ReactNode }) {
+function StageFelt({ kind, colour, size, label, cheer = 0, moves = false, arrives = 0 }: StageProps) {
   const felt = useRef<HTMLDivElement>(null);
   const moveBox = useRef<HTMLSpanElement>(null);
   const beat = useRef<{ stop: () => void } | null>(null);
@@ -335,7 +341,6 @@ function StageFelt({ kind, colour, size, label, cheer = 0, moves = false, arrive
   }, [cheer, play]);
   const stage = (
     <div ref={felt} className={`coll-felt char-stage${live.paused ? " live-paused" : ""}`} onClick={flair.onFelt}>
-      {viewSwitch}
       {flair.material ? <canvas className="char-flair" data-depth="back" ref={flairBack} aria-hidden="true" /> : null}
       <div className="char-figures" style={{ height: size }}>
         <span className="char-walk" ref={walkBox}>
@@ -387,7 +392,7 @@ function fixtureTable(look: string, seated: boolean): GameState {
  *  tap on it or the special's chip plays its special (at most every 3 s, a
  *  small hop between), and Hop, Cheer and Big play play the table's moves. A
  *  tile tap seats it again, so it comes in its own way. */
-function TableView({ kind, colour, size, label, cheer = 0, arrives = 0, viewSwitch }: StageProps & { viewSwitch: ReactNode }) {
+function TableView({ kind, colour, size, label, cheer = 0, arrives = 0 }: StageProps) {
   const seat = useRef<HTMLDivElement>(null);
   const [seated, setSeated] = useState(arrives === 0);
   const [cue, setCue] = useState<TablePreview["cue"]>(null);
@@ -413,7 +418,6 @@ function TableView({ kind, colour, size, label, cheer = 0, arrives = 0, viewSwit
     <>
       <div className="coll-felt char-stage char-table">
         <div className="felt char-table-felt" aria-hidden="true" />
-        {viewSwitch}
         <div className="char-seat" ref={seat}>
           <TableCompanions state={state} preview={preview} />
           <div className="hand char-hand" aria-hidden="true"><span className="hand-slot" /></div>
@@ -442,9 +446,11 @@ export function stageSize(phone: boolean, short: boolean): number {
  *  store character not owned `price` (Buy, Sign in to buy). A tap on a colour
  *  only shows it; the button puts it in use. "New" marks the colours in `fresh`. */
 export default function CharacterPage({ kind, shown, entries, inUse, user, phone, short = false, strip, fresh, onShow, onUse, price,
-  status = "", cheer = 0, arrives = 0 }: {
+  status = "", cheer = 0, arrives = 0, view = "stage" }: {
   /** The taps that selected it (`Stage`). */
   arrives?: number;
+  /** What the stage shows (`useStageView`). */
+  view?: StageView;
   kind: CompanionKind; shown: string; entries: readonly LookEntry[]; inUse: string; user: AuthUser | null; phone: boolean;
   /** A short screen (`SHORT_SCREEN`): a smaller stage, so its colours and button fit above the tab bar. */
   short?: boolean;
@@ -459,7 +465,7 @@ export default function CharacterPage({ kind, shown, entries, inUse, user, phone
   const { colour } = parseLook(entry.id);
   return (
     <div className="char-page">
-      <Stage kind={kind} colour={colour} size={stageSize(phone, short)} label={lookName(t, entry.id)} cheer={cheer} moves arrives={arrives} />
+      <Stage kind={kind} colour={colour} size={stageSize(phone, short)} label={lookName(t, entry.id)} cheer={cheer} moves arrives={arrives} view={view} />
       {strip}
       <Swatches entries={entries} shown={entry.id} inUse={inUse} user={user} size={56} className="char-swatches" fresh={fresh} onPick={onShow} />
       <p className={status ? "coll-status" : "coll-status coll-status-look"} role="status">

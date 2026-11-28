@@ -429,6 +429,7 @@ try {
       });
       await ctx.close();
     }
+  }
   // the Stage · Table switch on a phone each way up, a tablet and a desktop window: at the stage's top right,
   // tappable, clear of the title and of the stage's figure; Table puts the figure wholly on the felt at the
   // size a real table (a scripted socket) seats yours on the same screen, within 1 px
@@ -449,9 +450,22 @@ try {
       const hit = await page.evaluate(() => { const b = [...document.querySelectorAll(".char-view .segmented-btn")][1].getBoundingClientRect();
         return document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.closest(".segmented-btn")?.textContent ?? null; });
       await rep.check(`${device} Table is the topmost thing under its own centre`, hit === "Table" ? null : `hit ${hit}`, page);
+      // each segment answers a tap over its full 44 px of height, nothing of it clipped by the stage
+      const reach = () => page.evaluate(() => [...document.querySelectorAll(".char-view .segmented-btn")].map((b) => {
+        const r = b.getBoundingClientRect(), x = r.left + r.width / 2, mid = r.top + r.height / 2;
+        const miss = [];
+        for (let dy = -21.5; dy <= 21.5; dy += 1) {
+          if (document.elementFromPoint(x, mid + dy)?.closest(".segmented-btn") !== b) miss.push(dy);
+        }
+        return miss.length ? `${b.textContent}: missed at ${miss.join(",")}` : null;
+      }).filter(Boolean));
+      const missed = await reach();
+      await rep.check(`${device} each segment is hit-testable over 44 px`, missed.length ? missed.join("; ") : null, page);
       await press(page.locator(".char-view .segmented-btn", { hasText: "Table" }));
       await until(page, () => document.querySelector(".char-seat .tc-move svg.cmp") !== null, { timeout: 6000 });
       await sleep(600);
+      const missedTable = await reach();
+      await rep.check(`${device} in Table each segment is still hit-testable over 44 px`, missedTable.length ? missedTable.join("; ") : null, page);
       const on = await page.evaluate(() => {
         const f = document.querySelector(".char-table").getBoundingClientRect(), s = document.querySelector(".char-seat .tc-move svg.cmp").getBoundingClientRect();
         return { inside: s.left >= f.left && s.right <= f.right && s.top >= f.top && s.bottom <= f.bottom, w: s.width, h: s.height,

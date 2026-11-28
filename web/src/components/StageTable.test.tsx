@@ -13,12 +13,18 @@ const { authState } = vi.hoisted(() => ({
   authState: { current: { status: "out", clientId: "cid", user: null } as AuthState },
 }));
 vi.mock("../ws", () => ({ conn: { send: () => {}, reconnect: () => {} } }));
+const { counts } = vi.hoisted(() => ({ counts: { walks: 0, specials: 0, nudges: 0 } }));
+vi.mock("../companion/usage", () => ({
+  countWalk: () => { counts.walks += 1; },
+  countPoke: (special: boolean) => { if (special) counts.specials += 1; else counts.nudges += 1; },
+}));
 vi.mock("../auth", async (importOriginal) => {
   const real = await importOriginal<typeof import("../auth")>();
   return { ...real, useAuth: () => authState.current, auth: { updated: () => {}, get state() { return authState.current; } } };
 });
 
-import { Stage } from "./CharacterPage";
+import { Stage, ViewSwitch, useStageView } from "./CharacterPage";
+import type { DrawnKind } from "../companion/kinds";
 import TableCompanions from "../companion/TableCompanions";
 import { TABLES } from "../companion/seatZones.fixtures";
 import type { Rect } from "../companion/seatZones";
@@ -66,6 +72,7 @@ beforeEach(() => {
     return { finished, cancel: () => window.clearTimeout(timer) };
   };
   tablet = false;
+  counts.walks = 0; counts.specials = 0; counts.nudges = 0;
   window.matchMedia = ((q: string) => ({ matches: q === TABLET_SCREEN ? tablet : false, media: q,
     addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
   setLanguageChoice("en");
@@ -83,8 +90,18 @@ afterEach(() => {
 const flush = async (ms = 50) => {
   await act(async () => { vi.advanceTimersByTime(ms); for (let i = 0; i < 6; i++) await Promise.resolve(); });
 };
-const stage = async (arrives = 0) => {
-  await act(async () => { root.render(<Stage kind="bun" colour="plain" size={176} label="Bun · Plain" moves arrives={arrives} />); });
+/** The stage as the Collection page draws it: the page holds the view and draws the switch over the stage. */
+function Host({ arrives = 0, kind = "bun" }: { arrives?: number; kind?: DrawnKind }) {
+  const [view, setView] = useStageView();
+  return (
+    <div className="coll-stage-host">
+      <ViewSwitch view={view} onView={setView} />
+      <div key={kind}><Stage kind={kind} colour={kind === "bun" ? "plain" : "yellow"} size={176} label="Look" moves arrives={arrives} view={view} /></div>
+    </div>
+  );
+}
+const stage = async (arrives = 0, kind: DrawnKind = "bun") => {
+  await act(async () => { root.render(<Host arrives={arrives} kind={kind} />); });
   await flush();
 };
 const option = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".char-view .segmented-btn")].find((b) => b.textContent === name)!;
@@ -92,7 +109,7 @@ const chip = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".ch
 const toTable = async () => { await act(async () => { option("Table").click(); }); await flush(); };
 
 /** The size the real table draws the bottom seat (you) at on this screen. */
-async function tableSeatSize(): Promise<number> {
+async function realTable(): Promise<void> {
   const player = (seat: number): StatePlayer => ({ seat, name: `P${seat}`, is_bot: seat !== 0, look: seat === 0 ? "bun/plain" : null, connected: true,
     team: (seat % 2) as 0 | 1, cards_left: 25, is_banker: false, takeover_in: null, controller: seat === 0 ? "human" : "bot", reserved_for: null, reserved_secs: null });
   const state = { you: 0, room: "R", phase: "play", levels: ["2", "2"], players: [0, 1, 2, 3].map(player), turn: 1, banker: 1,
@@ -104,6 +121,9 @@ async function tableSeatSize(): Promise<number> {
       <TableCompanions state={state} />
     </div>); });
   await flush();
+}
+async function tableSeatSize(): Promise<number> {
+  await realTable();
   const px = Number(host.querySelector('.tc-seat[data-seat="0"] .tc-move svg')?.getAttribute("width"));
   await act(async () => { root.render(<></>); });
   return px;
@@ -222,9 +242,67 @@ describe("the Table view", () => {
     await stage();
     await toTable();
     expect(host.querySelectorAll(".tc-seat")).toHaveLength(1);
-    await act(async () => { root.render(<Stage kind="bun" colour="plain" size={176} label="Bun · Plain" moves arrives={1} />); });
+    await act(async () => { root.render(<Host arrives={1} />); });
     expect(host.querySelectorAll(".tc-seat")).toHaveLength(0);
     await flush(100);
     expect(host.querySelectorAll(".tc-seat")).toHaveLength(1);
+  });
+});
+
+describe("the view outlives the character", () => {
+  it("a new character keeps Table and the same switch, focus on it, with storage blocked", async () => {
+    const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
+    const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked"); });
+    try {
+      await stage();
+      const btn = option("Table");
+      btn.focus();
+      await act(async () => { btn.click(); });
+      await flush();
+      expect(document.activeElement).toBe(btn);
+      await stage(1, "chick");
+      expect(option("Table")).toBe(btn);
+      expect(btn.isConnected).toBe(true);
+      expect(document.activeElement).toBe(btn);
+      expect(btn.getAttribute("aria-pressed")).toBe("true");
+      await flush(100);
+      expect(host.querySelector(".char-seat .tc-move svg.cmp-chick")).not.toBeNull();
+    } finally { get.mockRestore(); set.mockRestore(); }
+  });
+});
+
+describe("telemetry", () => {
+  it("a preview's walk, special and nudge count nothing; they still walk and play", async () => {
+    await stage();
+    await toTable();
+    const from = anims.length;
+    await act(async () => { host.querySelector(".char-seat")!.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 200, clientY: 120 })); });
+    await flush(40);
+    expect(anims.slice(from).some((a) => a.box === "tc-walk")).toBe(true);
+    await flush(3500);
+    await act(async () => { chip("Steamer pop").click(); });
+    await flush(40);
+    expect(host.querySelector(".tc-move")?.getAttribute("data-move")).toBe("react");
+    // the special ends, and a tap inside its cooldown nudges
+    await flush(2000);
+    const nudge = anims.length;
+    await act(async () => { host.querySelector<HTMLElement>(".tc-walk.tc-mine")!.click(); });
+    await flush(40);
+    expect(anims.slice(nudge).some((a) => a.box === "tc-move")).toBe(true);
+    expect(counts).toEqual({ walks: 0, specials: 0, nudges: 0 });
+  });
+
+  it("the real table still counts its walk, special and nudge", async () => {
+    await realTable();
+    await act(async () => { host.querySelector(".felt")!.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 300, clientY: 150 })); });
+    await flush(40);
+    expect(counts.walks).toBe(1);
+    await flush(3500);
+    await act(async () => { host.querySelector<HTMLElement>(".tc-walk.tc-mine")!.click(); });
+    // the special ends, and a tap inside its cooldown nudges
+    await flush(2000);
+    await act(async () => { host.querySelector<HTMLElement>(".tc-walk.tc-mine")!.click(); });
+    await flush(40);
+    expect(counts).toEqual({ walks: 1, specials: 1, nudges: 1 });
   });
 });

@@ -326,3 +326,30 @@ describe("the stage's move chips", () => {
     setLanguageChoice("system");
   });
 });
+
+describe("the Stage · Table switch", () => {
+  it("holds Table across a tile tap within the visit with storage blocked, the switch kept mounted and focused", async () => {
+    const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
+    const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked"); });
+    try {
+      authState.current = { status: "in", clientId: "cid", user };
+      await draw();
+      const opt = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".char-view .segmented-btn")].find((b) => b.textContent === name)!;
+      const table = opt("Table");
+      table.focus();
+      await act(async () => { table.click(); });
+      expect(host.querySelector(".char-table")).not.toBeNull();
+      await act(async () => { tile("Bun").click(); });
+      await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+      expect(opt("Table")).toBe(table);
+      expect(table.getAttribute("aria-pressed")).toBe("true");
+      expect(document.activeElement).toBe(table);
+      expect(host.querySelector(".char-table")).not.toBeNull();
+      // Stage comes back on the next tile too
+      await act(async () => { opt("Stage").click(); });
+      await act(async () => { tile("Chick").click(); });
+      expect(host.querySelector(".char-table")).toBeNull();
+      expect(opt("Stage").getAttribute("aria-pressed")).toBe("true");
+    } finally { get.mockRestore(); set.mockRestore(); }
+  });
+});

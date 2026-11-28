@@ -254,6 +254,39 @@ describe("a tile tapped further down the page", () => {
   });
 });
 
+describe("a way in still owed when the player acts", () => {
+  it("is let go: a chip pressed before the stage is seen again is the only thing that plays", async () => {
+    const seen: { cb: (e: { isIntersecting: boolean }[]) => void }[] = [];
+    class IO {
+      cb: (e: { isIntersecting: boolean }[]) => void;
+      constructor(cb: (e: { isIntersecting: boolean }[]) => void) { this.cb = cb; seen.push(this); }
+      observe() {}
+      disconnect() {}
+    }
+    (window as unknown as { IntersectionObserver: unknown }).IntersectionObserver = IO;
+    const view = (on: boolean) => act(async () => { for (const io of seen) io.cb([{ isIntersecting: on }]); });
+    const arrivals = () => anims.filter((a) => a.box === "char-box" && a.frames[0]?.opacity === 0 && !a.cancelled);
+    try {
+      await draw("bun", "plain", 0);
+      await tick(300);
+      await view(false);
+      await draw("bun", "plain", 1);
+      await tick(200);
+      expect(arrivals()).toHaveLength(0);
+      await chip("Hop");
+      await view(true);
+      await tick(1500);
+      expect(arrivals()).toHaveLength(0);
+      // the next tap on its tile plays its way in as ever
+      await draw("bun", "plain", 2);
+      await tick(50);
+      expect(arrivals()).toHaveLength(1);
+    } finally {
+      delete (window as unknown as { IntersectionObserver?: unknown }).IntersectionObserver;
+    }
+  });
+});
+
 describe("by the felt's edge", () => {
   const tap = (x: number) => act(async () => { host.querySelector(".char-stage")!.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: x })); });
   it.each([[342, 0.9], [342, 0.1], [1, 0.9], [1, 0.1]])(

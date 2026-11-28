@@ -79,6 +79,8 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
   // the taps whose way in has been played, and when the last one started
   const entered = useRef(0);
   const enteredAt = useRef(-Infinity);
+  const taps = useRef(arrives);
+  taps.current = arrives;
   // when it last came to a stand, for its walk back to the middle
   const stood = useRef(0);
   const still = () => prefersReducedMotion() || document.visibilityState === "hidden";
@@ -289,8 +291,9 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
   return {
     material: material !== null,
     /** A chip or a tap on the figure is the player's: a moment in flight ends at once, so the move the player
-     *  asked for starts from the figure at rest, and the next moment waits its full time. */
-    yield: () => { settle(); lastMoment.current = performance.now(); },
+     *  asked for starts from the figure at rest, the next moment waits its full time, and a way in still owed
+     *  (the stage was out of view) is let go rather than played over what the player asked for. */
+    yield: () => { settle(); lastMoment.current = performance.now(); entered.current = Math.max(entered.current, taps.current); },
     /** A tap on the felt (not on the figure, whose tap is its special) walks it there. */
     onFelt: (e: MouseEvent<HTMLDivElement>) => {
       const felt = refs.felt.current;

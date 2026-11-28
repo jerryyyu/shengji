@@ -14,6 +14,8 @@ reason) become ``allocation``.  Three early blobs predate the schema field
 (``chosen_index`` instead of ``played_index``); they are adapted, not dropped.
 A scalar candidate count from search-free or relaxed play leaves the ballot
 and allocation unknown.
+PV search receipts carry their admitted cards and the aligned published
+means as observed evidence. Older receipts can omit the admitted cards.
 
 Format facts (verified): human plays are logged with the ENGINE's cards
 (a failed human throw is logged post-penalty); bot plays log the engine's
@@ -27,6 +29,7 @@ from __future__ import annotations
 
 import glob
 import json
+import math
 from collections import defaultdict
 from copy import deepcopy
 from pathlib import Path
@@ -132,6 +135,25 @@ def _allocation_from_decision(decision: dict) -> dict[str, Any]:
     if isinstance(ballot, dict):
         out["ballot_identity"] = ballot.get("display") or ballot.get("digest")
     return out
+
+
+def _pv_action_values(decision: dict, ballot: list[list[str]]) -> dict[str, Any] | None:
+    means = decision.get("value_means")
+    if means is None:
+        return None
+    if not isinstance(means, list) or len(means) != len(ballot):
+        raise RoomLogError("PV value_means are not aligned with admitted cards")
+    if any(m is not None and (type(m) not in (int, float) or not math.isfinite(m))
+           for m in means):
+        raise RoomLogError("PV value_means must be finite numbers or null")
+    # The search receipt carries observations for the tactical fixture. The
+    # training bridge requires eligible_indices to treat means as targets.
+    return {
+        "kind": decision["schema"],
+        "perspective": "acting-team",
+        "units": "expected-signed-level-half-integer",
+        "means": list(means),
+    }
 
 
 def _seat_policies(events: list[dict]) -> dict[int, str]:
@@ -270,15 +292,25 @@ def extract_round(ref: str, round_no: int, events: list[dict], *,
         decision = event.get("decision") if isinstance(event.get("decision"), dict) else None
         ballot = None
         allocation = None
+        action_values = None
         if decision is not None:
-            candidates = decision.get("candidates")
+            schema = decision.get("schema")
+            admitted = decision.get("admitted") if schema == "pv-search-decision-v1" else None
+            candidates = admitted or decision.get("candidates")
             count_only = (
-                decision.get("schema") in ("search-free-decision-v1", "relaxed-decision-v1")
+                schema in ("search-free-decision-v1", "relaxed-decision-v1")
                 and type(candidates) is int and candidates > 0
             )
             if not count_only:
                 ballot = [list(c) for c in candidates or []] or None
                 allocation = _allocation_from_decision(decision)
+                if admitted and ballot is not None:
+                    action_values = _pv_action_values(decision, ballot)
+                    # These index the search's scored set. Post-search play
+                    # rules can submit a different action.
+                    for key in ("admitted_indices", "selected_index"):
+                        if key in decision:
+                            allocation[key] = deepcopy(decision[key])
             played = decision.get("played")
             if played is not None and action_key(played) != action_key(action):
                 raise RoomLogError(f"decision/play mismatch at event {event_index}")
@@ -301,7 +333,7 @@ def extract_round(ref: str, round_no: int, events: list[dict], *,
             "legal_actions_count": legal.count,
             "ballot": ballot,
             "allocation": allocation,
-            "action_values": None,
+            "action_values": action_values,
             "action": action,
             "outcome": outcome_for(final_points, banker=banker, seat=seat),
             "authority": authority,

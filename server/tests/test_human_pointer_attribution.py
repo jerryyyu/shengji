@@ -1,5 +1,6 @@
 """Synthetic end-to-end checks for human_v8 source-event attribution."""
 
+import argparse
 import hashlib
 import json
 import random
@@ -12,8 +13,8 @@ from shengji.engine.round import Round, actual_play_after
 from shengji.harvest import human
 from shengji.harvest.common import InputRegistry, pseudonym
 from shengji.harvest.rebuild import engine_level_change, round_from_setup
-from shengji.harvest.room_log import extract_round, read_rounds
-from shengji.harvest.schema import validate_record
+from shengji.harvest.room_log import RoomLogError, extract_round, read_rounds
+from shengji.harvest.schema import encode_line, validate_record
 
 
 _MISSING = object()
@@ -161,8 +162,6 @@ def test_missing_or_nonboolean_bot_flag_is_rejected(tmp_path, kind, marker):
 
 @pytest.mark.parametrize("degraded", [None, False, True])
 def test_room_log_harvest_preserves_search_degradation(tmp_path, degraded):
-    from shengji.harvest.schema import encode_line
-
     events = _completed_round()
     play = next(event for event in events if event["e"] == "play")
     stats = {}
@@ -194,6 +193,7 @@ def test_room_log_harvest_preserves_search_degradation(tmp_path, degraded):
     record = next(r for r in records if r["decision_kind"] == "play")
     saved = json.loads(encode_line(record))
     assert saved["action"] == play["cards"]
+    assert saved["ballot"] is None and saved["action_values"] is None
     allocation = saved["allocation"]
     if degraded is None:
         assert "belief_fallback_any" not in allocation
@@ -206,6 +206,64 @@ def test_room_log_harvest_preserves_search_degradation(tmp_path, degraded):
         record["allocation"]["belief_fallback_by_stage"]["lead_confirm"] = 999
         original_play = next(event for event in rounds[1] if event["e"] == "play")
         assert original_play["decision"]["belief_fallback_by_stage"]["lead_confirm"] == failures
+
+
+@pytest.mark.parametrize(("means", "selected"), [
+    ([0.5, 0.75], 9), ([0.5, None], 9), ([0.5, 0.0], 17),
+], ids=["priced", "confirmation", "relaxed-redraw"])
+def test_room_log_pv_evidence_reaches_the_tactical_fixture(tmp_path, means, selected):
+    from scripts.tactical_fixture_from_source import from_shard
+
+    events = _completed_round()
+    opening = next(event for event in events if event["e"] == "play")
+    start, _ = extract_round("logs/room.jsonl", 1, events, cap=1)
+    rnd = round_from_setup(start[0]["deck"], start[0]["setup"])
+    played = opening["cards"]
+    other = next([card] for card in rnd.hands[rnd.turn] if [card] != played)
+    ballot = [other, played]
+    opening.update(bot=True, decision={
+        "schema": "pv-search-decision-v1", "policy": "synthetic-pv",
+        "admitted": ballot, "value_means": means, "admitted_indices": [17, 9],
+        "selected_index": selected, "worlds": 8, "played": played,
+        "relaxed_redrawn": selected == 17,
+    })
+    records, counts = extract_round("logs/room.jsonl", 1, events, cap=1)
+    record = records[1]
+    assert counts["decision_blobs"] == 1
+    assert record["ballot"] == ballot
+    assert all(sorted(cards) in record["legal_actions"] for cards in ballot)
+    assert record["allocation"]["admitted_indices"] == [17, 9]
+    assert record["allocation"]["selected_index"] == selected
+    assert record["allocation"]["played_index"] is None
+    assert record["action_values"] == {
+        "kind": "pv-search-decision-v1", "perspective": "acting-team",
+        "units": "expected-signed-level-half-integer", "means": means,
+    }
+    assert "preference" not in record
+
+    shard = tmp_path / "decisions.jsonl"
+    shard.write_text("".join(encode_line(row) for row in records))
+    fixture = from_shard(argparse.Namespace(
+        shard=shard, key=record["source_ref"], id="room-pv-evidence",
+        category="doomed-throw", predicate="not_a_doomed_throw", args="{}",
+        why="", notes="", current_bot=None))
+    assert fixture["observed"]["action"] == played
+    assert fixture["observed"]["admitted"] == ballot
+    assert fixture["observed"]["value_means"] == means
+
+
+def test_room_log_pv_means_require_aligned_admitted_cards():
+    events = _completed_round()
+    opening = next(event for event in events if event["e"] == "play")
+    decision = {"schema": "pv-search-decision-v1", "played": opening["cards"],
+                "admitted_indices": [3, 7], "value_means": [0.5, -0.25]}
+    opening.update(bot=True, decision=decision)
+    records, _ = extract_round("logs/room.jsonl", 1, events, cap=1)
+    assert records[1]["ballot"] is None and records[1]["action_values"] is None
+
+    decision["admitted"] = [opening["cards"]]
+    with pytest.raises(RoomLogError, match="value_means are not aligned"):
+        extract_round("logs/room.jsonl", 1, events, cap=1)
 
 
 @pytest.mark.parametrize("schema", ["relaxed-decision-v1", "search-free-decision-v1"])

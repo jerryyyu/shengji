@@ -721,11 +721,27 @@ keeps the table on screen.
   its width the way it faces, as far as stays clear, and comes home, while the drawing acts; the Panda's bites nod
   further and tug the stalk. A shared special plays the same on every screen.
 - **The Collection shows it with no words**: a store character's tile, for sale or owned, wears a foil edge with a
-  slow sheen (still under Reduce Motion), and the stage plays the layer live. Every companion comes onto the stage its
-  own way as it is selected (the page's first figure is drawn settled), and a tap on the stage's felt walks it there in its own gait (a tap on the figure is
-  still its special). A store character also strolls across the stage by itself every 6.5 s while it stands at rest
-  on screen, so its trail shows, with its cue between strolls, its burst on Big play and its accent on its special.
-  No string, control or surface is added.
+  slow sheen (still under Reduce Motion), and the stage plays what the table has, from the table's own moves (Jerry
+  2026-11-28: "do we show all the same animations in collection? Like for bamboo special I don't see any
+  particles"; "find what other animations and effects store doesn't show - we want to use what we have in the
+  game"). **A tap on a tile** plays that character's way in on the stage, and a store character's entrance with it,
+  once for each tap, the selected tile's too ("Clicking the premium item should also play the same entrance
+  animation"); the page's first figure is drawn settled. **A tap on the stage's felt** walks it there in its own gait
+  (a tap on the figure is still its special), and 3 s after it comes to a stand it walks back to the middle at the
+  same pace ("tap can move but after a bit it should go back to the center"; a new tap starts the wait again; the
+  table keeps a parked spot, the stage does not). **At rest in the middle** every companion takes the table's
+  moments in turn, 4 s apart at least, between the stage's own poses: a stroll out (and back), its habit, ready as a
+  turn arrives (the highest jump the stage has room for, held a moment, then settled), a lean to watch a card, the
+  droop of a big trick lost, and for a store character a round won (its special under its shower). A store
+  character's material comes with each as at the table: its trail on every walk, its cue at rest, its burst and
+  mark on Big play, its accent on its special, one piece falling as it droops. Its pieces' flights are fitted to the
+  felt beside the figure, so none leaves the stage (the figure is large there and the felt small), and the stage
+  paints them whole on every device: it is one figure, far inside what any tier allows a table, so a device the
+  table has stepped down (Low Power Mode) still sees what a store character adds. Not shown on the stage: the
+  step aside (nothing covers it), a level gained and the growth and gold that come with a team's level (the stage
+  has no team), and the table's sway, blink and small hop (the stage's own idle stands in). Nothing moves under
+  Reduce Motion (a tap on the felt walks nothing; a store character has three still pieces at its feet) or while
+  the stage is off screen. No string, control or surface is added.
 - **Show companions at the table** (Jerry 2026-11-26, finding 2: one labelled switch, on by default) replaces Team ·
   Individual · Off. It is stored where the mode was (the account's `companions`, a guest's device), so an older
   client keeps working: off is off, and an older Team or Individual reads as on. It is a row of Me's settings

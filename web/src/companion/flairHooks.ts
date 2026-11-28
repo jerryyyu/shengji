@@ -4,17 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { prefersReducedMotion } from "../motion";
 import { FlairLayer } from "./flairLayer";
+import type { TierSampler } from "./flairLayer";
 
 /** The felt's layer of pieces while `on` (a store character is drawn on
  *  it), painted on `back` and `front`, sized to the felt. Nothing starts
  *  while the hand is dealt, and what was in the air as the deal begins is
  *  taken off; with cards in play (`quiet`) the trail and the cue are fainter. */
 export function useFlairLayer(on: boolean, back: RefObject<HTMLCanvasElement | null>, front: RefObject<HTMLCanvasElement | null>,
-  felt: { w: number; h: number } | undefined, dealing: boolean, quiet: boolean): FlairLayer | null {
+  felt: { w: number; h: number } | undefined, dealing: boolean, quiet: boolean, sampler?: TierSampler): FlairLayer | null {
   const [layer, setLayer] = useState<FlairLayer | null>(null);
   useEffect(() => {
     if (!on) return;
-    const made = new FlairLayer(back.current, front.current);
+    const made = new FlairLayer(back.current, front.current, sampler);
     setLayer(made);
     return () => { made.destroy(); setLayer(null); };
   }, [on, back, front]);

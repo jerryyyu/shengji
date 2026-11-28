@@ -1597,9 +1597,10 @@ Before a web or app release that touches layout, the header or any pop-up, run
 `shengji-smoke` iPhone simulator's Mobile Safari, visits Play, Collection, Me, the watch screen and a table
 against bots, opens each ⋯ menu, and screenshots every state into `web/e2e/out/ios-sim/`. It exits 1 and
 prints `INVISIBLE` for a menu whose screen region did not change when it opened, the paint failure Chromium and
-Playwright's WebKit do not show. `simctl` cannot turn a simulator, so the landscape runs need a turning command
-in `SIM_ROTATE` and are reported as skipped without one; the portrait run draws the table turned in the same
-phone layout and header.
+Playwright's WebKit do not show. It passes only when each orientation asked for was the page's own and both ⋯
+menus were judged drawn in it. `simctl` cannot turn a simulator, so landscape (`--orient left,right`) needs a
+turning command in `SIM_ROTATE`; asked for without one, nothing runs and it exits 2. The default portrait run
+draws the table turned in the same phone layout and header.
 
 ## Releases
 

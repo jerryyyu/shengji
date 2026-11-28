@@ -637,13 +637,15 @@ class Connection {
    *  moves to the connection by opening a new one. Everything else is the
    *  ordinary reconnect path: App decides from the saved room and resume
    *  token whether to rejoin, and a seat mid-game is reclaimed by its
-   *  token, so the player keeps it. Safe to call in any state. */
-  reconnect(): void {
-    this.replace("replaced");
+   *  token, so the player keeps it. Safe to call in any state. `why` is
+   *  "identity" when a working socket is given up to carry a new identity,
+   *  not because the link failed. */
+  reconnect(why: "link" | "identity" = "link"): void {
+    this.replace("replaced", why === "identity");
   }
 
   /** Give up the current socket (or connect) and open a new one at once. */
-  private replace(cause: DropCause): void {
+  private replace(cause: DropCause, identity = false): void {
     if (!this.started) return;
     // a Leave the socket given up still owes: the page leaves now, and the
     // successor delivers it whenever this socket's own close event comes
@@ -652,7 +654,7 @@ class Connection {
     this.stopHeartbeat?.();
     const ws = this.ws;
     if (ws) {
-      this.lose(cause);
+      this.lose(cause, identity);
       ws.close();     // onclose -> scheduleReconnect (immediately, see above)
       if (this.ws === ws) {   // a fake or half-open socket that never fired onclose
         this.ws = null;
@@ -667,14 +669,14 @@ class Connection {
 
   /** The current socket is being given up: if it had opened, say so, and
    *  retry at once when it had been working for a while. */
-  private lose(cause: DropCause): void {
+  private lose(cause: DropCause, identity = false): void {
     setStalled(false);
     const opened = this.openedAt;
     this.openedAt = null;
     if (opened === null) return;
     if (Date.now() - opened > LONG_LIVED_MS) this.immediate = true;
     this.lostAt ??= Date.now();
-    noteLink({ kind: "down", cause });
+    noteLink(identity ? { kind: "down", cause, identity: true } : { kind: "down", cause });
   }
 
   private endLeave(): void {

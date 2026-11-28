@@ -194,12 +194,15 @@ describe("the auth store", () => {
     expect(auth.state).toEqual({ status: "out", clientId: "cid", user: null });
     auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" });
     expect(auth.state.status).toBe("in");
-    // the open socket carried the guest handshake: it is replaced
+    // the open socket carried the guest handshake: it is replaced, for the
+    // new identity rather than a failed link
     expect(reconnect).toHaveBeenCalledTimes(1);
+    expect(reconnect).toHaveBeenLastCalledWith("identity");
     routes.set("POST /api/auth/logout", { status: 200, body: { ok: true } });
     await auth.signOut();
     expect(auth.state).toEqual({ status: "out", clientId: "cid", user: null });
     expect(reconnect).toHaveBeenCalledTimes(2);   // and again, so the seat drops the account
+    expect(reconnect).toHaveBeenLastCalledWith("identity");
     expect(seen).toEqual(["loading", "out", "in", "out"]);
     unsub();
     await auth.init();                       // idempotent

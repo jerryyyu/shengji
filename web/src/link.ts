@@ -3,11 +3,12 @@
 // one opened. A module of its own, with no imports, so the connection pill
 // and telemetry read it where a test stands in for ws.ts.
 
-/** Why the page lost an open socket. */
+/** Why the page lost an open socket. A "down" with `identity` gave up a
+ *  working socket to carry a sign-in or sign-out, not a failed link. */
 export type DropCause = "closed" | "no_pong" | "replaced";
 
 export type LinkEvent =
-  | { kind: "down"; cause: DropCause }
+  | { kind: "down"; cause: DropCause; identity?: true }
   | { kind: "up"; ms: number };
 
 let stalled = false;

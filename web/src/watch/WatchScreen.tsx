@@ -26,6 +26,7 @@ import { watch } from "./store";
 import { watchUsage } from "./usage";
 import type { WatchBy } from "../telemetry";
 import TableCompanions, { CHEER_POINTS } from "../companion/TableCompanions";
+import { PopLayer, usePopLayer } from "../popLayer";
 import "./watch.css";
 
 /** How often a caught-up watcher asks whether the round in play finished. */
@@ -203,6 +204,20 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   const [jumped, setJumped] = useState(false);
   const setSeat = (s: number) => { setJumped(true); setSeatNow(s); };
   const [menu, setMenu] = useState(false);
+  const menuAnchor = useRef<HTMLDivElement | null>(null);
+  const menuBox = useRef<HTMLDivElement | null>(null);
+  // the menu is drawn in the screen's pop-up layer, under ⋯ (popLayer.tsx)
+  const menuLayer = usePopLayer(menuAnchor, menu);
+  // a tap anywhere else closes it
+  useEffect(() => {
+    if (!menu) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!menuAnchor.current?.contains(t) && !menuBox.current?.contains(t)) setMenu(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [menu]);
   const [kitty, setKitty] = useState(false);
   // the next round, read while the round-end card holds, and when it may play
   const next = useRef<Loaded | null>(null);
@@ -455,22 +470,23 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
                         {...tapHandlers(leave)}><Icon d={ICON.close} /></button>
               </div>
             ) : (
-              <div className="hud-more">
+              <div className="hud-more" ref={menuAnchor}>
                 <button type="button" className="hud-more-btn" aria-label={t("watch.menu")} aria-haspopup="menu"
                         aria-expanded={menu} {...tapHandlers(() => setMenu((m) => !m))}>⋯</button>
-                {menu ? (
-                  <div className="hud-menu" role="menu">
+                {menu ? menuLayer.portal(
+                  <div className="hud-menu" role="menu" ref={menuBox} style={menuLayer.style}>
                     <button className="hud-menu-row" role="menuitem"
                             {...tapHandlers(() => { setMenu(false); pick(doc.table, "next"); })}>{t("watch.next")}</button>
                     <div className="hud-menu-sep" role="separator" />
                     <button className="hud-menu-row leave" role="menuitem" {...tapHandlers(leave)}>{t("common.leave")}</button>
-                  </div>
+                  </div>,
                 ) : null}
               </div>
             )}
           </div>
         </div>
       </div>
+      <PopLayer />
       <div className="felt">
         <TableCompanions state={state} watch={{ quiet, cheer: big }} />
         {opponents.map((p) => (

@@ -1165,10 +1165,22 @@ dialog.conn-lost::backdrop { background: var(--chrome); }
 
 .hud-more-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
+/* A table screen's pop-up layer (popLayer.tsx): over the whole screen, right
+   after its header and stacked as the header is, taking no taps itself. A
+   pop-up drawn there stands at its anchor's edges (--anchor-*); drawn in
+   place, the same rule reads its own box. */
+.pop-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+:where(.pop-layer) > * { pointer-events: auto; }
+
 .hud-menu {
   position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
+  top: calc(var(--anchor-b, 100%) + 6px);
+  right: var(--anchor-r, 0px);
   z-index: 12;
   width: 260px;
   display: flex;
@@ -3251,8 +3263,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .opp-fullname {
     display: block;
     position: absolute;
-    top: calc(100% + var(--space-s));
-    left: 50%;
+    top: calc(var(--anchor-b, 100%) + var(--space-s));
+    left: var(--anchor-cx, 50%);
     translate: -50% 0;
     z-index: 20;
     max-width: calc(var(--view-w) * 0.6);
@@ -3270,8 +3282,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   /* a side seat's popover opens inward, toward the table */
-  .opponent.pos-left .opp-fullname { left: 0; translate: 0 0; }
-  .opponent.pos-right .opp-fullname { left: auto; right: 0; translate: 0 0; }
+  .opp-fullname[data-pos="left"] { left: var(--anchor-l, 0px); translate: 0 0; }
+  .opp-fullname[data-pos="right"] { left: auto; right: var(--anchor-r, 0px); translate: 0 0; }
 
   /* --- Trick cross: centred between the header and the hand --- */
   .trick-area {
@@ -4082,8 +4094,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .opp-fullname {
     display: block;
     position: absolute;
-    top: calc(100% + 8px);
-    left: 50%;
+    top: calc(var(--anchor-b, 100%) + 8px);
+    left: var(--anchor-cx, 50%);
     translate: -50% 0;
     z-index: 20;
     max-width: 60vw;
@@ -4100,8 +4112,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     pointer-events: none;
   }
 
-  .opponent.pos-left .opp-fullname { left: 0; translate: 0 0; }
-  .opponent.pos-right .opp-fullname { left: auto; right: 0; translate: 0 0; }
+  .opp-fullname[data-pos="left"] { left: var(--anchor-l, 0px); translate: 0 0; }
+  .opp-fullname[data-pos="right"] { left: auto; right: var(--anchor-r, 0px); translate: 0 0; }
 
   /* text keeps the reader's size where that is the larger */
   .opp-name,

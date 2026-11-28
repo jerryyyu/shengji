@@ -302,22 +302,24 @@ it("keeps a long-pressed name visible after pointer release and its click", () =
   try {
     render(state());
     const seat = host.querySelector<HTMLElement>(".opponent.pos-left")!;
+    // the name is drawn in the screen's pop-up layer, marked with its seat's side
+    const name = () => host.querySelector(".pop-layer > .opp-fullname[data-pos=left]");
     act(() => seat.dispatchEvent(new Event("pointerdown", { bubbles: true })));
     act(() => vi.advanceTimersByTime(450));
-    expect(seat.querySelector(".opp-fullname")).not.toBeNull();
+    expect(name()).not.toBeNull();
     act(() => seat.dispatchEvent(new Event("pointerup", { bubbles: true })));
     act(() => seat.click());
-    expect(seat.querySelector(".opp-fullname")).not.toBeNull();
+    expect(name()).not.toBeNull();
     act(() => vi.advanceTimersByTime(2499));
-    expect(seat.querySelector(".opp-fullname")).not.toBeNull();
+    expect(name()).not.toBeNull();
     act(() => vi.advanceTimersByTime(1));
-    expect(seat.querySelector(".opp-fullname")).toBeNull();
+    expect(name()).toBeNull();
     act(() => seat.dispatchEvent(new Event("pointerdown", { bubbles: true })));
     act(() => seat.dispatchEvent(new Event("pointerup", { bubbles: true })));
     act(() => seat.click());
-    expect(seat.querySelector(".opp-fullname")).not.toBeNull();
+    expect(name()).not.toBeNull();
     act(() => seat.click());
-    expect(seat.querySelector(".opp-fullname")).toBeNull();
+    expect(name()).toBeNull();
   } finally { vi.useRealTimers(); }
 });
 

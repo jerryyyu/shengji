@@ -1064,7 +1064,7 @@ jobs:
         if: always()
         run: |
           echo "e2e outcome: ${{ steps.e2e.outcome }}" >> "$GITHUB_STEP_SUMMARY"
-          for f in e2e/out/matrix.json e2e/out/client.json e2e/out/collection.json e2e/out/figures.json; do
+          for f in e2e/out/matrix.json e2e/out/client.json e2e/out/collection.json e2e/out/figures.json e2e/out/menus.json; do
             [ -f "$f" ] || continue
             node -e 'const r=require("./"+process.argv[1]); console.log(`- ${r.suite}: ${r.checks} checks, ${r.failed} failed, ${r.known} known, ${r.stale.length} stale known, ${Math.round(r.seconds)} s`)' "$f" >> "$GITHUB_STEP_SUMMARY"
           done

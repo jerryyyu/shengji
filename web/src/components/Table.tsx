@@ -10,6 +10,7 @@ import Hand from "./Hand";
 import type { HandRects } from "./Hand";
 import { DUR } from "../motion";
 import Hud from "./Hud";
+import { PopLayer, usePopLayer } from "../popLayer";
 import RoundEndModal from "./RoundEndModal";
 import TrickArea, { seatPos } from "./TrickArea";
 import ChatPanel, { type ChatMsg } from "./ChatPanel";
@@ -136,6 +137,9 @@ export function OpponentPanel({ player, state, readOnly = false }: { player: Sta
   const longPressed = useRef(false);
   const optionsButton = useRef<HTMLButtonElement | null>(null);
   const openedByButton = useRef(false);
+  const seatRef = useRef<HTMLDivElement | null>(null);
+  // the full name is drawn in the screen's pop-up layer, under the seat (popLayer.tsx)
+  const nameLayer = usePopLayer(seatRef, fullName);
   useEffect(() => {
     if (!fullName) return;
     const t = window.setTimeout(() => setFullName(false), FULL_NAME_MS);
@@ -159,7 +163,7 @@ export function OpponentPanel({ player, state, readOnly = false }: { player: Sta
   const shownName = displayName(player.name, player.is_bot);
   const companions = useCollection();
   return (
-    <div data-seat={player.seat} className={`opponent pos-${pos} team${player.team}${onTurn ? " on-turn" : ""}${player.connected || player.is_bot ? "" : " disconnected"}`}
+    <div ref={seatRef} data-seat={player.seat} className={`opponent pos-${pos} team${player.team}${onTurn ? " on-turn" : ""}${player.connected || player.is_bot ? "" : " disconnected"}`}
          data-name-len={nameWidthClass(shownName)}
          onClick={() => {
            if (longPressed.current) { longPressed.current = false; return; }
@@ -181,7 +185,9 @@ export function OpponentPanel({ player, state, readOnly = false }: { player: Sta
          onPointerUp={endPress}
          onPointerLeave={endPress}
          onPointerCancel={endPress}>
-      {fullName ? <span className="opp-fullname" role="tooltip">{shownName}</span> : null}
+      {fullName ? nameLayer.portal(
+        <span className="opp-fullname" data-pos={pos} role="tooltip" style={nameLayer.style}>{shownName}</span>,
+      ) : null}
       {/* the long press has no screen-reader or keyboard path, so a person's
           seat also carries an unseen button that opens the same options */}
       {canAct ? (
@@ -765,6 +771,7 @@ function TableContent({ state }: { state: GameState }) {
   return (
     <div className={`table-screen phase-${state.phase}${showingLast ? " showing-last" : ""}${isYourTurnCue(state) ? " my-turn" : ""}`}>
       <Hud state={state} />
+      <PopLayer />
       <div className="felt">
         <TableCompanions state={state} shared={shared} onShare={(m) => conn.send(m)} />
         {opponents.map((p) => (

@@ -48,6 +48,18 @@ Task {
     expect(!(await delivery.acknowledge("2000000111")), "a second acknowledgement finds nothing")
     expect(!(await delivery.acknowledge("not-a-number")), "a malformed id finishes nothing")
 
+    // StoreKit could not verify one on the device: still handed over, flagged
+    let unsure = DeliveredTransaction(id: 2_000_000_333, productId: "com.jerryyu.shengji.companion.lamb",
+                                      jws: "g.h.i", unverified: true)
+    expect(unsure.payload["unverified"] as? Bool == true, "an unverified one is flagged")
+    expect(lamb.payload["unverified"] == nil, "a verified one carries no flag")
+    ledger.open.append(unsure)
+    expect(ids(await delivery.pending()).contains("2000000333"), "an unverified one is handed over too")
+    // the server refused it: the page does not acknowledge, so it stays
+    delivery = StoreDelivery(ledger: ledger)
+    expect(ids(await delivery.pending()).contains("2000000333"), "an unacknowledged unverified one comes back")
+    expect(await delivery.acknowledge("2000000333"), "acknowledged only after the server granted it")
+
     // the next launch recovers the panda and finishes it after its grant
     delivery = StoreDelivery(ledger: ledger)
     expect(ids(await delivery.pending()) == ["18446744073709551000"], "recovery at relaunch")
@@ -70,9 +82,10 @@ final class Listeners {
     private func onQueue() -> Bool { DispatchQueue.getSpecific(key: key) == 1 }
     func add(_ id: Int) { if !onQueue() { offQueue += 1 }; list.append(id) }
     func remove(_ id: Int) { if !onQueue() { offQueue += 1 }; list.removeAll { $0 == id } }
+    // Only counts: reading `list` here off the queue (the direct race below)
+    // would race its mutation and can crash the check instead of failing it.
     func notify(_ payload: [String: Any]) {
         if !onQueue() { offQueue += 1 }
-        _ = list.count
         if payload["transactionId"] != nil { delivered += 1 }
     }
 }

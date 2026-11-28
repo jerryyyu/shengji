@@ -149,11 +149,17 @@ describe("a tile's tap", () => {
   });
 
   it("a free companion comes in its own way with no pieces; the page's first figure is drawn settled; nothing plays under Reduce Motion", async () => {
+    px = 150;
     await draw("bun", "plain", 1);
     await tick(50);
     expect(arrivals()).toHaveLength(1);
-    expect(same(arrivals()[0], ARRIVES.bun[0].frames)).toBe(true);
+    // the fullest the stage has room for over its head (86 px over a 150 px figure): the lower plop, not the high one
+    expect(same(arrivals()[0], ARRIVES.bun[1].frames)).toBe(true);
     expect(spawn).not.toHaveBeenCalled();
+    // a chip pressed while it plays is the player's: the way in ends at once
+    expect(arrivals()[0].cancelled).toBe(false);
+    await chip("Big play");
+    expect(arrivals()[0].cancelled).toBe(true);
     await act(async () => { root.render(<div />); });
     anims = [];
     await draw("lamb", "newyear", 0);
@@ -167,6 +173,108 @@ describe("a tile's tap", () => {
     expect(anims).toHaveLength(0);
     expect(calls("entrance").every((c) => c.started === 0)).toBe(true);
   });
+});
+
+describe("a tile tapped while the stage is out of view", () => {
+  it("owes the entrance until the stage is seen, then plays it exactly once (a phone scrolls back up to the stage after the tap)", async () => {
+    const seen: { cb: (e: { isIntersecting: boolean }[]) => void }[] = [];
+    class IO {
+      cb: (e: { isIntersecting: boolean }[]) => void;
+      constructor(cb: (e: { isIntersecting: boolean }[]) => void) { this.cb = cb; seen.push(this); }
+      observe() {}
+      disconnect() {}
+    }
+    (window as unknown as { IntersectionObserver: unknown }).IntersectionObserver = IO;
+    const view = (on: boolean) => act(async () => { for (const io of seen) io.cb([{ isIntersecting: on }]); });
+    const arrivals = () => anims.filter((a) => a.box === "char-box" && a.frames[0]?.opacity === 0 && !a.cancelled);
+    try {
+      px = 176;
+      await draw("lamb", "newyear", 0);
+      await tick(300);
+      await view(false);
+      expect(host.querySelector(".char-stage")!.classList.contains("live-paused")).toBe(true);
+      // the selected tile tapped twice from further down the page
+      await draw("lamb", "newyear", 1);
+      await draw("lamb", "newyear", 2);
+      await tick(1000);
+      expect(calls("entrance")).toHaveLength(0);
+      expect(arrivals()).toHaveLength(0);
+      await view(true);
+      await tick(50);
+      expect(calls("entrance")).toHaveLength(1);
+      expect(calls("entrance")[0].started).toBe(calls("entrance")[0].pieces.length);
+      expect(arrivals()).toHaveLength(1);
+      // out of view and back with no tap in between plays nothing more
+      await tick(2000);
+      await view(false);
+      await view(true);
+      await tick(500);
+      expect(calls("entrance")).toHaveLength(1);
+    } finally {
+      delete (window as unknown as { IntersectionObserver?: unknown }).IntersectionObserver;
+    }
+  });
+});
+
+describe("a tile tapped further down the page", () => {
+  it("whose stage is found out of view just after its entrance began owes it again, and plays it once the page has scrolled back up", async () => {
+    const seen: { cb: (e: { isIntersecting: boolean }[]) => void }[] = [];
+    class IO {
+      cb: (e: { isIntersecting: boolean }[]) => void;
+      constructor(cb: (e: { isIntersecting: boolean }[]) => void) { this.cb = cb; seen.push(this); }
+      observe() {}
+      disconnect() {}
+    }
+    (window as unknown as { IntersectionObserver: unknown }).IntersectionObserver = IO;
+    const view = (on: boolean) => act(async () => { for (const io of seen) io.cb([{ isIntersecting: on }]); });
+    const clear = vi.spyOn(FlairLayer.prototype, "clear");
+    try {
+      px = 132;
+      // drawn by the tap, before the page has said the stage is out of view
+      await draw("panda", "classic", 1);
+      await tick(30);
+      const first = calls("entrance").length;
+      await view(false);
+      expect(clear).toHaveBeenCalled();
+      await tick(400);
+      expect(calls("entrance")).toHaveLength(first);
+      await view(true);
+      await tick(50);
+      expect(calls("entrance")).toHaveLength(first + 1);
+      expect(calls("entrance")[first].started).toBe(calls("entrance")[first].pieces.length);
+      // seen through: leaving view later owes nothing
+      await tick(2000);
+      await view(false);
+      await view(true);
+      await tick(200);
+      expect(calls("entrance")).toHaveLength(first + 1);
+    } finally {
+      delete (window as unknown as { IntersectionObserver?: unknown }).IntersectionObserver;
+    }
+  });
+});
+
+describe("by the felt's edge", () => {
+  const tap = (x: number) => act(async () => { host.querySelector(".char-stage")!.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: x })); });
+  it.each([[342, 0.9], [342, 0.1], [1, 0.9], [1, 0.1]])(
+    "after a walk to x=%i, with every draw at %f, no piece of Big play, the special or the walk's trail leaves the felt", async (x, r) => {
+      vi.spyOn(Math, "random").mockReturnValue(r);
+      px = 176;
+      await draw("lamb", "newyear");
+      await tick(300);
+      await tap(x);
+      await tick(1250);
+      const from = spawn.mock.calls.length;
+      await chip("Big play");
+      await tick(2000);
+      await chip("Horn butt");
+      const all = (spawn.mock.calls as unknown as [string, boolean, string, Piece[]][]).map((c) => c[3]);
+      expect(all.slice(from).length).toBeGreaterThanOrEqual(2);
+      const xs = all.flatMap((ps) => ps.filter((p) => p.shape === "petal").flatMap((p) => p.keys.filter((k) => k.o > 0).map((k) => k.x)));
+      expect(xs.length).toBeGreaterThan(10);
+      expect(Math.max(...xs)).toBeLessThanOrEqual(FELT.w);
+      expect(Math.min(...xs)).toBeGreaterThanOrEqual(0);
+    });
 });
 
 describe("a tap on the stage's felt", () => {
@@ -251,6 +359,27 @@ describe("at rest on the stage", () => {
     const fall = calls("burst").filter((c) => c.pieces.length === 1 && c.pieces[0].delay === 250);
     expect(fall.length).toBeGreaterThanOrEqual(1);
     expect(calls("trail").length).toBeGreaterThan(0);
+  });
+
+  it("a chip or a tap on the figure ends a moment in flight at once, and the next waits its full time", async () => {
+    await draw("bun", "plain");
+    // up to the jump of getting ready, held larger
+    for (let s = 0; s < 80 && !anims.some((a) => PERKS.some((b) => same(a, b.frames))); s++) await tick(250);
+    const ready = anims.find((a) => PERKS.some((b) => same(a, b.frames)))!;
+    expect(ready).toBeTruthy();
+    expect(ready.cancelled).toBe(false);
+    await chip("Big play");
+    expect(ready.cancelled).toBe(true);
+    const from = anims.length;
+    await tick(3500);
+    // only the chip's own move in that time: no walk or lean of the stage's own
+    expect(anims.slice(from).filter((a) => a.box === "char-walk" || a.box === "char-face")).toHaveLength(0);
+    // the same for a tap on the figure
+    for (let s = 0; s < 120 && !anims.slice(from).some((a) => same(a, DROOPS[0].frames) || same(a, QUIRKS.bun.frames)); s++) await tick(250);
+    const mine = anims.slice(from).find((a) => same(a, DROOPS[0].frames) || same(a, QUIRKS.bun.frames))!;
+    expect(mine).toBeTruthy();
+    await act(async () => { host.querySelector<HTMLButtonElement>(".char-stage .coll-figure")!.click(); });
+    expect(mine.cancelled).toBe(true);
   });
 
   it("nothing of it plays under Reduce Motion", async () => {

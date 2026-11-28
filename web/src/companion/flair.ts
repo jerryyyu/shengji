@@ -251,6 +251,19 @@ export function restPieces(m: Material, s: Stance): Piece[] {
     ({ shape: m.shape, depth: "back" as const, w: m.size[0] * k, h: m.size[1] * k, c1, c2, ms: 0, delay: 0, keys: [key(0, s.x + dx * s.px, s.y + 2, r, 1, 0.85)] }));
 }
 
+/** `pieces` with every one's path kept between `x0` and `x1` (a felt's edges, less half the piece): a path that
+ *  would cross an edge is squeezed into the room it has, from the end that is inside, and one wholly past an
+ *  edge is brought in to it. The Collection's stage uses it, where the figure may stand by the felt's edge. */
+export function fitted(pieces: readonly Piece[], x0: number, x1: number): Piece[] {
+  return pieces.map((p) => {
+    const half = Math.min(12, Math.min(p.w, p.h) / 2), a = x0 + half, b = Math.max(a, x1 - half);
+    const xs = p.keys.map((k) => k.x), lo = Math.min(...xs), hi = Math.max(...xs);
+    if (lo >= a && hi <= b) return p;
+    const from = Math.min(Math.max(lo, a), b), to = Math.max(Math.min(hi, b), a), span = hi - lo;
+    return { ...p, keys: p.keys.map((k) => ({ ...k, x: span > 0 ? from + ((k.x - lo) / span) * (to - from) : from })) };
+  });
+}
+
 /** Where a walk from `from` to `to` (by `via`, `leg` of its way along)
  *  has the figure at `share` of its time, on the walk's own ease-in-out, so
  *  the trail asks the page for nothing. */

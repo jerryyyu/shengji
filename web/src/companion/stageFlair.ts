@@ -16,7 +16,7 @@ import { BIG, DROOPS, GROW, LOOK_BACK_MS, LOOK_MS, LUNGE_BACK, LUNGE_REACH, PERK
 import type { Pose } from "./Companion";
 import { DRAWINGS } from "./kinds";
 import type { DrawnKind } from "./kinds";
-import { ARRIVES, GAITS, LUNGERS, PLAIN_GAIT, QUIRKS, accentPieces, burstPieces, cuePieces, droopPiece, entrancePieces, gaitFrames, grow, materialOf, restPieces, showerPieces,
+import { ARRIVES, GAITS, LUNGERS, PLAIN_GAIT, QUIRKS, accentPieces, burstPieces, cuePieces, droopPiece, entrancePieces, fitted, gaitFrames, grow, materialOf, restPieces, showerPieces,
   trailPieces, walkAt } from "./flair";
 import type { Beat } from "./beats";
 import type { Gait, Stance } from "./flair";
@@ -37,6 +37,8 @@ export const STAGE_MOMENT_MS = 4000;
 const FIRST_MOMENT_MS = 2200;
 /** How long it stands ready, and leans to watch, before it settles. */
 const HELD_MS = 1100;
+/** The longest a way in and its entrance run. */
+const ENTRANCE_MS = 1400;
 /** How long it stands where a tap or a stroll left it before it walks back to the stage's middle. */
 export const STAGE_RETURN_MS = 3000;
 const OWNER = "stage";
@@ -74,6 +76,9 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
   const dir = useRef<1 | -1>(1);
   const flight = useRef<{ from: number; to: number; t0: number; ms: number; anims: Animation[]; timers: number[] } | null>(null);
   const dropped = useRef(0);
+  // the taps whose way in has been played, and when the last one started
+  const entered = useRef(0);
+  const enteredAt = useRef(-Infinity);
   // when it last came to a stand, for its walk back to the middle
   const stood = useRef(0);
   const still = () => prefersReducedMotion() || document.visibilityState === "hidden";
@@ -135,7 +140,7 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
         timers.push(window.setTimeout(() => {
           const x = walkAt({ x: from, y: 0 }, { x: goal, y: 0 }, k / drops).x;
           const n = k === drops || k % 2 ? 3 : 2;
-          layer.spawn(OWNER, true, "trail", trailPieces(material, { ...base, x: base.x + x, dir: d }, { x: d, y: 0 }, n, dropped.current));
+          layer.spawn(OWNER, true, "trail", fitted(trailPieces(material, { ...base, x: base.x + x, dir: d }, { x: d, y: 0 }, n, dropped.current), 0, felt.clientWidth));
           dropped.current += n;
         }, (k * ms) / drops));
       }
@@ -152,32 +157,45 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
     halt();
     settle();
     layer?.clear();
+    // an entrance cut short as the stage left view (a tile tapped further down the page is out of view before
+    // the page says so) is owed again, to be played once the stage is seen
+    if (performance.now() - enteredAt.current < ENTRANCE_MS) entered.current = Math.max(0, entered.current - 1);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paused]);
 
   const emit = (tag: "cue" | "burst" | "entrance" | "shower", make: (s: Stance) => ReturnType<typeof cuePieces>) => {
     const s = stance(here());
-    if (material && layer && s && !paused) layer.spawn(OWNER, true, tag, make(s));
+    // whatever the flight, no piece's path leaves the felt: the figure may stand by its edge
+    if (material && layer && s && !paused) layer.spawn(OWNER, true, tag, fitted(make(s), 0, refs.felt.current?.clientWidth ?? Infinity));
   };
-  // its way in as it is selected, and a store character's entrance with it
-  const entered = useRef(0);
+  // its way in as it is selected, and a store character's entrance with it. A tap taken while the stage is out
+  // of view (a tile further down the page, before the page scrolls back up) is owed until it is seen, then
+  // played once
   useEffect(() => {
-    if (arrives <= entered.current || (material && !layer)) return;
+    if (arrives <= entered.current || (material && !layer) || paused) return;
     entered.current = arrives;
+    enteredAt.current = performance.now();
     const el = refs.move.current;
     if (!el || typeof el.animate !== "function" || still()) return;
-    const beat: Beat | undefined = (ARRIVES as Record<string, readonly Beat[] | undefined>)[kind]?.[0];
+    // the fullest way in the stage has room over the figure for, as the table picks one; a chip or a tap on
+    // the figure while it plays ends it (`yield`)
+    const felt = refs.felt.current;
+    const up = felt ? Math.max(0, el.getBoundingClientRect().top - felt.getBoundingClientRect().top) : 0;
+    const ways = (ARRIVES as Record<string, readonly Beat[] | undefined>)[kind];
+    const beat = ways?.find((b) => reachOfFrames(b.frames, size).up <= up) ?? ways?.[ways.length - 1];
     const a = beat ? el.animate(beat.frames, { duration: beat.ms, easing: beat.easing }) : null;
+    if (a) acts.current.anims.push(a);
     if (material) emit("entrance", (s) => entrancePieces(material, s, 8));
     return () => a?.cancel();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layer, arrives]);
+  }, [layer, arrives, paused]);
   // at rest: its cue on its own clock, and a stroll by itself now and then, so the trail shows
   const calm = useRef(false);
   calm.current = pose === "idle" && !paused && flight.current === null;
   useCue(material !== null, calm, () => { if (material) emit("cue", (s) => cuePieces(material, s)); });
   // at rest it takes the table's moments in turn, each from the table's own beats
   const turn = useRef(0);
+  const lastMoment = useRef(0);
   const acts = useRef<{ anims: Animation[]; timers: number[] }>({ anims: [], timers: [] });
   const settle = () => {
     for (const a of acts.current.anims) a.cancel();
@@ -224,15 +242,16 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
   back.current = walkTo;
   useEffect(() => {
     // the first comes soon after it is selected; one due mid-move waits for the figure to be at rest
-    let last = performance.now() - STAGE_MOMENT_MS + FIRST_MOMENT_MS;
+    lastMoment.current = performance.now() - STAGE_MOMENT_MS + FIRST_MOMENT_MS;
     const timer = window.setInterval(() => {
       const now = performance.now();
+      const last = lastMoment.current;
       if (!calm.current) return;
       // off the middle (a tap walked it there, or its own stroll): after a moment it walks back, at the same pace,
       // and its moments go on from there
-      if (at.current !== 0 && now - stood.current >= STAGE_RETURN_MS) { last = now; back.current(0, false); return; }
+      if (at.current !== 0 && now - stood.current >= STAGE_RETURN_MS) { lastMoment.current = now; back.current(0, false); return; }
       if (at.current !== 0 || now - last < STAGE_MOMENT_MS) return;
-      last = now;
+      lastMoment.current = now;
       next.current();
     }, 400);
     return () => window.clearInterval(timer);
@@ -269,6 +288,9 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
 
   return {
     material: material !== null,
+    /** A chip or a tap on the figure is the player's: a moment in flight ends at once, so the move the player
+     *  asked for starts from the figure at rest, and the next moment waits its full time. */
+    yield: () => { settle(); lastMoment.current = performance.now(); },
     /** A tap on the felt (not on the figure, whose tap is its special) walks it there. */
     onFelt: (e: MouseEvent<HTMLDivElement>) => {
       const felt = refs.felt.current;

@@ -227,6 +227,7 @@ export function Stage({ kind, colour, size, label, cheer = 0, moves = false, arr
   useEffect(() => () => beat.current?.stop(), []);
   // the table's big play: the box jumps while the figure holds the cheer
   const playBeat = (b: StageBeat) => {
+    flair.yield();
     beat.current?.stop();
     // the figure keeps the beat's pose for the whole beat
     play(STAGE_BEATS[b].pose, stageBeatMs(b));
@@ -236,6 +237,7 @@ export function Stage({ kind, colour, size, label, cheer = 0, moves = false, arr
     flair.big();
   };
   const playPose = (p: "hop" | "cheer" | "react") => {
+    flair.yield();
     beat.current?.stop();
     beat.current = null;
     if (p === "react") live.tap();

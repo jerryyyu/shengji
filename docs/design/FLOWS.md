@@ -646,7 +646,7 @@ keeps the table on screen.
   wording, a selected one live on the stage (its moves cycle, a tap plays its special) with the one status line
   Coming soon and no button, no colours and no move chips. Two tiles across on a phone, three or four on a wide layout. A tap on a tile selects it into the stage in place:
   the stage crossfades to it (no motion under Reduce Motion), a gold ring marks the selected tile while the tick
-  stays on the one in use, and on a phone the page scrolls back up to the stage, on every tap, the tile already selected included, after the stage has changed and with any fling stopped first (Jerry 2026-11-27: "sometimes clickign lower unit doesnt scroll to top"). There is no character page, no
+  stays on the one in use, and the page scrolls back up to the stage on a phone, a tablet and a desktop alike (Jerry 2026-11-28: "ipad colection click on grid doesnt scroll to top"), on every tap, the tile already selected included, after the stage has changed and with any fling stopped first (Jerry 2026-11-27: "sometimes clickign lower unit doesnt scroll to top"). There is no character page, no
   back and no edge swipe. A link to `#/collection/<kind>` selects that character and puts the plain address in
   its place (no history entry); while the account loads or the store's check is out for a store character it
   waits, and one the viewer may not see leaves the one in use on the stage; a store character the viewer cannot buy

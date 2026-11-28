@@ -76,8 +76,8 @@ function Tile({ kind, colour, label, sub, gold, dim, worn, isNew, selected, arri
  *  characters not owned, muted, with no price and no button; selected, the
  *  stage shows the character live with the one status line Coming soon. A
  *  guest on the website also gets one Get the app row. A tap on a tile selects it into the
- *  stage, in place (a ring marks the selected tile; on a phone the page
- *  scrolls back up to the stage); a purchase sends its tile up into Yours. A
+ *  stage, in place (a ring marks the selected tile; the page scrolls back
+ *  up to the stage); a purchase sends its tile up into Yours. A
  *  link to `#/collection/<kind>` selects that character and leaves the plain
  *  address. A colour newly unlocked marks its character's tile and its own
  *  swatch "New"; selecting that character, or putting the colour in use,
@@ -226,8 +226,8 @@ export default function CollectionPage() {
     manual.current = false;
     setShown(inUse);
   };
-  // On a phone the stage is above the fold: every tile tap brings it back
-  // into view, the tile already selected included. The scroll waits for the
+  // The stage is above the grid on every layout: every tile tap brings it
+  // back into view, the tile already selected included. The scroll waits for the
   // selection to commit (a Coming soon stage is shorter, and WebKit drops a
   // smooth scroll when the page shrinks under it), stops a fling first (a
   // scroll issued while the page still glides is lost), and once it should
@@ -263,7 +263,7 @@ export default function CollectionPage() {
     if (k !== selected) setSwaps((n) => n + 1);
     setTaps((n) => n + 1);
     choose(k);
-    if (phone) setScrollUp((n) => n + 1);
+    setScrollUp((n) => n + 1);
   };
 
   // A link to a character (`#/collection/<kind>`) selects it and leaves the

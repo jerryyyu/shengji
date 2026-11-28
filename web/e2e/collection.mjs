@@ -1,14 +1,14 @@
 // The Collection is one page, measured in a real browser: a tap on a tile
 // selects its character into the stage at the top, in place (the address
-// stays #/collection, no history entry, the tile ringed); on a phone a tile
-// tapped further down scrolls the page back up to the stage; a link to
+// stays #/collection, no history entry, the tile ringed); on a phone, a tablet
+// and a desktop a tile tapped further down scrolls the page back up to the stage; a link to
 // #/collection/<kind> selects that character and leaves the plain address;
 // the phone's sideways tab swipe still works on the page. Real touch input
 // (CDP Input.dispatchTouchEvent) lets the browser's own hit testing pick
 // targets. A guest, who cannot buy, sees the store characters as Coming soon.
 //   node e2e/collection.mjs [device-regex]
 import { webkit } from "playwright-core";
-import { BASE, Report, launch, open, scenario, sleep, until } from "./lib.mjs";
+import { BASE, DEVICES as DEVICES_AT, Report, launch, open, scenario, sleep, until } from "./lib.mjs";
 import { fakeSocketScript } from "./fake.mjs";
 
 const only = process.argv[2] ? new RegExp(process.argv[2]) : null;
@@ -302,7 +302,7 @@ try {
       });
       await rep.check(`${device} the Lamb's trail is drawn under the figure and its burst over it`,
         drawn.back === 0 && drawn.figures > drawn.back && drawn.front > drawn.figures ? null : JSON.stringify(drawn), page);
-      // a wide layout does not scroll back up to the stage, and a stage out of view rests
+      // the stage watched from the top of the page
       await page.evaluate(() => { document.querySelector(".coll-page").scrollTop = 0; });
       // it strolls by itself within a few seconds, and pieces are painted behind it as it goes
       const strolled = await page.evaluate(() => new Promise((done) => {
@@ -404,6 +404,54 @@ try {
         await rep.check(`${device} every lower tap leaves the stage in view at the top`, misses.length ? misses.join("; ") : null, page);
       });
       await ctx.close();
+    }
+    // a tablet in either orientation and a desktop window, in Chrome and in WebKit: the stage is above the
+    // grid there too, so a tap on a lower tile (a Coming soon one, the one already selected) brings it back
+    // fully into view
+    const WIDE_DEVICES = ["ipad11-land", "ipad11-port", "ipad-mini-land", "ipad-mini-port", "desktop", "desktop-1280x700"];
+    for (const [engine, b] of [["chromium", browser], ["webkit", wk]]) {
+      for (const device of WIDE_DEVICES.filter((d) => !only || only.test(`${engine} ${d}`))) {
+        const d = DEVICES_AT[device];
+        const ctx = await b.newContext({ viewport: { width: d.w, height: d.h }, hasTouch: d.touch, deviceScaleFactor: 2 });
+        const page = await ctx.newPage();
+        await page.addInitScript(() => { try { localStorage.setItem("shengji.coach", "off"); localStorage.setItem("shengji.muted", "1"); localStorage.setItem("shengji.automated", "1"); } catch {} });
+        await setup(page);
+        await page.goto(new URL("#/collection", BASE).href);
+        await page.waitForSelector(".coll-yours .coll-tile");
+        const name = `${engine} ${device}`;
+        await scenario(rep, `${name} every lower tap scrolls up`, page, async () => {
+          const misses = [];
+          const press = (loc) => (d.touch ? loc.tap() : loc.click());
+          const tile = (sel, n) => page.locator(`${sel} .coll-tile`).nth(n);
+          const deep = async (y) => {
+            await page.evaluate((y) => { document.querySelector(".coll-page").scrollTop = y; }, y);
+            await sleep(120);
+            return page.evaluate(() => document.querySelector(".coll-page").scrollTop);
+          };
+          const inView = async (label) => {
+            await sleep(1000);
+            const got = await page.evaluate(() => {
+              const s = document.querySelector(".char-stage").getBoundingClientRect();
+              const bar = document.querySelector(".topbar, .home-topbar")?.getBoundingClientRect();
+              return { top: Math.round(s.top), bottom: Math.round(s.bottom), floor: Math.round(bar ? bar.bottom : 0), h: innerHeight,
+                scroll: Math.round(document.querySelector(".coll-page").scrollTop) };
+            });
+            if (!(got.top >= got.floor && got.bottom <= got.h)) misses.push(`${label} ${JSON.stringify(got)}`);
+          };
+          let scrolled = 0;
+          for (const [sel, n, y] of [[".coll-yours", 1, 9999], [".coll-yours", 3, 500], [".coll-soon", 1, 9999], [".coll-yours", 2, 9999]]) {
+            scrolled = Math.max(scrolled, await deep(y));
+            await press(tile(sel, n));
+            await inView(`${sel} ${n} from ${y}`);
+          }
+          await deep(9999);
+          await press(page.locator(".coll-tile.selected").first());
+          await inView("the selected tile again");
+          if (scrolled <= 0) misses.push("the page never scrolled, so nothing was tested");
+          await rep.check(`${name} every lower tap brings the stage fully into view`, misses.length ? misses.join("; ") : null, page);
+        });
+        await ctx.close();
+      }
     }
   } finally {
     await wk.close();

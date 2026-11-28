@@ -1,5 +1,5 @@
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import { Suspense, createContext, useContext, lazy, useCallback, useEffect, useRef, useState } from "react";
+import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import type { GameState, HandCard, LastTrick, ServerMsg, StatePlayer } from "../protocol";
 import { conn } from "../ws";
 import { type Receipt, receiptOf, sameSocket } from "../stateReceipt";
@@ -23,7 +23,7 @@ import Toast from "./Toast";
 import HandLine from "./HandLine";
 import { leadToFollow } from "../follow";
 import { followHint, followsSuit } from "../followRules";
-import { TimerRing } from "./MoveClock";
+import { CountdownRing, TimerRing } from "./MoveClock";
 import { LOW_SECS, MOVE_SECS, useMoveClockSample } from "../useMoveClock";
 import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subscribeCoach, useAccountNewcomer, useCoachSetting } from "../firstTurns";
 import { showToast } from "../toast";
@@ -317,7 +317,34 @@ function JoinPillLeave({ ranked, guest }: { ranked: boolean; guest: boolean }) {
 /** The id of the newest line in a chat log; 0 for an empty one. */
 const lastChatId = (log: readonly ChatMsg[]) => log.reduce((m, l) => Math.max(m, l.id), 0);
 
+const PlayerClock = createContext<ReturnType<typeof useMoveClockSample>>({ left: null, end: null });
+
+/** One clock survives phase changes; only its visual consumers subscribe to ticks. */
+function PlayerClockScope({ state, children }: { state: GameState; children: ReactNode }) {
+  const me = state.players.find((p) => p.seat === state.you);
+  const clock = useMoveClockSample(me?.turn_deadline, state);
+  return <PlayerClock.Provider value={clock}>{children}</PlayerClock.Provider>;
+}
+
+function PlayerTimerRing() {
+  return <TimerRing {...useContext(PlayerClock)} total={MOVE_SECS} />;
+}
+
+function ClockedActionBar({ children, label }: { children: ReactNode; label: string }) {
+  const { left: clock } = useContext(PlayerClock);
+  return <div data-declare-label={label} className={`action-bar${clock !== null && clock <= LOW_SECS ? " clock-low" : ""}`}>{children}</div>;
+}
+
+function ClockedRoundEnd(props: Omit<ComponentProps<typeof RoundEndModal>, "clock" | "clockEnd">) {
+  const sample = useContext(PlayerClock);
+  return <RoundEndModal {...props} clock={sample.left} clockEnd={sample.end} />;
+}
+
 export default function Table({ state }: { state: GameState }) {
+  return <PlayerClockScope state={state}><TableContent state={state} /></PlayerClockScope>;
+}
+
+function TableContent({ state }: { state: GameState }) {
   const t = useT();
   // The last state without a result, and the socket that delivered it (as
   // App noted on arrival, never the socket open at render time). A result
@@ -498,12 +525,6 @@ export default function Table({ state }: { state: GameState }) {
 
   useTableHaptics(state);
   useReviewPrompt(state, liveHere);
-  // your move timer (ranked tables): the ring for the whole decision, red in
-  // its last seconds, and a haptic at five
-  const clockSample = useMoveClockSample(me?.turn_deadline, state);
-  const clock = clockSample.left;
-  // the post-deal declare window: a ring on its buttons, no haptic
-  const declareClock = useMoveClockSample(state.phase === "declare" ? state.declare_deadline : null, state, false);
   const away = me?.away ?? false;
   // a bot holds your seat: one pill, and any tap or key counts as back; while
   // the socket is down the connection pill says Reconnecting in its place
@@ -653,7 +674,7 @@ export default function Table({ state }: { state: GameState }) {
     if (canDeclare && coachOn) phaseHelp = declareHelp(state);
     actionBar = (
       <>
-        {state.phase === "declare" && !iPassed ? <TimerRing left={declareClock.left} end={declareClock.end} total={DECLARE_WINDOW_SECS} /> : null}
+        {state.phase === "declare" && !iPassed ? <CountdownRing seconds={state.declare_deadline} stamp={state} total={DECLARE_WINDOW_SECS} /> : null}
         {state.declare_options.map((ids) => (
           <button
             key={ids.join("-")}
@@ -678,7 +699,7 @@ export default function Table({ state }: { state: GameState }) {
     if (coachOn) phaseHelp = buryHelp();
     actionBar = (
       <>
-      <TimerRing left={clock} end={clockSample.end} total={MOVE_SECS} />
+      <PlayerTimerRing />
       {/* drawn at full contrast, its fill the count's share of 8 */}
       <button
         className="btn primary bury-btn"
@@ -717,7 +738,7 @@ export default function Table({ state }: { state: GameState }) {
     if (offSuit && lead) blocked = followHint(lead, state.trump);
     actionBar = (
       <>
-        <TimerRing left={clock} end={clockSample.end} total={MOVE_SECS} />
+        <PlayerTimerRing />
         <span className="play-wrap" onClick={whyNot}>
           <button
             className={`btn primary${choosing ? " your-turn" : ""}`}
@@ -782,8 +803,7 @@ export default function Table({ state }: { state: GameState }) {
               <span className="ready-tag">{t("table.readyTag")}</span>
             ) : null}
           </div>
-          <div className={`action-bar${clock !== null && clock <= LOW_SECS ? " clock-low" : ""}`}
-               data-declare-label={t("table.declarePill")}>{actionBar}</div>
+          <ClockedActionBar label={t("table.declarePill")}>{actionBar}</ClockedActionBar>
           </div>
           {/* the one line between the trick and your hand */}
           <HandLine parts={{ reason: hint?.text ?? blocked, help: phaseHelp, coach: coach && nothingChosen ? coach.text : null }}
@@ -794,7 +814,7 @@ export default function Table({ state }: { state: GameState }) {
       </div>
 
       {state.phase === "round_end" && state.round_result ? (
-        <RoundEndModal state={state} result={state.round_result} clock={clock} clockEnd={clockSample.end} live={liveHere}
+        <ClockedRoundEnd state={state} result={state.round_result} live={liveHere}
                        before={liveHere ? lastLive.current!.levels : null} />
       ) : null}
 

@@ -1,7 +1,16 @@
-import { act } from "react";
+import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { GameState, HandCard, StatePlayer } from "../protocol";
+
+const tableRenders = vi.hoisted(() => ({ hud: 0 }));
+vi.mock("./Hud", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./Hud")>();
+  return { default: (props: { state: GameState }) => {
+    tableRenders.hud += 1;
+    return createElement(original.default, props);
+  } };
+});
 
 const haptics: string[] = [];
 vi.mock("../native", () => ({ haptic: (k: string) => { haptics.push(k); } }));
@@ -1071,5 +1080,50 @@ describe("Bury shows its count as a fill", () => {
     // unpicking empties it again
     for (let i = 0; i < 8; i++) pick(i);
     expect(primary().style.getPropertyValue("--bury-fill")).toBe("0%");
+  });
+});
+
+describe("declaration countdown rendering", () => {
+  it("ticks only the ring and resynchronizes on a fresh server state", () => {
+    vi.useFakeTimers();
+    onTestFinished(() => { vi.useRealTimers(); });
+    const s = state({ phase: "declare", turn: null, declare_deadline: 8 });
+    render(s);
+    const ring = () => host.querySelector(".action-bar .timer-ring");
+    expect(ring()?.getAttribute("aria-label")).toBe("8 seconds left");
+    const before = tableRenders.hud;
+    for (let i = 0; i < 4; i++) act(() => vi.advanceTimersByTime(250));
+    expect(ring()?.getAttribute("aria-label")).toBe("7 seconds left");
+    expect(tableRenders.hud - before).toBe(0);
+    expect(haptics).not.toContain("clock");
+    render({ ...s, declare_deadline: 4 });
+    expect(ring()?.getAttribute("aria-label")).toBe("4 seconds left");
+    render({ ...s, passed: [0] });
+    expect(ring()).toBeNull();
+    const afterPass = tableRenders.hud;
+    act(() => vi.advanceTimersByTime(1000));
+    expect(tableRenders.hud).toBe(afterPass);
+  });
+});
+
+describe("player countdown rendering", () => {
+  it("keeps play and bury ticks out of the table while preserving low-time cues", () => {
+    vi.useFakeTimers();
+    onTestFinished(() => { vi.useRealTimers(); });
+    const players = [player(0, { is_banker: true, turn_deadline: 11 }), player(1), player(2), player(3)];
+    const s = state({ turn: 0, players });
+    render(s);
+    const before = tableRenders.hud;
+    for (let i = 0; i < 4; i++) act(() => vi.advanceTimersByTime(250));
+    expect(host.querySelector(".action-bar .timer-ring")?.getAttribute("aria-label")).toBe("10 seconds left");
+    expect(host.querySelector(".action-bar")?.classList.contains("clock-low")).toBe(true);
+    expect(tableRenders.hud - before).toBe(0);
+    render({ ...s, phase: "bury", players: [player(0, { is_banker: true, turn_deadline: 6 }), ...players.slice(1)] });
+    haptics.length = 0;
+    const buryBefore = tableRenders.hud;
+    for (let i = 0; i < 8; i++) act(() => vi.advanceTimersByTime(250));
+    expect(host.querySelector(".action-bar .timer-ring")?.getAttribute("aria-label")).toBe("4 seconds left");
+    expect(tableRenders.hud - buryBefore).toBe(0);
+    expect(haptics).toEqual(["clock"]);
   });
 });

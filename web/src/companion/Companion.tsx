@@ -10,7 +10,7 @@ import { parseArt, renderArt } from "./Tractor";
 import { DRAWINGS } from "./kinds";
 import type { DrawnColour, DrawnKind } from "./kinds";
 import { companionSize } from "./rig";
-import type { CharPose, Team } from "./rig";
+import type { CharPose } from "./rig";
 import { lookId, parseLook } from "./look";
 import "./companion.css";
 import "./companion.store.css";
@@ -28,16 +28,16 @@ export const pickSuit = (r: number): string => (r < 1 / 12 ? "j" : "shcd"[Math.m
 
 /** The whole companion in a `size`-pixel square. `hop`, `cheer` and `react`
  *  play once and then call `onPoseEnd`, so the owner returns it to `idle`.
- *  At the table, `team` dresses it in its team's scarf, and
- *  `level` (the team's level index, 2 is 0) grows it from `size` toward
+ *  It is one figure wherever it is drawn: nothing of it is a team's. At
+ *  the table `level` (the team's level index, 2 is 0) grows it from `size` toward
  *  `max`; a level gained pops it from its old size, unless `grow` is false
  *  (the table plays its own level-up move). `still` draws the pose at
  *  its peak with nothing moving; it is on by itself under Reduce Motion.
  *  `idle` says how idle and sleep move: `loop` (their own endless loops) or
  *  `rest` (still, so a page at rest draws no frames). `blink` shuts the
  *  eyes of a still drawing for a moment. */
-export function Companion({ kind = "tractor", colour, size, state = "idle", team, level, max, still, idle = "loop", grow = true, blink = false, onPoseEnd }: {
-  kind?: DrawnKind; colour: DrawnColour; size: number; state?: Pose; team?: Team; level?: number; max?: number;
+export function Companion({ kind = "tractor", colour, size, state = "idle", level, max, still, idle = "loop", grow = true, blink = false, onPoseEnd }: {
+  kind?: DrawnKind; colour: DrawnColour; size: number; state?: Pose; level?: number; max?: number;
   still?: boolean; idle?: "loop" | "rest"; grow?: boolean; blink?: boolean; onPoseEnd?: () => void;
 }) {
   const id = useId().replace(/[^a-zA-Z0-9]/g, "");
@@ -45,8 +45,8 @@ export function Companion({ kind = "tractor", colour, size, state = "idle", team
   const px = level === undefined ? size : companionSize(size, level, max ?? Number.POSITIVE_INFINITY);
   const calm = still ?? prefersReducedMotion();
   // the colourway's textures (curls, trims, ridges) are drawn at every size, at the table as on the stage
-  const art = useMemo(() => renderArt(parseArt(drawing.markup(colour, id, { pose: state, detail: true, still: calm, team }))),
-    [drawing, colour, id, state, calm, team]);
+  const art = useMemo(() => renderArt(parseArt(drawing.markup(colour, id, { pose: state, detail: true, still: calm }))),
+    [drawing, colour, id, state, calm]);
 
   // each play of the Lucky Cat's reaction turns up a card of its own
   const suit = useMemo(() => (kind === "cat" && state === "react" ? pickSuit(Math.random()) : undefined), [kind, state]);
@@ -69,7 +69,7 @@ export function Companion({ kind = "tractor", colour, size, state = "idle", team
   const resting = !ONCE.has(state);
   const poseCls = calm && ONCE.has(state) ? "" : resting && idle === "rest" ? `cmp-${state} cmp-rest` : `cmp-${state}`;
   const cls = ["cmp", drawing.char ? "cmp-char" : "", `cmp-${kind}`, poseCls, calm ? "cmp-still" : "",
-    team ? `cmp-${team}` : "", from !== null ? "cmp-grow" : "", blink ? "cmp-blink" : ""].filter(Boolean).join(" ");
+    from !== null ? "cmp-grow" : "", blink ? "cmp-blink" : ""].filter(Boolean).join(" ");
   const [zx, zy] = drawing.z;
   return (
     <svg className={cls} data-pose={state} width={px} height={px} viewBox="0 0 400 400" aria-hidden="true" focusable="false" data-suit={suit}

@@ -5,8 +5,8 @@
 // the buttons, the HUD and the other companions (`seatZones.ts`). A tap on
 // empty felt walks yours to the clear spot nearest the tap; a tap on yours
 // plays its special. Your team's round won plays each of its companions'
-// special once the round-end sheet has closed, after any level-up. A figure stands on its team's pad in its team's scarf,
-// so a team reads by shape as well as colour, and grows with its team's level.
+// special once the round-end sheet has closed, after any level-up. A figure is drawn as its preview is, with nothing of a team's on it,
+// and grows with its team's level.
 // A level gained shows once the round-end sheet has closed and the table is
 // in view: each of the team's companions pops to its new size, cheers, and
 // flashes the new level by its head. A team's companions hop when it takes
@@ -1021,7 +1021,7 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
         {up && !away ? <span className="tc-level" key={up.n}>{up.glyph}</span> : null}
         <span className="tc-face" ref={face}>
           <span className="tc-move" ref={box} data-move={up && !away ? "levelup" : playing && !away ? "react" : move}>
-            <Companion kind={kind} colour={colour} size={px} team={team} grow={false}
+            <Companion kind={kind} colour={colour} size={px} grow={false}
                        blink={blink && drawn === "idle"} still={drawn === "react" && playing ? undefined : true} idle="rest"
                        state={drawn === "cheer" ? "cheer" : drawn === "sleep" ? "sleep" : drawn === "react" ? "react" : "idle"} />
           </span>

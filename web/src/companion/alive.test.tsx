@@ -20,6 +20,7 @@ vi.mock("../auth", async (importOriginal) => {
 });
 
 import TableCompanions from "./TableCompanions";
+import { Companion } from "./Companion";
 import { FlairLayer } from "./flairLayer";
 import type { Piece } from "./flair";
 import type { Rect } from "./seatZones";
@@ -835,5 +836,40 @@ describe("character and material at the table", () => {
     const still = (rest.mock.calls as unknown as [string, Piece[] | null][]).filter((c) => c[1]);
     expect(still.map((c) => c[0]).sort()).toEqual(["0", "1"]);
     for (const c of still) expect(c[1]).toHaveLength(3);
+  });
+});
+
+// A companion at the table is the figure its preview draws: the same shapes
+// and paints, with nothing of a team's on it, whichever side it plays for.
+describe("the table draws each companion as its preview does", () => {
+  const shapes = (svg: Element) => {
+    const id = /-([A-Za-z0-9]+)\)/.exec(svg.innerHTML)?.[1] ?? "";
+    return [...new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${svg.innerHTML.split(id).join("ID")}</svg>`, "image/svg+xml").documentElement.querySelectorAll("*")]
+      .map((el) => `${el.tagName} ${[...el.attributes].map((a) => `${a.name}=${a.value}`).sort().join(" ")}`);
+  };
+  it("your team's and the other team's figures are their previews, layer for layer, in no team's colour", async () => {
+    const looks = ["lamb/lacquer", "panda/classic", "tractor/red", "bun/plain"];
+    await render(state({ players: looks.map((look, seat) => player(seat, { look })) }));
+    await advance(1000);
+    const side = document.createElement("div");
+    document.body.appendChild(side);
+    const other = createRoot(side);
+    try {
+      for (const [seat, look] of looks.entries()) {
+        const drawn = host.querySelector(`.tc-seat[data-seat="${seat}"] svg.cmp`)!;
+        const [kind, colour] = look.split("/");
+        await act(async () => { other.render(<Companion kind={kind as never} colour={colour as never} size={Number(drawn.getAttribute("width"))} still idle="rest" />); });
+        const preview = side.querySelector("svg.cmp")!;
+        expect(shapes(drawn), look).toEqual(shapes(preview));
+        expect(drawn.getAttribute("class"), look).not.toMatch(/cmp-(us|them)/);
+        expect(drawn.innerHTML, look).not.toMatch(/cmp-team|#5b9dff|#ff9d4d/);
+      }
+      // the Lamb's scarf is its colourway's, the Tractor's stripe its colour's
+      expect(host.querySelector('.tc-seat[data-seat="0"] linearGradient[id^="scarf-"]')).not.toBeNull();
+      expect(host.querySelector('.tc-seat[data-seat="2"] path[d="M92 196H228"]')!.getAttribute("stroke-width")).toBe("5");
+    } finally {
+      act(() => other.unmount());
+      side.remove();
+    }
   });
 });

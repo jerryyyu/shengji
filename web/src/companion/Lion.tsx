@@ -13,7 +13,7 @@
 // the box's left edge while it dances.
 import { LION_COLOURS } from "./storePalette";
 import type { LionColour, LionColourId } from "./storePalette";
-import { ball, bits, confetti, curl, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, puff, ramp, sharedDefs } from "./rig";
+import { ball, bits, confetti, curl, dataUrl, eye, glow, groundShadow, part, portraitSvg, puff, ramp, sharedDefs } from "./rig";
 import type { CharOpts, CharPose, EyeMode } from "./rig";
 
 /** A colour by id, or a palette given whole (the CSS-variable master passes one). */
@@ -42,7 +42,7 @@ const STILL: Partial<Record<CharPose, Record<string, string>>> = {
 
 /** The Lion's shapes in its 400 box, as SVG markup. `id` keeps its gradient
  *  ids apart from another drawing's on the same page. */
-export function lionMarkup(colour: LionColourId | LionColour, id: string, { pose = "idle", detail = true, shadow = true, still = false, team }: CharOpts = {}): string {
+export function lionMarkup(colour: LionColourId | LionColour, id: string, { pose = "idle", detail = true, shadow = true, still = false }: CharOpts = {}): string {
   const p = colourOf(colour);
   const face = FACE[pose];
   const at = (still || pose === "sleep" ? STILL[pose] : undefined) ?? {};
@@ -101,7 +101,7 @@ export function lionMarkup(colour: LionColourId | LionColour, id: string, { pose
 
   // In the special the plain cape gives way to the costume; drawn still, the costume alone shows.
   const cape = dancing ? (still ? "" : part("cmp-cape", torso)) : torso;
-  const body = part("cmp-body", costume + part("cmp-torso", cape, at.torso) + part("cmp-head", head, at.head) + (team ? kerchief(team, 122, 258, 244, 7, 236) : ""), at.body);
+  const body = part("cmp-body", costume + part("cmp-torso", cape, at.torso) + part("cmp-head", head, at.head), at.body);
   return defs + (shadow ? groundShadow(id, 190, 128) : "") + body + (pose === "react" ? bits("cmp-pop", 190, 150, 176, 9, [p.accent[1], "#e2474a", "#fff3c0", "#f2c14e"], -176, -4, 1.15) : "") + (pose === "cheer" ? confetti(190, 150) : "");
 }
 

@@ -5,7 +5,7 @@
 // the steamer on a burst of steam, turns once in the air and drops back in.
 import { BUN_COLOURS } from "./storePalette";
 import type { BunColour, BunColourId } from "./storePalette";
-import { ball, bits, confetti, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, puff, ramp, sharedDefs } from "./rig";
+import { ball, bits, confetti, dataUrl, eye, glow, groundShadow, part, portraitSvg, puff, ramp, sharedDefs } from "./rig";
 import type { CharOpts, CharPose, EyeMode } from "./rig";
 
 /** A colour by id, or a palette given whole (the CSS-variable master passes one). */
@@ -33,7 +33,7 @@ const STILL: Partial<Record<CharPose, Record<string, string>>> = {
 
 /** The Bun's shapes in its 400 box, as SVG markup. `id` keeps its gradient
  *  ids apart from another drawing's on the same page. */
-export function bunMarkup(colour: BunColourId | BunColour, id: string, { pose = "idle", detail = true, shadow = true, still = false, team }: CharOpts = {}): string {
+export function bunMarkup(colour: BunColourId | BunColour, id: string, { pose = "idle", detail = true, shadow = true, still = false }: CharOpts = {}): string {
   const p = colourOf(colour);
   const face = FACE[pose];
   const at = (still || pose === "sleep" ? STILL[pose] : undefined) ?? {};
@@ -69,7 +69,7 @@ export function bunMarkup(colour: BunColourId | BunColour, id: string, { pose = 
     + (detail ? `<path d="M110 300v30M150 304v32M190 305v33M230 304v32M270 300v30" stroke="${p.band}" stroke-width="2.4" opacity=".4"/>` : "");
 
   const body = part("cmp-body", basket
-    + part("cmp-head", part("cmp-spin", bun + (team ? kerchief(team, 96, 284, 246, 8, 150) : "") + part("cmp-arm-l", arm(98), at.armL) + part("cmp-arm-r", arm(282), at.armR)), at.head)
+    + part("cmp-head", part("cmp-spin", bun + part("cmp-arm-l", arm(98), at.armL) + part("cmp-arm-r", arm(282), at.armR)), at.head)
     + front + steam);
   return defs + (shadow ? groundShadow(id, 190, 128) : "") + body + burst + (pose === "cheer" ? confetti(190, 180) : "");
 }

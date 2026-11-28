@@ -27,21 +27,11 @@ export const companionSize = (base: number, levelIndex: number, layoutMax: numbe
   return Math.min(Math.round(base + (layoutMax - base) * step), layoutMax);
 };
 
-/** The side a figure plays for at the table. */
+/** The side a figure plays for at the table: it tells how a figure watches a play, never how it is drawn. */
 export type Team = "us" | "them";
-
-/** Each team's colour and its shade. The pose CSS repaints `cmp-team` and
- *  `cmp-team-lo` shapes from `--team` and `--team-lo`, so the app can change
- *  a team's colour without redrawing; these are what a still shows. */
-export const TEAM: Record<Team, { base: string; lo: string }> = {
-  us: { base: "#5b9dff", lo: "#2f6fd6" },
-  them: { base: "#ff9d4d", lo: "#d96a14" },
-};
 
 export interface CharOpts {
   pose?: CharPose;
-  /** At the table: the figure wears its team's colour at the neck and stands on its team's pad. */
-  team?: Team;
   /** Fine marks (curls, ridges, gold lines), which are noise under 64 px. */
   detail?: boolean;
   shadow?: boolean;
@@ -86,20 +76,6 @@ export function groundShadow(id: string, cx: number, rx: number): string {
   return `<ellipse class="cmp-shadow" cx="${cx}" cy="356" rx="${rx}" ry="17" fill="url(#shadow-${id})"/>`;
 }
 
-/** The paint of a shape that turns team colour at the table: its own fill off the table.
- *  Every shape drawn only for the team (a scarf, a kerchief, its shading) carries a
- *  `cmp-team` class, so the table figure is the preview figure plus those shapes. */
-export const teamPaint = (team: Team | undefined, own: string, lo = false): string =>
-  team ? `class="${lo ? "cmp-team-lo" : "cmp-team"}" fill="${lo ? TEAM[team].lo : TEAM[team].base}"` : `fill="${own}"`;
-
-/** A neckerchief for a character with nothing at its neck: the band across
- *  the chest from (x1, y) to (x2, y), sagging `sag`, and its knot. Drawn at the table only. */
-export function kerchief(team: Team, x1: number, x2: number, y: number, sag: number, knotX: number): string {
-  const m = (x1 + x2) / 2, ky = y + sag * 0.72;
-  return `<path ${teamPaint(team, "")} d="M${x1} ${y}Q${m} ${y + 2 * sag} ${x2} ${y}L${x2 + 5} ${y + 22}Q${m} ${y + 2 * sag + 30} ${x1 - 5} ${y + 22}Z"/>`
-    + `<path class="cmp-team-shade" d="M${x1 + 6} ${y + 6}Q${m} ${y + 2 * sag + 4} ${x2 - 6} ${y + 6}L${x2} ${y}Q${m} ${y + 2 * sag} ${x1} ${y}Z" fill="#000" opacity=".22"/>`
-    + `<path ${teamPaint(team, "", true)} d="M${knotX - 4} ${ky + 8}l-16 40l30-12z"/><circle ${teamPaint(team, "")} cx="${knotX}" cy="${ky + 12}" r="11"/>`;
-}
 
 /** A cloud outline: `count` outward arcs round an ellipse. */
 export function puff(cx: number, cy: number, rx: number, ry: number, count: number, rot = 0, bulge = 0.6): string {

@@ -8,7 +8,7 @@
 // viewer, its arm coming forward and the half growing as it nears.
 import { RABBIT_COLOURS } from "./storePalette";
 import type { RabbitColour, RabbitColourId } from "./storePalette";
-import { ball, bits, confetti, dataUrl, eye, glow, groundShadow, kerchief, part, portraitSvg, puff, ramp, sharedDefs } from "./rig";
+import { ball, bits, confetti, dataUrl, eye, glow, groundShadow, part, portraitSvg, puff, ramp, sharedDefs } from "./rig";
 import type { CharOpts, CharPose, EyeMode } from "./rig";
 
 /** A colour by id, or a palette given whole (the CSS-variable master passes one). */
@@ -36,7 +36,7 @@ const STILL: Partial<Record<CharPose, Record<string, string>>> = {
 
 /** The Rabbit's shapes in its 400 box, as SVG markup. `id` keeps its gradient
  *  ids apart from another drawing's on the same page. */
-export function rabbitMarkup(colour: RabbitColourId | RabbitColour, id: string, { pose = "idle", detail = true, shadow = true, still = false, team }: CharOpts = {}): string {
+export function rabbitMarkup(colour: RabbitColourId | RabbitColour, id: string, { pose = "idle", detail = true, shadow = true, still = false }: CharOpts = {}): string {
   const p = colourOf(colour);
   const face = FACE[pose];
   const at = (still || pose === "sleep" ? STILL[pose] : undefined) ?? {};
@@ -82,7 +82,7 @@ export function rabbitMarkup(colour: RabbitColourId | RabbitColour, id: string, 
     + part("cmp-half-r", `<g clip-path="url(#halfr-${id})">${cake}</g><path d="M186 244v88" stroke="${p.cake[0]}" stroke-width="5" opacity=".8"/>` + pawR, at.halfR)
     + (still ? "" : bits("cmp-crumbs", 186, 96, 46, 7, [p.cake[1], p.cake[0], p.cake[2]], -200, 20, 0.7));
 
-  const body = part("cmp-body", part("cmp-torso", torso) + part("cmp-head", head, at.head) + (team ? kerchief(team, 122, 250, 224, 12, 236) : "") + (pose === "react" ? halves : whole), at.body);
+  const body = part("cmp-body", part("cmp-torso", torso) + part("cmp-head", head, at.head) + (pose === "react" ? halves : whole), at.body);
   return defs + (shadow ? groundShadow(id, 188, 112) : "") + body + (pose === "cheer" ? confetti(186, 150) : "");
 }
 

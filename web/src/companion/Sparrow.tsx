@@ -5,7 +5,7 @@
 // it takes off, flies one loop with a streak behind it, and lands in feathers.
 import { SPARROW_COLOURS } from "./storePalette";
 import type { SparrowColour, SparrowColourId } from "./storePalette";
-import { ball, confetti, dataUrl, eye, glow, groundShadow, kerchief, n, part, portraitSvg, ramp, sharedDefs } from "./rig";
+import { ball, confetti, dataUrl, eye, glow, groundShadow, n, part, portraitSvg, ramp, sharedDefs } from "./rig";
 import type { CharOpts, CharPose, EyeMode } from "./rig";
 
 /** A colour by id, or a palette given whole (the CSS-variable master passes one). */
@@ -27,7 +27,7 @@ const STILL: Partial<Record<CharPose, Record<string, string>>> = {
 
 /** The Sparrow's shapes in its 400 box, as SVG markup. `id` keeps its
  *  gradient ids apart from another drawing's on the same page. */
-export function sparrowMarkup(colour: SparrowColourId | SparrowColour, id: string, { pose = "idle", detail = true, shadow = true, still = false, team }: CharOpts = {}): string {
+export function sparrowMarkup(colour: SparrowColourId | SparrowColour, id: string, { pose = "idle", detail = true, shadow = true, still = false }: CharOpts = {}): string {
   const p = colourOf(colour);
   const eyes = FACE[pose];
   const at = (still || pose === "sleep" ? STILL[pose] : undefined) ?? {};
@@ -62,7 +62,7 @@ export function sparrowMarkup(colour: SparrowColourId | SparrowColour, id: strin
   const feather = (a: number, i: number) => `<g transform="translate(196 340) rotate(${a})">`
     + `<path class="cmp-feather" d="M100 0C116 -20 148 -20 166 0C148 20 116 20 100 0Z" fill="${i % 2 ? "#ffd76a" : p.belly[0]}" stroke="${p.wing[2]}" stroke-width="3"/></g>`;
   const feathers = pose === "react" && !still ? [-168, -142, -38, -12].map(feather).join("") : "";
-  const body = part("cmp-body", part("cmp-loop", trail + part("cmp-fly", part("cmp-torso", torso, at.torso) + (team ? kerchief(team, 166, 300, 214, 9, 200) : "") + part("cmp-head", head, at.head))), at.body);
+  const body = part("cmp-body", part("cmp-loop", trail + part("cmp-fly", part("cmp-torso", torso, at.torso) + part("cmp-head", head, at.head))), at.body);
   return defs + (shadow ? groundShadow(id, 196, 112) : "") + body + feathers + (pose === "cheer" ? confetti(222, 160) : "");
 }
 

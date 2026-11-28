@@ -710,7 +710,9 @@ keeps the table on screen.
   from the body, and pieces leave one at a time. They are painted on two canvases, one under the figures and one
   over, by a loop that runs only while a piece is alive; your own figure holds 18 trail pieces at most and another
   seat's 9, a burst 11 and 5, a shower 9 and 4, an entrance 9 and 4, a cue 2, and one felt 64; a device that drops
-  frames steps these down for the session (half, then the mark and the glint only) and never back up. Nothing starts
+  frames steps these down at once (half, then the mark, the glint and your own trail at one piece a hop, 4 at most),
+  and back up one step after two windows in a row that support a higher tier (from the slowest, two windows fit for
+  half reach half), so a phone that leaves Low Power Mode gets its pieces back. Nothing starts
   while the hand is dealt (what was in the air is taken off) or on a hidden page; with cards in play the trail and
   the cue are fainter; the watch screen's figures keep their gait and habit and bring no pieces. Under Reduce Motion
   nothing moves, and a store character has three still pieces at its feet. The Lamb's horn butt was hard to see at

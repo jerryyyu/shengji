@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ARRIVES, GAITS, GOLD, LUNGERS, MATERIALS, PLAIN_GAIT, QUIRKS, accentPieces, burstPieces, cuePieces, droopPiece, entrancePieces, gaitFrames, materialOf,
   restPieces, showerPieces, trailPieces, walkAt } from "./flair";
 import type { Piece, Stance } from "./flair";
-import { CAPS, FlairLayer, MINIMAL_SHAPES, SLOW_HALF, SLOW_MINIMAL, TIER_WINDOW, TierSampler, stateAt } from "./flairLayer";
+import { CAPS, FlairLayer, MINIMAL_SHAPES, RECOVER_WINDOWS, SLOW_HALF, SLOW_MINIMAL, TIER_WINDOW, TierSampler, stateAt } from "./flairLayer";
 import { COMPANION_KINDS, COMPANION_PRODUCTS, COMPANIONS, FREE_KINDS } from "./look";
 
 const stance = (over: Partial<Stance> = {}): Stance => ({ x: 300, y: 200, px: 44, dir: 1, colour: "", gold: false, ...over });
@@ -288,14 +288,14 @@ describe("the layer that paints the pieces", () => {
     expect(frames).toHaveLength(0);
   });
 
-  it("a slow device steps the caps down and never back up: half at 2% of frames slow, the mark and the glint only at 5% or a display held to 30 a second", () => {
+  it("a slow device steps the caps down: half at 2% of frames slow, the slowest tier at 5% or a display held to 30 a second", () => {
     const window = (slow: number, gap = 16.7) => Array.from({ length: TIER_WINDOW }, (_, i) => (i < Math.round(slow * TIER_WINDOW) ? gap * 2 : gap));
     const fed = (gaps: number[][]) => { const s = new TierSampler(); for (const w of gaps) for (const g of w) s.note(g); return s; };
     expect(fed([window(0.01)]).tier).toBe("full");
     expect(fed([window(SLOW_HALF)]).tier).toBe("half");
     expect(fed([window(SLOW_MINIMAL)]).tier).toBe("minimal");
     expect(fed([window(0, 33.4)]).tier).toBe("minimal");
-    expect(fed([window(SLOW_HALF), window(0), window(0)]).tier).toBe("half");
+    expect(fed([window(SLOW_HALF), window(0)]).tier).toBe("half");
     expect(fed([window(SLOW_MINIMAL), window(0)]).tier).toBe("minimal");
     // a display at 120 a second is weighed against its own interval
     expect(fed([window(0, 8.3)]).tier).toBe("full");
@@ -307,7 +307,8 @@ describe("the layer that paints the pieces", () => {
     const least = new TierSampler();
     least.tier = "minimal";
     const low = make(least).layer;
-    expect(low.spawn("0", true, "trail", many(40))).toBe(0);
+    expect(low.spawn("0", true, "trail", many(40))).toBe(1);
+    expect(low.spawn("1", false, "trail", many(40))).toBe(0);
     expect(low.spawn("0", true, "shower", many(40))).toBe(0);
     expect(low.spawn("0", true, "burst", many(40, { shape: "blossom" }))).toBe(2);
     for (const tier of ["half", "minimal"] as const) for (const who of ["own", "other"] as const) for (const tag of ["trail", "cue", "burst", "shower", "entrance"] as const) {
@@ -315,7 +316,44 @@ describe("the layer that paints the pieces", () => {
     }
   });
 
-  it("on the slowest tier only a character's mark and its glint are painted: no petal or leaf of an entrance, a burst, an accent or a trail", () => {
+  it("steps back up one tier for every two clean windows in a row, and keeps weighing on the slowest tier", () => {
+    const window = (slow: number, gap = 16.7) => Array.from({ length: TIER_WINDOW }, (_, i) => (i < Math.round(slow * TIER_WINDOW) ? gap * 2 : gap));
+    const s = new TierSampler();
+    const feed = (w: number[]) => { for (const g of w) s.note(g); return s.tier; };
+    // Low Power Mode on, then off: back to full in four clean windows, half on the way
+    expect(feed(window(0, 33.4))).toBe("minimal");
+    for (let i = 1; i < RECOVER_WINDOWS; i++) expect(feed(window(0))).toBe("minimal");
+    expect(feed(window(0))).toBe("half");
+    for (let i = 1; i < RECOVER_WINDOWS; i++) expect(feed(window(0))).toBe("half");
+    expect(feed(window(0))).toBe("full");
+    // a slow window between clean ones starts the count again
+    expect(feed(window(SLOW_HALF))).toBe("half");
+    expect(feed(window(0))).toBe("half");
+    expect(feed(window(SLOW_HALF))).toBe("half");
+    expect(feed(window(0))).toBe("half");
+    expect(feed(window(0))).toBe("full");
+  });
+
+  it("a display at 120 a second that drops to 60 for some frames is on time; a frame past 25 ms is slow there too", () => {
+    const fed = (w: number[]) => { const s = new TierSampler(); for (const g of w) s.note(g); return s.tier; };
+    // one frame in eight at 60 a second, the rest at 120
+    expect(fed(Array.from({ length: TIER_WINDOW }, (_, i) => (i % 8 === 0 ? 16.7 : 8.3)))).toBe("full");
+    expect(fed(Array.from({ length: TIER_WINDOW }, (_, i) => (i % 8 === 0 ? 26 : 8.3)))).toBe("minimal");
+  });
+
+  it("on the slowest tier your own trail keeps one piece a hop, up to 4; another seat's none", () => {
+    const least = new TierSampler();
+    least.tier = "minimal";
+    const { layer } = make(least);
+    const lamb = materialOf("lamb")!, panda = materialOf("panda")!, s = stance();
+    for (const m of [lamb, panda]) expect(layer.spawn(m === lamb ? "0" : "2", true, "trail", trailPieces(m, s, { x: 1, y: 0 }, 3, 0, seeded()))).toBe(1);
+    for (let i = 0; i < 6; i++) layer.spawn("0", true, "trail", trailPieces(lamb, s, { x: 1, y: 0 }, 3, 0, seeded()));
+    expect(layer.alive("0", "trail")).toBe(CAPS.minimal.own.trail);
+    expect(CAPS.minimal.own.trail).toBe(4);
+    expect(layer.spawn("1", false, "trail", trailPieces(lamb, s, { x: 1, y: 0 }, 1, 0, seeded()))).toBe(0);
+  });
+
+  it("on the slowest tier besides your own trail only a character's mark and its glint are painted: no petal or leaf of an entrance, a burst, an accent or another seat's trail", () => {
     const least = new TierSampler();
     least.tier = "minimal";
     const fill = (who: string, tag: "entrance" | "burst" | "cue" | "trail" | "shower", pieces: Piece[]) => make(least).layer.spawn(who, true, tag, pieces);
@@ -328,7 +366,7 @@ describe("the layer that paints the pieces", () => {
     expect(fill("0", "burst", burstPieces(panda, s, 7, 0, seeded()))).toBe(2);
     // an accent is petals or leaves only, a trail and a shower likewise
     for (const m of [lamb, panda]) for (const at of m.accent.times) expect(fill("0", "burst", accentPieces(m, s, 0, at, true, seeded()))).toBe(0);
-    expect(fill("0", "trail", trailPieces(lamb, s, { x: 1, y: 0 }, 3, 0, seeded()))).toBe(0);
+    expect(make(least).layer.spawn("1", false, "trail", trailPieces(lamb, s, { x: 1, y: 0 }, 3, 0, seeded()))).toBe(0);
     expect(fill("0", "shower", showerPieces(lamb, s, 6, seeded()))).toBe(0);
     // the cue stays: the horn's glint, the ripple under the Panda
     expect(fill("0", "cue", cuePieces(lamb, s))).toBe(2);

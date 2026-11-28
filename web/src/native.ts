@@ -5,9 +5,11 @@
 // package: in a browser `window.Capacitor` is absent and every export is a
 // no-op. The native plugins are reached by name through the injected bridge.
 //
-// Orientation is decided per device class, not per viewport: an iPhone keeps
-// the lobby in portrait and the game in landscape (either side); an iPad, even
-// in a narrow Split View, is never locked.
+// Orientation is decided by the window's size, not the device: a phone-sized
+// window (a phone, or a foldable folded) keeps the lobby in portrait and the
+// game in landscape (either side); a larger window (an iPad, a foldable
+// unfolded) is never locked. The decision is taken again when the window
+// changes size, as on a fold or an unfold.
 
 import { scrollActiveTabToTop } from "./home/session";
 
@@ -67,7 +69,6 @@ async function call(name: string, method: string, opts?: Record<string, unknown>
 }
 
 let idiom: Promise<string | null> | null = null;
-let phone: Promise<boolean> | null = null;
 
 /** The device idiom the app's shell reports ("phone", "pad"), or null in a
  *  browser or a shell that does not say. */
@@ -80,28 +81,59 @@ export function deviceIdiom(): Promise<string | null> {
   return idiom;
 }
 
-/** True only in the app on an iPhone. The shell reports the device idiom,
- *  because a viewport width cannot tell an iPad in Split View from a phone. */
-export function isPhone(): Promise<boolean> {
-  if (!isNative()) return Promise.resolve(false);
-  phone ??= deviceIdiom().then((i) => i === "phone");
-  return phone;
+/** A window whose shorter side is under this many CSS pixels (points in the
+ *  app's WebView) is phone-sized. The shorter side does not change when the
+ *  window turns, so a lock never undoes itself. */
+export const PHONE_WINDOW_SHORT_SIDE = 600;
+
+export type OrientationLock = "landscape" | "portrait" | "free";
+
+/** The orientation a screen takes in a window of this size: a phone-sized
+ *  window locks the table to landscape and the lobby to portrait; a larger
+ *  one turns freely. Null when the size is not known yet (zero). */
+export function orientationLockFor(screen: ScreenKind, width: number, height: number): OrientationLock | null {
+  if (!(width > 0 && height > 0)) return null;
+  if (Math.min(width, height) >= PHONE_WINDOW_SHORT_SIDE) return "free";
+  return screen === "game" ? "landscape" : "portrait";
 }
 
-let lastLock: ScreenKind | null = null;
+let lockScreen: ScreenKind | null = null;
+let lastLock: OrientationLock | null = null;
+let lockListening = false;
 
-/** Lobby screens portrait, the table landscape (both sides), on iPhone only. */
-export async function lockFor(screen: ScreenKind): Promise<void> {
-  if (!(await isPhone())) return;
-  if (lastLock === screen) return;
-  lastLock = screen;
-  if (screen === "game") {
+/** Applies the lock the current screen and window size call for. While the
+ *  keyboard is up the WebView is only the space above it, which is not the
+ *  window's size, so the lock stays as it was. Nothing was locked before the
+ *  first lock, so a first "free" sends nothing. */
+async function applyLock(): Promise<void> {
+  if (lockScreen === null || document.body.classList.contains(KEYBOARD_OPEN_CLASS)) return;
+  const lock = orientationLockFor(lockScreen, window.innerWidth, window.innerHeight);
+  if (lock === null || lock === lastLock) return;
+  const first = lastLock === null;
+  lastLock = lock;
+  if (lock === "landscape") {
     // The ScreenOrientation plugin's "landscape" is one side only; the shell's
     // own method allows both, so the table turns with the phone.
     await call("ShengjiShell", "lockOrientation", { orientation: "landscape" });
-  } else {
+  } else if (lock === "portrait") {
     await call("ScreenOrientation", "lock", { orientation: "portrait" });
+  } else if (!first) {
+    await call("ShengjiShell", "lockOrientation", { orientation: "any" });
   }
+}
+
+const onLockResize = () => { void applyLock(); };
+
+/** Lobby screens portrait, the table landscape (both sides), in a
+ *  phone-sized window only; see orientationLockFor. */
+export async function lockFor(screen: ScreenKind): Promise<void> {
+  if (!isNative()) return;
+  lockScreen = screen;
+  if (!lockListening) {
+    lockListening = true;
+    window.addEventListener("resize", onLockResize);
+  }
+  await applyLock();
 }
 
 /** The kind of haptic each event plays (UIKit feedback generators). A round
@@ -321,8 +353,12 @@ export function nearbyPluginProxy(): unknown {
 export function resetNativeForTests(): void {
   plugins.clear();
   idiom = null;
-  phone = null;
+  lockScreen = null;
   lastLock = null;
+  if (lockListening) {
+    window.removeEventListener("resize", onLockResize);
+    lockListening = false;
+  }
   selectionPrimed = false;
   hapticsOn = storedHaptics();
   splashHidden = false;

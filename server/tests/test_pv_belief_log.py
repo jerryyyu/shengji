@@ -317,6 +317,42 @@ def test_trajectory_carries_the_fields(arms):
     assert "belief" not in pv_fields_from_record(bare, ballot)[2]
 
 
+def test_shard_replays_base_draw_when_exact_lead_prices_a_subset(tmp_path, belief_package):
+    from shengji.harvest.rebuild import setup_from_round
+    from shengji.harvest.trajectory import pv_fields_from_record
+
+    rnd, events = logged_round(2000)
+    setup = setup_from_round(rnd)
+    setup["declarations"] = [e for e in events if e["e"] == "declare"]
+    model = bn.load_belief_numpy(belief_package["path"], belief_package["sha256"])
+    fields = {"belief_seed": 31, "worlds": 4}
+    proposal, expected, _, fill = belief_debug.regenerate(model, rnd, rnd.turn, fields, 4)
+    assert fill == 0
+    ballot = [[rnd.hands[rnd.turn][0]]]
+    rec = dict(fields, **bn.log_fields(proposal), belief_proposed=proposal.drawn, admitted=ballot, admitted_indices=[0],
+               selected_index=0, played=ballot[0], value_means=[0.5],
+               exact_lead_status="complete", exact_lead_subset_worlds=1)
+    allocation, _, values = pv_fields_from_record(rec, ballot)
+    assert values["worlds"] == 1
+    shard = tmp_path / "row.jsonl"
+    shard.write_text(json.dumps(dict(decision_kind="play", seat=rnd.turn, deck=rnd.deck,
+                                     setup=setup, plays_prefix=[], allocation=allocation,
+                                     action_values=values)) + "\n")
+    restored, seat, replay = belief_debug.shard_decision(shard, 0)
+    result = belief_debug.report(restored, seat, replay, model=model)
+    assert result["worlds"] == expected
+    assert result["checks"]["belief_proposed"] is True
+    row = json.loads(shard.read_text())
+    del row["allocation"]
+    shard.write_text(json.dumps(row) + "\n")
+    with pytest.raises(belief_debug.BeliefDebugError, match="base belief draw width"):
+        belief_debug.shard_decision(shard, 0)
+    del row["action_values"]["exact_search"]
+    row["action_values"]["worlds"] = 4
+    shard.write_text(json.dumps(row) + "\n")
+    assert belief_debug.shard_decision(shard, 0)[2]["worlds"] == 4
+
+
 def test_a_failing_log_keeps_the_draw(belief_package, monkeypatch):
     from test_world_history_legal import fixture, served
     _, now, seat = fixture()

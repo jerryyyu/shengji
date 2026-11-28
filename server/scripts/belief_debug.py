@@ -94,7 +94,16 @@ def shard_decision(path, line: int):
     belief = dict(av.get("belief") or {})
     if "belief_seed" not in belief:
         raise BeliefDebugError("the row carries no belief log")
-    belief.setdefault("worlds", av.get("worlds"))
+    if "worlds" not in belief:
+        # Exact search may price only a prefix of the base proposal draw.
+        allocation = record.get("allocation") or {}
+        width = max(allocation.get("selection_worlds") or [], default=0)
+        if not width:
+            exact = av.get("exact_search") or {}
+            if exact.get("exact_lead_status") == "complete" and exact.get("exact_lead_subset_worlds"):
+                raise BeliefDebugError("exact subset recorded without the base belief draw width")
+            width = av.get("worlds")
+        belief["worlds"] = width
     return state_for_record(record), int(record["seat"]), belief
 
 

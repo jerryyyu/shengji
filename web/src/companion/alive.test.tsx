@@ -21,7 +21,7 @@ vi.mock("../auth", async (importOriginal) => {
 
 import TableCompanions from "./TableCompanions";
 import { Companion } from "./Companion";
-import { FlairLayer } from "./flairLayer";
+import { FlairLayer, sessionTier } from "./flairLayer";
 import type { Piece } from "./flair";
 import type { Rect } from "./seatZones";
 import { TABLES } from "./seatZones.fixtures";
@@ -644,6 +644,36 @@ describe("character and material at the table", () => {
     const dir = Math.sign(xs[xs.length - 1] - xs[0]) || 1;
     const last = trail[trail.length - 1];
     for (const p of last.pieces) expect((p.keys[p.keys.length - 1].x - (xs[xs.length - 1] + 22)) * dir).toBeLessThan(0);
+  });
+
+  /** Tap the felt, and the trail calls yours makes on that walk. */
+  const tapWalk = async () => {
+    await render(paid());
+    await advance(1500);
+    const from = anims.length;
+    click(m.felt.w / 2, m.felt.h * 0.42);
+    const walk = on(0, "walk", from)[0];
+    expect(walk).toBeTruthy();
+    const before = calls("trail", "0").length;
+    await advance(walk.ms + 50);
+    const trail = calls("trail", "0").slice(before);
+    return { hops: trail.length, started: trail.reduce((n, c) => n + c.started, 0) };
+  };
+
+  it("a tap-walk at the full tier starts 2 or 3 trail pieces a hop", async () => {
+    const full = await tapWalk();
+    expect(full.hops).toBeGreaterThanOrEqual(2);
+    expect(full.started).toBeGreaterThanOrEqual(2 * full.hops);
+  });
+
+  it("a tap-walk on the slowest tier still starts your trail, one piece a hop", async () => {
+    const was = sessionTier.tier;
+    sessionTier.tier = "minimal";
+    try {
+      const least = await tapWalk();
+      expect(least.started).toBeGreaterThanOrEqual(1);
+      expect(least.started).toBeLessThanOrEqual(least.hops);
+    } finally { sessionTier.tier = was; }
   });
 
   it("a free companion walks in its own gait too, and drops nothing", async () => {

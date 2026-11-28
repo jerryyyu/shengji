@@ -5,7 +5,7 @@
 // a table at rest draws nothing. Every piece is counted against its seat's
 // caps and the felt's, and none starts while the hand is dealt, while the
 // page is hidden or under Reduce Motion (which gets still pieces instead).
-// A slow device steps the caps down for the rest of the session.
+// A slow device steps the caps down, and back up once it keeps up again.
 import { prefersReducedMotion } from "../motion";
 import type { Key, Piece } from "./flair";
 
@@ -14,47 +14,62 @@ export type Tag = "trail" | "cue" | "burst" | "shower" | "entrance";
 export type Tier = "full" | "half" | "minimal";
 type Caps = Record<Tag, number>;
 /** The most pieces alive at once: for your own figure, for another seat's,
- *  and on one felt. Half halves each; minimal keeps the mark and the glint. */
+ *  and on one felt. Half halves each; minimal keeps the mark, the glint and
+ *  a short trail for your own figure, one piece a hop. */
 export const CAPS: Record<Tier, { own: Caps; other: Caps; felt: number }> = {
   full: { own: { trail: 18, cue: 2, burst: 11, shower: 9, entrance: 9 }, other: { trail: 9, cue: 2, burst: 5, shower: 4, entrance: 4 }, felt: 64 },
   half: { own: { trail: 9, cue: 2, burst: 5, shower: 4, entrance: 4 }, other: { trail: 4, cue: 1, burst: 2, shower: 2, entrance: 2 }, felt: 32 },
-  minimal: { own: { trail: 0, cue: 2, burst: 2, shower: 0, entrance: 1 }, other: { trail: 0, cue: 1, burst: 1, shower: 0, entrance: 1 }, felt: 8 },
+  minimal: { own: { trail: 4, cue: 2, burst: 2, shower: 0, entrance: 1 }, other: { trail: 0, cue: 1, burst: 1, shower: 0, entrance: 1 }, felt: 8 },
 };
 
-/** What the minimal tier still paints: a character's mark and its glint, never its pieces. */
+/** What the minimal tier still paints besides your own trail: a character's mark and its glint, never its pieces. */
 export const MINIMAL_SHAPES: ReadonlySet<string> = new Set(["blossom", "ripple", "spark"]);
 /** Frames watched before the tier is weighed again, and the shares of slow
  *  ones that step it down. */
 export const TIER_WINDOW = 180;
 export const SLOW_HALF = 0.02;
 export const SLOW_MINIMAL = 0.05;
-/** A frame is slow past this many refresh intervals. */
+/** A frame is slow past this many refresh intervals, an interval never
+ *  taken as shorter than 60 a second: a display at 120 a second that drops
+ *  to 60 for a while is on time. */
 export const SLOW_INTERVALS = 1.5;
+export const SLOWEST_ON_TIME_MS = 1000 / 60;
+/** Clean windows in a row before the tier steps back up one. */
+export const RECOVER_WINDOWS = 2;
 /** A steady gap this long is a display held to 30 a second (Low Power Mode). */
 export const LOW_POWER_MS = 30;
 
-/** Watches the gaps between the loop's own frames and steps the tier down,
- *  never up: half at 2% of a window's frames slow, minimal at 5% or on a
- *  display held to 30 a second. */
+/** Watches the gaps between the loop's own frames: half at 2% of a window's
+ *  frames slow, minimal at 5% or on a display held to 30 a second, at once;
+ *  one tier back up after two clean windows in a row (Low Power Mode turned
+ *  off, a slow start that has passed). */
 export class TierSampler {
   tier: Tier = "full";
   private gaps: number[] = [];
+  private clean = 0;
   note(gap: number): Tier {
     // a gap this long is the loop starting again, not a frame
-    if (this.tier === "minimal" || gap <= 0 || gap > 250) return this.tier;
+    if (gap <= 0 || gap > 250) return this.tier;
     this.gaps.push(gap);
     if (this.gaps.length < TIER_WINDOW) return this.tier;
     const sorted = [...this.gaps].sort((a, b) => a - b);
     this.gaps = [];
     // the refresh interval is the usual gap; the median stays it while most frames are on time
     const interval = sorted[Math.floor(sorted.length / 2)];
-    const slow = sorted.filter((g) => g > interval * SLOW_INTERVALS).length / sorted.length;
-    if (interval >= LOW_POWER_MS || slow >= SLOW_MINIMAL) this.tier = "minimal";
-    else if (slow >= SLOW_HALF && this.tier === "full") this.tier = "half";
+    const slow = sorted.filter((g) => g > Math.max(interval, SLOWEST_ON_TIME_MS) * SLOW_INTERVALS).length / sorted.length;
+    const seen: Tier = interval >= LOW_POWER_MS || slow >= SLOW_MINIMAL ? "minimal" : slow >= SLOW_HALF ? "half" : "full";
+    const rank = { full: 0, half: 1, minimal: 2 } as const;
+    if (rank[seen] >= rank[this.tier]) {
+      this.clean = 0;
+      this.tier = seen;
+    } else if (++this.clean >= RECOVER_WINDOWS) {
+      this.clean = 0;
+      this.tier = this.tier === "minimal" ? "half" : "full";
+    }
     return this.tier;
   }
 }
-/** One tier for the session: a step down holds wherever pieces are painted. */
+/** One tier for the page, wherever pieces are painted. */
 export const sessionTier = new TierSampler();
 
 interface Live { owner: string; tag: Tag; piece: Piece; t0: number }
@@ -179,8 +194,10 @@ export class FlairLayer {
     const cap = (own ? caps.own : caps.other)[tag];
     const now = this.clock();
     let started = 0;
+    // on the slowest tier your own trail keeps one piece a hop
+    const minimal = this.tier === "minimal", trail = minimal && own && tag === "trail";
     for (const piece of pieces) {
-      if (this.tier === "minimal" && !MINIMAL_SHAPES.has(piece.shape)) { this.dropped++; continue; }
+      if (minimal && (trail ? started > 0 : !MINIMAL_SHAPES.has(piece.shape))) { this.dropped++; continue; }
       if (this.alive(owner, tag) >= cap || this.live.length >= caps.felt) { this.dropped++; continue; }
       const faint = this.quiet && (tag === "trail" || tag === "cue");
       this.live.push({ owner, tag, t0: now, piece: faint ? { ...piece, keys: piece.keys.map((k) => ({ ...k, o: k.o * 0.55 })) } : piece });

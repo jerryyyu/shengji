@@ -308,3 +308,162 @@ def _r49_env():
     release-49 recipe the identities in this module are derived from)."""
     from test_release49_fly_config import fly_env
     return fly_env()
+
+
+def test_depth_redraw_pairs_replies_from_public_state(package):
+    import torch
+
+    from shengji.ai.cwv_policy import CompleteWorldEvaluator, afterstate
+    from shengji.ai.refusal import observe_refusal, refusal_consistent
+    from shengji.engine.legal import IllegalPlay
+    from shengji.engine.round import actual_play_after
+    from shengji.rl.value_model import ValueModelConfig, ValueNetwork
+    from shengji.train.belief_tree_teacher import draw_depth_worlds, paired_reply_values
+    from test_world_history_legal import started
+
+    root, heuristic = started(13)
+    root.play(root.turn, ["BJ", "H10"])
+    refusal = observe_refusal(root)
+    assert refusal is not None
+    action = heuristic.decide_play(root, root.turn)
+    child = afterstate(root, root.turn, root.hands, root.buried, action)
+    seat = child.turn
+    lead = child.trick.plays[0].cards[0]
+    suit = child.ordering.eff_suit(lead)
+    replies = [[card] for card in sorted(set(child.hands[seat]))
+               if child.ordering.eff_suit(card) == suit][:2]
+    assert len(replies) == 2
+    belief = bn.load_belief_numpy(package["path"], package["sha256"])
+    options = dict(belief=belief, refusals=(refusal,), seed=7, worlds=3)
+    original = copy.deepcopy(child)
+    worlds = draw_depth_worlds(child, **options)
+    assert all(hands[seat] == sorted(child.hands[seat]) and HL.history_legal(child, seat, hands)
+               and refusal_consistent(child, hands, refusal) for hands, _ in worlds)
+
+    permuted = copy.deepcopy(child)
+    permuted.deck.reverse()
+    # A hidden hand and kitty can change together without changing this actor's view.
+    other = (seat + 1) % 4
+    i, j = next((i, j) for i, held in enumerate(permuted.hands[other])
+                for j, buried in enumerate(permuted.buried) if held != buried)
+    permuted.hands[other][i], permuted.buried[j] = permuted.buried[j], permuted.hands[other][i]
+    assert draw_depth_worlds(permuted, **options) == worlds
+
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(17)
+        model = ValueNetwork(ValueModelConfig(architecture="mlp", width=16))
+    evaluator = CompleteWorldEvaluator(None, model=model)
+    scored = []
+
+    def score(leaves, actor):
+        assert actor == seat
+        for leaf in leaves:
+            world_index, reply_index = divmod(len(scored), len(replies))
+            hands, buried = worlds[world_index]
+            assert (leaf.hands[other], leaf.buried) == (hands[other], buried)
+            assert actual_play_after(leaf, seat, child.last_trick) == replies[reply_index]
+            scored.append(leaf)
+        return evaluator.score(leaves, actor)
+
+    values = paired_reply_values(child, replies, worlds, batch_size=4, score=score)
+    assert values.shape == (3, 2)
+    np.testing.assert_allclose(values.ravel(), evaluator.score(scored, seat), atol=1e-6)
+    from_other_team = paired_reply_values(child, replies, worlds, batch_size=4,
+                                         score=evaluator.score, value_seat=other)
+    np.testing.assert_allclose(from_other_team.ravel(), evaluator.score(scored, other), atol=1e-6)
+    with pytest.raises(IllegalPlay):
+        paired_reply_values(child, [[*replies[0], *replies[1]]], worlds, batch_size=4,
+                            score=evaluator.score)
+    assert (child.hands, child.buried, child.turn, child.trick.plays, child.notice) == (
+        original.hands, original.buried, original.turn, original.trick.plays, original.notice)
+    with pytest.raises(ValueError, match="ledger disagrees"):
+        draw_depth_worlds(child, **{**options, "refusals": ()})
+    for broken_score in (
+        lambda leaves, actor: [np.nan] * len(leaves),
+        lambda leaves, actor: [0.] * (len(leaves) - 1),
+    ):
+        with pytest.raises(ValueError, match="finite root-team score"):
+            paired_reply_values(child, replies, worlds, batch_size=4, score=broken_score)
+
+
+def test_depth_redraw_keeps_banker_kitty_and_refuses_incomplete_draw(package, monkeypatch):
+    from shengji.train import belief_tree_teacher as teacher
+    from test_world_history_legal import started
+
+    child, _ = started(13)
+    assert child.turn == child.banker
+    belief = bn.load_belief_numpy(package["path"], package["sha256"])
+    options = dict(belief=belief, refusals=(), seed=9, worlds=2)
+    worlds = teacher.draw_depth_worlds(child, **options)
+    assert all(buried == child.buried for _, buried in worlds)
+    hands, buried = worlds[0]
+    action = [hands[child.turn][0]]
+    def fail_score(leaves, actor):
+        pytest.fail("invalid world was scored")
+
+    with pytest.raises(ValueError, match="incomplete depth world"):
+        teacher.paired_reply_values(child, [action], [(hands[:-1], buried)],
+                                    batch_size=1, score=fail_score)
+    other_card = next(c for c in hands[(child.turn + 1) % 4] if c != buried[0])
+    with pytest.raises(ValueError, match="information known to the actor"):
+        teacher.paired_reply_values(child, [action], [(hands, [other_card, *buried[1:]])],
+                                    batch_size=1, score=fail_score)
+    with pytest.raises(ValueError, match="substituted a depth reply"):
+        teacher.paired_reply_values(child, [["BJ", "H10"]],
+                                    [(child.hands, child.buried)], batch_size=1,
+                                    score=lambda leaves, actor: pytest.fail("refused reply was scored"))
+
+    # A draw shortfall must never supply duplicate, unchecked, or true hands.
+    monkeypatch.setattr(teacher, "first_violation", lambda *args: 0)
+    with pytest.raises(ValueError, match="0 of 2 history-legal worlds"):
+        teacher.draw_depth_worlds(child, **options)
+
+
+def test_depth_redraw_continues_the_same_checked_proposal_stream(package, monkeypatch):
+    from shengji.ai.refusal import observe_refusal
+    from shengji.train import belief_tree_teacher as teacher
+    from test_world_history_legal import started
+
+    child, _ = started(13)
+    child.play(child.turn, ["BJ", "H10"])
+    notice = observe_refusal(child)
+    assert notice is not None
+    model = bn.load_belief_numpy(package["path"], package["sha256"])
+    build = teacher.BeliefProposal
+    consistent = teacher.refusal_consistent
+    calls = []
+    valid = []
+    streams = []
+
+    def proposal(*args, **kwargs):
+        streams.append(kwargs["seed"])
+        return build(*args, **kwargs)
+
+    def thin(rnd, hands, event):
+        assert event == notice
+        calls.append(None)
+        ok = consistent(rnd, hands, event)
+        # Leave the first valid world in place while forcing the next one past 16.
+        if ok and (not valid or len(calls) > 16):
+            valid.append(copy.deepcopy(hands))
+            return True
+        return False
+
+    monkeypatch.setattr(teacher, "BeliefProposal", proposal)
+    monkeypatch.setattr(teacher, "refusal_consistent", thin)
+    options = dict(belief=model, refusals=(notice,), seed=7, worlds=2)
+    worlds = teacher.draw_depth_worlds(child, **options)
+    assert streams == [7] and len(calls) > 16
+    assert [hands for hands, _ in worlds] == valid and len(valid) == 2
+
+    def impossible(*args):
+        calls.append(None)
+        return False
+
+    calls.clear()
+    monkeypatch.setattr(teacher, "refusal_consistent", impossible)
+    with pytest.raises(ValueError, match="0 of 2 history-legal worlds") as failure:
+        teacher.draw_depth_worlds(child, **options)
+    assert len(calls) == 256
+    assert "after 256 proposals" in str(failure.value)
+    assert "recorded refusal rejections=256" in str(failure.value)

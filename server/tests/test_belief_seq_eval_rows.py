@@ -302,6 +302,6 @@ def test_seed_metadata_length_cannot_broadcast(tmp_path):
     path = tmp_path / "bad.npz"
     np.savez(path, X=np.zeros((2, bs.FEATURE_DIM)), seed=np.array([10]), deal=np.array([1]))
     entry = {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-             "exclude_seed_windows": [(10, 11)]}
-    with pytest.raises(bs.BeliefSeqError, match="row count"):
+             "rows": 1, "exclude_seed_windows": [(10, 11)]}
+    with pytest.raises(bs.BeliefSeqError, match="seed metadata row count differs from features"):
         bs.load_part(entry, ["X"], bs._Verified())

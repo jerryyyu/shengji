@@ -114,22 +114,23 @@ def evaluate(extract, head, training, belief, seed, worlds=64, *, ll_max_draws=N
             raise ValueError("test deal in length-head training exposure")
         for row, truth in enumerate(part["Y"]):
             deal = int(part["deal"][row])
+            pair = (int(part["seed"][row]), deal)
             if selected is not None:
                 expected, seeds, ids = selected
-                pair = (int(part["seed"][row]), deal)
                 if pair not in expected:
                     if pair[0] in seeds or deal in ids:
                         raise ValueError("cohort seed and extracted deal disagree")
                     continue
-                decision_id = int(part["decision"][row])
-                if decision_id in observed[pair]:
-                    raise ValueError("duplicate held-out decision in evaluation cohort")
-                observed[pair].add(decision_id)
-                if len(observed[pair]) > expected[pair]:
-                    raise ValueError("extra rows for evaluation cohort")
             elif deal == TIMING_DEAL_ID:
                 excluded_timing_rows += 1
                 continue
+            decision_id = int(part["decision"][row])
+            decisions_for_deal = observed[pair]
+            if decision_id in decisions_for_deal:
+                raise ValueError("duplicate held-out decision in evaluation input")
+            decisions_for_deal.add(decision_id)
+            if selected is not None and len(decisions_for_deal) > expected[pair]:
+                raise ValueError("extra rows for evaluation cohort")
             seen.add(deal)
             inp = decision(part, row)
             copies, mask, sizes = inp["n_c"], inp["M"], inp["sizes"]

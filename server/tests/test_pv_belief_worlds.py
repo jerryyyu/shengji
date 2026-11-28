@@ -553,6 +553,8 @@ def test_paired_void_cli_reads_only_held_out_decisions(package, tmp_path, capsys
     manifests(extra=True)
     with pytest.raises(ValueError, match="duplicate held-out decision"):
         select(member)
+    with pytest.raises(ValueError, match="duplicate held-out decision"):
+        evaluator.main(args)
     files["test"] = files["train"]
     manifests()
     with pytest.raises(ValueError, match="training exposure"):

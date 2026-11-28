@@ -13,7 +13,7 @@
 import type { GameState } from "../protocol";
 import { attackingTeam, isYourTurnCue } from "../tableCopy";
 import type { Pose } from "./Companion";
-import { clearBox, figureBox, TAG_H } from "./seatZones";
+import { clear, clearBox, figureBox, TAG_H } from "./seatZones";
 import type { Layout, Rect, SeatPos, Spot } from "./seatZones";
 
 /** A move a figure makes at the table: a drawing's pose, or a big play. */
@@ -272,3 +272,29 @@ export function aim(s: Spot, px: number, tag: boolean, now: Facing, pos: SeatPos
   return { dir, lean: 0, up: false };
 }
 export const sameFacing = (a: Facing, b: Facing): boolean => a.dir === b.dir && a.lean === b.lean && a.up === b.up;
+
+/** A special that charges (the Lamb's horn butt) moves the figure itself:
+ *  the walk box backs off, lunges and comes home while the drawing acts.
+ *  `LUNGE_REACH` are the lunges tried, in figures, the longest first; the
+ *  table plays the longest that stays clear where the figure stands. */
+export const LUNGE_REACH = [0.5, 0.35, 0.2] as const;
+export const LUNGE_BACK = 0.14;
+/** A lunge in px: how far out it goes the way the figure faces, and how far it backs off first. */
+export interface Lunge { reach: number; back: number }
+/** The lunge a figure `px` wide at `s`, facing `dir` and drawn `k` times
+ *  its size, has room for: the longest whose far end stays clear of the
+ *  table (a lunge is shorter than the figure is wide, so the two ends cover
+ *  the way between), and its step back only where that is clear too. None
+ *  where no lunge fits. */
+export function lungeFor(s: Spot | null, px: number, tag: boolean, dir: 1 | -1, layout: Layout, k = 1): Lunge {
+  if (!s) return { reach: 0, back: 0 };
+  const free = (dx: number) => clear({ x: s.x + dx - ((k - 1) * px) / 2, y: s.y - (k - 1) * px }, px * k, tag, layout);
+  const reach = LUNGE_REACH.find((r) => free(dir * r * px)) ?? 0;
+  return { reach: reach * px, back: reach && free(-dir * LUNGE_BACK * px) ? LUNGE_BACK * px : 0 };
+}
+/** The walk box through a lunge from `s`: back, out as the butt lands (46% of the special), part of the way home, home. */
+export function lungeFrames(s: Spot, dir: 1 | -1, l: Lunge): Keyframe[] {
+  const at = (dx: number) => `translate(${s.x + dir * dx}px, ${s.y}px)`;
+  return [{ transform: at(0) }, { transform: at(-l.back), offset: 0.24 }, { transform: at(-l.back * 0.85), offset: 0.3, easing: "ease-in" },
+    { transform: at(l.reach), offset: 0.46, easing: "ease-out" }, { transform: at(l.reach * 0.3), offset: 0.65 }, { transform: at(0), offset: 0.9 }, { transform: at(0) }];
+}

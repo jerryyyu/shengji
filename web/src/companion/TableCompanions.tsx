@@ -37,7 +37,12 @@ import { parseLook } from "./look";
 import { shownAtTable, useCompanionMode } from "./mode";
 import { countPoke, countWalk } from "./usage";
 import { BEAT_MAX, BIG, BeatLog, CHUGS, DROOPS, GROW, LOOK_BACK_MS, LOOK_MS, PERKS, READY_BOB, READY_BOBS, READY_BOB_GAP_MS, READY_HELD, READY_JUMP_GAP_MS, READY_SCALE, RELAX,
-  aim, canWatch, facingCss, fits, kittyCapture, lastPlay, lookFrames, pickBeat, reactions, sameFacing, underBudget, yourTurn } from "./beats";
+  aim, canWatch, facingCss, fits, kittyCapture, lastPlay, lookFrames, lungeFor, lungeFrames, pickBeat, reactions, sameFacing, underBudget, yourTurn } from "./beats";
+import { ARRIVES, GAITS, GOLD_LEVEL, LUNGERS, PLAIN_GAIT, QUIRKS, accentPieces, burstPieces, cuePieces, droopPiece, entrancePieces, gaitFrames, materialOf, restPieces,
+  showerPieces, trailPieces, walkAt } from "./flair";
+import type { Material, Piece, Stance } from "./flair";
+import { useCue, useFlairLayer } from "./flairHooks";
+import type { FlairLayer, Tag } from "./flairLayer";
 import type { Beat, Facing, TableMove } from "./beats";
 import { HAND_LIFT, LIFT, clear, figureBox, nearest, nearestClear, nextSpot, pathClear, TAPPED_HIGH, TAPPED_WIDE, zoneAround, zonesFor } from "./seatZones";
 import type { Layout, Rect, SeatPos, Spot, Zone } from "./seatZones";
@@ -131,16 +136,19 @@ export const STILL_BEAT_MS = 1000;
 /** How soon a fidget or walk that fell due mid-move looks again. */
 const RETRY_MS = 1000;
 /** The fidgets a companion at rest plays in turn. */
-const FIDGETS = ["sway", "blink", "nudge"] as const;
+const FIDGETS = ["sway", "blink", "nudge", "habit"] as const;
 /** How long a blink keeps the eyes shut. */
 const BLINK_MS = 160;
 
 /** A companion at rest fidgets once every 6 to 10 s, on its own clock, while
- *  the page is shown and motion is allowed: a sway, a blink, a small hop, in
+ *  the page is shown and motion is allowed: a sway, a blink, a small hop and
+ *  its own habit (`habit`: its beat where it fits, else the sway), in
  *  turn. A blink shuts a still drawing's eyes for a moment (`onBlink`). */
-function useFidget(el: RefObject<HTMLSpanElement | null>, on: boolean, onBlink: (shut: boolean) => void): void {
+function useFidget(el: RefObject<HTMLSpanElement | null>, on: boolean, onBlink: (shut: boolean) => void, habit: () => Beat | null): void {
   const blink = useRef(onBlink);
   blink.current = onBlink;
+  const own = useRef(habit);
+  own.current = habit;
   // the clock runs while the figure is drawn; a fidget due mid-move waits
   // for the move to end, so hops for tricks do not keep putting it off
   const onNow = useRef(on);
@@ -165,7 +173,7 @@ function useFidget(el: RefObject<HTMLSpanElement | null>, on: boolean, onBlink: 
         blink.current(true);
         shut = window.setTimeout(() => blink.current(false), BLINK_MS);
       } else {
-        running = play(el.current, kind === "sway" ? "fidget" : "nudge");
+        running = play(el.current, kind === "sway" ? "fidget" : kind === "nudge" ? "nudge" : own.current() ?? "fidget");
       }
       wait();
     };
@@ -445,7 +453,11 @@ export const TAP_THROTTLE_MS = 500;
  *  played as a special once any level-up has ended. Every move is a Web
  *  Animation of a transform. Under Reduce Motion it stands on its home;
  *  while the page is hidden it rests. */
-function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal, tapped, wins, poke = 0, dealing, ready, watch, onEnd, onUpEnd, onGoal, onTapped, onStray, onSpecial }: {
+function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal, tapped, wins, poke = 0, dealing, ready, watch, flair = null, gold = false, onEnd, onUpEnd, onGoal, onTapped, onStray, onSpecial }: {
+  /** The felt's layer of pieces, for a store character's material; null where none is painted. */
+  flair?: FlairLayer | null;
+  /** Its team stands at the level from which a trail's pieces turn part gold. */
+  gold?: boolean;
   player: StatePlayer; team: Team; px: number; pos: SeatPos; dealing: boolean;
   ready: boolean; watch: { pos: SeatPos; key: string } | null;
   zone: Zone; layout: Layout; roam: Layout; pose: TableMove; up: LevelUp | null; you: boolean; goal: { spot: Spot; n: number } | null;
@@ -517,9 +529,29 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
   const placed = (tapped ?? zone.home ?? stray ?? cur.current) !== null;
   // ready while the table waits on its person, between the other moves
   const readyOn = ready && placed && !away && move === "idle" && !up && !playing && !dealing;
-  useFidget(box, placed && move === "idle" && !up && !playing && !readyOn, setBlink);
+  useFidget(box, placed && move === "idle" && !up && !playing && !readyOn, setBlink, () => {
+    const s = cur.current;
+    return s && fits(QUIRKS[kind].frames, s, px, you, roamNow.current) ? QUIRKS[kind] : null;
+  });
+  // a store character's material: its pieces start from where it stands
+  const material: Material | null = flair ? materialOf(kind) : null;
+  const owner = String(player.seat);
+  const emit = (tag: Tag, make: (m: Material, s: Stance) => Piece[], k = 1) => {
+    const s = cur.current;
+    if (!flair || !material || !s || away) return;
+    flair.spawn(owner, you, tag, make(material, { x: s.x + px / 2, y: s.y + px, px: px * k, dir: facing.current.dir, colour, gold }));
+  };
+  // the trail's pieces still to come from the walk in flight, and how many hops have dropped some
+  const trailing = useRef<number[]>([]);
+  const hopped = useRef(0);
 
-  const stop = () => { for (const a of walking.current) a.cancel(); walking.current = []; path.current = null; };
+  const stop = () => {
+    for (const a of walking.current) a.cancel();
+    walking.current = [];
+    path.current = null;
+    for (const id of trailing.current) window.clearTimeout(id);
+    trailing.current = [];
+  };
   const place = (s: Spot) => { cur.current = s; if (walk.current) walk.current.style.transform = at(s); };
   /** Where the figure is drawn now: mid-walk, where the walk has it (its
    *  rendered transform), else the spot it stands on. */
@@ -559,12 +591,29 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
       : [{ transform: at(from) }, { transform: at(to) }], { duration: ms, easing: "ease-in-out" });
     // a whole number of hops, at least one, fitted to the walk's time, so
     // the feet are on the ground as it arrives and no hop runs on after it
-    const step = quick ? QUICK_STEP_MS : STROLL_STEP_MS;
+    // the gait is the companion's own; a quick step aside keeps the plain hop
+    const own = quick ? PLAIN_GAIT : GAITS[kind];
+    const step = quick ? QUICK_STEP_MS : own.step;
     const hops = Math.max(1, Math.round(ms / step));
-    const gait = face.current?.animate([
-      { transform: `scaleX(${dir}) translateY(0)` }, { transform: `scaleX(${dir}) translateY(-12%)`, offset: 0.45 },
-      { transform: `scaleX(${dir}) translateY(0)` }], { duration: ms / hops, iterations: hops });
+    const gait = face.current?.animate(gaitFrames(own, dir), { duration: ms / hops, iterations: hops });
     walking.current = gait ? [a, gait] : [a];
+    if (material && flair) {
+      // the trail: pieces behind it as each hop lands (one for a step aside),
+      // from where the walk has it then, worked out from the walk itself
+      const drops = quick ? 1 : Math.max(1, Math.round(ms / STROLL_STEP_MS));
+      const share = via && dist > 0 ? leg / dist : 0;
+      const long = { x: (to.x - from.x) / (dist || 1), y: (to.y - from.y) / (dist || 1) };
+      for (let k = 1; k <= drops; k++) {
+        trailing.current.push(window.setTimeout(() => {
+          const p = walkAt(from, to, k / drops, via, share);
+          const was = walkAt(from, to, Math.max(0, k / drops - 0.06), via, share);
+          const gone = Math.hypot(p.x - was.x, p.y - was.y);
+          const u = gone > 0.5 ? { x: (p.x - was.x) / gone, y: (p.y - was.y) / gone } : long;
+          const n = quick || !you ? 1 : k === drops ? 3 : ++hopped.current % 2 ? 3 : 2;
+          flair.spawn(owner, you, "trail", trailPieces(material, { x: p.x + px / 2, y: p.y + px, px, dir, colour, gold }, u, n, hopped.current));
+        }, (k * ms) / drops));
+      }
+    }
     path.current = under ? null : { from, to };
     place(to);
     void a.finished.then(() => {
@@ -721,6 +770,31 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     return () => { window.clearTimeout(timer); document.removeEventListener("visibilitychange", seen); };
   }, [placed, px]);
   useEffect(() => stop, []);
+  // a store character's idle cue, on its own clock, while it stands at rest
+  const restful = useRef(false);
+  restful.current = idle && walking.current.length === 0 && !away;
+  useCue(placed && !!material, restful, () => emit("cue", cuePieces));
+  // its way in, once, as it is first drawn at this table: never while the
+  // hand is dealt, on a hidden page or under Reduce Motion
+  const entered = useRef(false);
+  useEffect(() => {
+    if (!placed || entered.current) return;
+    entered.current = true;
+    if (dealing || away || prefersReducedMotion() || document.visibilityState === "hidden") return;
+    const beat = pickBeat(ARRIVES[kind], cur.current, px, you, roamNow.current);
+    const run = beat ? play(box.current, beat) : null;
+    emit("entrance", (m, s) => entrancePieces(m, s, you ? 8 : 4));
+    return () => run?.stop();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placed]);
+  // under Reduce Motion its material is three pieces lying still at its feet
+  useEffect(() => {
+    const s = cur.current;
+    if (!flair || !material || !placed || !s || away || !prefersReducedMotion()) return;
+    flair.rest(owner, restPieces(material, { x: s.x + px / 2, y: s.y + px, px, dir: facing.current.dir, colour, gold }));
+    return () => flair.rest(owner, null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flair, material, placed, away, zone, here, layout, roam, px, colour, gold]);
   // a walk in flight as the deal starts goes on to where it was going at a
   // stroll, from where it is drawn: no quick hop runs on into the deal, and
   // nothing snaps
@@ -827,6 +901,9 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
       : move === "cheer" ? play(box.current, "cheer")
       : move === "big" ? play(box.current, pickBeat([BIG], s, px, you, roamNow.current) ?? "cheer")
       : play(box.current, pickBeat(move === "droop" ? DROOPS : CHUGS, s, px, you, roamNow.current) ?? (move === "droop" ? DROOPS[DROOPS.length - 1] : CHUGS[CHUGS.length - 1]));
+    // a store character marks a big play with a burst of its own, and a big trick lost with one falling piece
+    if (move === "big" && !prefersReducedMotion()) emit("burst", (m, st) => burstPieces(m, st, you ? 7 : 3, BIG.ms * 0.2));
+    if (move === "droop" && !prefersReducedMotion()) emit("burst", droopPiece);
     let live = true;
     void run.done.then(() => { if (live) ended.current(); });
     return () => { live = false; run.stop(); };
@@ -850,6 +927,7 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     if (wins <= played.current || up || !placed || away) return;
     played.current = wins;
     setSpecial((n) => n + 1);
+    emit("shower", (m, st) => showerPieces(m, st, you ? 6 : 3));
   }, [wins, up, placed, away]);
   // another seat's special, shared by its person: played as theirs plays it
   const poked2 = useRef(poke);
@@ -879,7 +957,13 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
       ? el.animate([{ transform: held.current ? READY_HELD : "scale(1)" }, { transform: `scale(${k})`, offset: 0.15 }, { transform: `scale(${k})`, offset: 0.85 },
                     { transform: "scale(1)" }], { duration: ms, easing: "ease-in-out" })
       : null;
-    return () => { window.clearTimeout(timer); a?.cancel(); setPlaying(false); };
+    // a special that charges moves the figure itself, as far as stays clear;
+    // a store character's accent rides on the special's own beats
+    const charge = !still && LUNGERS.has(kind) && walking.current.length === 0 && typeof walk.current?.animate === "function"
+      ? lungeFor(s, px, you, facing.current.dir, roamNow.current, k) : { reach: 0, back: 0 };
+    const lunge = s && charge.reach > 0 ? walk.current!.animate(lungeFrames(s, facing.current.dir, charge), { duration: ms }) : null;
+    if (!still) for (const at of material?.accent.times ?? []) emit("burst", (m, st) => accentPieces(m, st, charge.reach, at, you), k);
+    return () => { window.clearTimeout(timer); a?.cancel(); lunge?.cancel(); setPlaying(false); };
   }, [special, kind]);
   const nudging = useRef<{ stop: () => void } | null>(null);
   useEffect(() => () => nudging.current?.stop(), []);
@@ -1168,6 +1252,8 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
   const [strays, setStrays] = useState<Partial<Record<SeatPos, { spot: Spot; px: number }>>>({});
   const prev = useRef<GameState | null>(null);
   const root = useRef<HTMLDivElement | null>(null);
+  const flairBack = useRef<HTMLCanvasElement | null>(null);
+  const flairFront = useRef<HTMLCanvasElement | null>(null);
   const quiet = watch?.quiet ?? false;
   const watching = watch !== null;
   useEffect(() => {
@@ -1199,6 +1285,10 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
   const key = JSON.stringify([state.phase, state.trick, state.last_trick?.winner, state.players.map((p) => [p.seat, p.is_bot, p.left]), tablet, levels]);
   const layout = useLayout(root, on, key, !tablet, state.phase === "deal");
   const people = state.players.filter((p) => !p.is_bot && !p.left && (!watch || !!p.look));
+  // a store character at the table brings its pieces: one layer for the
+  // felt, none on the watch screen (its figures keep their gait and habit)
+  const material = on && !watching && people.some((p) => materialOf(parseLook(p.look).kind) !== null);
+  const flair = useFlairLayer(material, flairBack, flairFront, layout?.felt, state.phase === "deal", state.phase === "play");
   // the spot your last tap chose, at this table; yours stands round it, at
   // its full size, whatever room its zone by your hand has
   const myPx = companionSize(size.base, levelIndex(levels[ours]), size.max);
@@ -1395,6 +1485,7 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
   });
   return (
     <div className="table-companions" ref={root} aria-hidden="true">
+      {material ? <canvas className="tc-flair" data-depth="back" ref={flairBack} /> : null}
       {layout && zones ? people.map((p) => {
         const pos = SIDES[(p.seat - state.you + 4) % 4];
         const zone = zones[pos];
@@ -1407,11 +1498,13 @@ export default function TableCompanions({ state, watch = null, shared, onShare }
                   tapped={you ? home : watching ? null : remoteHome(p)} poke={pokes[p.seat] ?? 0}
                   onSpecial={you ? () => share.current?.({ type: "companion", act: "special" }) : undefined}
                   wins={watching ? 0 : specials[p.team]} dealing={state.phase === "deal"} ready={you && ready}
+                  flair={flair} gold={levelIndex(levels[p.team]) >= GOLD_LEVEL}
                   watch={played ? { pos: SIDES[(played.seat - state.you + 4) % 4], key: played.key } : null} onEnd={end(p.seat)} onUpEnd={done(p.seat)}
                   onGoal={you ? takeGoal : takeRemoteGoal(p.seat)} onTapped={you ? takeHome : takeRemoteHome(p.seat)}
                   onStray={stepped(pos, you && home ? myPx : zone.size ?? companionSize(size.base, levelIndex(levels[p.team]), size.max))} />
         );
       }) : null}
+      {material ? <canvas className="tc-flair" data-depth="front" ref={flairFront} /> : null}
     </div>
   );
 }

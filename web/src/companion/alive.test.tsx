@@ -97,7 +97,9 @@ const advance = async (ms: number) => {
   await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
 };
 const el = (seat: number, part: "walk" | "face" | "move") => host.querySelector<HTMLElement>(`.tc-seat[data-seat="${seat}"] .tc-${part}`)!;
-const on = (seat: number, part: "walk" | "face" | "move", from = 0) => anims.slice(from).filter((a) => a.seat === String(seat) && a.box === `tc-${part}`);
+/** A figure's way in as it is first drawn: it fades up. Not one of the moves that answer the game. */
+const isArrive = (a: Rec) => a.frames[0]?.opacity === 0;
+const on = (seat: number, part: "walk" | "face" | "move", from = 0) => anims.slice(from).filter((a) => a.seat === String(seat) && a.box === `tc-${part}` && !isArrive(a));
 const text = (a: Rec) => a.frames.map((k) => String(k.transform)).join(" | ");
 /** The moves this file is about, by what their keyframes do. */
 const isPerk = (a: Rec) => a.box === "tc-move" && /scale\(1\.17, 1\.17\)$/.test(text(a)) && /^translateY\(0%\) rotate\(0deg\) scale\(1, 1\)/.test(text(a));

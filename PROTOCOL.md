@@ -795,11 +795,15 @@ account may watch any live table's last finished round.
   admitted, or from a session that has left, is answered and counted nowhere;
   a follow never moves the token, so a follow of a table the token has since
   moved from (a Next whose answer is on its way) is answered and not counted
-  there. A table counts at most 50 watchers, each until 90 s pass without a
+  there. Each admission acts on the token only while it still holds it: a
+  read that finishes after a newer one was admitted neither clears nor
+  announces it. A full table feeds only its watchers, whether or not a read
+  may renew a lease. A table counts at most 50 watchers, each until 90 s pass without a
   read or until `POST /api/watch/leave?w=&e=` (204 whatever the token) ends
   session `e`: the token stops counting wherever it counts unless a newer
   session has been admitted since, and later reads of that session count
-  nowhere. A watch screen sends that leave as a beacon once as it closes (or
+  nowhere (for a token never admitted, the leave is kept among the latest
+  1024 such for 90 s). A watch screen sends that leave as a beacon once as it closes (or
   its page goes away), and again for an answer that lands after it closed.
   A pick at another table moves the token's count there. A full table is not picked,
   not followed by a new watcher and not counted in `watch`. 30 reads a minute per

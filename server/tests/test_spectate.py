@@ -91,6 +91,7 @@ def feed(client, monkeypatch):
     monkeypatch.setattr(spectate, "_loaded", True)
     monkeypatch.setattr(spectate, "_DOCS", spectate.collections.OrderedDict())
     monkeypatch.setattr(spectate, "_leases", {})
+    monkeypatch.setattr(spectate, "_early", spectate.collections.OrderedDict())
     spectate.LIMITER.reset()
     return srv, spectate, client
 
@@ -420,6 +421,102 @@ def test_a_late_answer_after_leave_and_a_rate_limited_reopen_count_nothing(feed,
     _leave(client, w="b" * 32, e=1)
     _watch(client, w="b" * 32, e=1)
     assert _counts(t) == [0]
+
+
+def _overlap(spectate, monkeypatch, first_fails):
+    """Two pick handlers at one table: session 1's read is admitted and its
+    answer held in ``_serve``; session 2 reopens and completes; then session
+    1's answer completes (failing when ``first_fails``)."""
+    import asyncio
+
+    from starlette.requests import Request
+
+    async def nobody(_request):
+        return None
+
+    monkeypatch.setattr(spectate, "_viewer", nobody)
+    monkeypatch.setattr(spectate, "_schedule", lambda room: None)
+    real = spectate._serve
+
+    def request():
+        return Request({"type": "http", "method": "GET", "path": "/api/watch", "headers": [],
+                        "query_string": b"", "client": ("203.0.113.7", 1)})
+
+    async def run():
+        gate, entered, calls = asyncio.Event(), asyncio.Event(), []
+
+        async def serve(room, token, after, wide):
+            calls.append(token)
+            if len(calls) == 1:
+                entered.set()
+                await gate.wait()
+                if first_fails:
+                    return None
+            return await real(room, token, after, wide)
+
+        monkeypatch.setattr(spectate, "_serve", serve)
+        older = asyncio.create_task(spectate.watch(request(), w=W, e=1))
+        await entered.wait()
+        newer = await spectate.watch(request(), w=W, e=2)
+        held = spectate._leases[W]
+        gate.set()
+        try:
+            await older
+        except Exception:               # noqa: BLE001 - a failed pick ends in the rerun or a 404
+            pass
+        return newer, held
+
+    return asyncio.run(run())
+
+
+@pytest.mark.parametrize("first_fails", [True, False])
+def test_an_older_read_finishing_after_a_newer_reopen_leaves_the_newer_watch(feed, monkeypatch, first_fails):
+    srv, spectate, client = feed
+    t = _live(srv, "LV1", "aa")
+    newer, held = _overlap(spectate, monkeypatch, first_fails)
+    assert newer.status_code == 200
+    st = t.room.watch
+    # the newer admission still holds the token, counted once, told of once
+    assert spectate._leases[W] is held and held.table == "aa" and held.epoch == 2
+    assert W in st.watchers and _counts(t) == [1]
+    assert st.arrivals.count(W) == 1
+
+
+def test_a_full_table_feeds_its_watchers_only(feed, monkeypatch):
+    srv, spectate, client = feed
+    monkeypatch.setattr(spectate, "WATCH_CAP", 1)
+    t = _live(srv, "LV1", "aa")
+    member = "m" * 32
+    _watch(client, w=member, e=1)
+    assert _counts(t) == [1]
+    # a member follows its full table
+    assert client.get("/api/watch/aa", params={"w": member, "e": 1, "after": 0}).status_code == 200
+    # a stranger does not get its feed, whether its read may renew a lease or not
+    _watch(client, w=W, e=3)                 # the full table: not picked, so W's session 3 counts nowhere
+    for e in (1, 3, 4):
+        assert client.get("/api/watch/aa", params={"w": W, "e": e, "after": 0}).status_code == 404
+    _leave(client, w=W, e=3)
+    assert client.get("/api/watch/aa", params={"w": W, "e": 3, "after": 0}).status_code == 404
+    assert _counts(t) == [1]
+
+
+def test_early_leaves_are_bounded_and_the_oldest_give_way(feed, monkeypatch):
+    srv, spectate, client = feed
+    monkeypatch.setattr(spectate, "EARLY_LEAVES", 3)
+    t = _live(srv, "LV1", "aa")
+    tokens = [f"{i}".rjust(32, "e") for i in range(5)]
+    for tok in tokens:
+        assert _leave(client, w=tok, e=1).status_code == 204
+    assert list(spectate._early) == tokens[2:]
+    # a kept early leave still holds its session's late read off the table
+    _watch(client, w=tokens[4], e=1)
+    assert _counts(t) == [0]
+    # one forgotten for room is no worse than before the leave existed: its lease
+    _watch(client, w=tokens[0], e=1)
+    assert _counts(t) == [1]
+    # a newer session of a token with an early leave is admitted, and forgets it
+    _watch(client, w=tokens[3], e=2)
+    assert _counts(t) == [2] and tokens[3] not in spectate._early
 
 
 def test_every_watcher_up_to_the_cap_gets_the_live_table(feed, monkeypatch):

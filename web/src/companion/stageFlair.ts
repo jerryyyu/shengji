@@ -22,6 +22,7 @@ import type { Beat } from "./beats";
 import type { Gait, Stance } from "./flair";
 import { useCue, useFlairLayer } from "./flairHooks";
 import { FullTier } from "./flairLayer";
+import type { TierSampler } from "./flairLayer";
 
 /** The stage's stroll is the table's: half a second a figure's width, 1.2 s at least for a tap, 3 s at most. */
 const STROLL_MS_PER_FIGURE = 500;
@@ -32,6 +33,7 @@ const TRAIL_STEP_MS = 520;
  *  arrives, a lean to watch a card, the droop of a big trick lost, and for a store character a round won (its
  *  special under its shower). */
 export const STAGE_MOMENTS = ["stroll", "habit", "ready", "stroll", "watch", "loss", "win"] as const;
+export type StageMoment = (typeof STAGE_MOMENTS)[number];
 /** The least time between two of them, and how soon after it is selected the first comes. */
 export const STAGE_MOMENT_MS = 4000;
 const FIRST_MOMENT_MS = 2200;
@@ -39,13 +41,23 @@ const FIRST_MOMENT_MS = 2200;
 const HELD_MS = 1100;
 /** The longest a way in and its entrance run. */
 const ENTRANCE_MS = 1400;
-/** How long it stands where a tap or a stroll left it before it walks back to the stage's middle. */
+/** How long it stands where a tap or a stroll left it before it walks back to its spot (the stage's middle). */
 export const STAGE_RETURN_MS = 3000;
 const OWNER = "stage";
 /** The stage paints a store character whole on every device (`FullTier`). */
 const WHOLE = new FullTier();
 /** The least a piece's flight is on the stage, however close the figure stands to the felt's edge. */
 const LEAST_FLY = 20;
+
+/** How a felt other than the Collection's plays its figure: the moments it takes at rest, in turn; where it
+ *  stands at rest and the span its middle keeps to (every walk, stroll and lunge), in px from the felt's
+ *  middle; the tier its pieces are painted at. */
+export interface StageOptions {
+  moments?: readonly StageMoment[];
+  rest?: number;
+  range?: readonly [number, number];
+  sampler?: TierSampler;
+}
 
 export interface StageRefs {
   felt: RefObject<HTMLDivElement | null>; walk: RefObject<HTMLSpanElement | null>; face: RefObject<HTMLSpanElement | null>;
@@ -59,7 +71,7 @@ export interface StageRefs {
  *  `special` plays the drawing's special (a round won, in the stage's own turn of moments). `onFelt` is the felt's tap; `big()` is Big play's burst;
  *  `material` says whether its two canvases are drawn. */
 export function useStageFlair(kind: string, colour: string, size: number, pose: Pose, poseKey: number, paused: boolean, refs: StageRefs, arrives: number,
-  special: () => void = () => {}) {
+  special: () => void = () => {}, { moments = STAGE_MOMENTS, rest = 0, range, sampler = WHOLE }: StageOptions = {}) {
   const material = materialOf(kind);
   const [box, setBox] = useState<{ w: number; h: number } | undefined>(undefined);
   useLayoutEffect(() => {
@@ -70,18 +82,24 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
     window.addEventListener("resize", read);
     return () => window.removeEventListener("resize", read);
   }, [material, refs.felt, size]);
-  const layer = useFlairLayer(material !== null, refs.back, refs.front, box, false, false, WHOLE);
+  const layer = useFlairLayer(material !== null, refs.back, refs.front, box, false, false, sampler);
   // where it stands, in px from the stage's middle, the way it faces, and the walk in flight
-  const at = useRef(0);
+  // its spot is a whole px, as every walk's goal is
+  const spot = Math.round(rest);
+  const at = useRef(spot);
   const dir = useRef<1 | -1>(1);
   const flight = useRef<{ from: number; to: number; t0: number; ms: number; anims: Animation[]; timers: number[] } | null>(null);
+  // its spot at rest, kept whole-px as every walk's goal is
+  const home = useRef(spot);
   const dropped = useRef(0);
+  // the special's lunge in flight, ended where it is if the felt is laid out anew
+  const lunging = useRef<Animation | null>(null);
   // the taps whose way in has been played, and when the last one started
   const entered = useRef(0);
   const enteredAt = useRef(-Infinity);
   const taps = useRef(arrives);
   taps.current = arrives;
-  // when it last came to a stand, for its walk back to the middle
+  // when it last came to a stand, for its walk back to its spot
   const stood = useRef(0);
   const still = () => prefersReducedMotion() || document.visibilityState === "hidden";
   const here = (): number => {
@@ -98,6 +116,12 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
     const room = f.width / 2 - Math.abs(dx);
     const fly = Math.max(LEAST_FLY, 0.97 * Math.min(size, (room - size * 0.6) / 1.055, (room - size * 0.5) / (0.8 + (24 * grow(size)) / size)));
     return { x: f.width / 2 + dx, y: walk.getBoundingClientRect().bottom - f.top, px: size, dir: dir.current, colour, gold: false, fly };
+  };
+  /** The span its middle keeps to: the felt less a little more than half the figure each side, unless given. */
+  const span = (felt: HTMLElement): readonly [number, number] => {
+    if (range) return range;
+    const half = Math.max(0, felt.clientWidth / 2 - size * 0.6);
+    return [-half, half];
   };
   const stop = () => {
     const f = flight.current;
@@ -120,8 +144,8 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
     if (!walk || !face || !felt || typeof walk.animate !== "function" || still()) return;
     const from = here();
     stop();
-    const half = Math.max(0, felt.clientWidth / 2 - size * 0.6);
-    const goal = Math.round(Math.max(-half, Math.min(half, to)));
+    const [lo, hi] = span(felt);
+    const goal = Math.round(Math.max(lo, Math.min(hi, to)));
     const dist = Math.abs(goal - from);
     at.current = goal;
     walk.style.transform = `translate(${goal}px, 0px)`;
@@ -197,6 +221,8 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
   useCue(material !== null, calm, () => { if (material) emit("cue", (s) => cuePieces(material, s)); });
   // at rest it takes the table's moments in turn, each from the table's own beats
   const turn = useRef(0);
+  const order = useRef(moments);
+  order.current = moments;
   const lastMoment = useRef(0);
   const acts = useRef<{ anims: Animation[]; timers: number[] }>({ anims: [], timers: [] });
   const settle = () => {
@@ -206,8 +232,8 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
   };
   useEffect(() => settle, []);
   const moment = () => {
-    const what = STAGE_MOMENTS[turn.current++ % STAGE_MOMENTS.length];
-    if (what === "stroll") { walkTo(at.current > 0 ? -size * 1.1 : size * 1.1, false); return; }
+    const what = order.current[turn.current++ % order.current.length];
+    if (what === "stroll") { walkTo(at.current > home.current ? home.current - size * 1.1 : home.current + size * 1.1, false); return; }
     const move = refs.move.current, face = refs.face.current, felt = refs.felt.current;
     if (!move || !face || !felt || typeof move.animate !== "function" || still()) return;
     settle();
@@ -238,6 +264,31 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
       emit("shower", (s) => showerPieces(material, s, 6));
     } else moment();
   };
+  // the felt laid out anew (a resize, its figure drawn again after it had no room): whatever it was doing ends
+  // where it is drawn now, and it stands inside its new span, at its new spot if it stood at the old one
+  const lo = range?.[0], hi = range?.[1];
+  const drawn = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    const was = home.current;
+    home.current = spot;
+    const walk = refs.walk.current;
+    // a figure drawn afresh (it had no room a moment ago) starts at its spot
+    const fresh = walk !== drawn.current;
+    drawn.current = walk;
+    if (!walk) return;
+    const resting = fresh || (flight.current === null && at.current === was);
+    if (fresh) { stop(); at.current = spot; }
+    lunging.current?.cancel();
+    // a walk in flight ends where it is drawn; one at a stand is left as it is, so a stage at its middle keeps no transform
+    if (flight.current !== null) halt();
+    settle();
+    const felt = refs.felt.current;
+    const [a, b] = felt ? span(felt) : [spot, spot];
+    const x = resting ? spot : Math.round(Math.max(a, Math.min(b, at.current)));
+    at.current = x;
+    if (x !== 0 || walk.style.transform) walk.style.transform = `translate(${x}px, 0px)`;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spot, lo, hi, size]);
   const next = useRef(moment);
   next.current = moment;
   const back = useRef(walkTo);
@@ -245,30 +296,39 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
   useEffect(() => {
     // the first comes soon after it is selected; one due mid-move waits for the figure to be at rest
     lastMoment.current = performance.now() - STAGE_MOMENT_MS + FIRST_MOMENT_MS;
+  }, [kind, size]);
+  useEffect(() => {
+    // out of view nothing is due, so no clock runs
+    if (paused) return;
     const timer = window.setInterval(() => {
       const now = performance.now();
       const last = lastMoment.current;
       if (!calm.current) return;
       // off the middle (a tap walked it there, or its own stroll): after a moment it walks back, at the same pace,
       // and its moments go on from there
-      if (at.current !== 0 && now - stood.current >= STAGE_RETURN_MS) { lastMoment.current = now; back.current(0, false); return; }
-      if (at.current !== 0 || now - last < STAGE_MOMENT_MS) return;
+      if (at.current !== home.current && now - stood.current >= STAGE_RETURN_MS) { lastMoment.current = now; back.current(home.current, false); return; }
+      if (at.current !== home.current || now - last < STAGE_MOMENT_MS) return;
       lastMoment.current = now;
       next.current();
     }, 400);
     return () => window.clearInterval(timer);
-  }, [kind, size]);
+  }, [kind, size, paused]);
   // its special: the charge is the stage's as it is the table's, and a store character's accent rides on it
   useEffect(() => {
     if (pose !== "react" || still()) return;
     const felt = refs.felt.current, walk = refs.walk.current;
     const from = halt();
     let lunge: Animation | null = null;
+    lunging.current = null;
     let reach = 0;
     if (LUNGERS.has(kind) && felt && walk && typeof walk.animate === "function") {
-      const room = felt.clientWidth / 2 - size * 0.6 - dir.current * from;
+      // both ways of its travel keep to its span: the reach ahead and the step back first
+      const [lo, hi] = span(felt);
+      const room = dir.current > 0 ? hi - from : from - lo;
+      const behind = Math.max(0, dir.current > 0 ? from - lo : hi - from);
       reach = (LUNGE_REACH.find((r) => r * size <= room) ?? 0) * size;
-      if (reach > 0) lunge = walk.animate(lungeFrames({ x: from, y: 0 }, dir.current, { reach, back: LUNGE_BACK * size }), { duration: DRAWINGS[kind as DrawnKind].reactMs });
+      const back = Math.min(LUNGE_BACK * size, behind);
+      if (reach > 0) lunge = lunging.current = walk.animate(lungeFrames({ x: from, y: 0 }, dir.current, { reach, back }), { duration: DRAWINGS[kind as DrawnKind].reactMs });
     }
     // the accent fans ahead of the figure: its flight is the felt left ahead of where it starts
     const ahead = (s: Stance) => {

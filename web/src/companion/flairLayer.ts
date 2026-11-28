@@ -234,10 +234,16 @@ export class FlairLayer {
     this.paint(now);
     this.running = this.live.length ? this.frame(this.tick) : 0;
   };
+  /** Whether each canvas holds anything from its last paint: one left empty and with nothing to draw now is
+   *  not cleared again, so a felt whose pieces are all on one canvas repaints only that one. */
+  private inked = { back: true, front: true };
   private paint(now: number): void {
     for (const [canvas, depth] of [[this.back, "back"], [this.front, "front"]] as const) {
       const ctx = canvas?.getContext?.("2d");
       if (!canvas || !ctx) continue;
+      const due = this.live.some((l) => l.piece.depth === depth) || [...this.stills.values()].some((ps) => ps.some((p) => p.depth === depth));
+      if (!due && !this.inked[depth]) continue;
+      this.inked[depth] = due;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const draw = (p: Piece, k: Key) => {

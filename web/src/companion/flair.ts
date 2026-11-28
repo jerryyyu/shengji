@@ -114,15 +114,17 @@ const tintOf = (m: Material, s: Stance, i: number): readonly [string, string] =>
 /** The trail's pieces as one hop lands, walking along `u` (a unit vector):
  *  `n` of them, each starting and landing behind the figure's middle along
  *  the way it walks, a little to either side of its path, leaving one at a
- *  time. They are painted under the figures. */
-export function trailPieces(m: Material, s: Stance, u: Spot, n: number, serial: number, rand: () => number = Math.random): Piece[] {
+ *  time. They are painted under the figures. `first` is how many pieces the
+ *  figure's trail has dropped before these, so every third is gold however
+ *  many a hop drops. */
+export function trailPieces(m: Material, s: Stance, u: Spot, n: number, first: number, rand: () => number = Math.random): Piece[] {
   const k = grow(s.px), nx = -u.y, ny = u.x;
   return Array.from({ length: n }, (_, i) => {
     const back = rnd(0.6, 1.05, rand) * s.px, side = (i % 2 ? rnd(0.04, 0.2, rand) : rnd(-0.2, -0.04, rand)) * s.px;
     const x0 = s.x - u.x * back + nx * side, y0 = s.y - u.y * back + ny * side;
     const far = rnd(6, 26, rand) * k, x1 = x0 - u.x * far, y1 = y0 - u.y * far, lift = s.px * rnd(0.2, 0.55, rand);
     const sc = rnd(0.9, 1.5, rand), o = rnd(0.75, 0.95, rand), r0 = rnd(0, 360, rand), r1 = r0 + rnd(140, 360, rand) * (rand() < 0.5 ? -1 : 1);
-    const [c1, c2] = tintOf(m, s, serial * 3 + i);
+    const [c1, c2] = tintOf(m, s, first + i);
     return { shape: m.shape, depth: "back", w: m.size[0] * k, h: m.size[1] * k, c1, c2, ms: rnd(1900, 2400, rand), delay: i * 90, keys: [
       key(0, x0, y0 - lift, r0, 0.4 * sc, 0), key(0.12, x0 + (x1 - x0) * 0.35, y0 - lift * 0.6, r0 + (r1 - r0) * 0.4, sc, o),
       key(0.5, x1, y1, r1, sc, o * 0.9), key(1, x1, y1, r1 + 15, sc * 0.95, 0)] };

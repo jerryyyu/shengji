@@ -23,6 +23,7 @@ vi.mock("../auth", async (importOriginal) => {
 import { Stage } from "../components/CharacterPage";
 import { forgetHomeSession } from "../home/session";
 import { DRAWINGS } from "./kinds";
+import { FlairLayer } from "./flairLayer";
 import { COMPANION_KINDS } from "./look";
 import { poseMs } from "./livePose";
 import { reachOfFrames } from "./beats";
@@ -351,5 +352,103 @@ describe("the stage's move chips", () => {
   it("are not drawn on a stage without them", async () => {
     await act(async () => { root.render(<Stage kind="bun" colour="plain" size={176} label="Bun" />); });
     expect(host.querySelector(".char-poses, .char-move")).toBeNull();
+  });
+});
+
+// A tap on the stage's felt walks the figure there, and a special played
+// mid-walk starts from where the figure is drawn, not from the walk's goal.
+describe("a walk on the stage, and a special that cuts it short", () => {
+  type Call = { el: Element; frames: Keyframe[]; o: KeyframeAnimationOptions; cancelled: boolean };
+  let calls: Call[];
+  const width = Object.getOwnPropertyDescriptor(Element.prototype, "clientWidth");
+  const realCtx = HTMLCanvasElement.prototype.getContext;
+  beforeEach(() => {
+    calls = [];
+    (Element.prototype as unknown as { animate: unknown }).animate = function (this: Element, frames: Keyframe[], o: KeyframeAnimationOptions) {
+      const c: Call = { el: this, frames, o, cancelled: false };
+      calls.push(c);
+      return { cancel() { c.cancelled = true; }, finished: new Promise<void>(() => {}) } as unknown as Animation;
+    };
+    Object.defineProperty(Element.prototype, "clientWidth", { configurable: true, get() { return 400; } });
+    HTMLCanvasElement.prototype.getContext = (() => null) as unknown as typeof realCtx;
+  });
+  afterEach(() => {
+    delete (Element.prototype as unknown as { animate?: unknown }).animate;
+    if (width) Object.defineProperty(Element.prototype, "clientWidth", width);
+    HTMLCanvasElement.prototype.getContext = realCtx;
+  });
+  const walkBox = () => host.querySelector<HTMLElement>(".char-stage .char-walk")!;
+  const xOf = (t: string) => Number(/translate\(([-\d.]+)px/.exec(t)![1]);
+
+  it.each([["panda", "classic"], ["lamb", "newyear"]] as const)(
+    "the %s tapped 230 ms into a walk stays where it is drawn: its special starts there, and so does its charge", async (kind, colour) => {
+      await act(async () => { root.render(<Stage kind={kind} colour={colour} size={100} label={kind} />); });
+      await tick(50);
+      await act(async () => { host.querySelector(".char-stage")!.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 120 })); });
+      const walk = calls.find((c) => c.el === walkBox())!;
+      expect(walk).toBeTruthy();
+      expect(xOf(String(walk.frames[1].transform))).toBe(120);
+      expect(xOf(walkBox().style.transform)).toBe(120);
+      await tick(230);
+      const before = calls.length;
+      await act(async () => { host.querySelector<HTMLButtonElement>(".char-stage .coll-figure")!.click(); });
+      expect(pose(".char-stage")).toBe("react");
+      expect(walk.cancelled).toBe(true);
+      // not at the old goal: where the walk had it, a little way out
+      const at = xOf(walkBox().style.transform);
+      expect(at).toBeGreaterThan(0);
+      expect(at).toBeLessThan(30);
+      const lunge = calls.slice(before).filter((c) => c.el === walkBox());
+      if (kind === "lamb") {
+        expect(lunge).toHaveLength(1);
+        expect(xOf(String(lunge[0].frames[0].transform))).toBe(at);
+        expect(xOf(String(lunge[0].frames[lunge[0].frames.length - 1].transform))).toBe(at);
+      } else expect(lunge).toHaveLength(0);
+    });
+
+  it("a stage that leaves view mid-walk rests at once: the walk ends where it is drawn, no more pieces drop and what is in the air is taken off", async () => {
+    const seen: { cb: (e: { isIntersecting: boolean }[]) => void }[] = [];
+    class IO {
+      cb: (e: { isIntersecting: boolean }[]) => void;
+      constructor(cb: (e: { isIntersecting: boolean }[]) => void) { this.cb = cb; seen.push(this); }
+      observe() {}
+      disconnect() {}
+    }
+    (window as unknown as { IntersectionObserver: unknown }).IntersectionObserver = IO;
+    const spawn = vi.spyOn(FlairLayer.prototype, "spawn"), clear = vi.spyOn(FlairLayer.prototype, "clear");
+    try {
+      await act(async () => { root.render(<Stage kind="panda" colour="classic" size={100} label="Panda" />); });
+      await tick(50);
+      await act(async () => { host.querySelector(".char-stage")!.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 120 })); });
+      const walk = calls.find((c) => c.el === walkBox())!;
+      const gait = calls.find((c) => c.el === host.querySelector(".char-stage .char-face"))!;
+      await tick(600);
+      const trail = () => spawn.mock.calls.filter((c) => c[2] === "trail").length;
+      const dropped = trail();
+      expect(dropped).toBeGreaterThan(0);
+      clear.mockClear();
+      await act(async () => { for (const io of seen) io.cb([{ isIntersecting: false }]); });
+      expect(host.querySelector(".char-stage")!.classList.contains("live-paused")).toBe(true);
+      expect(walk.cancelled).toBe(true);
+      expect(gait.cancelled).toBe(true);
+      expect(clear).toHaveBeenCalled();
+      const at = xOf(walkBox().style.transform);
+      expect(at).toBeGreaterThan(0);
+      expect(at).toBeLessThan(120);
+      const made = calls.length;
+      await tick(20000);
+      expect(trail()).toBe(dropped);
+      expect(calls.length).toBe(made);
+      expect(xOf(walkBox().style.transform)).toBe(at);
+      // back in view it strolls again by itself, from where it rested
+      await act(async () => { for (const io of seen) io.cb([{ isIntersecting: true }]); });
+      await tick(8000);
+      const again = calls.slice(made).find((c) => c.el === walkBox());
+      expect(again).toBeTruthy();
+      expect(xOf(String(again!.frames[0].transform))).toBe(at);
+    } finally {
+      delete (window as unknown as { IntersectionObserver?: unknown }).IntersectionObserver;
+      spawn.mockRestore(); clear.mockRestore();
+    }
   });
 });

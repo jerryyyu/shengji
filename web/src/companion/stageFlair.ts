@@ -54,6 +54,7 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
   const at = useRef(0);
   const dir = useRef<1 | -1>(1);
   const flight = useRef<{ from: number; to: number; t0: number; ms: number; anims: Animation[]; timers: number[] } | null>(null);
+  const dropped = useRef(0);
   const still = () => prefersReducedMotion() || document.visibilityState === "hidden";
   const here = (): number => {
     const f = flight.current;
@@ -72,6 +73,14 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
     for (const a of f.anims) a.cancel();
     for (const t of f.timers) window.clearTimeout(t);
     flight.current = null;
+  };
+  /** End a walk in flight where the figure is drawn now, so what follows starts from there, not from the walk's goal. */
+  const halt = (): number => {
+    const x = Math.round(here() * 10) / 10;
+    stop();
+    at.current = x;
+    if (refs.walk.current) refs.walk.current.style.transform = `translate(${x}px, 0px)`;
+    return x;
   };
   const walkTo = (to: number, tap: boolean) => {
     const walk = refs.walk.current, face = refs.face.current, felt = refs.felt.current;
@@ -99,7 +108,9 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
       for (let k = 1; k <= drops; k++) {
         timers.push(window.setTimeout(() => {
           const x = walkAt({ x: from, y: 0 }, { x: goal, y: 0 }, k / drops).x;
-          layer.spawn(OWNER, true, "trail", trailPieces(material, { ...base, x: base.x + x, dir: d }, { x: d, y: 0 }, k === drops || k % 2 ? 3 : 2, k));
+          const n = k === drops || k % 2 ? 3 : 2;
+          layer.spawn(OWNER, true, "trail", trailPieces(material, { ...base, x: base.x + x, dir: d }, { x: d, y: 0 }, n, dropped.current));
+          dropped.current += n;
         }, (k * ms) / drops));
       }
     }
@@ -108,6 +119,14 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
     void anims[0].finished.then(() => { if (flight.current === mine) flight.current = null; }, () => {});
   };
   useEffect(() => stop, []);
+  // a stage that leaves view rests at once: the walk ends where it is drawn, the pieces still to drop are
+  // forgotten and what is in the air is taken off, so nothing is painted out of sight
+  useEffect(() => {
+    if (!paused) return;
+    halt();
+    layer?.clear();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paused]);
 
   const emit = (tag: "cue" | "burst" | "entrance", make: (s: Stance) => ReturnType<typeof cuePieces>) => {
     const s = stance(here());
@@ -147,8 +166,7 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
   useEffect(() => {
     if (pose !== "react" || still()) return;
     const felt = refs.felt.current, walk = refs.walk.current;
-    const from = here();
-    stop();
+    const from = halt();
     let lunge: Animation | null = null;
     let reach = 0;
     if (LUNGERS.has(kind) && felt && walk && typeof walk.animate === "function") {

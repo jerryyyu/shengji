@@ -21,6 +21,8 @@ export const CAPS: Record<Tier, { own: Caps; other: Caps; felt: number }> = {
   minimal: { own: { trail: 0, cue: 2, burst: 2, shower: 0, entrance: 1 }, other: { trail: 0, cue: 1, burst: 1, shower: 0, entrance: 1 }, felt: 8 },
 };
 
+/** What the minimal tier still paints: a character's mark and its glint, never its pieces. */
+export const MINIMAL_SHAPES: ReadonlySet<string> = new Set(["blossom", "ripple", "spark"]);
 /** Frames watched before the tier is weighed again, and the shares of slow
  *  ones that step it down. */
 export const TIER_WINDOW = 180;
@@ -178,6 +180,7 @@ export class FlairLayer {
     const now = this.clock();
     let started = 0;
     for (const piece of pieces) {
+      if (this.tier === "minimal" && !MINIMAL_SHAPES.has(piece.shape)) { this.dropped++; continue; }
       if (this.alive(owner, tag) >= cap || this.live.length >= caps.felt) { this.dropped++; continue; }
       const faint = this.quiet && (tag === "trail" || tag === "cue");
       this.live.push({ owner, tag, t0: now, piece: faint ? { ...piece, keys: piece.keys.map((k) => ({ ...k, o: k.o * 0.55 })) } : piece });

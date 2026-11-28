@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ARRIVES, GAITS, GOLD, LUNGERS, MATERIALS, PLAIN_GAIT, QUIRKS, accentPieces, burstPieces, cuePieces, droopPiece, entrancePieces, gaitFrames, materialOf,
   restPieces, showerPieces, trailPieces, walkAt } from "./flair";
 import type { Piece, Stance } from "./flair";
-import { CAPS, FlairLayer, SLOW_HALF, SLOW_MINIMAL, TIER_WINDOW, TierSampler, stateAt } from "./flairLayer";
+import { CAPS, FlairLayer, MINIMAL_SHAPES, SLOW_HALF, SLOW_MINIMAL, TIER_WINDOW, TierSampler, stateAt } from "./flairLayer";
 import { COMPANION_KINDS, COMPANION_PRODUCTS, COMPANIONS, FREE_KINDS } from "./look";
 
 const stance = (over: Partial<Stance> = {}): Stance => ({ x: 300, y: 200, px: 44, dir: 1, colour: "", gold: false, ...over });
@@ -73,7 +73,7 @@ describe("a store character's material", () => {
     "walking along (%f, %f) every trail piece starts and stays behind the figure's middle along the way it walks, on the layer under the figures", (ux, uy) => {
       for (const k of paid) for (let serial = 0; serial < 12; serial++) {
         const s = stance({ dir: ux < 0 ? -1 : 1 });
-        const pieces = trailPieces(materialOf(k)!, s, { x: ux, y: uy }, 3, serial, seeded(serial + 1));
+        const pieces = trailPieces(materialOf(k)!, s, { x: ux, y: uy }, 3, serial * 3, seeded(serial + 1));
         expect(pieces).toHaveLength(3);
         for (const p of pieces) {
           expect(p.depth).toBe("back");
@@ -93,7 +93,7 @@ describe("a store character's material", () => {
 
   it("from the level its team stops growing at, every third trail piece is gold", () => {
     const m = materialOf("lamb")!;
-    const tints = (gold: boolean) => [0, 1, 2, 3].flatMap((n) => trailPieces(m, stance({ gold, colour: "newyear" }), { x: 1, y: 0 }, 3, n, seeded()).map((p) => p.c1));
+    const tints = (gold: boolean) => [0, 1, 2, 3].flatMap((n) => trailPieces(m, stance({ gold, colour: "newyear" }), { x: 1, y: 0 }, 3, n * 3, seeded()).map((p) => p.c1));
     expect(tints(false)).not.toContain(GOLD[0]);
     expect(tints(true).filter((c) => c === GOLD[0])).toHaveLength(4);
   });
@@ -309,10 +309,31 @@ describe("the layer that paints the pieces", () => {
     const low = make(least).layer;
     expect(low.spawn("0", true, "trail", many(40))).toBe(0);
     expect(low.spawn("0", true, "shower", many(40))).toBe(0);
-    expect(low.spawn("0", true, "burst", many(40))).toBe(2);
+    expect(low.spawn("0", true, "burst", many(40, { shape: "blossom" }))).toBe(2);
     for (const tier of ["half", "minimal"] as const) for (const who of ["own", "other"] as const) for (const tag of ["trail", "cue", "burst", "shower", "entrance"] as const) {
       expect(CAPS[tier][who][tag]).toBeLessThanOrEqual(CAPS.full[who][tag]);
     }
+  });
+
+  it("on the slowest tier only a character's mark and its glint are painted: no petal or leaf of an entrance, a burst, an accent or a trail", () => {
+    const least = new TierSampler();
+    least.tier = "minimal";
+    const fill = (who: string, tag: "entrance" | "burst" | "cue" | "trail" | "shower", pieces: Piece[]) => make(least).layer.spawn(who, true, tag, pieces);
+    const lamb = materialOf("lamb")!, panda = materialOf("panda")!, s = stance();
+    // the Lamb's entrance is its blossom ring alone; the Panda's (ink and leaves) paints nothing
+    expect(fill("0", "entrance", entrancePieces(lamb, s, 8, seeded()))).toBe(1);
+    expect(fill("0", "entrance", entrancePieces(panda, s, 8, seeded()))).toBe(0);
+    // a burst is its mark: one blossom ring, the two ink ripples
+    expect(fill("0", "burst", burstPieces(lamb, s, 7, 0, seeded()))).toBe(1);
+    expect(fill("0", "burst", burstPieces(panda, s, 7, 0, seeded()))).toBe(2);
+    // an accent is petals or leaves only, a trail and a shower likewise
+    for (const m of [lamb, panda]) for (const at of m.accent.times) expect(fill("0", "burst", accentPieces(m, s, 0, at, true, seeded()))).toBe(0);
+    expect(fill("0", "trail", trailPieces(lamb, s, { x: 1, y: 0 }, 3, 0, seeded()))).toBe(0);
+    expect(fill("0", "shower", showerPieces(lamb, s, 6, seeded()))).toBe(0);
+    // the cue stays: the horn's glint, the ripple under the Panda
+    expect(fill("0", "cue", cuePieces(lamb, s))).toBe(2);
+    expect(fill("0", "cue", cuePieces(panda, s))).toBe(2);
+    for (const shape of ["petal", "leaf", "ink"]) expect(MINIMAL_SHAPES.has(shape)).toBe(false);
   });
 
   it("a piece's state between its keys is a straight line between them", () => {

@@ -751,6 +751,81 @@ describe("character and material at the table", () => {
     expect(tints).toContain("#fff3c0");
   });
 
+  it("a big play mid-walk bursts from where the figure is drawn, not from where its walk will end", async () => {
+    await render(paid());
+    await advance(9000);
+    const from = anims.length;
+    click(m.felt.w / 2, m.felt.h * 0.42);
+    const walk = on(0, "walk", from)[0];
+    const xs = walk.frames.map((k) => Number(/translate\(([-\d.]+)px/.exec(String(k.transform))![1]));
+    const start = xs[0], goal = xs[xs.length - 1];
+    expect(Math.abs(goal - start)).toBeGreaterThan(60);
+    await advance(300);
+    const before = calls("burst").length;
+    await render(paid({ last_trick: taken(0, 25, 1) }));
+    const mark = calls("burst").slice(before).find((c) => c.owner === "0")!.pieces.find((p) => p.shape === "blossom")!;
+    // the ring opens round its middle: 300 ms into an eased walk it has barely left
+    const px = Number(host.querySelector('.tc-seat[data-seat="0"] svg')!.getAttribute("width"));
+    const middle = mark.keys[0].x - px / 2;
+    expect(Math.abs(middle - start)).toBeLessThan(Math.abs(goal - start) * 0.3);
+    expect(Math.abs(middle - goal)).toBeGreaterThan(Math.abs(goal - start) * 0.7);
+  });
+
+  /** A table of free companions, then the left seat's person changed for one with a Panda. */
+  const free = () => state({ players: [player(0), player(1, { is_bot: true, look: null }), player(2), player(3)] });
+  const joined = (over: Partial<GameState> = {}) => state({ players: [player(0), player(1, { look: "panda/classic" }), player(2), player(3)], ...over });
+
+  it("the first store character to sit down at a table of free companions brings its entrance with it, exactly once", async () => {
+    await render(free());
+    await advance(1000);
+    expect(host.querySelectorAll("canvas")).toHaveLength(0);
+    await render(joined());
+    await advance(50);
+    expect(arrive(1)).toHaveLength(1);
+    expect(calls("entrance").map((c) => [c.owner, c.own, c.started > 0])).toEqual([["1", false, true]]);
+    await render(joined({ turn: 2 }));
+    await advance(3000);
+    expect(calls("entrance")).toHaveLength(1);
+  });
+
+  it("and its walks on its own clock drop its trail, though the layer came after its clock was set", async () => {
+    // its walks pick their spots from a stream that varies, as at a real table
+    let n = 0;
+    rnd.mockImplementation(() => (n++ * 0.37) % 1);
+    await render(free());
+    await advance(1000);
+    await render(joined());
+    const from = anims.length;
+    for (let s = 0; s < 70; s++) await advance(1000);
+    const walks = on(1, "walk", from).filter((a) => a.ms >= 300);
+    expect(walks.length).toBeGreaterThan(0);
+    const trail = calls("trail", "1");
+    expect(trail.length).toBeGreaterThanOrEqual(walks.length);
+    for (const c of trail) { expect(c.own).toBe(false); expect(c.pieces).toHaveLength(1); }
+  });
+
+  it("another seat's trail drops one piece a hop, and from level 6 every third of them is gold", async () => {
+    const at = (n: number, levels: string[]) => (
+      <div className="felt"><div className="opponent pos-left" /><div className="opponent pos-top" /><div className="opponent pos-right" />
+        <div className="you-row" /><div className="hand"><div className="hand-slot" /></div>
+        <TableCompanions state={paid({ levels } as Partial<GameState>)} shared={n ? { 1: { act: "home", x: 0.62, y: 0.45, n } } : {}} /></div>);
+    const tints = async (levels: string[]) => {
+      spawn.mockClear();
+      await act(async () => { root.render(at(0, levels)); });
+      await advance(1500);
+      await act(async () => { root.render(at(1, levels)); });
+      await advance(3500);
+      await act(async () => { root.render(<div />); });
+      return calls("trail", "1").flatMap((c) => { expect(c.pieces).toHaveLength(1); return c.pieces.map((p) => p.c1); });
+    };
+    const plain = await tints(["2", "2"]);
+    expect(plain.length).toBeGreaterThanOrEqual(3);
+    expect(plain).not.toContain("#fff3c0");
+    const gold = await tints(["2", "6"]);
+    expect(gold.length).toBeGreaterThanOrEqual(3);
+    expect(gold.map((c) => c === "#fff3c0")).toEqual(gold.map((_, i) => i % 3 === 2));
+  });
+
   it("under Reduce Motion nothing moves or starts: a store character has three still pieces at its feet", async () => {
     reduced = true;
     await render(paid());

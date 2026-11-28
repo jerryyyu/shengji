@@ -538,19 +538,27 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
   // a store character's material: its pieces start from where it stands
   const material: Material | null = flair ? materialOf(kind) : null;
   const owner = String(player.seat);
+  // the walk in flight as the walk itself has it, so a moment mid-walk starts from where the figure is drawn
+  const flying = useRef<{ from: Spot; to: Spot; via: Spot | null; share: number; t0: number; ms: number } | null>(null);
+  const drawnAt = (): Spot | null => {
+    const f = flying.current;
+    return f ? walkAt(f.from, f.to, Math.min(1, (performance.now() - f.t0) / f.ms), f.via, f.share) : cur.current;
+  };
   const emit = (tag: Tag, make: (m: Material, s: Stance) => Piece[], k = 1) => {
-    const s = cur.current;
+    const s = drawnAt();
     if (!flair || !material || !s || away) return;
     flair.spawn(owner, you, tag, make(material, { x: s.x + px / 2, y: s.y + px, px: px * k, dir: facing.current.dir, colour, gold }));
   };
-  // the trail's pieces still to come from the walk in flight, and how many hops have dropped some
+  // the trail's pieces still to come from the walk in flight, how many hops have dropped some, and how many pieces
   const trailing = useRef<number[]>([]);
   const hopped = useRef(0);
+  const dropped = useRef(0);
 
   const stop = () => {
     for (const a of walking.current) a.cancel();
     walking.current = [];
     path.current = null;
+    flying.current = null;
     for (const id of trailing.current) window.clearTimeout(id);
     trailing.current = [];
   };
@@ -599,6 +607,8 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     const hops = Math.max(1, Math.round(ms / step));
     const gait = face.current?.animate(gaitFrames(own, dir), { duration: ms / hops, iterations: hops });
     walking.current = gait ? [a, gait] : [a];
+    const flight = { from, to, via, share: via && dist > 0 ? leg / dist : 0, t0: performance.now(), ms };
+    flying.current = flight;
     if (material && flair) {
       // the trail: pieces behind it as each hop lands (one for a step aside),
       // from where the walk has it then, worked out from the walk itself
@@ -612,13 +622,15 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
           const gone = Math.hypot(p.x - was.x, p.y - was.y);
           const u = gone > 0.5 ? { x: (p.x - was.x) / gone, y: (p.y - was.y) / gone } : long;
           const n = quick || !you ? 1 : k === drops ? 3 : ++hopped.current % 2 ? 3 : 2;
-          flair.spawn(owner, you, "trail", trailPieces(material, { x: p.x + px / 2, y: p.y + px, px, dir, colour, gold }, u, n, hopped.current));
+          flair.spawn(owner, you, "trail", trailPieces(material, { x: p.x + px / 2, y: p.y + px, px, dir, colour, gold }, u, n, dropped.current));
+          dropped.current += n;
         }, (k * ms) / drops));
       }
     }
     path.current = under ? null : { from, to };
     place(to);
     void a.finished.then(() => {
+      if (flying.current === flight) flying.current = null;
       walking.current = walking.current.filter((x) => x !== a);
       if (path.current?.to === to) path.current = null;
     }, () => {});
@@ -747,6 +759,9 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
   const idle = placed && move === "idle" && !up && !playing && !dealing && !readyOn;
   const idleNow = useRef(idle);
   idleNow.current = idle;
+  // the clock outlives the render it was set in: it walks with the walk as it is now (the layer of pieces may have come since)
+  const walkNow = useRef(goTo);
+  walkNow.current = goTo;
   useEffect(() => {
     if (!placed || prefersReducedMotion()) return;
     let timer = 0;
@@ -758,7 +773,7 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
       // a spot it can reach without crossing anything; it stays put when none is
       for (let i = 0; from && i < 6; i++) {
         const to = nextSpot(zoneNow.current, from, px, Math.random());
-        if (to && pathClear(from, to, px, you, roomNow.current)) { beats.current!.note(Date.now()); goTo(to); break; }
+        if (to && pathClear(from, to, px, you, roomNow.current)) { beats.current!.note(Date.now()); walkNow.current(to); break; }
       }
       wait();
     };
@@ -780,6 +795,7 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
   // the table itself is first drawn, while the hand is dealt, on a hidden
   // page or under Reduce Motion
   const entered = useRef(false);
+  const owed = useRef(false);
   const comes = useRef(arrives);
   useEffect(() => {
     if (!placed || entered.current) return;
@@ -787,10 +803,18 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     if (!comes.current || dealing || away || prefersReducedMotion() || document.visibilityState === "hidden") return;
     const beat = pickBeat(ARRIVES[kind], cur.current, px, you, roamNow.current);
     const run = beat ? play(box.current, beat) : null;
-    emit("entrance", (m, s) => entrancePieces(m, s, you ? 8 : 4));
+    // a store character's entrance comes with it, once the felt's layer of pieces is there to paint it
+    owed.current = materialOf(kind) !== null;
     return () => run?.stop();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [placed]);
+  // the first store character at a table brings the layer with it, so its entrance waits a render for it
+  useEffect(() => {
+    if (!owed.current || !flair) return;
+    owed.current = false;
+    emit("entrance", (m, s) => entrancePieces(m, s, you ? 8 : 4));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flair, placed]);
   // under Reduce Motion its material is three pieces lying still at its feet
   useEffect(() => {
     const s = cur.current;

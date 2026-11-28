@@ -3757,6 +3757,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     margin-right: 12px;
   }
 
+  /* the banker's crown shares the ring's row and column, left of the ring:
+     placed in a row of its own it would grow your row a second line and lift
+     the ring into the trick cross */
+  .phase-play .you-row:has(.action-bar .timer-ring) .you-tagline:has(.banker-crown) {
+    grid-row: 1;
+    margin-right: calc(12px + 44px + 8px);   /* the ring's margin, the ring, a gap */
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .hand .card,
     .hand-slot {

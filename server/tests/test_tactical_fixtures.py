@@ -19,7 +19,10 @@ report file (default: a pytest temp dir, path printed at the end).
 
 from __future__ import annotations
 
+import argparse
+import json
 import os
+import random
 from collections import Counter
 from pathlib import Path
 
@@ -102,6 +105,97 @@ def test_fixture_rebuilds_from_the_public_view(fx):
     hidden_b = [sorted(b.hands[s]) for s in range(4) if s != fx.seat]
     assert [len(h) for h in hidden_a] == [len(h) for h in hidden_b]
     assert hidden_a != hidden_b, "two fill seeds produced the same hidden hands"
+
+
+@pytest.fixture
+def failed_throw_source():
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.engine.round import Round
+    from shengji.harvest.rebuild import setup_from_round
+
+    rnd = Round("4", 0, random.Random(731))
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    rnd.finalize_declare()
+    bot = HeuristicBot()
+    rnd.bury(0, bot.decide_bury(rnd, 0))
+    setup = setup_from_round(rnd)
+    attempt, forced = ["H10", "HQ"], ["H10"]
+    rnd.play(0, attempt)
+    assert rnd.trick.plays[0].cards == forced
+    return rnd.deck, setup, attempt, forced, bot.decide_play(rnd, 1)
+
+
+def _source_args(**kwargs):
+    return argparse.Namespace(id="fixture-source-test", category="doomed-throw",
+                              predicate="not_a_doomed_throw", args="{}", why="",
+                              notes="", current_bot=None, **kwargs)
+
+
+def _write_source(path, *records):
+    path.write_text("".join(json.dumps(record) + "\n" for record in records))
+
+
+@pytest.mark.parametrize("source, first_ref, lead_ref, follow_ref", [
+    ("room-log", "room:round-1:event-3", "room:round-2:event-3", "room:round-2:event-4"),
+    ("human", "ptr:1 -> room:round-1:event-3", "ptr:2 -> room:round-2:event-3",
+     "ptr:3 -> room:round-2:event-4"),
+    ("trajectory", "run:0:0:0:0", "run:0:1:0:0", "run:0:1:1:1"),
+    ("luna-rpc", "game-1/trajectory.json#event-0", "game-2/trajectory.json#event-0",
+     "game-2/trajectory.json#event-1"),
+])
+def test_fixture_uses_only_refusals_from_the_selected_round(
+        tmp_path, failed_throw_source, source, first_ref, lead_ref, follow_ref):
+    from scripts.tactical_fixture_from_source import from_shard
+
+    deck, setup, attempt, forced, action = failed_throw_source
+    common = dict(source=source, decision_kind="play", deck=deck, setup=setup)
+    lead = dict(common, source_ref=lead_ref, seat=0, ply=0, plays_prefix=[], action=attempt,
+                engine_play=forced)
+    foreign = dict(lead, source_ref=first_ref)
+    follow = dict(common, source_ref=follow_ref, seat=1, ply=1,
+                  plays_prefix=[{"seat": 0, "cards": forced}], action=action)
+    shard = tmp_path / "decisions.jsonl"
+    args = _source_args(shard=shard, key=follow_ref)
+    _write_source(shard, foreign, follow)
+    without_throw = from_shard(args)
+    assert without_throw["plays"] == follow["plays_prefix"]
+    assert T.public_round(T.fixture_from_json(without_throw)).notice is None
+
+    _write_source(shard, lead, foreign, follow)
+    with_throw = from_shard(args)
+    assert with_throw["plays"][0]["attempted"] == attempt
+    assert T.public_round(T.fixture_from_json(with_throw)).notice["attempted"] == attempt
+
+    lead["action"] = ["HQ"]
+    _write_source(shard, lead, follow)
+    with pytest.raises(SystemExit, match="does not match the committed cards"):
+        from_shard(args)
+
+
+def test_room_log_fixture_verifies_target_and_prefix_throws(tmp_path, failed_throw_source):
+    from scripts.tactical_fixture_from_source import from_room_log
+
+    deck, setup, attempt, forced, action = failed_throw_source
+    events = [
+        dict(e="round_start", round=1, deck=deck, banker=0, trump_rank=setup["trump_rank"]),
+        dict(e="trump", round=1, banker=0),
+        dict(e="bury", round=1, seat=0, cards=setup["buried"]),
+        dict(e="play", round=1, seat=0, cards=forced, attempted_cards=attempt),
+        dict(e="play", round=1, seat=1, cards=action),
+    ]
+    log = tmp_path / "room.jsonl"
+    _write_source(log, *events)
+    root = from_room_log(_source_args(log=log, line=4))
+    assert root["observed"]["action"] == attempt
+    assert root["observed"]["engine_play"] == forced
+    follow = from_room_log(_source_args(log=log, line=5))
+    assert follow["plays"] == [dict(seat=0, cards=forced, attempted=attempt)]
+    events[3]["attempted_cards"] = ["HQ"]
+    _write_source(log, *events)
+    for line in (4, 5):
+        with pytest.raises(SystemExit, match="does not match the committed cards"):
+            from_room_log(_source_args(log=log, line=line))
 
 
 def _context(fx, action, worlds=(), record=None):

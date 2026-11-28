@@ -274,6 +274,17 @@ def test_seed_exclusions_refuse_unknown_metadata(arrays):
         bs.seed_keep(arrays, [(0, 2)])
 
 
+def test_extracted_zero_seed_reaches_seed_window_filter(tmp_path):
+    records = synthetic_cluster(0)
+    path = tmp_path / "cluster.jsonl"
+    path.write_text("".join(json.dumps(record) + "\n" for record in records))
+    part = bl.extract_cluster(path, store_index=0, cluster_index=0, calib=0., test=0.,
+                              windows=[], sampler_worlds=0, sampler_splits=())
+    assert len(part["seed"]) == len(records)
+    assert not bs.seed_keep(part, [(0, 1)]).any()
+    assert bs.seed_keep(part, [(1, 2)]).all()
+
+
 def test_seed_window_excludes_entire_deal_and_keeps_upper_boundary():
     arrays = {"deal": np.array([1, 1, 2, 3]), "seed": np.array([10, 11, 12, 9])}
     assert bs.seed_keep(arrays, [(10, 11)]).tolist() == [False, False, True, True]

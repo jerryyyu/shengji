@@ -251,12 +251,25 @@ export function restPieces(m: Material, s: Stance): Piece[] {
     ({ shape: m.shape, depth: "back" as const, w: m.size[0] * k, h: m.size[1] * k, c1, c2, ms: 0, delay: 0, keys: [key(0, s.x + dx * s.px, s.y + 2, r, 1, 0.85)] }));
 }
 
-/** `pieces` with every one's path kept between `x0` and `x1` (a felt's edges, less half the piece): a path that
- *  would cross an edge is squeezed into the room it has, from the end that is inside, and one wholly past an
- *  edge is brought in to it. The Collection's stage uses it, where the figure may stand by the felt's edge. */
+/** The furthest a piece is ever painted from its middle: half the diagonal of the box its shape is drawn in
+ *  (a petal's or a leaf's curve bulges to its full height either side), at its largest scale, however it turns. */
+export function reachOfPiece(p: Piece): number {
+  const most = Math.max(...p.keys.map((k) => Math.max(Math.abs(k.sx), Math.abs(k.sy))));
+  const box = p.shape === "petal" || p.shape === "leaf" ? Math.hypot(p.w / 2, p.h) : p.shape === "spark" ? p.w / 2 : Math.hypot(p.w / 2, p.h / 2);
+  return box * most + 1;
+}
+const MARKS: ReadonlySet<string> = new Set(["blossom", "ripple", "ink"]);
+
+/** `pieces` with every one painted between `x0` and `x1` (a felt's edges) through its whole life: its path is
+ *  kept that far inside as the piece is ever painted from its middle (`reachOfPiece`), so no tip of it crosses an
+ *  edge as it turns. A path that would cross is squeezed into the room it has, from the end that is inside, and
+ *  one wholly past an edge is brought in to it. A mark is left where it is: it is drawn round the figure, as
+ *  wide as the figure, and stands where the figure stands. The Collection's stage uses it, where the figure may
+ *  stand by the felt's edge. */
 export function fitted(pieces: readonly Piece[], x0: number, x1: number): Piece[] {
   return pieces.map((p) => {
-    const half = Math.min(12, Math.min(p.w, p.h) / 2), a = x0 + half, b = Math.max(a, x1 - half);
+    if (MARKS.has(p.shape)) return p;
+    const half = reachOfPiece(p), a = Math.min(x0 + half, (x0 + x1) / 2), b = Math.max(x1 - half, (x0 + x1) / 2);
     const xs = p.keys.map((k) => k.x), lo = Math.min(...xs), hi = Math.max(...xs);
     if (lo >= a && hi <= b) return p;
     const from = Math.min(Math.max(lo, a), b), to = Math.max(Math.min(hi, b), a), span = hi - lo;

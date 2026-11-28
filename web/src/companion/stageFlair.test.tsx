@@ -13,7 +13,7 @@ import { Stage } from "../components/CharacterPage";
 import { DROOPS, PERKS, lookFrames } from "./beats";
 import { ARRIVES, GAITS, QUIRKS, gaitFrames } from "./flair";
 import type { Piece } from "./flair";
-import { FlairLayer, sessionTier } from "./flairLayer";
+import { FlairLayer, sessionTier, stateAt } from "./flairLayer";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -257,7 +257,7 @@ describe("a tile tapped further down the page", () => {
 describe("by the felt's edge", () => {
   const tap = (x: number) => act(async () => { host.querySelector(".char-stage")!.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: x })); });
   it.each([[342, 0.9], [342, 0.1], [1, 0.9], [1, 0.1]])(
-    "after a walk to x=%i, with every draw at %f, no piece of Big play, the special or the walk's trail leaves the felt", async (x, r) => {
+    "after a walk to x=%i, with every draw at %f, no tip of a piece of Big play, the special or the walk's trail is painted past the felt's edge at any moment of its life", async (x, r) => {
       vi.spyOn(Math, "random").mockReturnValue(r);
       px = 176;
       await draw("lamb", "newyear");
@@ -270,10 +270,24 @@ describe("by the felt's edge", () => {
       await chip("Horn butt");
       const all = (spawn.mock.calls as unknown as [string, boolean, string, Piece[]][]).map((c) => c[3]);
       expect(all.slice(from).length).toBeGreaterThanOrEqual(2);
-      const xs = all.flatMap((ps) => ps.filter((p) => p.shape === "petal").flatMap((p) => p.keys.filter((k) => k.o > 0).map((k) => k.x)));
-      expect(xs.length).toBeGreaterThan(10);
-      expect(Math.max(...xs)).toBeLessThanOrEqual(FELT.w);
-      expect(Math.min(...xs)).toBeGreaterThanOrEqual(0);
+      // every petal as it is painted, sampled through its life between its keys: the corners of the box its
+      // shape is drawn in (a petal's curve bulges to its full height either side), scaled and turned as the canvas does
+      let left = Infinity, right = -Infinity, seen = 0;
+      for (const p of all.flat().filter((q) => q.shape === "petal")) {
+        for (let n = 0; n <= 200; n++) {
+          const k = stateAt(p.keys, n / 200);
+          if (k.o <= 0.004) continue;
+          const a = (k.r * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+          for (const [x, y] of [[-p.w / 2, -p.h], [p.w / 2, -p.h], [-p.w / 2, p.h], [p.w / 2, p.h]]) {
+            const at = k.x + c * k.sx * x - s * k.sy * y;
+            left = Math.min(left, at); right = Math.max(right, at);
+          }
+          seen++;
+        }
+      }
+      expect(seen).toBeGreaterThan(500);
+      expect(right).toBeLessThanOrEqual(FELT.w);
+      expect(left).toBeGreaterThanOrEqual(0);
     });
 });
 

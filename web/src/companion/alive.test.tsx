@@ -738,7 +738,7 @@ describe("character and material at the table", () => {
     await render(paid());
     await advance(20000);
     expect(anims).toHaveLength(0);
-    expect(spawn.mock.results.every((r) => r.value === 0)).toBe(true);
+    expect(spawn.mock.results.every((r: { value?: unknown }) => r.value === 0)).toBe(true);
     const still = (rest.mock.calls as unknown as [string, Piece[] | null][]).filter((c) => c[1]);
     expect(still.map((c) => c[0]).sort()).toEqual(["0", "1"]);
     for (const c of still) expect(c[1]).toHaveLength(3);

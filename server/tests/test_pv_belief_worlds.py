@@ -156,6 +156,24 @@ def test_any_error_falls_back_to_the_history_legal_draw(package, monkeypatch):
     assert len(worlds) == W and unbound._last_sampling["belief_fallback"] == 1
 
 
+@pytest.mark.parametrize("missing_model,expected_error", [
+    (False, "BeliefPreparationTimeout"),
+    (True, "BeliefNumpyError"),
+])
+def test_decision_record_distinguishes_slow_preparation_from_missing_model(
+        package, monkeypatch, missing_model, expected_error):
+    _, now, seat = fixture()
+    bot = belief_bot(package)
+    if missing_model:
+        bot.belief_model = None
+    monkeypatch.setattr(bn, "PREP_SECONDS", 0.)
+    bot.decide_play(now, seat)
+    record = bot.last_decision_record
+    assert record["belief_fallback"] == 1
+    assert record["belief_error"] == expected_error
+    assert record["worlds"] == W
+
+
 def test_budget_expiry_is_not_swallowed(package):
     _, now, seat = fixture()
     bot = belief_bot(package)

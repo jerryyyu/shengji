@@ -536,6 +536,7 @@ class SuitLengthProposal(BeliefProposal):
 def draw_length_worlds(inp, probabilities, mask, draw_lengths, batch, rng):
     """Fill a joint draw's residual quotas with individual hidden copies."""
     from ..train.belief_seq import sample_worlds
+    from ..train.pv_native import belief_sample_worlds
 
     suit = inp["card_feat"][:, 1:6].argmax(axis=1)
     lengths = np.asarray(draw_lengths(inp, mask, batch, rng))
@@ -556,7 +557,11 @@ def draw_length_worlds(inp, probabilities, mask, draw_lengths, batch, rng):
         counts = np.where(suit == group, copies, 0)
         if batch == 1:
             # A first-hit loss trial has one world, hence only one quota to fill.
-            worlds += sample_worlds(probabilities, counts, mask, lengths[0, group], 1, rng)
+            quota = lengths[0, group]
+            filled = belief_sample_worlds(probabilities, counts, mask, quota, 1, rng)
+            if filled is None:
+                filled = sample_worlds(probabilities, counts, mask, quota, 1, rng)
+            worlds += filled
             continue
         quotas, indices = np.unique(lengths[:, group], axis=0, return_inverse=True)
         for index, quota in enumerate(quotas):

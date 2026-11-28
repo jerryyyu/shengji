@@ -233,6 +233,8 @@ export function translateOf(t: string | null | undefined): Spot | null {
 const OBSTACLES = ".trick-play, .trick-tag, .you-row .btn, .action-bar .btn, .action-bar > *, .you-tagline, .you-tagline > *, "
   + ".timer-ring, .opponent, .last-trick-btn, .last-trick-panel, .deal-deck, .deal-deck-count, .hand-line, "
   + ".watch-controls, .watch-tabs, .watch-kitty, .watch-own";
+/** Of those, what stays put while a hand is dealt: your name pill and your row's controls (Declare and its options among them). */
+const FIXED = ".you-tagline, .you-row .btn, .action-bar .btn, .action-bar > *, .timer-ring";
 const OVERLAYS = ".hud-group, .hud .chip, .hud button, .hud-menu, .chat-launch, .chat-panel, .chat-bubble, .away-pill";
 /** An open panel: while one is up a tap on the felt is not for your companion. */
 const PANELS = ".hud-menu, .last-trick-panel, .chat-panel";
@@ -290,6 +292,7 @@ function measure(felt: HTMLElement, phone = false, dealing = false, insets: Safe
   const screen = felt.closest(".table-screen") ?? felt;
   const obstacles = [...felt.querySelectorAll(OBSTACLES), ...screen.querySelectorAll(OVERLAYS)]
     .filter((e) => !e.closest(".table-companions")).map(rel).filter((r) => r.w > 2 && r.h > 2);
+  const fixed = [...felt.querySelectorAll(FIXED)].map(rel).filter((r) => r.w > 2 && r.h > 2);
   // the hand from its cards' top, raised by a chosen card's lift
   const hand = one(".hand");
   const first = one(".hand .hand-slot");
@@ -326,7 +329,7 @@ function measure(felt: HTMLElement, phone = false, dealing = false, insets: Safe
   if (inset.t > 0) obstacles.push({ x: 0, y: 0, w: f.w, h: inset.t });
   if (inset.b > 0) obstacles.push({ x: 0, y: f.h - inset.b, w: f.w, h: inset.b });
   return { felt: { w: f.w, h: f.h }, plates, tagline: one(".you-tagline"), row: one(".you-row"), hand: first,
-           ...(safe ? { safe } : {}), ...(phone ? { phone } : {}), obstacles };
+           ...(safe ? { safe } : {}), ...(phone ? { phone } : {}), obstacles, fixed };
 }
 
 /** A rect drawn inside a flying wrapper (`wrap`, itself when `self`),
@@ -583,8 +586,9 @@ function Walker({ player, team, px, pos, zone, layout, roam, pose, up, you, goal
     const drawn = now !== null && !!walk.current?.style.transform;
     // while the hand is dealt the cards keep arriving and flying over the
     // felt: a drawn figure holds still under them, and steps aside, if it
-    // must, once the deal is done
-    if (dealing && drawn) return;
+    // must, once the deal is done. What does not fly (your name pill, the
+    // declare options the deal brings up) it steps off at once
+    if (dealing && drawn && clear(now, px, you, { ...room, obstacles: room.fixed ?? [] })) return;
     const quick = { under: true, quick: true };
     const due = back.current;
     back.current = false;

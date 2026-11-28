@@ -26,6 +26,10 @@ export interface Layout {
   hand?: Rect | null;
   /** The felt between the screen's safe-area edges, where a figure may stand. */
   safe?: { x0: number; x1: number };
+  /** Of the obstacles, the ones that stay put while a hand is dealt (your
+   *  name pill, your row's controls): a figure the deal holds still steps
+   *  off these at once. */
+  fixed?: Rect[];
   /** A phone's table: no name line of its own (`tagline` is only the banker's
    *  crown and turn chips), and a full hand starts at the safe left edge. */
   phone?: boolean;

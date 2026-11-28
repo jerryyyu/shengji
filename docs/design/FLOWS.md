@@ -702,7 +702,8 @@ keeps the table on screen.
   yours over the left end of your hand on a phone (Jerry 2026-11-26: it had stood by the left seat's card; beside
   your name line on a tablet), tagged You 你. On a phone that is where a full hand starts, so it holds still while
   the hand is dealt (Jerry 2026-11-27: "the jumpy feeling is from zipping around during deals": no walk on its own
-  clock and no step aside while the cards arrive and fly over it; one it must make waits for the deal to end), and the banker's crown chip does not move it. Every 8 to 15 s, on its own clock, it walks a few hopping steps,
+  clock and no step aside while the cards arrive and fly over it; one it must make waits for the deal to end, except off
+  what does not fly: your name pill and your row's controls, Declare's options among them, it steps off at once, so a deal that brings up ten options never leaves it on your name), and the banker's crown chip does not move it. Every 8 to 15 s, on its own clock, it walks a few hopping steps,
   at the tapped walk's stroll (Jerry 2026-11-27: "the random movements are too fast; it should keep consistent
   speed": half a second a figure's width, so a short walk takes less time, never a faster pace), facing the way it goes, to another spot in a small zone by the nameplate that keeps clear of the cards played
   and their LEAD / WINS labels, the hand (and a chosen card's lift), every control of your row (the clock's ring,

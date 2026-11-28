@@ -1566,6 +1566,7 @@ def test_api_leaderboard_stats_and_visibility(env, monkeypatch):
     assert stats["defender_won_pct"] == 100.0 and stats["attacker_won_pct"] is None
     assert stats["best_streak"] == 3 and stats["levels_per_round"] == 2.0
     assert stats["games_won"] == 0 and stats["visible"] is True
+    assert stats["rounds_won"] == 3 == store.ranked_wins(uid)
     assert len(stats["history"]) == 4 and stats["history"][0] == 1000
     assert stats["history"][-1] == stats["rating"] > 1000
     [game] = stats["recent_games"]

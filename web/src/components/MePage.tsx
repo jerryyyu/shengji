@@ -97,7 +97,7 @@ function StatsBody({ stats }: { stats: Stats }) {
         <p className="grp-foot">{t("me.noRanked")}</p>
       ) : null}
       <ul className="grp me-counts">
-        <Row label={t("me.count.gamesWon")} value={stats.games_won} />
+        <Row label={t("me.count.roundsWon")} value={stats.rounds_won ?? "—"} />
         <Row label={t("me.count.rounds")} value={rounds} />
         <Row label={t("me.count.defenders")} value={pct(stats.defender_won_pct)} />
         <Row label={t("me.count.attackers")} value={pct(stats.attacker_won_pct)} />

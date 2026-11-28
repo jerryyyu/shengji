@@ -24,7 +24,7 @@ import { setLanguageChoice } from ".";
 
 const JERRY = { name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" };
 const STATS = { name: "Jerry", rating: 1532, rank: 12, rounds: 412, provisional: false, levels_per_round: 0.41,
-                won_pct: 58.2, defender_won_pct: 61, attacker_won_pct: 54, best_streak: 7, games_won: 34,
+                won_pct: 58.2, defender_won_pct: 61, attacker_won_pct: 54, best_streak: 7, games_won: 34, rounds_won: 239,
                 week_delta: 8, history: [1491, 1532], visible: true, recent_games: [] };
 const GAME = { id: "g1", room_code: "KQ4X", started_at: Math.floor(Date.now() / 1000) - 60, ended_at: null, seat: 0,
                players: ["Jerry", "Sam", "Mei", "Wen"], rounds: [1, 2], final_levels: ["4", "3"],
@@ -83,7 +83,7 @@ describe("Me in Simplified Chinese", () => {
     expect([...host.querySelectorAll(".me-tile")].map((t) => t.textContent))
       .toEqual(["58%局胜率", "+0.41级/局", "7最长连胜"]);
     expect(host.querySelector(".me-spark")?.getAttribute("aria-label")).toBe("最近 1 局的积分，从 1,491 到 1,532");
-    expect(rowLabels()).toEqual(["赢的盘数", "总局数", "坐庄胜率", "闲家胜率",
+    expect(rowLabels()).toEqual(["赢的局数", "总局数", "坐庄胜率", "闲家胜率",
       "新手提示", "音效", "语言", "怎么玩", "在排行榜上显示我", "改昵称", "隐私政策",
       "使用条款", "帮助", "iPhone 版", "退出登录", "注销账号"]);
     // the player's name and the App Store's device are the only Latin words

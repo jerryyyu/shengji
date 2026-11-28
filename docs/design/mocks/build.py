@@ -877,7 +877,7 @@ def s5_tabs():
     settings = grp([sw("Coach", True), sw("Sound", True), sw("Haptics", True), chev("How to play")])
     ipad_signed = wide('<div style="display:grid;grid-template-columns:1.3fr 1fr;gap:28px">'
                        '<div style="display:flex;flex-direction:column;gap:14px">' + who("Cheerful Tractor", "1,042 · #7 all time", "CT") + seg("Stats") + stats
-                       + grp([chev("Games won", "11"), chev("Rounds played", "212"), chev("Won as defenders", "63%")]) + '</div>'
+                       + grp([chev("Rounds won", "118"), chev("Rounds played", "212"), chev("Won as defenders", "63%")]) + '</div>'
                        '<div style="display:flex;flex-direction:column;gap:14px">' + ghead("Settings") + settings + grp([chev("Edit name"), chev("Sign out")]) + '</div></div>',
                        active="Me", end=chip("Cheerful Tractor", "1,042", "CT"))
     ipad_guest = wide('<div style="display:grid;grid-template-columns:1.3fr 1fr;gap:28px">'

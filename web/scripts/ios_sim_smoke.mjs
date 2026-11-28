@@ -10,8 +10,11 @@
 //   node scripts/ios_sim_smoke.mjs [--dist web/dist] [--out dir] [--udid <udid>] [--orient portrait,left,right]
 // Needs Xcode's simctl and no signing. A landscape orientation needs a
 // command that turns the simulator, given as SIM_ROTATE ("<cmd> {udid} {orientation}",
-// orientation 1 portrait, 3 landscape left, 4 landscape right); without it
-// landscape runs are reported as skipped, never as passed.
+// orientation 1 portrait, 3 landscape left, 4 landscape right); asked for
+// without one, nothing runs and it exits 2. It exits 0 only when every
+// orientation asked for was the page's own (window.orientation and its
+// shape agree) and both ⋯ menus, the watch screen's and the game's, were
+// judged drawn in it; the rules are in ios_sim_smoke_lib.mjs.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -19,16 +22,18 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { base, fakeSocketScript } from "../e2e/fake.mjs";
+import { ORIENTS, SHOTS, failures, observedOrient, parseOrients, staticFile } from "./ios_sim_smoke_lib.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WEB = path.dirname(HERE);
+const arg = (name, dflt) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : dflt; };
+const rotate = process.env.SIM_ROTATE;
+const asked = parseOrients(arg("orient", undefined), rotate);
+if (asked.error) { console.error(`ios_sim_smoke: ${asked.error}`); process.exit(2); }
 // the PNG codec playwright-core already ships, by path: the package does not export it
 const { PNG } = createRequire(import.meta.url)(path.join(WEB, "node_modules/playwright-core/lib/utilsBundle.js"));
-const arg = (name, dflt) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : dflt; };
 const DIST = path.resolve(arg("dist", path.join(WEB, "dist")));
 const OUT = path.resolve(arg("out", path.join(WEB, "e2e/out/ios-sim")));
-const ORIENTS = arg("orient", "portrait,left,right").split(",");
-const ORIENT_CODE = { portrait: 1, left: 3, right: 4 };
 /** The share of the menu's pixels that must change when it opens. */
 const DRAWN = 0.3;
 fs.mkdirSync(OUT, { recursive: true });
@@ -79,7 +84,7 @@ const DRIVER = `(() => {
     cal.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:#ff00ff";
     document.body.appendChild(cal);
     await sleep(400);
-    await shot("calibrate", { calibrate: { w: innerWidth, h: innerHeight } });
+    await shot("calibrate", { calibrate: { w: innerWidth, h: innerHeight, angle: typeof window.orientation === "number" ? window.orientation : null } });
     cal.remove();
     location.hash = "#/play"; await sleep(1200); await shot("play");
     location.hash = "#/collection"; await sleep(1200); await shot("collection");
@@ -104,31 +109,46 @@ const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/cs
 /** One orientation's run: resolves with its report once the driver says done. */
 function serve(udid, orient) {
   return new Promise((resolve, reject) => {
-    const report = { orient, shots: {}, menus: {} };
+    const report = { orient, shots: {}, menus: {}, refused: [], observed: null };
     let cal = null;
     const server = http.createServer((req, res) => {
       const url = new URL(req.url, "http://x");
       const json = (code, body) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
-      if (url.pathname === "/__smoke/driver.js") { res.writeHead(200, { "content-type": "text/javascript" }); res.end(fakeSocketScript([presence]) + DRIVER); return; }
-      if (req.method === "POST" && url.pathname.startsWith("/__smoke/")) {
+      // the driver's three routes, exactly; anything else under /__smoke/ is refused
+      if (url.pathname === "/__smoke/driver.js" && req.method === "GET") { res.writeHead(200, { "content-type": "text/javascript" }); res.end(fakeSocketScript([presence]) + DRIVER); return; }
+      if (url.pathname === "/__smoke/shot" || url.pathname === "/__smoke/done") {
+        if (req.method !== "POST") return json(405, {});
         let body = ""; req.on("data", (c) => { body += c; }); req.on("end", () => {
-          const msg = JSON.parse(body || "{}");
+          let msg;
+          try { msg = JSON.parse(body || "{}"); } catch { report.refused.push("a report that is not JSON"); return json(400, {}); }
           if (url.pathname === "/__smoke/done") { json(200, {}); server.close(); if (msg.error) reject(new Error(msg.error)); else resolve(report); return; }
+          if (!SHOTS.includes(msg.name) || report.shots[msg.name]) { report.refused.push(`screenshot ${JSON.stringify(msg.name).slice(0, 40)}`); return json(400, {}); }
           const file = path.join(OUT, `${orient}-${msg.name}.png`);
           simctl("io", udid, "screenshot", file);
           report.shots[msg.name] = file;
-          if (msg.calibrate) cal = calibrate(file, msg.calibrate);
-          if (msg.menu !== undefined) report.menus[msg.name.replace(/-open$/, "")] = judge(path.join(OUT, `${orient}-${msg.name.replace(/-open$/, "-closed")}.png`), file, msg.menu, cal);
+          if (msg.name === "calibrate") {
+            cal = calibrate(file, msg.calibrate ?? {});
+            report.page = msg.calibrate ?? null;
+            report.observed = msg.calibrate ? observedOrient(msg.calibrate) : null;
+          }
+          if (msg.name.endsWith("-menu-open")) {
+            const m = msg.name.replace(/-open$/, "");
+            const closed = report.shots[`${m}-closed`];
+            report.menus[m] = closed ? judge(closed, file, msg.menu ?? null, cal) : { ok: false, why: "no closed screenshot to compare" };
+          }
           json(200, {});
         });
         return;
       }
+      if (url.pathname.startsWith("/__smoke/")) return json(404, {});
       if (url.pathname === "/api/auth/config") return json(200, { google_client_id: null, device_accounts: false, collection: true });
       if (url.pathname.startsWith("/api/watch/")) return json(200, { ...live, waiting: true, events: undefined });
       if (url.pathname === "/api/watch") return json(200, live);
       if (url.pathname.startsWith("/api/")) return json(404, {});
-      let p = path.join(DIST, decodeURIComponent(url.pathname));
-      if (!p.startsWith(DIST) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) p = path.join(DIST, "index.html");
+      // web/dist only: a path out of it is refused, a missing one is the app's page
+      let p = staticFile(DIST, url.pathname);
+      if (!p) return json(403, {});
+      if (!fs.existsSync(p) || fs.statSync(p).isDirectory()) p = path.join(DIST, "index.html");
       let data = fs.readFileSync(p);
       if (p.endsWith("index.html")) data = Buffer.from(String(data).replace("<head>", '<head><script src="/__smoke/driver.js"></script>'));
       res.writeHead(200, { "content-type": TYPES[path.extname(p)] ?? "application/octet-stream", "cache-control": "no-store" });
@@ -145,6 +165,7 @@ function serve(udid, orient) {
 
 /** The page's frame in the screenshot: the bounding box of the magenta sheet. */
 function calibrate(file, page) {
+  if (!(page.w > 0 && page.h > 0)) return null;
   const png = PNG.sync.read(fs.readFileSync(file));
   let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
   for (let y = 0; y < png.height; y++) for (let x = 0; x < png.width; x++) {
@@ -173,22 +194,22 @@ function judge(closedFile, openFile, menu, cal) {
 }
 
 const udid = device();
-const rotate = process.env.SIM_ROTATE;
 const results = [];
-for (const orient of ORIENTS) {
-  if (orient !== "portrait" && !rotate) { results.push({ orient, skipped: "no SIM_ROTATE command to turn the simulator" }); continue; }
-  if (rotate) execFileSync("/bin/sh", ["-c", rotate.replace("{udid}", udid).replace("{orientation}", String(ORIENT_CODE[orient]))], { stdio: "inherit" });
-  try { results.push(await serve(udid, orient)); } catch (e) { results.push({ orient, error: String(e.message ?? e) }); }
+for (const orient of asked.orients) {
+  if (rotate) execFileSync("/bin/sh", ["-c", rotate.replace("{udid}", udid).replace("{orientation}", String(ORIENTS[orient].code))], { stdio: "inherit" });
+  try {
+    const r = await serve(udid, orient);
+    if (r.refused.length) r.error = `the page asked for what the smoke refuses: ${r.refused.join("; ")}`;
+    results.push(r);
+  } catch (e) { results.push({ orient, error: String(e.message ?? e) }); }
 }
-let bad = 0;
 for (const r of results) {
-  if (r.skipped) { console.log(`${r.orient}: SKIPPED (${r.skipped})`); continue; }
-  if (r.error) { bad++; console.log(`${r.orient}: ERROR ${r.error}`); continue; }
-  for (const [name, m] of Object.entries(r.menus)) {
-    if (!m.ok) bad++;
-    console.log(`${r.orient} ${name}: ${m.ok ? "drawn" : m.why}${m.share !== undefined ? ` (changed ${m.share})` : ""}`);
-  }
+  if (r.error) { console.log(`${r.orient}: ERROR ${r.error}`); continue; }
+  console.log(`${r.orient}: the page was ${r.observed ?? "in no clear orientation"} (${r.page?.w}x${r.page?.h}, angle ${r.page?.angle})`);
+  for (const [name, m] of Object.entries(r.menus)) console.log(`${r.orient} ${name}: ${m.ok ? "drawn" : m.why}${m.share !== undefined ? ` (changed ${m.share})` : ""}`);
 }
-fs.writeFileSync(path.join(OUT, "report.json"), JSON.stringify({ results }, null, 1));
-console.log(`screenshots and report.json in ${OUT}`);
-process.exit(bad ? 1 : 0);
+const bad = failures(asked.orients, results);
+fs.writeFileSync(path.join(OUT, "report.json"), JSON.stringify({ orients: asked.orients, results, failures: bad }, null, 1));
+for (const f of bad) console.log(`FAIL ${f}`);
+console.log(`${bad.length ? "FAILED" : "PASSED"}: ${asked.orients.join(", ")}; screenshots and report.json in ${OUT}`);
+process.exit(bad.length ? 1 : 0);

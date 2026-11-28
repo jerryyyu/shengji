@@ -657,6 +657,15 @@ keeps the table on screen.
   character the viewer can no longer buy (a refund, another account, the store turned off) stays on the stage as
   Coming soon. Each character
   appears once: buying one sends its tile up into Yours. No Shop segment, button or page, no leaderboard row.
+- **Stage · Table** (展示 · 牌桌; Jerry 2026-11-28 took the mock's option 2, "your corner at 1:1": "table can be
+  corner in option 2 but we don't need to show cards or bot name tag - the switch looks good"): the app's
+  segmented control at the stage's top right, labels only, Stage by default and the last choice kept on the
+  device. Table draws the selected companion as a table draws yours: the table's own felt and its own layer of
+  companions (`TableCompanions`) on a fixture seat, by the bottom-left corner at the size a table seats yours on
+  that screen (a phone's, or a tablet's and a desktop window's), tagged You, with no cards, no nameplate, no score
+  strip and nobody else's. The chips play the table's moves (Hop, Cheer, Big play; the special's chip is a tap on
+  it), a tap on the felt walks it as at the table, and a tile tap seats it again so it comes in its own way. A
+  switch keeps the character and draws the other view settled. It is a mode of the stage, not a surface.
 - **One rule for taps:** a tap on a companion or a colour only shows it (the gold ring is "looking at"); the one
   button puts it in use: Use, In use (inert), for a locked Tractor colour Use (inert, one size) with what unlocks
   it on the stage's status line ("Win 25 ranked rounds to unlock · 3 of 25", "Win a ranked round to unlock"), for

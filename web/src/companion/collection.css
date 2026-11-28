@@ -127,6 +127,23 @@
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+/* the stage's Stage · Table switch over its top right (the stage's 8px
+   margin plus 4px, its 16px side plus 8px): the app's segmented control,
+   compact on the felt (24px segments), each tap area stretched to 44px. It
+   is the page's, not the stage's, so the stage's clipped corner cannot trim
+   it */
+.coll-stage-host { position: relative; }
+.char-view { position: absolute; top: 12px; right: 24px; z-index: 3; }
+.char-view .segmented { height: 30px; padding: 2px; background: rgba(16, 19, 26, 0.78); }
+.char-view .segmented-btn { flex: none; padding: 0 12px; font-size: var(--fs-13, 13px); }
+.char-view .segmented-btn::before { inset: -10px 0; }
+/* the Table view: the table's own felt under the stage's corners, and below
+   the switch the felt the table's companion layer measures, your seat's empty
+   hand line along its foot where a table stands yours */
+.char-table .char-table-felt { position: absolute; inset: 0; }
+.char-table .char-seat { position: absolute; left: 0; right: 0; top: 44px; bottom: 0; }
+.char-table .char-hand { position: absolute; left: 8px; right: 8px; bottom: 0; height: 1px; padding: 0; justify-content: flex-start; visibility: hidden; pointer-events: none; }
+.char-table .char-hand .hand-slot { flex: none; width: 1px; min-width: 0; height: 1px; }
 /* the figure's area: one height (the figure's size), the figure at its foot */
 .char-figures { display: flex; justify-content: center; align-items: flex-end; }
 /* the figure's move box: the table's moves turn and scale it about its feet */

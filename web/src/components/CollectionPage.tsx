@@ -21,7 +21,7 @@ import { guestName } from "../guestName";
 import { clearDelivery, refusalMessage, useDelivery, useShop } from "../store/shop";
 import { showToast } from "../toast";
 import { telemetry, useScreen } from "../telemetry";
-import CharacterPage, { SHORT_SCREEN, Stage, Tick, kindName, stageSize } from "./CharacterPage";
+import CharacterPage, { SHORT_SCREEN, Stage, Tick, ViewSwitch, kindName, stageSize, useStageView } from "./CharacterPage";
 import { BuyFoot, RestoreRow } from "./StoreFoot";
 import { materialOf } from "../companion/flair";
 import "../companion/collection.css";
@@ -302,6 +302,9 @@ export default function CollectionPage() {
     }
   }, [delivery, selectedProduct]);
 
+  // the stage's view lasts the visit, whichever character is selected; only a character's own stage (its chips) takes it
+  const [view, setView] = useStageView();
+  const switchable = !previewed(selected) && !isSoon(selected);
   let stage;
   if (previewed(selected)) {
     const colour = isSoon(selected) ? soonColour(selected) : COMPANIONS[selected][0];
@@ -335,7 +338,7 @@ export default function CollectionPage() {
     stage = (
       <CharacterPage key={kind} kind={kind} shown={shown} entries={entriesOf(kind)} inUse={inUse} user={user} phone={phone} short={short}
                      fresh={fresh} onShow={show} onUse={use} price={price}
-                     status={said ? t(said) : bought && bought.product === product && !owns(kind) ? bought.text : ""} cheer={cheer} arrives={taps} />
+                     status={said ? t(said) : bought && bought.product === product && !owns(kind) ? bought.text : ""} cheer={cheer} arrives={taps} view={view} />
     );
   }
 
@@ -348,7 +351,11 @@ export default function CollectionPage() {
   return (
     <LargeTitlePage className="coll-page" scroller={scroller} title={t("home.tabCollection")} phone={phone}
                    onRefresh={() => refreshAccount()}>
-      <div key={selected} className={swaps > 0 ? "coll-swap" : undefined}>{stage}</div>
+      {/* the Stage · Table switch rides over the stage, outside the stage each tile swaps in, so it stays put */}
+      <div className="coll-stage-host">
+        {switchable ? <ViewSwitch view={view} onView={setView} /> : null}
+        <div key={selected} className={swaps > 0 ? "coll-swap" : undefined}>{stage}</div>
+      </div>
       <h2 className="coll-section">{t("home.yours")}</h2>
       <div className="coll-grid coll-yours">
         {yours.map((k) => (

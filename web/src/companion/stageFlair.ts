@@ -89,17 +89,11 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
   const at = useRef(spot);
   const dir = useRef<1 | -1>(1);
   const flight = useRef<{ from: number; to: number; t0: number; ms: number; anims: Animation[]; timers: number[] } | null>(null);
-  // its spot at rest: a felt resized while it stands there moves it with the spot
+  // its spot at rest, kept whole-px as every walk's goal is
   const home = useRef(spot);
-  useLayoutEffect(() => {
-    const was = home.current;
-    home.current = spot;
-    if (flight.current !== null || at.current !== was) return;
-    at.current = spot;
-    if (refs.walk.current && (spot !== 0 || was !== 0)) refs.walk.current.style.transform = `translate(${spot}px, 0px)`;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spot]);
   const dropped = useRef(0);
+  // the special's lunge in flight, ended where it is if the felt is laid out anew
+  const lunging = useRef<Animation | null>(null);
   // the taps whose way in has been played, and when the last one started
   const entered = useRef(0);
   const enteredAt = useRef(-Infinity);
@@ -270,6 +264,31 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
       emit("shower", (s) => showerPieces(material, s, 6));
     } else moment();
   };
+  // the felt laid out anew (a resize, its figure drawn again after it had no room): whatever it was doing ends
+  // where it is drawn now, and it stands inside its new span, at its new spot if it stood at the old one
+  const lo = range?.[0], hi = range?.[1];
+  const drawn = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    const was = home.current;
+    home.current = spot;
+    const walk = refs.walk.current;
+    // a figure drawn afresh (it had no room a moment ago) starts at its spot
+    const fresh = walk !== drawn.current;
+    drawn.current = walk;
+    if (!walk) return;
+    const resting = fresh || (flight.current === null && at.current === was);
+    if (fresh) { stop(); at.current = spot; }
+    lunging.current?.cancel();
+    // a walk in flight ends where it is drawn; one at a stand is left as it is, so a stage at its middle keeps no transform
+    if (flight.current !== null) halt();
+    settle();
+    const felt = refs.felt.current;
+    const [a, b] = felt ? span(felt) : [spot, spot];
+    const x = resting ? spot : Math.round(Math.max(a, Math.min(b, at.current)));
+    at.current = x;
+    if (x !== 0 || walk.style.transform) walk.style.transform = `translate(${x}px, 0px)`;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spot, lo, hi, size]);
   const next = useRef(moment);
   next.current = moment;
   const back = useRef(walkTo);
@@ -300,12 +319,16 @@ export function useStageFlair(kind: string, colour: string, size: number, pose: 
     const felt = refs.felt.current, walk = refs.walk.current;
     const from = halt();
     let lunge: Animation | null = null;
+    lunging.current = null;
     let reach = 0;
     if (LUNGERS.has(kind) && felt && walk && typeof walk.animate === "function") {
+      // both ways of its travel keep to its span: the reach ahead and the step back first
       const [lo, hi] = span(felt);
       const room = dir.current > 0 ? hi - from : from - lo;
+      const behind = Math.max(0, dir.current > 0 ? from - lo : hi - from);
       reach = (LUNGE_REACH.find((r) => r * size <= room) ?? 0) * size;
-      if (reach > 0) lunge = walk.animate(lungeFrames({ x: from, y: 0 }, dir.current, { reach, back: LUNGE_BACK * size }), { duration: DRAWINGS[kind as DrawnKind].reactMs });
+      const back = Math.min(LUNGE_BACK * size, behind);
+      if (reach > 0) lunge = lunging.current = walk.animate(lungeFrames({ x: from, y: 0 }, dir.current, { reach, back }), { duration: DRAWINGS[kind as DrawnKind].reactMs });
     }
     // the accent fans ahead of the figure: its flight is the felt left ahead of where it starts
     const ahead = (s: Stance) => {

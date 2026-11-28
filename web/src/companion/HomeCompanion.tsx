@@ -109,7 +109,8 @@ function Figure({ look, away }: { look: string; away: (felt: HTMLElement) => Box
     else live.play("hop");
   };
   return (
-    <div ref={felt} className={`home-cmp${live.paused ? " live-paused" : ""}`} onClick={place ? flair.onFelt : undefined}>
+    <div ref={felt} className={`home-cmp${live.paused ? " live-paused" : ""}`} onClick={place ? flair.onFelt : undefined}
+         data-strip={place ? `${place.range[0]},${place.range[1]}` : undefined}>
       {flair.material ? <canvas className="char-flair" data-depth="back" ref={back} aria-hidden="true" /> : null}
       {place ? (
         <div className="home-cmp-row" style={{ height: size }}>

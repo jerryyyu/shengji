@@ -77,8 +77,40 @@ const homeClash = (page) => page.evaluate(() => {
     if (b.width && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) clash.push(`${what} ${el.className} ${el.getAttribute("title") ?? el.textContent?.slice(0, 12)}`);
   }
   const inside = a.left >= f.left && a.right <= f.right && a.top >= f.top && a.bottom <= f.bottom;
-  return { missing: false, inside, clash, box: [a.left - f.left, a.top - f.top, a.width].map(Math.round) };
+  // the figure's middle against its strip (px from the felt's middle), less the move box's own sway
+  const strip = document.querySelector(".home-cmp")?.getAttribute("data-strip")?.split(",").map(Number);
+  const walk = document.querySelector(".home-cmp .char-walk").getBoundingClientRect();
+  const mid = walk.left + walk.width / 2 - (f.left + f.width / 2);
+  const onStrip = !strip || (mid >= strip[0] - 1 && mid <= strip[1] + 1);
+  return { missing: false, inside, onStrip, mid: Math.round(mid * 10) / 10, strip, clash, box: [a.left - f.left, a.top - f.top, a.width].map(Math.round) };
 });
+
+/** Sample the home figure every `every` ms for `ms`, while `during` runs; the problems seen. */
+async function sampleHome(page, ms, during = async () => {}, every = 40) {
+  const bad = new Set();
+  let stop = false;
+  const sampling = (async () => {
+    const t0 = Date.now();
+    while (!stop && Date.now() - t0 < ms) {
+      const c = await homeClash(page);
+      if (!c.missing) {
+        for (const x of c.clash) bad.add(x);
+        if (!c.inside) bad.add(`outside the felt at ${c.box}`);
+        if (!c.onStrip) bad.add(`middle ${c.mid} off its strip ${c.strip}`);
+      }
+      await sleep(every);
+    }
+  })();
+  await during();
+  await sampling;
+  stop = true;
+  return [...bad];
+}
+const feltTap = async (page, share) => {
+  const f = await page.locator(".lobby-preview").boundingBox();
+  await page.mouse.click(f.x + f.width * share, f.y + f.height * 0.92);
+};
+const figureSize = (page) => page.evaluate(() => Number(document.querySelector(".home-cmp svg.cmp")?.getAttribute("width") ?? 0));
 
 /** The home felt's own figure at three sizes: on the felt, and clear of cards and text all loop long. */
 async function homeFelt(opts) {
@@ -117,6 +149,55 @@ async function homeFelt(opts) {
     });
     await page.context().close();
   }
+  // a short phone's felt is wider than its centred card stage: the figure fits beside it, down to 320x600
+  const se = await open(browser, "phone-port-se", { fakeSocket: fakeSocketScript([]), ...opts });
+  await scenario(rep, "home felt: short phones", se, async () => {
+    for (const [w, h] of [[375, 667], [320, 600]]) {
+      await se.setViewportSize({ width: w, height: h });
+      await until(se, () => document.querySelector(".home-cmp svg.cmp") !== null, { timeout: 4000 }).catch(() => {});
+      const px = await figureSize(se);
+      const bad = await sampleHome(se, 2500, async () => { await sleep(300); await feltTap(se, 0.5); });
+      await rep.check(`${w}x${h}: home felt: the figure fits (${px} px) and covers no card or text`, px >= 24 && !bad.length ? null : `size ${px}; ${bad.slice(0, 3).join(" | ")}`, se);
+    }
+  });
+  await se.context().close();
+  // the felt laid out anew mid-walk, and drawn again after a size with no room for it
+  const rs = await open(browser, "phone-port", { fakeSocket: fakeSocketScript([]), ...opts });
+  await scenario(rep, "home felt: resized", rs, async () => {
+    await rs.setViewportSize({ width: 430, height: 940 });
+    await until(rs, () => document.querySelector(".home-cmp svg.cmp") !== null, { timeout: 8000 });
+    await sleep(500);
+    let bad = await sampleHome(rs, 4000, async () => {
+      await feltTap(rs, 0.98);
+      await sleep(450);
+      await rs.setViewportSize({ width: 390, height: 844 });
+    });
+    await rep.check("home felt: resized from 430x940 to 390x844 mid-walk, it stays on its strip, inside the felt, clear of cards and text", bad.length ? bad.slice(0, 3).join(" | ") : null, rs);
+    await rs.setViewportSize({ width: 844, height: 390 });
+    await sleep(600);
+    const gone = await rs.evaluate(() => document.querySelector(".home-cmp svg.cmp") === null);
+    bad = await sampleHome(rs, 3000, async () => { await rs.setViewportSize({ width: 390, height: 844 }); });
+    await rep.check("home felt: after a size with no felt and back, it stands on its strip, clear of every card", gone && !bad.length ? null : `gone ${gone}; ${bad.slice(0, 3).join(" | ")}`, rs);
+  });
+  await rs.context().close();
+  // the Lamb's special facing each way, its step back and its lunge sampled: at rest at its strip's left end
+  // facing right (the step back is toward the hand), then mid-strip facing left (the lunge is toward the hand)
+  const sp = await open(browser, "phone-port", { fakeSocket: fakeSocketScript([]), ...opts });
+  await scenario(rep, "home felt: the Lamb's special both ways", sp, async () => {
+    await until(sp, () => document.querySelector(".home-cmp svg.cmp") !== null, { timeout: 8000 });
+    await sleep(300);
+    let bad = await sampleHome(sp, 1600, async () => { await sp.locator(".home-cmp .coll-figure").click(); }, 20);
+    await rep.check("home felt: the Lamb's special facing right at its spot keeps its step back on its strip, clear of every card", bad.length ? bad.slice(0, 3).join(" | ") : null, sp);
+    const strip = await sp.evaluate(() => document.querySelector(".home-cmp").getAttribute("data-strip").split(",").map(Number));
+    await feltTap(sp, 0.98);
+    await sleep(1700);
+    const fw = (await sp.locator(".lobby-preview").boundingBox()).width;
+    await feltTap(sp, 0.5 + (strip[0] + strip[1]) / 2 / fw);
+    await sleep(1700);
+    bad = await sampleHome(sp, 1600, async () => { await sp.locator(".home-cmp .coll-figure").click(); }, 20);
+    await rep.check("home felt: the Lamb's special facing left mid-strip keeps its lunge on its strip, clear of every card", bad.length ? bad.slice(0, 3).join(" | ") : null, sp);
+  });
+  await sp.context().close();
 }
 
 const browser = await launch();

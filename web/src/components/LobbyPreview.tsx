@@ -107,18 +107,20 @@ export const CARD_PATHS: Box[] = TRICKS.flatMap((trick) => trick.order.flatMap((
 export function feltAway(felt: HTMLElement): Box[] {
   const root = felt.parentElement ?? felt;
   const f = felt.getBoundingClientRect();
-  const k = f.width / 1200;
+  // the 1200x630 stage is drawn scaled and centred inside the felt (a short phone's felt is wider than it)
+  const st = root.querySelector(".lp-stage")?.getBoundingClientRect() ?? f;
+  const k = st.width / 1200, ox = st.left - f.left, oy = st.top - f.top;
   const boxes: Box[] = [...root.querySelectorAll(".lp-fan .card")].map((c) => {
     const r = c.getBoundingClientRect();
     return { x0: r.left - f.left, y0: r.top - f.top, x1: r.right - f.left, y1: r.bottom - f.top };
   });
-  for (const b of CARD_PATHS) boxes.push({ x0: b.x0 * k, y0: b.y0 * k, x1: b.x1 * k, y1: b.y1 * k });
+  for (const b of CARD_PATHS) boxes.push({ x0: ox + b.x0 * k, y0: oy + b.y0 * k, x1: ox + b.x1 * k, y1: oy + b.y1 * k });
   // the tag as drawn when shown (its layout box, before the scale it hides at)
   const tag = root.querySelector<HTMLElement>(".win-tag");
   const tw = tag?.offsetWidth ?? 0, th = tag?.offsetHeight ?? 0;
   for (const t of TRICKS) {
     const at = winTagAt(t.winner);
-    boxes.push({ x0: at.x * k - tw / 2, y0: at.y * k - th / 2, x1: at.x * k + tw / 2, y1: at.y * k + th / 2 });
+    boxes.push({ x0: ox + at.x * k - tw / 2, y0: oy + at.y * k - th / 2, x1: ox + at.x * k + tw / 2, y1: oy + at.y * k + th / 2 });
   }
   return boxes;
 }

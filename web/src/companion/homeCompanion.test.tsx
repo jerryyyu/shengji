@@ -129,6 +129,45 @@ describe("the home felt's companion", () => {
     expect(walks().flat().every((t) => Number(/translate\((-?[\d.]+)px/.exec(t)![1]) >= spot.range[0])).toBe(true);
   });
 
+  it("a store character's special keeps to its strip both ways: no step back past its spot, no lunge past its end", async () => {
+    who.user = { look: "lamb/newyear", companions: "individual" };
+    await draw();
+    const xs = (frames: string[]) => frames.map((t) => Number(/translate\((-?[\d.]+)px/.exec(t)![1]));
+    // at its spot, the strip's left end, facing right: the lunge goes right and its step back stays put
+    await act(async () => { host.querySelector<HTMLElement>(".coll-figure")!.click(); });
+    const first = xs(walks()[walks().length - 1]);
+    expect(Math.min(...first)).toBeGreaterThanOrEqual(spot.range[0]);
+    expect(Math.max(...first)).toBeGreaterThan(spot.range[0]);
+    expect(Math.max(...first)).toBeLessThanOrEqual(spot.range[1]);
+    await tick(3000);
+    // walked to the strip's right end and back to its middle, facing left: neither way leaves the strip
+    const felt = host.querySelector<HTMLElement>(".home-cmp")!;
+    await act(async () => { felt.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: FELT.w })); });
+    await tick(3200);
+    const mid = Math.round((spot.range[0] + spot.range[1]) / 2);
+    await act(async () => { felt.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: FELT.w / 2 + mid })); });
+    await tick(3200);
+    await act(async () => { host.querySelector<HTMLElement>(".coll-figure")!.click(); });
+    const second = xs(walks()[walks().length - 1]);
+    expect(Math.min(...second)).toBeGreaterThanOrEqual(spot.range[0]);
+    expect(Math.max(...second)).toBeLessThanOrEqual(spot.range[1]);
+  });
+
+  it("laid out anew mid-walk, it ends the walk where it is and stands inside its new strip", async () => {
+    await draw();
+    const felt = host.querySelector<HTMLElement>(".home-cmp")!;
+    await act(async () => { felt.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: FELT.w })); });
+    await tick(300);
+    // the felt narrows: its strip moves left and is shorter
+    FELT.w = 300;
+    await act(async () => { window.dispatchEvent(new Event("resize")); });
+    const now = placeFigure(FELT.w, FELT.h, [HAND])!;
+    const x = Number(/translate\((-?[\d.]+)px/.exec(host.querySelector<HTMLElement>(".char-walk")!.style.transform)![1]);
+    expect(x).toBeGreaterThanOrEqual(now.range[0]);
+    expect(x).toBeLessThanOrEqual(now.range[1]);
+    FELT.w = 350;
+  });
+
   it("plays nothing while the page is hidden: no moment, no walk back, its figure's animations paused", async () => {
     await draw();
     hidden = true;

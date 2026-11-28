@@ -248,3 +248,8 @@
 @media (prefers-reduced-motion: reduce) {
   .coll-swap { animation: none; }
 }
+/* the stage's look line stays one line: its colour's name gives way to an ellipsis first, then how it was got */
+.coll-status-look { display: flex; justify-content: center; white-space: pre; min-width: 0; }
+.coll-status-look > span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.coll-status-name { flex: 0 1000 auto; }
+.coll-status-how { flex: 0 1 auto; max-width: calc(100% - 4.5em); }

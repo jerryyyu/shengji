@@ -375,6 +375,59 @@ try {
     await stageBeats(page, device);
     await page.context().close();
   }
+  // the stage's one status line, the colour's name and how it was got, stays one line at 320 px in every
+  // language, for every look of every companion owned: a won count, a purchase, a gift, a locked colour
+  if (!only || only.test("phone-320")) {
+    const LAMB = "com.jerryyu.shengji.companion.lamb", PANDA = "com.jerryyu.shengji.companion.panda";
+    const COLOURS = { tractor: ["red", "green", "blue", "yellow", "orange", "jade", "porcelain", "ink"], bun: ["plain", "custard", "taro", "peach"],
+      chick: ["yellow", "cream", "cocoa", "ink"], sparrow: ["tree", "java", "snow", "oriole"], lamb: ["newyear", "jade", "ink", "lacquer"],
+      panda: ["classic", "russet", "ink", "gilded"] };
+    const me = (locked) => ({ name: "J", email: "j@x", picture: null, display_name: null, name_shown: "J", rounds_played: 1200, ranked_wins: locked ? 999 : 2000,
+      ranked_games: 300, look: "tractor/red", companions: "individual", products: [LAMB, PANDA], features: { collection: true },
+      purchased_on: { [LAMB]: "2025-11-27" }, gifts: [PANDA],
+      looks: Object.entries(COLOURS).flatMap(([k, cs]) => cs.map((c, i) => {
+        const product = k === "lamb" ? LAMB : k === "panda" ? PANDA : null;
+        const earned = k === "tractor" && i > 0;
+        return { id: `${k}/${c}`, unlocked: !(earned && locked), needs: earned ? { count: "ranked_wins", of: 1000 } : null, product };
+      })) });
+    for (const [lang, locked] of [["en", false], ["en", true], ["zh-Hans", false], ["zh-Hans", true], ["zh-Hant", false], ["zh-Hant", true]]) {
+      const ctx = await browser.newContext({ viewport: { width: Number(process.env.LINE_W ?? 320), height: 640 }, hasTouch: true, deviceScaleFactor: 2 });
+      const page = await ctx.newPage();
+      await page.addInitScript((lang) => { try { localStorage.setItem("shengji.coach", "off"); localStorage.setItem("shengji.muted", "1");
+        localStorage.setItem("shengji.automated", "1"); localStorage.setItem("shengji.language", lang); } catch {} }, lang);
+      await page.route("**/api/**", (r) => r.fulfill({ status: 404, json: { detail: "none" } }));
+      await page.route("**/api/auth/config", (r) => r.fulfill({ json: { google_client_id: "test.apps", device_accounts: false, collection: true } }));
+      await page.route("**/api/me", (r) => r.fulfill({ json: me(locked) }));
+      await page.addInitScript(fakeSocketScript([]));
+      await page.goto(new URL("#/collection", BASE).href);
+      const name = `phone-320 ${lang}${locked ? " locked" : ""}`;
+      await scenario(rep, `${name} the stage's status line`, page, async () => {
+        await page.waitForSelector(".coll-yours .coll-tile");
+        const wrapped = [], lines = new Set();
+        for (let i = 0; i < await page.locator(".coll-yours .coll-tile").count(); i++) {
+          await page.locator(".coll-yours .coll-tile").nth(i).tap();
+          await sleep(250);
+          for (let j = 0; j < await page.locator(".char-swatches .coll-swatch").count(); j++) {
+            await page.locator(".char-swatches .coll-swatch").nth(j).tap();
+            const got = await page.evaluate(() => {
+              const p = document.querySelector(".char-page .coll-status"), r = p.getBoundingClientRect(), lh = parseFloat(getComputedStyle(p).fontSize) * 1.6;
+              const kids = [...p.children].map((k) => k.getBoundingClientRect());
+              return { text: p.textContent, h: r.height, lh, inside: kids.every((k) => k.left >= r.left - 0.5 && k.right <= r.right + 0.5),
+                oneRow: kids.every((k) => Math.abs(k.top - (kids[0]?.top ?? k.top)) < 1), fits: p.scrollWidth <= p.clientWidth + 1, onScreen: r.right <= innerWidth,
+                shown: kids.map((k) => Math.round(k.width)) };
+            });
+            lines.add(got.text);
+            if (process.env.SHOW_LINES) console.log(`${lang} ${got.text} -> ${got.shown.join("/")} px`);
+            if (!(got.h <= got.lh && got.inside && got.oneRow && got.fits && got.onScreen)) wrapped.push(JSON.stringify(got));
+          }
+        }
+        const how = [...lines].filter((l) => l.includes(" · "));
+        await rep.check(`${name} the stage's status line is one line at 320 px for every look (${lines.size} lines)`,
+          wrapped.length ? wrapped.slice(0, 3).join("; ") : lines.size >= 20 && how.length > 0 ? null : `only ${lines.size} lines read`, page);
+      });
+      await ctx.close();
+    }
+  }
   // the same lower taps in WebKit, the engine of the iOS app: a smooth scroll it is given while the page
   // shrinks under it (a Coming soon stage is shorter) is dropped there, not in Chrome
   const wk = await webkit.launch();

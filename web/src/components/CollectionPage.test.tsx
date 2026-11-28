@@ -144,7 +144,7 @@ describe("the stage's line and button", () => {
     const swatch = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".char-swatches .coll-swatch")]
       .find((s) => s.getAttribute("aria-label")!.startsWith(name))!;
     await act(async () => { swatch("Imperial yellow").click(); });
-    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("Win 10 ranked rounds to unlock · 0 of 10");
+    expect(host.querySelector(".char-page .coll-status")?.textContent).toBe("Imperial yellow · Win 10 ranked rounds to unlock · 0 of 10");
     const use = host.querySelector<HTMLButtonElement>(".coll-use")!;
     expect(use.textContent).toBe("Use");
     expect(use.disabled).toBe(true);
@@ -225,12 +225,12 @@ describe("the stage's one line says how an owned look was got", () => {
   it("a Tractor colour won: the count that unlocked it, worn or only shown; the button is unchanged", async () => {
     signIn({ look: "tractor/orange" });
     await draw();
-    expect(line()).toBe("Unlocked with 25 ranked rounds won");
+    expect(line()).toBe("Lantern orange · 25 ranked rounds won");
     expect(button()).toBe("In use");
     signIn({ look: "tractor/red" });
     await draw();
     await act(async () => { host.querySelector<HTMLButtonElement>('.char-swatches [aria-label^="Lantern orange"]')!.click(); });
-    expect(line()).toBe("Unlocked with 25 ranked rounds won");
+    expect(line()).toBe("Lantern orange · 25 ranked rounds won");
     expect(button()).toBe("Use");
   });
 
@@ -238,14 +238,20 @@ describe("the stage's one line says how an owned look was got", () => {
     signIn({ look: "tractor/red" });
     await draw();
     await act(async () => { host.querySelector<HTMLButtonElement>('.char-swatches [aria-label^="Jade"]')!.click(); });
-    expect(line()).toBe("Win 50 ranked rounds to unlock · 30 of 50");
+    expect(line()).toBe("Jade · Win 50 ranked rounds to unlock · 30 of 50");
   });
 
-  it("a purchase: the date it was bought, in the viewer's own date format", async () => {
-    signIn({ look: "lamb/ink", products: [LAMB], purchased_on: { [LAMB]: "2026-11-27" } });
+  it("a purchase: the colour, then the date it was bought in the viewer's own date format, the year only when not this one", async () => {
+    const thisYear = new Date().getFullYear();
+    signIn({ look: "lamb/ink", products: [LAMB], purchased_on: { [LAMB]: `${thisYear}-11-27` } });
     await draw();
-    const date = new Date(2026, 10, 27).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-    expect(line()).toBe(`Purchased ${date}`);
+    const date = new Date(thisYear, 10, 27).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+    expect(line()).toBe(`Ink wash · Purchased ${date}`);
+    expect(line()).not.toMatch(new RegExp(String(thisYear)));
+    signIn({ look: "lamb/ink", products: [LAMB], purchased_on: { [LAMB]: `${thisYear - 1}-11-27` } });
+    await draw();
+    const old = new Date(thisYear - 1, 10, 27).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+    expect(line()).toBe(`Ink wash · Purchased ${old}`);
     expect(line()).toMatch(/27/);
     expect(button()).toBe("In use");
   });
@@ -253,12 +259,12 @@ describe("the stage's one line says how an owned look was got", () => {
   it("a gift: one word, no date, and no Buy", async () => {
     signIn({ look: "lamb/ink", products: [LAMB], gifts: [LAMB] });
     await draw();
-    expect(line()).toBe("Gift");
+    expect(line()).toBe("Ink wash · Gift");
     expect(button()).toBe("In use");
     // a gift the account also bought shows the purchase
     signIn({ look: "lamb/ink", products: [LAMB], gifts: [], purchased_on: { [LAMB]: "2026-11-27" } });
     await draw();
-    expect(line()).toMatch(/^Purchased /);
+    expect(line()).toMatch(/^Ink wash · Purchased /);
   });
 
   it("a look free from the start, and one kept from before its count, name the look: no Free", async () => {
@@ -268,19 +274,19 @@ describe("the stage's one line says how an owned look was got", () => {
     expect(line()).not.toMatch(/Free|Unlocked|Purchased/);
     signIn({ look: "tractor/jade", ranked_wins: 3, looks: lookCatalogue({ ranked_wins: 3 }, "tractor/jade") });
     await draw();
-    expect(line()).not.toMatch(/Unlocked/);
+    expect(line()).toBe(lookNameEn("tractor/jade"));
   });
 
   it("reads in Simplified and Traditional Chinese", async () => {
     for (const [lang, won, bought, gift] of [
-      ["zh-Hans", "赢 25 局排位解锁", "2026年11月27日购买", "赠送"],
-      ["zh-Hant", "贏 25 局排位解鎖", "2026年11月27日購買", "贈送"],
+      ["zh-Hans", "灯笼橙 · 赢 25 局排位", "水墨 · 2025年11月27日购买", "水墨 · 赠送"],
+      ["zh-Hant", "燈籠橙 · 贏 25 局排位", "水墨 · 2025年11月27日購買", "水墨 · 贈送"],
     ] as const) {
       setLanguageChoice(lang);
       signIn({ look: "tractor/orange" });
       await draw();
       expect(line()).toBe(won);
-      signIn({ look: "lamb/ink", products: [LAMB], purchased_on: { [LAMB]: "2026-11-27" } });
+      signIn({ look: "lamb/ink", products: [LAMB], purchased_on: { [LAMB]: "2025-11-27" } });
       await draw();
       expect(line()).toBe(bought);
       signIn({ look: "lamb/ink", products: [LAMB], gifts: [LAMB] });

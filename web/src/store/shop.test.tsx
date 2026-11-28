@@ -929,6 +929,37 @@ describe("a refusal in plain words", () => {
     }
   });
 
+  it("a restore whose purchases another account holds says where they are, under Restore purchases", async () => {
+    nativeShell();
+    authState.current = { status: "in", clientId: "cid", user };
+    globalThis.fetch = vi.fn(async (url: string) => (url === "/api/store/verify"
+      ? { status: 409, json: async () => ({ detail: "held_by_other" }) }
+      : { status: 200, json: async () => authState.current.user }) as Response) as unknown as typeof fetch;
+    plugin.restore.mockImplementationOnce(async () => ({ transactions: [{ jws: "taken.jws.sig", productId: LAMB, transactionId: "71" }] }));
+    await draw();
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-restore")!.click(); });
+    await settle();
+    await settle();
+    expect(host.querySelector(".coll-grid-status")?.textContent).toBe(HELD);
+    // settled: acknowledged, never handed over again
+    expect(plugin.finish).toHaveBeenCalledWith({ transactionId: "71" });
+  });
+
+  it("a double tap on Buy opens Apple's sheet once", async () => {
+    nativeShell();
+    authState.current = { status: "in", clientId: "cid", user };
+    await draw();
+    await openTile(".coll-more", 0);
+    let pay!: (v: unknown) => void;
+    plugin.purchase.mockImplementationOnce(() => new Promise((r) => { pay = r; }) as never);
+    const button = host.querySelector<HTMLButtonElement>(".coll-use.gold")!;
+    await act(async () => { button.click(); button.click(); });
+    await act(async () => { host.querySelector<HTMLButtonElement>(".coll-use.gold")?.click(); });
+    expect(plugin.purchase).toHaveBeenCalledTimes(1);
+    await act(async () => { pay({ status: "cancelled" }); });
+    await settle();
+  });
+
   it("never shows a raw code on the store's status lines", async () => {
     const codes: [string | undefined, number][] = [["held_by_other", 409], ["revoked", 409], ["wrong_app", 409], ["unknown_token", 409],
       ["storefront", 403], ["bad_signature", 400], [undefined, 503], ["Too many requests; try again in a minute.", 429]];

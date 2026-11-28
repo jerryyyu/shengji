@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth";
 import { refreshAccount } from "../companion/writes";
 import { guestName } from "../guestName";
@@ -12,6 +12,8 @@ import type { ShopState } from "../store/shop";
 export function RestoreRow({ onStatus }: { onStatus: (s: string) => void }) {
   const t = useT();
   const [busy, setBusy] = useState(false);
+  // a second tap before the disabled state renders is the same restore
+  const running = useRef(false);
   const signInFirst = useSignInFirst();
   return (
     <button type="button" className="grp-row coll-restore" disabled={busy}
@@ -20,6 +22,8 @@ export function RestoreRow({ onStatus }: { onStatus: (s: string) => void }) {
                 guestName.open("shop");
                 return;
               }
+              if (running.current) return;
+              running.current = true;
               setBusy(true);
               onStatus("");
               restorePurchases()
@@ -28,7 +32,7 @@ export function RestoreRow({ onStatus }: { onStatus: (s: string) => void }) {
                   if (key) onStatus(t(key));
                   else guestName.open("shop");
                 })
-                .finally(() => setBusy(false));
+                .finally(() => { running.current = false; setBusy(false); });
             }}>
       {t("home.restorePurchases")}
     </button>
@@ -48,6 +52,8 @@ export function BuyFoot({ product, shop, onOwned, onStatus }: {
   const t = useT();
   const account = useAuth();
   const [busy, setBusy] = useState(false);
+  // a second tap before the disabled state renders is the same purchase
+  const running = useRef(false);
   const price = shop.prices[product];
   const signInFirst = useSignInFirst();
   const token = account.status === "in" && isPayerToken(account.user?.store_token);
@@ -69,7 +75,8 @@ export function BuyFoot({ product, shop, onOwned, onStatus }: {
     );
   }
   const purchase = () => {
-    if (busy || !token || !price) return;
+    if (running.current || !token || !price) return;
+    running.current = true;
     setBusy(true);
     onStatus("");
     buy(product)
@@ -82,7 +89,7 @@ export function BuyFoot({ product, shop, onOwned, onStatus }: {
         if (key) onStatus(t(key), key === "home.shopHeldByOther");
         else guestName.open("shop");
       })
-      .finally(() => setBusy(false));
+      .finally(() => { running.current = false; setBusy(false); });
   };
   return (
     <div className="coll-use-row">

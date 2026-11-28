@@ -131,16 +131,23 @@ export async function buy(product: string): Promise<BuyOutcome> {
 }
 
 /** Restore purchases: everything the Apple account owns, verified again.
- *  A permanent refusal (another account's purchase) is left out; a refusal
- *  that may pass later keeps the transaction and rejects, with its reason,
- *  once every transaction has been tried. */
+ *  A permanent refusal (another account's purchase) is settled and left
+ *  out; a refusal that may pass later keeps the transaction. Once every
+ *  transaction has been tried it rejects with the first refusal that may
+ *  pass later, else with another account's hold, so the line says why a
+ *  purchase did not arrive here. */
 export async function restorePurchases(): Promise<void> {
   const list = await storeRestore();
   let retry: unknown = null;
+  let held: unknown = null;
   for (const t of list) {
-    await deliver(t).catch((err: unknown) => { if (!isPermanent(err) && retry === null) retry = err; });
+    await deliver(t).catch((err: unknown) => {
+      if (!isPermanent(err)) retry ??= err;
+      else if ((err as { reason?: string })?.reason === "held_by_other") held ??= err;
+    });
   }
   if (retry !== null) throw retry;
+  if (held !== null) throw held;
 }
 
 /** Whether the account must sign in with Apple or Google before it buys or

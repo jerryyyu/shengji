@@ -471,8 +471,9 @@ def extract_cluster(path: Path, *, store_index: int, cluster_index: int, calib: 
         ys.append(y)
         ms.append(m)
         sizes.append(receiver_sizes(rnd, seat, mem))
+        round_seed = d.record.get("round_seed")
         meta.append((trick, role_of(rnd, seat), len(d.refusals), d.round_index,
-                     d.decision_index, int(d.record.get("round_seed") or -1)))
+                     d.decision_index, -1 if round_seed is None else int(round_seed)))
         stats["refusal_states"] += bool(d.refusals)
         if split in sampler_splits and sampler_worlds and d.decision_index % sampler_stride == 0:
             seed = int(hashlib.sha256(f"{key}|{d.decision_index}".encode()).hexdigest()[:8], 16)

@@ -23,7 +23,8 @@ def _accepted_cards(root, action):
 
 
 def score_bank_root(root: TrancheRoot, *, make_bot, policy: str, seed: int, depth_worlds: int,
-                    reply_cap: int, batch_size: int, reply_value_weight: float) -> dict:
+                    reply_cap: int, batch_size: int, reply_value_weight: float,
+                    cover_winning_follow: bool = False) -> dict:
     """Score the entire paired ballot with the flat, tree and true-deal consumers.
 
     Only a complete singleton legal set or a singleton from a valid flat pass
@@ -54,7 +55,7 @@ def score_bank_root(root: TrancheRoot, *, make_bot, policy: str, seed: int, dept
         paired = compare_replayed_lead(
             root, flat_bot, seed=_stream_seed(source, b"tree"), depth_worlds=depth_worlds,
             reply_cap=reply_cap, batch_size=batch_size, reply_value_weight=reply_value_weight,
-            record_final_action=True,
+            record_final_action=True, cover_winning_follow=cover_winning_follow,
         )
     except SingleAdmittedLead as single:
         return {**identity, "eligible": False, "ineligible_reason": "single_admitted_action",

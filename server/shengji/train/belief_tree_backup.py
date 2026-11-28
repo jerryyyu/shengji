@@ -7,7 +7,8 @@ import numpy as np
 from ..ai.belief_numpy import decision_inputs
 from ..ai.cwv_policy import afterstate
 from ..ai.refusal import observe_refusal, on_record
-from ..engine.legal import validate_follow
+from ..ai.heuristic import HeuristicBot
+from ..engine.legal import beats, validate_follow
 from ..engine.round import actual_play_after
 from ..harvest.legal import iter_follow_actions
 from ..rl.value_afterstate import terminal_distribution
@@ -53,8 +54,25 @@ def _reply_node(child, ledger, model, replies):
     return _preferences(policy_from_states(model, q), replies), score
 
 
+def _bounded_replies(child, cap, cover_winning_follow):
+    hand = child.hands[child.turn]
+    if not child.trick.plays:
+        return [list(cards) for cards in islice(single_component_leads(hand, child.ordering), cap)]
+    lead = child.trick.plays[0].cards
+    replies = [list(cards) for cards in islice(iter_follow_actions(hand, lead, child.ordering), cap)]
+    if cover_winning_follow and len(replies) == cap:
+        bot = HeuristicBot()
+        _, suit, top = bot._current_winner(child)
+        if not any(beats(cards, lead, suit, top, child.ordering)[0] for cards in replies):
+            winner = bot._cheapest_winning(sorted(hand), lead, suit, top, child.ordering)
+            if winner is not None:
+                validate_follow(winner, hand, lead, child.ordering)
+                replies[-1] = sorted(winner)
+    return replies
+
+
 def root_reply_backup(root, actions, root_worlds, *, belief, model, refusals, seed, depth_worlds,
-                      reply_cap, batch_size, reply_value_weight):
+                      reply_cap, batch_size, reply_value_weight, cover_winning_follow=False):
     """Expected root-team values, indexed by supplied outer world and root action.
 
     Each reply distribution starts with the unified policy prior from the acting
@@ -107,11 +125,7 @@ def root_reply_backup(root, actions, root_worlds, *, belief, model, refusals, se
             if child.phase == "round_end":
                 result[w, a] = terminal_distribution(child, seat) @ LEVEL_SUPPORT
                 continue
-            reply_seat = child.turn
-            hand = child.hands[reply_seat]
-            choices = (iter_follow_actions(hand, child.trick.plays[0].cards, child.ordering)
-                       if child.trick.plays else single_component_leads(hand, child.ordering))
-            replies = [list(cards) for cards in islice(choices, reply_cap)]
+            replies = _bounded_replies(child, reply_cap, cover_winning_follow)
             log_prior, score = _reply_node(child, branch_ledger, model, replies)
             outer = [(child.hands, child.buried)]
             outer_values = paired_reply_values(child, replies, outer, batch_size=batch_size,

@@ -79,17 +79,20 @@ def main(argv=None):
     for flag in ("seed", "depth-worlds", "reply-cap", "batch-size"):
         p.add_argument("--" + flag, type=int)
     p.add_argument("--reply-value-weight", type=float)
+    p.add_argument("--cover-winning-follow", action="store_true")
     args = p.parse_args(argv)
     output = Path(args.output)
     if output.exists():
         raise FileExistsError(output)
     settings = {key: getattr(args, key) for key in pilot_settings() if getattr(args, key) is not None}
     if args.pilot_settings:
-        if settings:
+        if settings or args.cover_winning_follow:
             p.error("--pilot-settings cannot be combined with explicit search settings")
         settings = pilot_settings()
     elif settings.keys() != pilot_settings().keys():
         p.error("supply --pilot-settings or all five search settings")
+    if args.cover_winning_follow:
+        settings["cover_winning_follow"] = True
     result = score_reserved_deck(args.bank, bank_sha256=args.bank_sha256, store=args.store,
                                  round_seed=args.round_seed, settings=settings)
     # A consumer sees either all four completed turns or no result at this path.

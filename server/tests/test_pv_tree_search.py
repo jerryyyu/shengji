@@ -1374,6 +1374,24 @@ def test_registered_tree_bot_on_a_real_package_plays_a_whole_deal(package):
     assert evaluator.model_rows == rows
 
 
+def test_capped_follow_can_include_a_winning_ruff_without_expanding_the_ballot():
+    from types import SimpleNamespace
+    from shengji.engine.cards import Ordering
+    from shengji.engine.round import Trick, TrickPlay
+    from shengji.train.belief_tree_backup import _bounded_replies
+
+    hand = ["H5", "CA", "S3", "SK", "BJ", "CK", "H10", "SJ"]
+    trick = Trick(0, [TrickPlay(0, ["D9", "DJ"])])
+    child = SimpleNamespace(hands=[[], hand, [], []], turn=1, trick=trick, ordering=Ordering("S", "4"))
+    prefix = _bounded_replies(child, 4, False)
+    covered = _bounded_replies(child, 4, True)
+    assert covered[:3] == prefix[:3] and len(covered) == 4
+    assert all(not all(child.ordering.eff_suit(c) == "T" for c in reply) for reply in prefix)
+    assert all(child.ordering.eff_suit(c) == "T" for c in covered[-1])
+    assert len({tuple(cards) for cards in covered}) == 4
+    assert _bounded_replies(child, 28, True) == _bounded_replies(child, 28, False)
+
+
 def test_belief_reply_backup_weights_actor_replies_on_original_root_world(monkeypatch):
     from shengji.engine.round import actual_play_after
     from shengji.train.belief_tree_backup import root_reply_backup
@@ -1536,8 +1554,12 @@ def test_reserved_deck_cli_scores_both_mirrors_and_publishes_once(
     monkeypatch.setattr(bank, "make_bot", make_registered)
     if substitution:
         argv = argv[:argv.index("--seed")] + ["--pilot-settings"]
-        with pytest.raises(SystemExit):
-            bank.main(argv + ["--depth-worlds", "3"])
+        for override in (["--depth-worlds", "3"], ["--cover-winning-follow"]):
+            with pytest.raises(SystemExit):
+                bank.main(argv + override)
+            assert not output.exists()
+    else:
+        argv.append("--cover-winning-follow")
     bank.main(argv)
     result = json.loads(output.read_bytes())
     assert result["settings"]["reply_value_weight"] == 1.
@@ -1548,9 +1570,12 @@ def test_reserved_deck_cli_scores_both_mirrors_and_publishes_once(
     expected_eligible = [True] * 4 if substitution else [True, False, True, False]
     assert [row["eligible"] for row in result["rows"]] == expected_eligible
     from shengji.train.belief_tree_bank_analysis import checked_deck
-    gains, _ = checked_deck(result, deck, source=source, bank_sha256=pin,
-                            settings=dict(seed=29, depth_worlds=2, reply_cap=4,
-                                          batch_size=32, reply_value_weight=1.))
+    expected_settings = dict(seed=29, depth_worlds=2, reply_cap=4, batch_size=32, reply_value_weight=1.)
+    if not substitution:
+        with pytest.raises(ValueError, match="scoring settings changed"):
+            checked_deck(result, deck, source=source, bank_sha256=pin, settings=expected_settings)
+        expected_settings["cover_winning_follow"] = True
+    gains, _ = checked_deck(result, deck, source=source, bank_sha256=pin, settings=expected_settings)
     assert gains == [(r["sf_gain"], r["vt_gain"]) for r in result["rows"] if r["eligible"]]
     with pytest.raises(FileExistsError):
         bank.main(argv)

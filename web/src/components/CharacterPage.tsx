@@ -89,7 +89,8 @@ function unlockLine(t: ReturnType<typeof useT>, entry: LookEntry, user: AuthUser
 const DATE_LOCALE = { en: undefined, "zh-Hans": "zh-CN", "zh-Hant": "zh-TW" } as const;
 
 /** How `user` got an owned look, for the one status line: the date its
- *  companion was bought, or the count that unlocked its colour. "" for a look
+ *  companion was bought, Gift for one given to the account, or the count
+ *  that unlocked its colour. "" for a look
  *  free from the start, and for one kept in use from before its count was
  *  reached: the line then names the look. */
 export function provenanceLine(t: ReturnType<typeof useT>, entry: LookEntry, user: AuthUser | null): string {
@@ -100,6 +101,7 @@ export function provenanceLine(t: ReturnType<typeof useT>, entry: LookEntry, use
     const date = new Date(y, m - 1, d).toLocaleDateString(DATE_LOCALE[locale()], { day: "numeric", month: "short", year: "numeric" });
     return t("home.purchasedOn", { date });
   }
+  if (entry.product && user.gifts?.includes(entry.product)) return t("home.gift");
   if (!entry.needs || countOf(user, entry.needs.count) < entry.needs.of) return "";
   const { count, of } = entry.needs;
   if (count === "rounds") return t("home.unlockedRounds", { of: num(of) });

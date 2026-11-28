@@ -158,6 +158,11 @@ COMPANION_PRODUCTS: dict[str, str] = {
 # store opens). Refunds and revocations from Apple apply either way.
 STORE_ENV = "STORE_ENABLED"
 STORE_ACCOUNTS_ENV = "STORE_ACCOUNTS"
+# An account whose id is in ``STORE_COMP_ACCOUNTS`` (comma-separated ids, a
+# deploy secret) owns every sold companion as a gift (``comp_products``):
+# ownership reads count it, but no entitlement row is written, so purchases,
+# refunds and restores never see it, and taking the id out takes it away.
+STORE_COMP_ACCOUNTS_ENV = "STORE_COMP_ACCOUNTS"
 DEFAULT_COMPANION = "tractor"
 DEFAULT_COLOUR = "red"
 DEFAULT_LOOK = f"{DEFAULT_COMPANION}/{DEFAULT_COLOUR}"
@@ -290,6 +295,18 @@ def collection_allowlist() -> frozenset[int]:
 
 def store_allowlist() -> frozenset[int]:
     return _account_allowlist(STORE_ACCOUNTS_ENV)
+
+
+def comp_allowlist() -> frozenset[int]:
+    return _account_allowlist(STORE_COMP_ACCOUNTS_ENV)
+
+
+def comp_products(user_id: int | None) -> frozenset[str]:
+    """The sold products ``user_id`` owns as a gift: every one when the
+    account is in ``STORE_COMP_ACCOUNTS``, else none."""
+    if user_id is None or int(user_id) not in comp_allowlist():
+        return frozenset()
+    return frozenset(COMPANION_PRODUCTS.values())
 
 
 def collection_for(user_id: int | None) -> bool:
@@ -1317,17 +1334,19 @@ class Store:
         """The product ids the account holds an unrevoked entitlement to,
         bought in one of ``environments`` (default: the ones the store
         accepts, ``store_environments``), so a grant from an environment no
-        longer accepted stops counting."""
+        longer accepted stops counting, together with its gifts
+        (``comp_products``)."""
+        gifts = comp_products(user_id)
         envs = sorted(store_environments() if environments is None else environments)
         if not envs:
-            return frozenset()
+            return gifts
         marks = ",".join("?" * len(envs))
         with closing(self._open()) as conn:
             rows = conn.execute(
                 f"""SELECT product_id FROM entitlements
                     WHERE user_id = ? AND revoked_at IS NULL AND environment IN ({marks})""",
                 (user_id, *envs)).fetchall()
-        return frozenset(r["product_id"] for r in rows)
+        return frozenset(r["product_id"] for r in rows) | gifts
 
     def purchase_dates(self, user_id: int) -> dict[str, str]:
         """The UTC date (``YYYY-MM-DD``) each product ``owned_products`` counts
@@ -1347,9 +1366,12 @@ class Store:
         """``owned_products`` of each of ``user_ids`` that owns any."""
         ids = sorted({int(u) for u in user_ids})
         envs = sorted(store_environments())
-        if not ids or not envs:
-            return {}
         out: dict[int, set[str]] = {}
+        for u in ids:
+            if gifts := comp_products(u):
+                out[u] = set(gifts)
+        if not ids or not envs:
+            return {k: frozenset(v) for k, v in out.items()}
         with closing(self._open()) as conn:
             rows = conn.execute(
                 f"""SELECT user_id, product_id FROM entitlements
@@ -2646,7 +2668,8 @@ def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int
     (``Store.recent_looks``), which orders the Collection's Yours,
     ``companions`` (``companions_mode``), ``products``, the App Store
     products the account owns (``Store.owned_products``), ``purchased_on``,
-    the date each of those was bought (``Store.purchase_dates``), and
+    the date each of those was bought (``Store.purchase_dates``), ``gifts``,
+    the owned ones it holds only as a gift (``comp_products``), and
     ``features.collection`` (``collection_for``) and ``features.store``
     (``store_for``), and, where the store is on for an account signed in
     with Apple or Google, ``store_token``, which the app passes to every
@@ -2667,6 +2690,7 @@ def public_user(row: Mapping[str, Any], rounds_played: int = 0, ranked_wins: int
             "companions": companions_mode(row),
             "products": sorted(owned),
             "purchased_on": {p: d for p, d in sorted((purchased or {}).items()) if p in owned},
+            "gifts": sorted((comp_products(user_id) & frozenset(owned)) - frozenset(purchased or {})),
             **({"store_token": store_token} if shop and store_token else {}),
             "features": {"collection": collection_for(user_id) if user_id is not None else False,
                          "store": shop}}

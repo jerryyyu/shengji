@@ -781,3 +781,61 @@ def test_me_says_the_date_each_owned_companion_was_bought_and_nothing_more(accou
                     revocationDate=int(time.time() * 1000), revocationReason=0)
     assert client.post("/api/store/notify", json=_notification(chain, "REFUND", refunded)).status_code == 200
     assert client.get("/api/me", headers=shop).json()["purchased_on"] == {}
+
+
+# ------------------------------------------------------------ complimentary companions
+def _entitlement_rows(a) -> int:
+    with a.STORE._open() as conn:
+        return conn.execute("SELECT COUNT(*) FROM entitlements").fetchone()[0]
+
+
+def test_a_comp_account_owns_every_sold_companion_without_an_entitlement(accounts_on, client, shop, monkeypatch):
+    a = accounts_on
+    monkeypatch.setenv("STORE_COMP_ACCOUNTS", " 7, 1 ,x")
+    assert a.comp_products(1) == {LAMB, PANDA} and a.comp_products(2) == frozenset()
+    assert a.comp_products(None) == frozenset()
+    assert a.STORE.owned_products(1) == {LAMB, PANDA}
+    assert a.STORE.owned_products(1, environments=()) == {LAMB, PANDA}
+    assert a.STORE.owned_by([1, 2]) == {1: {LAMB, PANDA}}
+    me = client.get("/api/me", headers=shop).json()
+    assert me["products"] == [LAMB, PANDA] and me["gifts"] == [LAMB, PANDA]
+    assert me["purchased_on"] == {}
+    sold = [e for e in me["looks"] if e["product"]]
+    assert sold and all(e["unlocked"] for e in sold)      # no Buy for any of them
+    resp = client.put("/api/me/look", json={"look": "panda/gilded"}, headers=shop)
+    assert resp.status_code == 200 and resp.json()["look"] == "panda/gilded"
+    assert a.account_look(1) == "panda/gilded"
+    assert _entitlement_rows(a) == 0
+
+
+def test_a_comp_account_that_also_bought_shows_the_purchase_not_a_gift(accounts_on, client, shop, chain, monkeypatch):
+    monkeypatch.setenv("STORE_COMP_ACCOUNTS", "1")
+    resp = client.post("/api/store/verify", json={"jws": chain.sign(_txn())}, headers=shop)
+    assert resp.status_code == 200 and _entitlement_rows(accounts_on) == 1
+    me = resp.json()
+    assert me["gifts"] == [PANDA] and set(me["purchased_on"]) == {LAMB}
+
+
+def test_taking_the_id_out_takes_the_gift_away(accounts_on, client, shop, monkeypatch):
+    from shengji.api import ratings
+
+    a = accounts_on
+    monkeypatch.setenv("STORE_COMP_ACCOUNTS", "1")
+    assert client.put("/api/me/look", json={"look": "lamb/ink"}, headers=shop).status_code == 200
+    _rounds_at(a.STORE, 1, [time.time() - 60])
+    assert ratings.leaderboard(a.STORE, "all", 1)["me"]["look"] == "lamb/ink"
+    with client.websocket_connect("/ws", headers=shop) as ws:
+        ws.send_json({"type": "create_room"})
+        assert _drain(ws, "room")["players"][0]["look"] == "lamb/ink"
+
+    monkeypatch.delenv("STORE_COMP_ACCOUNTS")
+    a.STORE.seen_looks.clear()
+    me = client.get("/api/me", headers=shop).json()
+    assert me["products"] == [] and me["gifts"] == [] and me["look"] == a.DEFAULT_LOOK
+    assert client.put("/api/me/look", json={"look": "lamb/ink"}, headers=shop).status_code == 403
+    with client.websocket_connect("/ws", headers=shop) as ws:
+        ws.send_json({"type": "create_room"})
+        assert _drain(ws, "room")["players"][0]["look"] == a.DEFAULT_LOOK
+    assert ratings.leaderboard(a.STORE, "all", 1)["me"]["look"] == a.DEFAULT_LOOK
+    assert a.STORE.owned_by([1]) == {}
+    assert _entitlement_rows(a) == 0

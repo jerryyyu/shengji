@@ -46,6 +46,8 @@ export interface AuthUser {
   products?: string[];
   /** The date (`YYYY-MM-DD`, UTC) each owned product was bought. */
   purchased_on?: Record<string, string>;
+  /** The owned products this account holds as a gift, not a purchase. */
+  gifts?: string[];
   /** The UUID every purchase carries as its `appAccountToken`, so Apple
    *  signs which account paid; sent only where the store is on. */
   store_token?: string;
@@ -76,6 +78,7 @@ function toUser(body: Partial<AuthUser> & { name: string; email: string }): Auth
       ? { purchased_on: Object.fromEntries(Object.entries(body.purchased_on)
             .filter(([p, d]) => typeof p === "string" && typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d))) }
       : {}),
+    ...(Array.isArray(body.gifts) ? { gifts: body.gifts.filter((p) => typeof p === "string") } : {}),
     ...(typeof body.store_token === "string" && body.store_token ? { store_token: body.store_token } : {}),
     ...(body.features?.collection === true || body.features?.store === true
       ? { features: { ...(body.features.collection === true ? { collection: true } : {}),

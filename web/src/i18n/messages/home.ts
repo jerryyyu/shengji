@@ -47,6 +47,7 @@ export const home = defineMessages({
   "home.unlockedRankedRounds": { en: "Unlocked with {of} ranked rounds won", zh: "赢 {of} 局排位解锁", hant: "贏 {of} 局排位解鎖" },
   "home.unlockedRankedWin": { en: "Unlocked with a ranked round won", zh: "赢一局排位解锁", hant: "贏一局排位解鎖" },
   "home.purchasedOn": { en: "Purchased {date}", zh: "{date}购买", hant: "{date}購買" },
+  "home.gift": { en: "Gift", zh: "赠送", hant: "贈送" },
   // the Collection's grid and the store: its two sections, a coming
   // character, the website's one row, a store character's foot, the restore
   // row, and the one status line of a purchase

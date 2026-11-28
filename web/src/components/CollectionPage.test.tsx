@@ -250,6 +250,17 @@ describe("the stage's one line says how an owned look was got", () => {
     expect(button()).toBe("In use");
   });
 
+  it("a gift: one word, no date, and no Buy", async () => {
+    signIn({ look: "lamb/ink", products: [LAMB], gifts: [LAMB] });
+    await draw();
+    expect(line()).toBe("Gift");
+    expect(button()).toBe("In use");
+    // a gift the account also bought shows the purchase
+    signIn({ look: "lamb/ink", products: [LAMB], gifts: [], purchased_on: { [LAMB]: "2026-11-27" } });
+    await draw();
+    expect(line()).toMatch(/^Purchased /);
+  });
+
   it("a look free from the start, and one kept from before its count, name the look: no Free", async () => {
     signIn({ look: "bun/plain" });
     await draw();
@@ -261,9 +272,9 @@ describe("the stage's one line says how an owned look was got", () => {
   });
 
   it("reads in Simplified and Traditional Chinese", async () => {
-    for (const [lang, won, bought] of [
-      ["zh-Hans", "赢 25 局排位解锁", "2026年11月27日购买"],
-      ["zh-Hant", "贏 25 局排位解鎖", "2026年11月27日購買"],
+    for (const [lang, won, bought, gift] of [
+      ["zh-Hans", "赢 25 局排位解锁", "2026年11月27日购买", "赠送"],
+      ["zh-Hant", "贏 25 局排位解鎖", "2026年11月27日購買", "贈送"],
     ] as const) {
       setLanguageChoice(lang);
       signIn({ look: "tractor/orange" });
@@ -272,6 +283,9 @@ describe("the stage's one line says how an owned look was got", () => {
       signIn({ look: "lamb/ink", products: [LAMB], purchased_on: { [LAMB]: "2026-11-27" } });
       await draw();
       expect(line()).toBe(bought);
+      signIn({ look: "lamb/ink", products: [LAMB], gifts: [LAMB] });
+      await draw();
+      expect(line()).toBe(gift);
     }
   });
 });

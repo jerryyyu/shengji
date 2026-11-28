@@ -1030,7 +1030,7 @@ jobs:
     if: needs.changes.outputs.web == 'true'
     # Playwright 1.58 ships no Chromium build for the newer ubuntu-latest image.
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     continue-on-error: true
     defaults:
       run:

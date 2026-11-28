@@ -13,11 +13,15 @@
 // A session is one stretch of use: a new one starts only after an observed
 // absence of SESSION_GAP_MS or more, the app going to the background (or its
 // page unloading, as when the app is closed) and then coming back or being
-// launched again. Time in the foreground never starts one. An ask is reported as one
+// launched again. Time in the foreground never starts one. A session that went
+// wrong while the app was in use (a socket lost, or an action left unanswered,
+// past TROUBLE_GRACE_MS of being in view) asks nothing; its wins still count,
+// and a later session may ask. An ask is reported as one
 // `review_prompt` telemetry event (its trigger and the app version, no ids);
 // one made offline, where telemetry is off, goes from the next online page.
 import { isNative } from "./native";
 import { nativeStore } from "./i18n/locale";
+import { subscribeLink, subscribeStalled } from "./link";
 
 export const REVIEW_KEY = "shengji.review";
 export const SESSION_GAP_MS = 30 * 60 * 1000;
@@ -28,6 +32,9 @@ export const PROMPT_DELAY_MS = 1500;
 /** Each count stops here. */
 export const MAX_COUNT = 99;
 export const REVIEW_PLUGIN = "ShengjiReview";
+/** A drop or a stall this soon after the app comes into view is the socket
+ *  iOS let die in the background being found and replaced, not trouble. */
+export const TROUBLE_GRACE_MS = 10_000;
 
 export type WinKind = "ranked" | "casual";
 export type Trigger = "ranked2" | "casual5";
@@ -42,6 +49,8 @@ export interface ReviewState {
   session: number;
   ranked: number;
   casual: number;
+  /** The session that went wrong in use; 0 for none. */
+  troubled: number;
   /** The app version last asked for, and why; null before any ask. */
   prompted: string | null;
   trigger: Trigger | null;
@@ -50,7 +59,7 @@ export interface ReviewState {
 }
 
 export const FRESH: ReviewState = {
-  first: 0, away: 0, session: 0, ranked: 0, casual: 0, prompted: null, trigger: null, reported: true,
+  first: 0, away: 0, session: 0, ranked: 0, casual: 0, troubled: 0, prompted: null, trigger: null, reported: true,
 };
 
 export interface Kv {
@@ -80,6 +89,7 @@ export function parseState(raw: string | null): ReviewState {
     first: time(o.first), away: time(o.away),
     session: Math.max(0, Math.min(1_000_000, Math.floor(Number(o.session) || 0))),
     ranked: count(o.ranked), casual: count(o.casual),
+    troubled: Math.max(0, Math.min(1_000_000, Math.floor(Number(o.troubled) || 0))),
     prompted: typeof o.prompted === "string" && o.prompted.length <= 32 ? o.prompted : null,
     trigger,
     reported: o.reported !== false,
@@ -101,6 +111,12 @@ export function leave(s: ReviewState, now: number): ReviewState {
   return s.first === 0 || s.away !== 0 ? s : { ...s, away: now };
 }
 
+/** The session in use at `now` went wrong. */
+export function markTrouble(s: ReviewState, now: number): ReviewState {
+  const t = s.first === 0 ? touch(s, now) : s;
+  return t.troubled === t.session ? t : { ...t, troubled: t.session };
+}
+
 /** A round your team won, counted; and the ask it earns, if any: a later
  *  session than the first, a count at its bar, and no ask yet for `version`. */
 export function recordWin(s: ReviewState, kind: WinKind, version: string | null, now: number):
@@ -108,7 +124,9 @@ export function recordWin(s: ReviewState, kind: WinKind, version: string | null,
   // a win is played in the foreground: it starts no session itself
   const t = s.first === 0 ? touch(s, now) : s;
   const state = kind === "ranked" ? { ...t, ranked: count(t.ranked + 1) } : { ...t, casual: count(t.casual + 1) };
-  if (version === null || state.session < 2 || state.prompted === version) return { state, trigger: null };
+  if (version === null || state.session < 2 || state.troubled === state.session || state.prompted === version) {
+    return { state, trigger: null };
+  }
   const trigger: Trigger | null = state.ranked >= RANKED_WINS ? "ranked2" : state.casual >= CASUAL_WINS ? "casual5" : null;
   return { state, trigger };
 }
@@ -162,6 +180,14 @@ export class ReviewPrompt {
   away(): Promise<void> {
     return this.run((s) => {
       const next = leave(s, this.deps.now());
+      return { state: next === s ? null : next, out: undefined };
+    }, undefined);
+  }
+
+  /** This session went wrong in use: it asks nothing more. */
+  trouble(): Promise<void> {
+    return this.run((s) => {
+      const next = markTrouble(s, this.deps.now());
       return { state: next === s ? null : next, out: undefined };
     }, undefined);
   }
@@ -280,6 +306,24 @@ export const reviewPrompt = new ReviewPrompt({
   now: () => Date.now(),
 });
 
+/** Calls `mark` when the socket is lost or an action goes unanswered while
+ *  the page is in view and has been for TROUBLE_GRACE_MS; returns the
+ *  unsubscribe. */
+export function watchTrouble(mark: () => void, now: () => number): () => void {
+  const inView = () => document.visibilityState !== "hidden";
+  let since = now();
+  const shown = () => { if (inView()) since = now(); };
+  const check = () => { if (inView() && now() - since >= TROUBLE_GRACE_MS) mark(); };
+  document.addEventListener("visibilitychange", shown);
+  const offLink = subscribeLink((ev) => { if (ev.kind === "down") check(); });
+  const offStall = subscribeStalled((on) => { if (on) check(); });
+  return () => {
+    document.removeEventListener("visibilitychange", shown);
+    offLink();
+    offStall();
+  };
+}
+
 /** Starts session keeping in the app: this page load, and each return to
  *  the app, is a moment of use; going to the background marks the gap. */
 export function startReviewSessions(): void {
@@ -291,6 +335,7 @@ export function startReviewSessions(): void {
       else void reviewPrompt.touch();
     });
     window.addEventListener("pagehide", () => { void reviewPrompt.away(); });
+    watchTrouble(() => { void reviewPrompt.trouble(); }, () => Date.now());
   } catch {
     /* no document events */
   }

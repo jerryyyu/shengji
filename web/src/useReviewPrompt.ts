@@ -3,8 +3,9 @@ import type { GameState } from "./protocol";
 import { PROMPT_DELAY_MS, reviewPrompt, type ReviewPrompt, type WinKind } from "./reviewPrompt";
 
 /** The App Store rating ask (reviewPrompt.ts; a no-op outside the iOS app):
- *  a round your team won, finished in your seat and arriving live, counts as
- *  a ranked win at a matched table that ranked you, else a casual one; an ask
+ *  a round your team won, played in your seat from its deal and arriving
+ *  live, counts as a ranked win at a matched table that ranked you, else a
+ *  casual one; a round you joined mid-way counts as neither. An ask
  *  it earns goes PROMPT_DELAY_MS after the round-end card appears, and not at
  *  all once the card is gone (Next dealt, or the table closed). */
 export function useReviewPrompt(state: GameState, live: boolean, prompt: ReviewPrompt = reviewPrompt) {
@@ -15,8 +16,16 @@ export function useReviewPrompt(state: GameState, live: boolean, prompt: ReviewP
   const won = showing && seated && result.winner_team === me.team;
   const kind: WinKind = state.matched === true && !result?.unranked ? "ranked" : "casual";
   const was = useRef(showing);
-  const facts = useRef({ won, live, kind });
-  facts.current = { won, live, kind };
+  // this round's seat was taken after its deal: marked while it is in play,
+  // cleared once its card goes
+  const joined = useRef(false);
+  if (!showing) {
+    if (was.current) joined.current = false;
+    if (state.joining_you === true || state.joined_round === true || state.took_seat !== undefined) joined.current = true;
+  }
+  const whole = !joined.current && result?.unranked !== "joined";
+  const facts = useRef({ won: won && whole, live, kind });
+  facts.current = { won: won && whole, live, kind };
   useEffect(() => {
     const arrived = showing && !was.current;
     was.current = showing;

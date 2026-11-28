@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  CASUAL_WINS, FRESH, PROMPT_DELAY_MS, RANKED_WINS, REVIEW_KEY, SESSION_GAP_MS, ReviewPrompt, appVersion,
-  leave, nativeKv, nativeRequest, parseState, recordWin, touch, type Kv, type ReviewDeps, type Trigger,
+  CASUAL_WINS, FRESH, PROMPT_DELAY_MS, RANKED_WINS, REVIEW_KEY, SESSION_GAP_MS, TROUBLE_GRACE_MS, ReviewPrompt,
+  appVersion, leave, nativeKv, nativeRequest, parseState, recordWin, touch, watchTrouble, type Kv, type ReviewDeps,
+  type Trigger,
 } from "./reviewPrompt";
+import { noteLink, setStalled } from "./link";
 import { useReviewPrompt } from "./useReviewPrompt";
 import type { GameState } from "./protocol";
 
@@ -254,6 +256,95 @@ describe("review prompt rules", () => {
   });
 });
 
+describe("a session that went wrong", () => {
+  it("a session that saw trouble never asks; its wins still count, and the next session asks", async () => {
+    const h = harness();
+    await secondSession(h);
+    await h.prompt.roundWon("ranked");
+    await h.prompt.trouble();
+    expect(await h.prompt.roundWon("ranked")).toBeNull();
+    expect(await h.prompt.roundWon("casual")).toBeNull();
+    expect(await state(h)).toMatchObject({ ranked: 2, casual: 1, troubled: 2 });
+    // a return under the gap is the same session, still troubled
+    await h.prompt.away();
+    h.clock.now += SESSION_GAP_MS - 1000;
+    await h.prompt.touch();
+    expect(await h.prompt.roundWon("casual")).toBeNull();
+    await h.prompt.away();
+    h.clock.now += SESSION_GAP_MS;
+    await h.prompt.touch();
+    expect(await h.prompt.roundWon("casual")).toBe("ranked2");
+  });
+
+  it("trouble in the first session leaves the second free to ask", async () => {
+    const h = harness();
+    await h.prompt.touch();
+    await h.prompt.trouble();
+    await h.prompt.away();
+    h.clock.now += SESSION_GAP_MS;
+    await h.prompt.touch();
+    await h.prompt.roundWon("ranked");
+    expect(await h.prompt.roundWon("ranked")).toBe("ranked2");
+  });
+
+  describe("what counts as trouble", () => {
+    let hidden = false;
+    let clock = 0;
+    let marks = 0;
+    let stop: () => void = () => {};
+
+    beforeEach(() => {
+      hidden = false;
+      clock = 1_000_000;
+      marks = 0;
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => (hidden ? "hidden" : "visible") });
+      stop = watchTrouble(() => { marks += 1; }, () => clock);
+    });
+
+    afterEach(() => {
+      stop();
+      setStalled(false);
+      delete (document as unknown as { visibilityState?: unknown }).visibilityState;
+    });
+
+    function setHidden(on: boolean) {
+      hidden = on;
+      document.dispatchEvent(new Event("visibilitychange"));
+    }
+
+    it("a socket lost or an action left unanswered while the app is in use", () => {
+      clock += TROUBLE_GRACE_MS;
+      noteLink({ kind: "down", cause: "no_pong" });
+      expect(marks).toBe(1);
+      setStalled(true);
+      expect(marks).toBe(2);
+      noteLink({ kind: "up", ms: 300 });
+      expect(marks).toBe(2);
+    });
+
+    it("not the socket iOS let die in the background, found on the return", () => {
+      clock += TROUBLE_GRACE_MS;
+      setHidden(true);
+      noteLink({ kind: "down", cause: "closed" });
+      clock += SESSION_GAP_MS;
+      setHidden(false);
+      noteLink({ kind: "down", cause: "no_pong" });
+      setStalled(true);
+      clock += TROUBLE_GRACE_MS - 1;
+      noteLink({ kind: "down", cause: "replaced" });
+      expect(marks).toBe(0);
+      clock += 1;
+      noteLink({ kind: "down", cause: "no_pong" });
+      expect(marks).toBe(1);
+    });
+
+    it("not in the first seconds after a launch", () => {
+      noteLink({ kind: "down", cause: "closed" });
+      expect(marks).toBe(0);
+    });
+  });
+});
+
 describe("the web and the native bridge", () => {
   afterEach(() => {
     delete (window as unknown as { Capacitor?: unknown }).Capacitor;
@@ -382,6 +473,28 @@ describe("useReviewPrompt at the table", () => {
     await settle(PROMPT_DELAY_MS * 2);
     expect(h.asked).toBe(0);
     expect((await state(h)).casual).toBe(CASUAL_WINS - 1);
+  });
+
+  it("a round joined mid-way counts nothing; the next whole round does", async () => {
+    show(gameState({ took_seat: { name: "Bot 0", is_bot: true } }));
+    show(gameState({ winner: 0 }));
+    await settle(PROMPT_DELAY_MS * 2);
+    show(gameState({ phase: "deal", joining_you: true }));
+    show(gameState({ joined_round: true }));
+    show(gameState({ winner: 0 }));
+    await settle(PROMPT_DELAY_MS * 2);
+    const joined = gameState({ winner: 0 });
+    joined.round_result = { ...joined.round_result!, unranked: "joined" };
+    show(gameState());
+    show(joined);
+    await settle(PROMPT_DELAY_MS * 2);
+    expect(h.asked).toBe(0);
+    expect((await state(h)).casual).toBe(CASUAL_WINS - 1);
+    show(gameState({ phase: "deal" }));
+    show(gameState());
+    show(gameState({ winner: 0 }));
+    await settle(PROMPT_DELAY_MS);
+    expect(h.asked).toBe(1);
   });
 
   it("a matched table counts a ranked win; an unranked seat there counts casual", async () => {

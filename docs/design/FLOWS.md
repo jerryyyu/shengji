@@ -563,10 +563,10 @@ Home's felt brings yours (Jerry 2026-11-28: "Can we add companion to this home b
 other active elements of cards and text"). On the Play tab's moving picture your own companion stands by your hand,
 the table's figure in its colourway, under the cards: it keeps to a strip of the felt's foot that no hand, no played
 card on its way and no win tag ever reaches, measured off the felt as it is laid out, and is drawn a step smaller where
-the strip is short. At rest it takes the Collection stage's calm moments in turn (a stroll, its habit, and a store
+the strip is short or where a smaller figure has room to walk one and a half figures and a larger one would stand pinned. At rest it takes the Collection stage's calm moments in turn (a stroll, its habit, and a store
 character's trail and cue; no burst or shower comes by itself); a tap on it hops it, or plays a store character's
-special with its accent, and a tap on the felt walks it there within its strip and back to its spot 3 s after it
-stands. Nothing of it moves while the felt is out of view or the page is hidden, its pieces take the table's device
+special with its accent, and a tap anywhere on the felt walks it toward the tap as far as its strip goes, and back to its spot (the strip's
+middle) 3 s after it stands. Nothing of it moves while the felt is out of view or the page is hidden, its pieces take the table's device
 tier, and under Reduce Motion it stands still. It is drawn exactly where the table would draw yours: Show companions
 at the table off, or the Collection off for the account, draws none. No surface, control or string is added
 (`companion/HomeCompanion.tsx` in `components/LobbyPreview.tsx`).

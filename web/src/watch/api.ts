@@ -26,27 +26,39 @@ export type WatchFetch =
   | { ok: true; doc: WatchDoc }
   | { ok: false; reason: "none" | "limited" | "error" };
 
-/** The token this tab (or app session) watches by, kept for the session so a
- *  watch opened again is the same watcher to the server, not one more. */
+/** The token this tab (or app session) watches by, made here before the
+ *  first read and kept for the session, so every read of the session, a
+ *  watch opened again included, is the same watcher to the server. */
 const TOKEN_KEY = "shengji.watcher";
 const tokenOk = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9]{16,64}$/.test(v);
+let token: string | null = null;
 
-export function savedWatcher(): string | null {
-  try {
-    const v = window.sessionStorage.getItem(TOKEN_KEY);
-    return tokenOk(v) ? v : null;
-  } catch {
-    return null;
-  }
+function mint(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function saveWatcher(v: unknown): void {
-  if (!tokenOk(v)) return;
+export function watcherToken(): string {
+  if (token) return token;
   try {
-    window.sessionStorage.setItem(TOKEN_KEY, v);
+    const v = window.sessionStorage.getItem(TOKEN_KEY);
+    if (tokenOk(v)) return (token = v);
   } catch {
-    /* storage off: the server's lease still ends the count */
+    /* storage off: this page's own token */
   }
+  token = mint();
+  try {
+    window.sessionStorage.setItem(TOKEN_KEY, token);
+  } catch {
+    /* storage off: the token lasts as long as the page */
+  }
+  return token;
+}
+
+/** Forget the page's copy (tests: a fresh tab reads storage again). */
+export function forgetWatcherToken(): void {
+  token = null;
 }
 
 /** How many watch reads this page has sent: each one counts this watcher
@@ -69,26 +81,22 @@ async function getDoc(path: string): Promise<WatchFetch> {
   if (resp.status === 429) return { ok: false, reason: "limited" };
   if (resp.status !== 200) return { ok: false, reason: "error" };
   try {
-    const doc = (await resp.json()) as WatchDoc;
-    saveWatcher(doc.watcher);
-    return { ok: true, doc };
+    return { ok: true, doc: (await resp.json()) as WatchDoc };
   } catch {
     return { ok: false, reason: "error" };
   }
 }
 
 /** A table to watch: `mode` first; never `skip` (Next table). */
-export function fetchWatch(mode: string, skip: string | null, watcher: string | null): Promise<WatchFetch> {
-  const q = new URLSearchParams({ mode });
+export function fetchWatch(mode: string, skip: string | null): Promise<WatchFetch> {
+  const q = new URLSearchParams({ mode, w: watcherToken() });
   if (skip) q.set("skip", skip);
-  const w = watcher ?? savedWatcher();
-  if (w) q.set("w", w);
   return getDoc(`/api/watch?${q.toString()}`);
 }
 
 /** The table being watched: its round after `after` once that round is finished. */
-export function followWatch(table: string, after: number, watcher: string): Promise<WatchFetch> {
-  const q = new URLSearchParams({ after: String(after), w: watcher });
+export function followWatch(table: string, after: number): Promise<WatchFetch> {
+  const q = new URLSearchParams({ after: String(after), w: watcherToken() });
   return getDoc(`/api/watch/${encodeURIComponent(table)}?${q.toString()}`);
 }
 

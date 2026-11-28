@@ -12,6 +12,7 @@ import { telemetry } from "../telemetry";
 import { clearToast, currentToast } from "../toast";
 import { watch } from "./store";
 import { canWatch } from "./store";
+import { forgetWatcherToken } from "./api";
 import { setLanguageChoice } from "../i18n";
 
 // a watcher shown the Collection: companions on the felt, no portrait on the round end
@@ -47,6 +48,7 @@ beforeEach(() => {
   urls.length = 0;
   beacons.length = 0;
   sessionStorage.clear();
+  forgetWatcherToken();
   Object.defineProperty(navigator, "sendBeacon", { configurable: true,
     value: (url: string) => { beacons.push(url); return true; } });
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
@@ -594,18 +596,23 @@ describe("caught up", () => {
     expect(beacons).toEqual([]);
   });
 
+  const wOf = (url: string) => new URL(url, "http://x").searchParams.get("w");
+
   it("opening the watch again is the same watcher, and leaving tells the server", async () => {
     reply = (url) => url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined }
-      : { ...feed, watcher: "t".repeat(32) };
+      : { ...feed, watcher: wOf(url) };
     await screen();
-    expect(urls[0]).not.toContain("w=");
+    // the token is made before the first read, and kept for the session
+    const mine = sessionStorage.getItem("shengji.watcher")!;
+    expect(mine).toMatch(/^[0-9a-f]{32}$/);
+    expect(wOf(urls[0])).toBe(mine);
     const first = roots.pop()!;
     act(() => first.root.unmount());
     first.host.remove();
-    expect(beacons).toEqual([`/api/watch/abc123/leave?w=${"t".repeat(32)}`]);
+    expect(beacons).toEqual([`/api/watch/abc123/leave?w=${mine}`]);
     urls.length = 0;
     await screen();
-    expect(urls[0]).toContain(`w=${"t".repeat(32)}`);
+    expect(wOf(urls[0])).toBe(mine);
     // the page going away tells it too
     window.dispatchEvent(new Event("pagehide"));
     expect(beacons).toHaveLength(2);
@@ -666,6 +673,65 @@ describe("caught up", () => {
     expect(h.querySelector(".watch-tabs")).not.toBeNull();
     await first.deliver();
     expect(beacons).toEqual([]);
+  });
+
+  it("a fresh tab left and opened again before its first answer is one watcher throughout", async () => {
+    const first = held();
+    let reads = 0;
+    reply = async (url) => {
+      if (url.startsWith("/api/watch/")) return { ...feed, waiting: true, events: undefined };
+      const n = ++reads;
+      if (n === 1) await first.gate;
+      // the server echoes a token it is sent, and mints one for a read without
+      return { ...feed, watcher: wOf(url) ?? `m${n}`.padEnd(32, "0") };
+    };
+    await screen();
+    close();
+    await screen();
+    await first.deliver();
+    const picks = urls.filter((u) => u.startsWith("/api/watch?"));
+    expect(picks).toHaveLength(2);
+    expect(wOf(picks[0])).toMatch(/^[0-9a-f]{32}$/);
+    expect(wOf(picks[1])).toBe(wOf(picks[0]));
+    expect(sessionStorage.getItem("shengji.watcher")).toBe(wOf(picks[0]));
+    // the late answer leaves nothing: the watch opened since holds the token
+    expect(beacons).toEqual([]);
+  });
+
+  it("a replay's end that finds a live table counts the watcher there, so leaving during the card tells it", async () => {
+    const rerun = { ...feed, table: "rerun", rerun: true, live_round: null, code: null };
+    let picks = 0;
+    reply = (url) => url.startsWith("/api/watch/") ? { ...feed, waiting: true, events: undefined }
+      : picks++ === 0 ? rerun : feed;
+    const h = await screen();
+    await toEnd(h);                        // the next pick lands on abc123, buffered behind the card
+    expect(picks).toBe(2);
+    expect(h.querySelector(".watch-round")!.textContent).toBe("Replay");
+    close();
+    expect(beacons).toEqual([`/api/watch/abc123/leave?w=${feed.watcher}`]);
+  });
+
+  it("a table that 404s and is found live again by the recovery pick plays on", async () => {
+    let follows404 = 1;
+    reply = (url) => {
+      if (url.startsWith("/api/watch/abc123")) {
+        if (follows404-- > 0) return GONE;
+        return { ...feed, round: 4, waiting: true, events: undefined };
+      }
+      return url.includes("skip=abc123") ? { ...feed, round: 4 } : feed;
+    };
+    const h = await screen();
+    await toEnd(h);
+    expect(urls.some((u) => u.includes("skip=abc123"))).toBe(true);
+    await act(async () => { vi.advanceTimersByTime(CARD_HOLD_MS + 100); });
+    await flush();
+    expect(h.querySelector(".watch-round")!.textContent).toContain("Round 4");
+    // and it is followed again
+    const before = follows();
+    await toEnd(h);
+    for (let s = 0; s < 3; s++) await act(async () => { vi.advanceTimersByTime(FOLLOW_MS); });
+    await flush();
+    expect(follows()).toBeGreaterThan(before);
   });
 
   it("Next on the only table keeps the round buffered behind the card, and its hold", async () => {

@@ -784,12 +784,15 @@ account may watch any live table's last finished round.
 - `GET /api/watch/{table}?after=N&w=` follows that table: its round after `N`
   once finished, else `{waiting: true, live_round}`. 404 once the table cannot
   be watched.
-- `w` is the watcher token the first answer gave; a table counts at most 50
+- `w` is the watcher token (the first answer gives one when a read sends none); a table counts at most 50
   watchers, each until 90 s pass without a read or until
   `POST /api/watch/{table}/leave?w=` (204, whatever the table or token) says it
-  left; a client keeps its token for the browser tab or app session and sends
-  it with every pick, so a watch opened again is the same watcher, and sends
-  that leave as a beacon when its watch screen closes or the page goes away.
+  left. The web client makes its own token (32 hex) before its first read,
+  keeps it for the browser tab or app session and sends it with every read,
+  so a watch opened again is the same watcher; it sends that leave as a
+  beacon for the table its latest answered read counted it at when its watch
+  screen closes or the page goes away, and again for an answer that lands
+  after the close unless a later read was sent since.
   A pick at another table moves the token's count there. A full table is not picked,
   not followed by a new watcher and not counted in `watch`. 30 reads a minute per
   address. `code` is set only for a casual table seating joiners now.

@@ -399,53 +399,80 @@ for (const tables of [["a1b2c3d4", "e5f6a7b8"], ["a1b2c3d4"]]) {
     await page.click(".play-presence-watch");
     await page.waitForSelector(".watch-tabs");
     await rep.check(`${name}: leaving stops the count, and watching again counts 1`,
-      left === 0 && (await count()) === "1" && minted === 1 ? null
-        : `after leaving ${left} counted, then the eye says ${await count()}, ${minted} tokens minted`, page);
+      left === 0 && (await count()) === "1" && minted === 0 ? null
+        : `after leaving ${left} counted, then the eye says ${await count()}, ${minted} tokens minted for reads with none`, page);
     if (SHOTS?.test(name)) await shot(page, name);
   });
   await page.context().close();
 }
-// Leave from the loading screen while the first pick's answer is held: the
-// server counted the watcher as it answered, so once the answer lands the
-// page leaves again and the table counts nobody.
-{
+// The count against a stub that counts by token as the server answers (and
+// mints one for a read with none): Leave from the loading screen while the
+// first pick's answer is held, the answer then lands, and the table counts
+// nobody; a fresh tab left and opened again before that answer counts one;
+// and a replay's end that finds a live table, left during the round end card,
+// counts nobody.
+for (const how of ["loading", "reopen", "replay-end"]) {
   const device = "phone-land";
-  const name = `watch-leave-while-loading-${device}`;
-  if (!only || only.test(name)) {
-    const counted = new Set();
-    let release = null;
-    const held = new Promise((r) => { release = r; });
-    const page = await open(browser, device, {
-      storage: { "shengji.coach": "off", "shengji.muted": "1", "shengji.name": "Jerry" },
-      fakeSocket: fakeSocketScript([presence]),
-      setup: async (p) => {
-        await p.route("**/api/**", (r) => r.fulfill({ status: 404, json: {} }));
-        await p.route("**/api/watch/**", (r) => {
-          const u = new URL(r.request().url());
-          if (u.pathname.endsWith("/leave")) counted.delete(u.searchParams.get("w"));
-          return r.fulfill({ status: 204, body: "" });
-        });
-        await p.route("**/api/watch?**", async (r) => {
-          const w = "d".repeat(32);
-          counted.add(w);                  // counted as the server answers
-          await held;
-          await r.fulfill({ json: { ...doc(0), watcher: w, watchers: counted.size } }).catch(() => {});
-        });
-      },
-    });
-    await scenario(rep, name, page, async () => {
-      await page.waitForSelector(".play-presence-watch");
-      await page.click(".play-presence-watch");
+  const name = `watch-count-${how}-${device}`;
+  if (only && !only.test(name)) continue;
+  const counted = new Set();
+  let minted = 0, reads = 0;
+  let release = null;
+  const held = new Promise((r) => { release = r; });
+  const page = await open(browser, device, {
+    storage: { "shengji.coach": "off", "shengji.muted": "1", "shengji.name": "Jerry" },
+    fakeSocket: fakeSocketScript([presence]),
+    setup: async (p) => {
+      await p.route("**/api/**", (r) => r.fulfill({ status: 404, json: {} }));
+      await p.route("**/api/watch/**", (r) => {
+        const u = new URL(r.request().url());
+        const w = u.searchParams.get("w");
+        if (u.pathname.endsWith("/leave")) { counted.delete(w); return r.fulfill({ status: 204, body: "" }); }
+        counted.add(w);
+        return r.fulfill({ json: { ...doc(0), watcher: w, waiting: true, events: undefined, watchers: counted.size } });
+      });
+      await p.route("**/api/watch?**", async (r) => {
+        const u = new URL(r.request().url());
+        const w = u.searchParams.get("w") || `${String(++minted).padStart(4, "0")}${"c".repeat(28)}`;
+        const n = ++reads;
+        if (how === "replay-end" && n === 1) return r.fulfill({ json: { ...doc(0), rerun: true, live_round: null, watcher: w } });
+        counted.add(w);                    // counted as the server answers
+        if (how !== "replay-end" && n === 1) await held;
+        await r.fulfill({ json: { ...doc(0), watcher: w, watchers: counted.size } }).catch(() => {});
+      });
+    },
+  });
+  await scenario(rep, name, page, async () => {
+    await page.waitForSelector(".play-presence-watch");
+    await page.click(".play-presence-watch");
+    if (how === "replay-end") {
+      await page.waitForSelector(".watch-tabs");
+      await page.click('button[aria-label="Pause"]');
+      for (let i = 0; i < 40 && await page.$('button[aria-label="Next trick"]:not([disabled])'); i++) {
+        await page.click('button[aria-label="Next trick"]');
+      }
+      for (let i = 0; i < 30 && reads < 2; i++) await sleep(100);
+      await page.keyboard.press("Escape");   // the card closes first
+      await page.click('.watch-hud button[aria-label="Leave"]');
+    } else {
       await page.waitForSelector(".watch-empty .btn");
       await page.click(".watch-empty .btn");
-      await page.waitForSelector(".play-presence-watch");
-      release();
-      for (let i = 0; i < 20 && counted.size > 0; i++) await sleep(100);
-      await rep.check(`${name}: the held answer lands after Leave and the table counts nobody`,
-        counted.size === 0 ? null : `${counted.size} still counted`, page);
-    });
-    await page.context().close();
-  }
+    }
+    await page.waitForSelector(".play-presence-watch");
+    if (how === "reopen") {
+      await page.click(".play-presence-watch");
+      await page.waitForSelector(".watch-tabs");
+    }
+    release();
+    const want = how === "reopen" ? 1 : 0;
+    for (let i = 0; i < 20 && counted.size !== want; i++) await sleep(100);
+    await sleep(300);
+    const eye = await page.evaluate(() => document.querySelector(".watch-count")?.textContent ?? "none");
+    await rep.check(`${name}: the table counts ${want} for this one viewer`,
+      counted.size === want && minted === 0 && (how !== "reopen" || eye === "1") ? null
+        : `${counted.size} counted, eye ${eye}, ${minted} tokens minted for reads with none`, page);
+  });
+  await page.context().close();
 }
 // A replay's top right is one Leave control: a tap, the browser's back or
 // Escape each land on the Play tab with its presence line.

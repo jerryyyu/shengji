@@ -241,22 +241,28 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   // table's watch and begins the next one's; the next round of the same
   // table keeps it
   const usageTable = useRef<string | null>(null);
-  // the live table this watcher counts at, and its token: told when it leaves
-  const counted = useRef<{ table: string; watcher: string } | null>(null);
+  // where the server counts this watcher: the live table of the latest-sent
+  // read answered so far (`n`, its `watchReads()`), set as each answer
+  // arrives, shown or not; told when the watch is left
+  const admitted = useRef<{ table: string; watcher: string; n: number } | null>(null);
   // the screen is gone: an answer landing now is not shown
   const closed = useRef(false);
-  /** An answer that landed after the screen closed: the server counted this
-   *  watcher at its table as it answered, so it is left again, unless a
-   *  later read (a watch opened since) holds this watcher now. `n` is
-   *  `watchReads()` as the read was sent. */
-  const lateAfterClose = (r: WatchFetch, n: number) => {
-    if (!closed.current) return false;
-    if (r.ok && !r.doc.rerun && n === watchReads()) leaveWatch(r.doc.table, r.doc.watcher);
-    return true;
+  /** Every answer, as it arrives: a live table's answer records where the
+   *  watcher counts now (a rerun's moves nothing on the server). True once
+   *  the screen has closed: the answer is not shown, and the table it
+   *  counted at is left again, unless a later read (a watch opened since)
+   *  holds this watcher now. */
+  const received = (r: WatchFetch, n: number) => {
+    const live = r.ok && !r.doc.rerun ? { table: r.doc.table, watcher: r.doc.watcher, n } : null;
+    if (closed.current) {
+      if (live && n === watchReads()) leaveWatch(live.table, live.watcher);
+      return true;
+    }
+    if (live && n >= (admitted.current?.n ?? 0)) admitted.current = live;
+    return false;
   };
   const show = (l: Loaded, why: WatchBy = "ended") => {
     dropNext();
-    counted.current = l.doc.rerun ? null : { table: l.doc.table, watcher: l.doc.watcher };
     if (usageTable.current !== null && usageTable.current !== l.doc.table) {
       watchUsage.left(why);
       watchUsage.begin("next");
@@ -284,10 +290,10 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     if (retry.current !== null) window.clearTimeout(retry.current);
     retry.current = null;
     const read = (again: boolean) => {
-      const req = fetchWatch(mode, skip, loaded?.doc.watcher ?? null);
+      const req = fetchWatch(mode, skip);
       const n = watchReads();
       void req.then((r) => {
-        if (lateAfterClose(r, n)) return;
+        if (received(r, n)) return;
         if (mine !== picks.current) return;
         const l = r.ok ? load(r.doc) : null;
         const failed = r.ok ? l === null : r.reason !== "none";
@@ -295,8 +301,9 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
           retry.current = window.setTimeout(() => { retry.current = null; read(true); }, RETRY_MS);
           return;
         }
-        if (l && skip !== null && l.doc.table === skip && loaded?.doc.table === skip) {
-          // the only table there is: it stays as it is, its round and seat
+        if (l && why === "next" && l.doc.table === skip && table.current === skip) {
+          // Next found no other table: the one on screen, still followed,
+          // stays as it is, its round, seat and any round buffered behind it
         } else if (l) {
           setNone(false);
           show(l, why ?? "next");
@@ -317,7 +324,7 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
   // the server this watcher is gone from its table
   useEffect(() => {
     const tell = () => {
-      const c = counted.current;
+      const c = admitted.current;
       if (c) leaveWatch(c.table, c.watcher);
     };
     window.addEventListener("pagehide", tell);
@@ -357,10 +364,10 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     let on = true;
     const poll = window.setInterval(() => {
       if (document.visibilityState === "hidden" || table.current !== doc.table) return;
-      const req = followWatch(doc.table, next.current?.doc.round ?? doc.round ?? 0, doc.watcher);
+      const req = followWatch(doc.table, next.current?.doc.round ?? doc.round ?? 0);
       const n = watchReads();
       void req.then((res) => {
-        if (lateAfterClose(res, n)) return;
+        if (received(res, n)) return;
         if (!on || table.current !== doc.table || !res.ok) return;
         if (res.doc.waiting) {
           setLive({ round: res.doc.live_round, code: res.doc.code, watchers: res.doc.watchers });
@@ -393,11 +400,10 @@ export default function WatchScreen({ mode }: { mode: "ranked" | "casual" }) {
     };
     const ask = () => {
       if (next.current || table.current !== doc.table) return;
-      const r = doc.rerun ? fetchWatch(mode, null, doc.watcher)
-        : followWatch(doc.table, doc.round ?? 0, doc.watcher);
+      const r = doc.rerun ? fetchWatch(mode, null) : followWatch(doc.table, doc.round ?? 0);
       const n = watchReads();
       void r.then((res) => {
-        if (lateAfterClose(res, n)) return;
+        if (received(res, n)) return;
         if (!on || table.current !== doc.table) return;
         if (res.ok && res.doc.waiting) {
           setLive({ round: res.doc.live_round, code: res.doc.code, watchers: res.doc.watchers });

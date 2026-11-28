@@ -55,7 +55,8 @@ class _BasePassComplete(Exception):
 
 def compare_replayed_lead(root: TrancheRoot, flat_bot, *, seed: int, depth_worlds: int,
                           reply_cap: int, batch_size: int, reply_value_weight: float,
-                          record_final_action: bool = False, cover_winning_follow: bool = False) -> PairedLeadValues:
+                          record_final_action: bool = False, cover_winning_follow: bool = False,
+                          complete_small_multicard_follows: bool = False) -> PairedLeadValues:
     """Compare the actual W64/K8 base estimator with one offline reply ply.
 
     The caller supplies a dedicated bot with the pinned unified slots and lifted
@@ -157,7 +158,8 @@ def compare_replayed_lead(root: TrancheRoot, flat_bot, *, seed: int, depth_world
         raise SingleAdmittedLead(action, float(means[0]), final_action)
     reply_values = root.backup(actions, worlds, model=model, belief=belief, seed=seed,
                                depth_worlds=depth_worlds, reply_cap=reply_cap, batch_size=batch_size,
-                               reply_value_weight=reply_value_weight, cover_winning_follow=cover_winning_follow)
+                               reply_value_weight=reply_value_weight, cover_winning_follow=cover_winning_follow,
+                               complete_small_multicard_follows=complete_small_multicard_follows)
     if reply_values.shape != (64, len(actions)) or not np.isfinite(reply_values).all():
         raise ValueError("reply estimator did not complete the paired ballot")
     return PairedLeadValues(actions, means, reply_values, final_action)

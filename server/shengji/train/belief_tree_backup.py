@@ -54,12 +54,16 @@ def _reply_node(child, ledger, model, replies):
     return _preferences(policy_from_states(model, q), replies), score
 
 
-def _bounded_replies(child, cap, cover_winning_follow):
+def _bounded_replies(child, cap, cover_winning_follow, complete_small_multicard_follows=False):
     hand = child.hands[child.turn]
     if not child.trick.plays:
         return [list(cards) for cards in islice(single_component_leads(hand, child.ordering), cap)]
     lead = child.trick.plays[0].cards
-    replies = [list(cards) for cards in islice(iter_follow_actions(hand, lead, child.ordering), cap)]
+    legal = iter_follow_actions(hand, lead, child.ordering)
+    if complete_small_multicard_follows and len(hand) <= 5 and len(lead) > 1:
+        # At a fixed play width, five cards have at most ten distinct subsets.
+        return [list(cards) for cards in legal]
+    replies = [list(cards) for cards in islice(legal, cap)]
     if cover_winning_follow and len(replies) == cap:
         bot = HeuristicBot()
         _, suit, top = bot._current_winner(child)
@@ -72,7 +76,8 @@ def _bounded_replies(child, cap, cover_winning_follow):
 
 
 def root_reply_backup(root, actions, root_worlds, *, belief, model, refusals, seed, depth_worlds,
-                      reply_cap, batch_size, reply_value_weight, cover_winning_follow=False):
+                      reply_cap, batch_size, reply_value_weight, cover_winning_follow=False,
+                      complete_small_multicard_follows=False):
     """Expected root-team values, indexed by supplied outer world and root action.
 
     Each reply distribution starts with the unified policy prior from the acting
@@ -125,7 +130,7 @@ def root_reply_backup(root, actions, root_worlds, *, belief, model, refusals, se
             if child.phase == "round_end":
                 result[w, a] = terminal_distribution(child, seat) @ LEVEL_SUPPORT
                 continue
-            replies = _bounded_replies(child, reply_cap, cover_winning_follow)
+            replies = _bounded_replies(child, reply_cap, cover_winning_follow, complete_small_multicard_follows)
             log_prior, score = _reply_node(child, branch_ledger, model, replies)
             outer = [(child.hands, child.buried)]
             outer_values = paired_reply_values(child, replies, outer, batch_size=batch_size,

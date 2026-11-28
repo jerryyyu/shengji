@@ -68,8 +68,9 @@ def analyze_bank(bank_bytes, decks, *, bank_sha256, settings):
     if hashlib.sha256(bank_bytes).hexdigest() != bank_sha256:
         raise ValueError("reserved bank digest mismatch")
     widths = ("depth_worlds", "reply_cap", "batch_size")
-    if (type(settings) is not dict or (set(settings) - {"cover_winning_follow"}) != {"seed", "reply_value_weight", *widths}
-            or settings.get("cover_winning_follow", True) is not True
+    options = {"cover_winning_follow", "complete_small_multicard_follows"}
+    if (type(settings) is not dict or (set(settings) - options) != {"seed", "reply_value_weight", *widths}
+            or any(settings[key] is not True for key in settings.keys() & options)
             or type(settings["seed"]) is not int or settings["seed"] < 0
             or any(type(settings[k]) is not int or settings[k] < 1 for k in widths)
             or type(settings["reply_value_weight"]) not in (float, int)

@@ -86,7 +86,7 @@ def main(argv=None):
         raise FileExistsError(output)
     settings = {key: getattr(args, key) for key in pilot_settings() if getattr(args, key) is not None}
     if args.pilot_settings:
-        if settings:
+        if settings or args.cover_winning_follow:
             p.error("--pilot-settings cannot be combined with explicit search settings")
         settings = pilot_settings()
     elif settings.keys() != pilot_settings().keys():

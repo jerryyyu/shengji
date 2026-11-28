@@ -1554,8 +1554,10 @@ def test_reserved_deck_cli_scores_both_mirrors_and_publishes_once(
     monkeypatch.setattr(bank, "make_bot", make_registered)
     if substitution:
         argv = argv[:argv.index("--seed")] + ["--pilot-settings"]
-        with pytest.raises(SystemExit):
-            bank.main(argv + ["--depth-worlds", "3"])
+        for override in (["--depth-worlds", "3"], ["--cover-winning-follow"]):
+            with pytest.raises(SystemExit):
+                bank.main(argv + override)
+            assert not output.exists()
     else:
         argv.append("--cover-winning-follow")
     bank.main(argv)

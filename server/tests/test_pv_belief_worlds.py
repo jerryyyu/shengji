@@ -414,7 +414,7 @@ def test_suit_length_bounds_match_all_feasible_completions():
                                [2], [1, 1, 0, 0]))
 
 
-def test_paired_void_cli_reads_only_held_out_decisions(package, tmp_path, capsys):
+def test_paired_void_cli_reads_only_held_out_decisions(package, tmp_path, capsys, monkeypatch):
     import hashlib
     from shengji.train import belief_history as bh
     from shengji.train import belief_labels as bl
@@ -484,6 +484,21 @@ def test_paired_void_cli_reads_only_held_out_decisions(package, tmp_path, capsys
         evaluator.main([*args, "--cohort", str(cohort), "--ll-max-draws", "1", "--ll-replicates", "2"])
         return json.loads(capsys.readouterr().out)
     assert select(member) == scored
+    # Reserve the other synthetic deck and compare the full read with the clean deal alone.
+    with monkeypatch.context() as patch:
+        patch.setattr(evaluator, "TIMING_DEAL_ID", int(bl.stored_deal_id(keys[1018])))
+        evaluator.main([*args, "--ll-max-draws", "1", "--ll-replicates", "2"])
+        assert json.loads(capsys.readouterr().out) == dict(scored, excluded_timing_rows=3)
+        other = {"seed": 1018, "deal_key": keys[1018], "rows": 3}
+        with pytest.raises(ValueError, match="reserved timing deal"):
+            select(member, other)
+        with pytest.raises(ValueError, match="reserved timing deal"):
+            select(other)
+        evaluator.main([*args, "--cohort", str(cohort), "--ll-max-draws", "1",
+                        "--ll-replicates", "2", "--timing-only"])
+        pilot_only = json.loads(capsys.readouterr().out)
+        assert pilot_only["decisions"] == 3 and "arms" not in pilot_only
+    select(member)
     from scripts.time_belief_length_fit_eval import main as time_pilot
     out = tmp_path / "timed"
     pilot_args = ["--train-extract", str(tmp_path), "--test-extract", str(tmp_path),
@@ -526,6 +541,20 @@ def test_paired_void_cli_reads_only_held_out_decisions(package, tmp_path, capsys
     cohort.write_text(json.dumps({"deals": [member], "belief_sha256": "bad"}))
     with pytest.raises(ValueError, match="different belief package"):
         evaluator.main([*args, "--cohort", str(cohort)])
+    # Two individually valid chunks replace the third decision with a repeat of the second.
+    with np.load(tmp_path / "test.npz") as original:
+        for split, indices in (("test", [0, 1]), ("other", [1])):
+            path = tmp_path / f"overlap-{split}.npz"
+            np.savez(path, **{key: original[key][indices] for key in bl.ARRAY_KEYS})
+            np.savez(hist / path.name, **bh.chunk_history(str(path), [str(tmp_path / "test.jsonl")]))
+            histories[path.name] = hashlib.sha256((hist / path.name).read_bytes()).hexdigest()
+            files[split] = dict(file=path.name, rows=len(indices),
+                                sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+    manifests(extra=True)
+    with pytest.raises(ValueError, match="duplicate held-out decision"):
+        select(member)
+    with pytest.raises(ValueError, match="duplicate held-out decision"):
+        evaluator.main(args)
     files["test"] = files["train"]
     manifests()
     with pytest.raises(ValueError, match="training exposure"):

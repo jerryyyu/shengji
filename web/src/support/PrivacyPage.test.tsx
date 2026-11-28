@@ -27,6 +27,10 @@ describe("the privacy page", () => {
     expect(text).toContain("Apple’s transaction ids, the purchase date, the App Store country");
     expect(text).toContain("a refunded purchase is kept, marked with the refund date, and its look is removed");
     expect(text).toContain("A purchase never gives us your card or other payment details");
+    expect(text).toContain("An account signed in with Apple or Google, where the store is offered, gets a random");
+    expect(text).toContain("its purchase records stay with no account attached");
+    expect(text).toContain("kept, marked deleted, along with the deleted account’s internal number");
+    expect(text).not.toContain("Each account also has a random purchase code");
     expect(text).toContain("it carries a random code for your device so we can count");
     expect(text).toContain("We store only a scrambled version of it");
     expect(text).toContain("groups those events across visits");

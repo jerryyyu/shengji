@@ -169,14 +169,16 @@ export default function PrivacyPage() {
             it. We keep it with your account so the look stays yours on every device you sign in on.
           </p>
           <p>
-            Each account also has a random purchase code, which the app gives Apple with a purchase so
-            that Apple’s record names the account that paid. Apple tells our server about refunds: a
+            An account signed in with Apple or Google, where the store is offered, gets a random
+            purchase code, which the app gives Apple with a purchase so that Apple’s record names the
+            account that paid. Apple tells our server about refunds: a
             refunded purchase is kept, marked with the refund date, and its look is removed from the
             account. A purchase never gives us your card or other payment details.
           </p>
           <p>
-            If you delete your account, its purchase records and purchase code stay, no longer linked
-            to an account, so a purchase can be restored onto a new account from the same Apple ID.
+            If you delete your account, its purchase records stay with no account attached, so a
+            purchase can be restored onto a new account from the same Apple ID. Its purchase code is
+            kept, marked deleted, along with the deleted account’s internal number.
           </p>
         </Section>
 
